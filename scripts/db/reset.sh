@@ -18,6 +18,7 @@ docker compose -f docker-compose.dev.yml exec -T postgres psql -U "$POSTGRES_USE
 docker compose -f docker-compose.dev.yml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE SCHEMA IF NOT EXISTS drizzle;"
 docker compose -f docker-compose.dev.yml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (id serial PRIMARY KEY, hash text NOT NULL, created_at bigint);"
 docker compose -f docker-compose.dev.yml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DELETE FROM drizzle.__drizzle_migrations;"
+docker compose -f docker-compose.dev.yml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DROP TABLE IF EXISTS drizzle.__bookorbit_fork_migrations;"
 
 echo "Re-applying migrations..."
 pnpm run db:migrate
