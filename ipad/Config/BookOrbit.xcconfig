@@ -1,0 +1,42 @@
+// Build settings for the BookOrbit app target. Personal signing settings go in
+// Signing.local.xcconfig (git-ignored), for example:
+//   DEVELOPMENT_TEAM = ABCDE12345
+//   PRODUCT_BUNDLE_IDENTIFIER = dev.yourname.bookorbit
+
+PRODUCT_NAME = BookOrbit
+PRODUCT_BUNDLE_IDENTIFIER = dev.mooneeb.bookorbit
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+
+SDKROOT = iphoneos
+SUPPORTED_PLATFORMS = iphoneos iphonesimulator
+TARGETED_DEVICE_FAMILY = 2
+IPHONEOS_DEPLOYMENT_TARGET = 26.0
+SUPPORTS_MACCATALYST = YES
+MACOSX_DEPLOYMENT_TARGET = 26.0
+SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO
+SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO
+
+SWIFT_VERSION = 6.0
+SWIFT_EMIT_LOC_STRINGS = YES
+ENABLE_PREVIEWS = YES
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/Frameworks
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor
+
+INFOPLIST_FILE = Config/Info.plist
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_CFBundleDisplayName = BookOrbit
+INFOPLIST_KEY_LSApplicationCategoryType = public.app-category.books
+INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES
+INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES
+INFOPLIST_KEY_UILaunchScreen_Generation = YES
+INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+
+// Free Apple ID provisioning: no entitlements file and no capabilities (no iCloud, no push).
+CODE_SIGN_STYLE = Automatic
+// The Mac build (Mac Catalyst) is signed to run locally and never expires.
+CODE_SIGN_IDENTITY[sdk=macosx*] = -
+DEVELOPMENT_TEAM[sdk=macosx*] =
+
+#include? "Signing.local.xcconfig"

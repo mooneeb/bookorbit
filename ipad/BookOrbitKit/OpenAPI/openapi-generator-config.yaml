@@ -1,0 +1,16 @@
+# Operations the iPad App calls. Add an operationId here (and its response shape to
+# ipad/Tools/openapi/overlay.json if the server leaves it untyped), then run
+# ipad/Tools/regenerate-api-client.sh.
+generate:
+  - types
+  - client
+accessModifier: public
+namingStrategy: idiomatic
+filter:
+  operations:
+    - AuthController_loginOptions
+    - AuthController_login
+    - AuthController_refresh
+    - AuthController_logout
+    - AuthController_me
+    - BookController_globalQuery
