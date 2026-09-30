@@ -31,11 +31,13 @@ jobs:
   # Main push path: resolve context once, then build multi-arch natively in parallel.
   prepare:
     name: Resolve Build Context
+    # Fork guard: fork images are published by fork-release.yml. Every later job needs this one.
     if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
+      github.repository == 'bookorbit/bookorbit' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
