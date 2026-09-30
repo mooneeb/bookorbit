@@ -1,0 +1,3 @@
+# The iPad App renders EPUBs with foliate-js in a web view
+
+The iPad App renders Reflowable Books with the same foliate-js engine the web reader uses, hosted in a web view, and handles Apple Pencil input natively on top of it. Using the same engine means Annotation positions (EPUB CFIs), fonts, and reader settings match the web reader exactly, so a highlight made on the iPad lands on the same passage in the browser. A native Swift engine such as Readium was rejected because its CFIs can differ subtly from the ones foliate-js produces. Fixed-layout Books do not have this problem and use PDFKit with PencilKit natively.
