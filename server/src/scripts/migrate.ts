@@ -6,6 +6,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 
 import { createPostgresClientConfig } from '../db/postgres-connection-config';
+import { runForkMigrations } from './fork-migrations';
 import { reconcileMigrationLedgerTimestamps } from './migration-ledger-compatibility';
 import { installPostgresExtensions } from './postgres-extensions';
 import { prepareLegacySeriesIndexColumns } from './series-index-migration-compatibility';
@@ -48,6 +49,8 @@ async function runMigrations() {
     await migrate(drizzle(pool), { migrationsFolder });
 
     console.log(`Migrations applied successfully from ${migrationsFolder}`);
+
+    await runForkMigrations(pool);
   } finally {
     await pool.end();
   }

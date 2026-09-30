@@ -43,6 +43,7 @@ RUN pnpm --config.verify-deps-before-run=false --filter server run build
 RUN pnpm --config.allow-unused-patches=true --filter server deploy --prod --legacy /deploy
 RUN cp -r /app/server/dist /deploy/dist
 RUN mkdir -p /deploy/migrations && cp -r /app/server/src/db/migrations/. /deploy/migrations/
+RUN mkdir -p /deploy/fork-migrations && cp -r /app/server/src/db/fork/migrations/. /deploy/fork-migrations/
 
 # Stage 3: Runtime image
 FROM ${NODE_IMAGE} AS runtime

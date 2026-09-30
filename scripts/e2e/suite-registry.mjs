@@ -9,7 +9,7 @@ export const E2E_GLOBAL_CHANGE_PATHS = Object.freeze([
   "docker/**",
 ]);
 
-const SHARED_DB_AND_HELPER_PATHS = Object.freeze(["server/src/db/schema/**", "scripts/e2e/**", "scripts/db/**"]);
+const SHARED_DB_AND_HELPER_PATHS = Object.freeze(["server/src/db/schema/**", "server/src/db/fork/schema/**", "scripts/e2e/**", "scripts/db/**"]);
 
 const SHARED_AUTH_TYPE_PATHS = Object.freeze(["packages/types/src/auth.ts", "packages/types/src/permissions.ts"]);
 
@@ -414,6 +414,8 @@ export const E2E_SUITES = Object.freeze({
     changedPaths: [
       "server/src/db/migrations/**",
       "server/src/scripts/migrate.ts",
+      "server/src/db/fork/migrations/**",
+      "server/src/scripts/fork-migrations.ts",
       "server/src/scripts/series-index-migration-compatibility.ts",
       "server/test/series-index-migration.e2e-spec.ts",
       ...SHARED_DB_AND_HELPER_PATHS,
