@@ -1,5 +1,6 @@
 import BookOrbitAPI
 import BookOrbitAuth
+import BookOrbitCore
 import BookOrbitFeatureKit
 import Foundation
 import Observation
@@ -24,6 +25,7 @@ public final class BookList {
         guard hasMore, !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
+        let started = ContinuousClock.now
 
         do {
             let query = Components.Schemas.BookQuery(
@@ -36,6 +38,7 @@ public final class BookList {
             hasMore = page.items.count == pageSize && books.count < page.total
             failure = nil
         } catch {
+            Self.log.error("[library.load_page] [fail] page=\(nextPage) size=\(pageSize) durationMs=\(started.millisecondsElapsed) \(failureFields(error)) - loading a page of books failed")
             failure = SessionError(error) ?? .invalidResponse
         }
     }
@@ -48,4 +51,5 @@ public final class BookList {
     }
 
     private static let prefetchDistance = 10
+    private static let log = EventLog(category: "library")
 }

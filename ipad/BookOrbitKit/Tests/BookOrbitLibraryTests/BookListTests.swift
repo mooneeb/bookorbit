@@ -35,6 +35,21 @@ private func routeLibrary(_ server: StubServer, total: Int) {
         #expect(query["sort"] as? [[String: String]] == [["field": "title", "dir": "asc"]])
     }
 
+    @Test func booksWhoseCoverHasNoVersionStillLoad() async throws {
+        let server = StubServer()
+        server.route("POST", "/api/v1/books/query") { _ in
+            var book = card(1)
+            book["coverVersion"] = NSNull()
+            return .json(201, ["items": [book], "total": 1, "page": 0, "size": 50])
+        }
+        let list = await BookList(session: try await server.signedInSession())
+
+        await list.loadMore()
+
+        #expect(await list.failure == nil)
+        #expect(await list.books.map(\.coverVersion) == [nil])
+    }
+
     @Test func loadingMorePagesStopsAtTheEndOfTheLibrary() async throws {
         let server = StubServer()
         routeLibrary(server, total: 5)

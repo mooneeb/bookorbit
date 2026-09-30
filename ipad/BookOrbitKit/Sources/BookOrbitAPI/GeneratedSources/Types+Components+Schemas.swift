@@ -659,7 +659,7 @@ extension Components {
             /// - Remark: Generated from `#/components/schemas/BookCard/hasCover`.
             public var hasCover: Swift.Bool
             /// - Remark: Generated from `#/components/schemas/BookCard/coverVersion`.
-            public var coverVersion: Swift.String
+            public var coverVersion: Swift.String?
             /// - Remark: Generated from `#/components/schemas/BookCard/files`.
             public var files: [Components.Schemas.BookFileRef]
             /// Creates a new `BookCard`.
@@ -676,7 +676,7 @@ extension Components {
                 title: Swift.String? = nil,
                 authors: [Swift.String],
                 hasCover: Swift.Bool,
-                coverVersion: Swift.String,
+                coverVersion: Swift.String? = nil,
                 files: [Components.Schemas.BookFileRef]
             ) {
                 self.id = id

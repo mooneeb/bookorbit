@@ -7,6 +7,7 @@ public final class StubServer: Sendable {
     public struct Request: Sendable {
         public let method: String
         public let path: String
+        public let query: String?
         public let headers: [String: String]
         public let body: Data
 
@@ -127,6 +128,7 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
         let recorded = StubServer.Request(
             method: request.httpMethod ?? "GET",
             path: url.path(),
+            query: url.query(),
             headers: request.allHTTPHeaderFields ?? [:],
             body: request.httpBody ?? request.httpBodyStream.map(Self.readAll) ?? Data()
         )

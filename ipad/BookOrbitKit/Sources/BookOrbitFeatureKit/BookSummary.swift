@@ -19,12 +19,12 @@ public struct BookSummary: Identifiable, Hashable, Sendable {
     public let authors: [String]
     public let hasCover: Bool
     /// Part of cover URLs, so a changed cover is a new URL and old ones can be cached forever.
-    public let coverVersion: String
+    public let coverVersion: String?
     public let files: [File]
 
     public var formats: [String] { files.compactMap(\.format) }
 
-    public init(id: Int, title: String, authors: [String], hasCover: Bool, coverVersion: String, files: [File]) {
+    public init(id: Int, title: String, authors: [String], hasCover: Bool, coverVersion: String?, files: [File]) {
         self.id = id
         self.title = title
         self.authors = authors

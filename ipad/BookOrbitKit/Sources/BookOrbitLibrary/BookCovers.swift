@@ -16,7 +16,7 @@ public struct BookCovers: Sendable {
         guard book.hasCover else { return nil }
         return try await session.data(
             path: "/api/v1/books/\(book.id)/thumbnail",
-            queryItems: [URLQueryItem(name: "t", value: book.coverVersion)]
+            queryItems: book.coverVersion.map { [URLQueryItem(name: "t", value: $0)] } ?? []
         )
     }
 

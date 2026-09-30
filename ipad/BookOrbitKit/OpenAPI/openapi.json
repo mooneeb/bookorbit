@@ -34143,7 +34143,8 @@
             "type": "boolean"
           },
           "coverVersion": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "files": {
             "type": "array",
@@ -34152,7 +34153,7 @@
             }
           }
         },
-        "required": ["id", "authors", "hasCover", "coverVersion", "files"]
+        "required": ["id", "authors", "hasCover", "files"]
       },
       "BooksPage": {
         "type": "object",

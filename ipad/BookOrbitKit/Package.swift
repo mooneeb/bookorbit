@@ -53,7 +53,7 @@ let package = Package(
             ]
         ),
         .target(name: "BookOrbitFeatureKit", dependencies: ["BookOrbitAPI", "BookOrbitAuth"]),
-        .target(name: "BookOrbitLibrary", dependencies: ["BookOrbitAPI", "BookOrbitAuth", "BookOrbitFeatureKit"]),
+        .target(name: "BookOrbitLibrary", dependencies: ["BookOrbitAPI", "BookOrbitAuth", "BookOrbitCore", "BookOrbitFeatureKit"]),
         .target(name: "BookOrbitReading", dependencies: ["BookOrbitAPI", "BookOrbitAuth"]),
         .target(
             name: "BookOrbitPDFReader",
