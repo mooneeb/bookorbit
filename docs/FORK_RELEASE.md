@@ -21,7 +21,9 @@ git tag v3.1.0.1
 git push origin v3.1.0.1
 ```
 
-It builds the `Dockerfile` for `linux/amd64` and `linux/arm64`, passes the tag as `APP_VERSION`, and pushes `ghcr.io/<owner>/<repo>:3.1.0.1` and `:latest` to this fork's GitHub Container Registry. Write the release notes for the iPad-related changes on the GitHub release for that tag.
+It builds the `Dockerfile` for `linux/amd64` and `linux/arm64`, passes the tag as `APP_VERSION`, and pushes `ghcr.io/<owner>/<repo>:3.1.0.1` to this fork's GitHub Container Registry. There is no `latest` tag: deployments always pin an exact version.
+
+Release notes are manual for now: the workflow does not create a GitHub release, so create one for the tag yourself and describe the iPad-related changes there.
 
 GHCR packages created from a fork start private. Either make the package public (Package settings, Change visibility) or give the cluster an image pull secret for `ghcr.io`.
 
@@ -76,7 +78,7 @@ Replace `<ns>`, `<postgres-pod>`, `<db-user>`, `<db-name>`, and `<app-deployment
 
    The logs show both "Migrations applied successfully" and "Fork migrations applied successfully". In the web app, Settings shows the fork version (for example `v3.1.0.1`), and your library, reading progress, and annotations look the same as before.
 
-6. **Roll back if needed.** Point the deployment back at upstream's image for the same upstream version. Upstream ignores the fork tables, so this is safe for everyday use. To return to the exact pre-switch state, scale the app to zero and restore the dump:
+6. **Roll back if needed.** Point the deployment back at upstream's image for the same upstream version. Upstream code does not read the fork tables and leaves them in place, but this path has not been exercised, and anything created on the fork (Ink Annotations, Sketches) stays invisible until you switch back. Annotations backing ink remain as ordinary Annotations. To return to the exact pre-switch state, scale the app to zero and restore the dump:
 
    ```bash
    kubectl -n <ns> scale deployment/<app-deployment> --replicas=0
