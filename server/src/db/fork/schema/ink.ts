@@ -21,14 +21,15 @@ export const forkInk = pgTable(
     userId: integer('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    // Set null rather than cascade so the row survives as a tombstone for updated-since sync;
-    // a row without a backing Annotation counts as deleted.
+    // Set null, not cascade, so user ink is never destroyed with its Annotation. The FK action
+    // does not bump updated_at; a null annotation_id counts as deleted.
     annotationId: integer('annotation_id').references(() => annotations.id, { onDelete: 'set null' }),
     bookId: integer('book_id')
       .notNull()
       .references(() => books.id, { onDelete: 'cascade' }),
     kind: varchar('kind', { length: 10 }).$type<InkKind>().notNull(),
-    bookFileId: integer('book_file_id').references(() => bookFiles.id, { onDelete: 'cascade' }),
+    // Set null, not cascade: scanner and upload paths delete book_files rows routinely.
+    bookFileId: integer('book_file_id').references(() => bookFiles.id, { onDelete: 'set null' }),
     pageIndex: integer('page_index'),
     drawingData: bytea('drawing_data').notNull(),
     svg: text('svg').notNull(),
@@ -53,11 +54,11 @@ export const forkInk = pgTable(
       .where(sql`${t.deletedAt} is null and ${t.annotationId} is not null`),
     uniqueIndex('fork_ink_page_active_uidx')
       .on(t.userId, t.bookFileId, t.pageIndex)
-      .where(sql`${t.kind} = 'page' and ${t.deletedAt} is null and ${t.annotationId} is not null`),
+      .where(sql`${t.kind} = 'page' and ${t.deletedAt} is null and ${t.annotationId} is not null and ${t.bookFileId} is not null`),
     check('fork_ink_kind_chk', sql`${t.kind} in (${inkKindsSql})`),
     check(
       'fork_ink_kind_position_chk',
-      sql`(${t.kind} = 'page' and ${t.bookFileId} is not null and ${t.pageIndex} is not null) or (${t.kind} = 'sketch' and ${t.bookFileId} is null and ${t.pageIndex} is null)`,
+      sql`(${t.kind} = 'page' and ${t.pageIndex} is not null) or (${t.kind} = 'sketch' and ${t.bookFileId} is null and ${t.pageIndex} is null)`,
     ),
     check('fork_ink_page_index_chk', sql`${t.pageIndex} is null or ${t.pageIndex} >= 0`),
     check('fork_ink_version_chk', sql`${t.version} >= 1`),

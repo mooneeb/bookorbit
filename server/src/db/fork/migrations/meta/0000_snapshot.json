@@ -1,5 +1,5 @@
 {
-  "id": "63e9346a-d733-42ac-ae20-da69f0e33c03",
+  "id": "e38cc919-e19a-47fd-8093-da9acf946c5f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -232,7 +232,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"fork_ink\".\"kind\" = 'page' and \"fork_ink\".\"deleted_at\" is null and \"fork_ink\".\"annotation_id\" is not null",
+          "where": "\"fork_ink\".\"kind\" = 'page' and \"fork_ink\".\"deleted_at\" is null and \"fork_ink\".\"annotation_id\" is not null and \"fork_ink\".\"book_file_id\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -272,7 +272,7 @@
           "tableTo": "book_files",
           "columnsFrom": ["book_file_id"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -286,7 +286,7 @@
         },
         "fork_ink_kind_position_chk": {
           "name": "fork_ink_kind_position_chk",
-          "value": "(\"fork_ink\".\"kind\" = 'page' and \"fork_ink\".\"book_file_id\" is not null and \"fork_ink\".\"page_index\" is not null) or (\"fork_ink\".\"kind\" = 'sketch' and \"fork_ink\".\"book_file_id\" is null and \"fork_ink\".\"page_index\" is null)"
+          "value": "(\"fork_ink\".\"kind\" = 'page' and \"fork_ink\".\"page_index\" is not null) or (\"fork_ink\".\"kind\" = 'sketch' and \"fork_ink\".\"book_file_id\" is null and \"fork_ink\".\"page_index\" is null)"
         },
         "fork_ink_page_index_chk": {
           "name": "fork_ink_page_index_chk",
