@@ -1,5 +1,3 @@
-import { existsSync } from 'fs';
-import { join } from 'path';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -7,24 +5,10 @@ import { Pool } from 'pg';
 
 import { createPostgresClientConfig } from '../db/postgres-connection-config';
 import { runForkMigrations } from './fork-migrations';
+import { resolveMigrationsFolder } from './migrations-folder';
 import { reconcileMigrationLedgerTimestamps } from './migration-ledger-compatibility';
 import { installPostgresExtensions } from './postgres-extensions';
 import { prepareLegacySeriesIndexColumns } from './series-index-migration-compatibility';
-
-function resolveMigrationsFolder(): string {
-  const candidates = [
-    join(__dirname, '..', '..', 'migrations'),
-    join(__dirname, '..', 'db', 'migrations'),
-    join(process.cwd(), 'migrations'),
-    join(process.cwd(), 'src', 'db', 'migrations'),
-  ];
-
-  const match = candidates.find((path) => existsSync(path));
-  if (!match) {
-    throw new Error(`Unable to locate migrations folder. Checked: ${candidates.join(', ')}`);
-  }
-  return match;
-}
 
 async function runMigrations() {
   const connectionString = process.env.DATABASE_URL;
@@ -42,7 +26,7 @@ async function runMigrations() {
 
   try {
     await installPostgresExtensions(pool);
-    const migrationsFolder = resolveMigrationsFolder();
+    const migrationsFolder = resolveMigrationsFolder('migrations', ['db', 'migrations']);
     await reconcileMigrationLedgerTimestamps(pool, readMigrationFiles({ migrationsFolder }));
     await prepareLegacySeriesIndexColumns(pool);
 

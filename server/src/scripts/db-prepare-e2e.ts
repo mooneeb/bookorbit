@@ -1,6 +1,6 @@
 import { Client } from 'pg';
 
-import { FORK_MIGRATIONS_TABLE } from '../db/fork/fork-migrations.constants';
+import { FORK_MIGRATIONS_SCHEMA, FORK_MIGRATIONS_TABLE } from '../db/fork/fork-migrations.constants';
 import { createPostgresClientConfig } from '../db/postgres-connection-config';
 
 import { installPostgresExtensions } from './postgres-extensions';
@@ -74,7 +74,7 @@ async function resetE2EDatabase(targetClient: Client): Promise<void> {
   await targetClient.query('CREATE SCHEMA IF NOT EXISTS drizzle');
   await targetClient.query('CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (id serial PRIMARY KEY, hash text NOT NULL, created_at bigint)');
   await targetClient.query('DELETE FROM drizzle.__drizzle_migrations');
-  await targetClient.query(`DROP TABLE IF EXISTS drizzle.${FORK_MIGRATIONS_TABLE}`);
+  await targetClient.query(`DROP TABLE IF EXISTS ${FORK_MIGRATIONS_SCHEMA}.${FORK_MIGRATIONS_TABLE}`);
 }
 
 async function run(): Promise<void> {

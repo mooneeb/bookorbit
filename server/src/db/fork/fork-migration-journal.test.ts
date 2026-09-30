@@ -4,18 +4,18 @@ import { fileURLToPath } from 'node:url';
 import { getTableName, is } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
 
-import forkDrizzleConfig from '../../drizzle.fork.config';
-import upstreamDrizzleConfig from '../../drizzle.config';
-import * as forkSchema from './fork/schema';
-import * as upstreamSchema from './schema';
+import forkDrizzleConfig from '../../../drizzle.fork.config';
+import upstreamDrizzleConfig from '../../../drizzle.config';
+import * as forkSchema from './schema';
+import * as upstreamSchema from '../schema';
 
 type MigrationJournal = {
   entries: { idx: number; when: number; tag: string }[];
 };
 
-const serverRoot = fileURLToPath(new URL('../../', import.meta.url));
-const upstreamMigrationsDir = fileURLToPath(new URL('./migrations/', import.meta.url));
-const forkMigrationsDir = fileURLToPath(new URL('./fork/migrations/', import.meta.url));
+const serverRoot = fileURLToPath(new URL('../../../', import.meta.url));
+const upstreamMigrationsDir = fileURLToPath(new URL('../migrations/', import.meta.url));
+const forkMigrationsDir = fileURLToPath(new URL('./migrations/', import.meta.url));
 
 function readJournal(dir: string): MigrationJournal {
   return JSON.parse(readFileSync(resolve(dir, 'meta/_journal.json'), 'utf8')) as MigrationJournal;

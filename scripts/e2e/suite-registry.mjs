@@ -416,6 +416,7 @@ export const E2E_SUITES = Object.freeze({
       "server/src/scripts/migrate.ts",
       "server/src/db/fork/migrations/**",
       "server/src/scripts/fork-migrations.ts",
+      "server/src/scripts/migrations-folder.ts",
       "server/src/scripts/series-index-migration-compatibility.ts",
       "server/test/series-index-migration.e2e-spec.ts",
       ...SHARED_DB_AND_HELPER_PATHS,
