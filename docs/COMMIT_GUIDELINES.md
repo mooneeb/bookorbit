@@ -30,7 +30,7 @@ The **footer** is optional. Use it to reference issues, close PRs, or document b
   │       └─ Scope (optional): auth|books|library|metadata|kobo|opds|reader|
   │                             collections|annotations|authors|series|cover|
   │                             users|stats|notifications|settings|scanner|
-  │                             email|audit|smart-scope|types|docker|deps|server|client
+  │                             email|audit|smart-scope|types|docker|deps|server|client|ipad
   │
   └─ Type: feat|fix|i18n|db|perf|refactor|style|docs|test|build|ci|chore|security|revert
 ```
@@ -93,6 +93,7 @@ Use one scope from the table below. If a change affects multiple areas, use the 
 | `deps`          | Dependency upgrades (pair with `build` or `chore`)            |
 | `server`        | Backend-wide changes with no single-module scope              |
 | `client`        | Frontend-wide changes with no single-module scope             |
+| `ipad`          | The native iPad App under `ipad/`                             |
 
 ### Summary
 

@@ -1,0 +1,55 @@
+{
+  "operations": [
+    "BookController_getFileProgress",
+    "BookController_saveFileProgress",
+    "BookmarkController_getBookmarks",
+    "BookmarkController_createBookmark",
+    "BookmarkController_deleteBookmark",
+    "ReadingSessionController_saveSession"
+  ],
+  "schemas": {
+    "FileProgress": {
+      "type": "object",
+      "properties": {
+        "cfi": { "type": "string", "nullable": true },
+        "pageNumber": { "type": "integer", "nullable": true },
+        "percentage": { "type": "number" },
+        "positionSeconds": { "type": "number", "nullable": true }
+      },
+      "required": ["percentage"]
+    }
+  },
+  "patches": {
+    "BookController_getFileProgress": {
+      "parameters": { "fileId": { "type": "integer" } },
+      "responses": {
+        "200": {
+          "description": "",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FileProgress" }
+            }
+          }
+        }
+      }
+    },
+    "BookController_saveFileProgress": {
+      "parameters": { "fileId": { "type": "integer" } }
+    },
+    "BookmarkController_getBookmarks": {
+      "parameters": { "bookId": { "type": "integer" } }
+    },
+    "BookmarkController_createBookmark": {
+      "parameters": { "bookId": { "type": "integer" } }
+    },
+    "BookmarkController_deleteBookmark": {
+      "parameters": {
+        "bookId": { "type": "integer" },
+        "bookmarkId": { "type": "integer" }
+      }
+    },
+    "ReadingSessionController_saveSession": {
+      "parameters": { "fileId": { "type": "integer" } }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "operations": [],
+  "schemas": {
+    "ApiError": {
+      "type": "object",
+      "properties": {
+        "statusCode": {
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        },
+        "errorCode": {
+          "type": "string"
+        },
+        "retryAfterSeconds": {
+          "type": "integer"
+        }
+      },
+      "required": ["statusCode", "message"]
+    }
+  },
+  "patches": {}
+}
