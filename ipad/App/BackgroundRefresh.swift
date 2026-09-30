@@ -3,7 +3,11 @@ import BookOrbitFeatures
 import Foundation
 
 enum BackgroundRefresh {
-    static let identifier = "\(AppIdentity.bundleIdentifier).refresh"
+    // Read from Info.plist rather than derived from the bundle ID: AltStore re-signs with a different
+    // bundle ID but keeps the permitted identifier baked in at build time.
+    static let identifier =
+        (Bundle.main.object(forInfoDictionaryKey: "BGTaskSchedulerPermittedIdentifiers") as? [String])?.first
+        ?? "\(AppIdentity.bundleIdentifier).refresh"
     private static let log = EventLog(category: "background")
 
     static func schedule() {
