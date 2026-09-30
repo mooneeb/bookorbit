@@ -82,6 +82,235 @@ extension Components {
                 case refreshToken
             }
         }
+        /// - Remark: Generated from `#/components/schemas/SaveProgressDto`.
+        public struct SaveProgressDto: Codable, Hashable, Sendable {
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/source`.
+            @frozen public enum SourcePayload: String, Codable, Hashable, Sendable, CaseIterable {
+                case text = "text"
+                case narration = "narration"
+            }
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/source`.
+            public var source: Components.Schemas.SaveProgressDto.SourcePayload?
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/cfi`.
+            public var cfi: Swift.String?
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/pageNumber`.
+            public var pageNumber: Swift.Double?
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/percentage`.
+            public var percentage: Swift.Double
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/positionSeconds`.
+            public var positionSeconds: Swift.Double?
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/mediaOverlayFragment`.
+            public var mediaOverlayFragment: Swift.String?
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/mediaOverlaySectionIndex`.
+            public var mediaOverlaySectionIndex: Swift.Double?
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/koboLocationSource`.
+            public var koboLocationSource: Swift.String?
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/koboLocationType`.
+            public var koboLocationType: Swift.String?
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/koboLocationValue`.
+            public var koboLocationValue: Swift.String?
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/koreaderProgress`.
+            public var koreaderProgress: Swift.String?
+            /// - Remark: Generated from `#/components/schemas/SaveProgressDto/koboContentSourceProgressPercent`.
+            public var koboContentSourceProgressPercent: Swift.Double?
+            /// Creates a new `SaveProgressDto`.
+            ///
+            /// - Parameters:
+            ///   - source:
+            ///   - cfi:
+            ///   - pageNumber:
+            ///   - percentage:
+            ///   - positionSeconds:
+            ///   - mediaOverlayFragment:
+            ///   - mediaOverlaySectionIndex:
+            ///   - koboLocationSource:
+            ///   - koboLocationType:
+            ///   - koboLocationValue:
+            ///   - koreaderProgress:
+            ///   - koboContentSourceProgressPercent:
+            public init(
+                source: Components.Schemas.SaveProgressDto.SourcePayload? = nil,
+                cfi: Swift.String? = nil,
+                pageNumber: Swift.Double? = nil,
+                percentage: Swift.Double,
+                positionSeconds: Swift.Double? = nil,
+                mediaOverlayFragment: Swift.String? = nil,
+                mediaOverlaySectionIndex: Swift.Double? = nil,
+                koboLocationSource: Swift.String? = nil,
+                koboLocationType: Swift.String? = nil,
+                koboLocationValue: Swift.String? = nil,
+                koreaderProgress: Swift.String? = nil,
+                koboContentSourceProgressPercent: Swift.Double? = nil
+            ) {
+                self.source = source
+                self.cfi = cfi
+                self.pageNumber = pageNumber
+                self.percentage = percentage
+                self.positionSeconds = positionSeconds
+                self.mediaOverlayFragment = mediaOverlayFragment
+                self.mediaOverlaySectionIndex = mediaOverlaySectionIndex
+                self.koboLocationSource = koboLocationSource
+                self.koboLocationType = koboLocationType
+                self.koboLocationValue = koboLocationValue
+                self.koreaderProgress = koreaderProgress
+                self.koboContentSourceProgressPercent = koboContentSourceProgressPercent
+            }
+            public enum CodingKeys: String, CodingKey {
+                case source
+                case cfi
+                case pageNumber
+                case percentage
+                case positionSeconds
+                case mediaOverlayFragment
+                case mediaOverlaySectionIndex
+                case koboLocationSource
+                case koboLocationType
+                case koboLocationValue
+                case koreaderProgress
+                case koboContentSourceProgressPercent
+            }
+        }
+        /// - Remark: Generated from `#/components/schemas/SaveReadingSessionDto`.
+        public struct SaveReadingSessionDto: Codable, Hashable, Sendable {
+            /// - Remark: Generated from `#/components/schemas/SaveReadingSessionDto/sessionId`.
+            public var sessionId: Swift.String
+            /// - Remark: Generated from `#/components/schemas/SaveReadingSessionDto/startedAt`.
+            public var startedAt: Swift.String
+            /// - Remark: Generated from `#/components/schemas/SaveReadingSessionDto/endedAt`.
+            public var endedAt: Swift.String
+            /// - Remark: Generated from `#/components/schemas/SaveReadingSessionDto/durationSeconds`.
+            public var durationSeconds: Swift.Double
+            /// - Remark: Generated from `#/components/schemas/SaveReadingSessionDto/progressDelta`.
+            public var progressDelta: Swift.Double?
+            /// - Remark: Generated from `#/components/schemas/SaveReadingSessionDto/endProgress`.
+            public var endProgress: Swift.Double?
+            /// - Remark: Generated from `#/components/schemas/SaveReadingSessionDto/sessionType`.
+            @frozen public enum SessionTypePayload: String, Codable, Hashable, Sendable, CaseIterable {
+                case read = "read"
+                case tts = "tts"
+                case listen = "listen"
+            }
+            /// - Remark: Generated from `#/components/schemas/SaveReadingSessionDto/sessionType`.
+            public var sessionType: Components.Schemas.SaveReadingSessionDto.SessionTypePayload?
+            /// - Remark: Generated from `#/components/schemas/SaveReadingSessionDto/source`.
+            @frozen public enum SourcePayload: String, Codable, Hashable, Sendable, CaseIterable {
+                case ios = "ios"
+                case watchos = "watchos"
+                case android = "android"
+            }
+            /// - Remark: Generated from `#/components/schemas/SaveReadingSessionDto/source`.
+            public var source: Components.Schemas.SaveReadingSessionDto.SourcePayload?
+            /// Creates a new `SaveReadingSessionDto`.
+            ///
+            /// - Parameters:
+            ///   - sessionId:
+            ///   - startedAt:
+            ///   - endedAt:
+            ///   - durationSeconds:
+            ///   - progressDelta:
+            ///   - endProgress:
+            ///   - sessionType:
+            ///   - source:
+            public init(
+                sessionId: Swift.String,
+                startedAt: Swift.String,
+                endedAt: Swift.String,
+                durationSeconds: Swift.Double,
+                progressDelta: Swift.Double? = nil,
+                endProgress: Swift.Double? = nil,
+                sessionType: Components.Schemas.SaveReadingSessionDto.SessionTypePayload? = nil,
+                source: Components.Schemas.SaveReadingSessionDto.SourcePayload? = nil
+            ) {
+                self.sessionId = sessionId
+                self.startedAt = startedAt
+                self.endedAt = endedAt
+                self.durationSeconds = durationSeconds
+                self.progressDelta = progressDelta
+                self.endProgress = endProgress
+                self.sessionType = sessionType
+                self.source = source
+            }
+            public enum CodingKeys: String, CodingKey {
+                case sessionId
+                case startedAt
+                case endedAt
+                case durationSeconds
+                case progressDelta
+                case endProgress
+                case sessionType
+                case source
+            }
+        }
+        /// - Remark: Generated from `#/components/schemas/BookmarkResponseDto`.
+        public struct BookmarkResponseDto: Codable, Hashable, Sendable {
+            /// - Remark: Generated from `#/components/schemas/BookmarkResponseDto/id`.
+            public var id: Swift.Double
+            /// - Remark: Generated from `#/components/schemas/BookmarkResponseDto/bookId`.
+            public var bookId: Swift.Double
+            /// - Remark: Generated from `#/components/schemas/BookmarkResponseDto/cfi`.
+            public var cfi: Swift.String?
+            /// - Remark: Generated from `#/components/schemas/BookmarkResponseDto/title`.
+            public var title: Swift.String
+            /// - Remark: Generated from `#/components/schemas/BookmarkResponseDto/positionSeconds`.
+            public var positionSeconds: Swift.Double?
+            /// - Remark: Generated from `#/components/schemas/BookmarkResponseDto/createdAt`.
+            public var createdAt: Foundation.Date
+            /// Creates a new `BookmarkResponseDto`.
+            ///
+            /// - Parameters:
+            ///   - id:
+            ///   - bookId:
+            ///   - cfi:
+            ///   - title:
+            ///   - positionSeconds:
+            ///   - createdAt:
+            public init(
+                id: Swift.Double,
+                bookId: Swift.Double,
+                cfi: Swift.String? = nil,
+                title: Swift.String,
+                positionSeconds: Swift.Double? = nil,
+                createdAt: Foundation.Date
+            ) {
+                self.id = id
+                self.bookId = bookId
+                self.cfi = cfi
+                self.title = title
+                self.positionSeconds = positionSeconds
+                self.createdAt = createdAt
+            }
+            public enum CodingKeys: String, CodingKey {
+                case id
+                case bookId
+                case cfi
+                case title
+                case positionSeconds
+                case createdAt
+            }
+        }
+        /// - Remark: Generated from `#/components/schemas/CreateBookmarkDto`.
+        public struct CreateBookmarkDto: Codable, Hashable, Sendable {
+            /// - Remark: Generated from `#/components/schemas/CreateBookmarkDto/cfi`.
+            public var cfi: Swift.String
+            /// - Remark: Generated from `#/components/schemas/CreateBookmarkDto/title`.
+            public var title: Swift.String
+            /// Creates a new `CreateBookmarkDto`.
+            ///
+            /// - Parameters:
+            ///   - cfi:
+            ///   - title:
+            public init(
+                cfi: Swift.String,
+                title: Swift.String
+            ) {
+                self.cfi = cfi
+                self.title = title
+            }
+            public enum CodingKeys: String, CodingKey {
+                case cfi
+                case title
+            }
+        }
         /// - Remark: Generated from `#/components/schemas/OidcProviderSummary`.
         public struct OidcProviderSummary: Codable, Hashable, Sendable {
             /// - Remark: Generated from `#/components/schemas/OidcProviderSummary/slug`.
@@ -499,6 +728,41 @@ extension Components {
                 case total
                 case page
                 case size
+            }
+        }
+        /// - Remark: Generated from `#/components/schemas/FileProgress`.
+        public struct FileProgress: Codable, Hashable, Sendable {
+            /// - Remark: Generated from `#/components/schemas/FileProgress/cfi`.
+            public var cfi: Swift.String?
+            /// - Remark: Generated from `#/components/schemas/FileProgress/pageNumber`.
+            public var pageNumber: Swift.Int?
+            /// - Remark: Generated from `#/components/schemas/FileProgress/percentage`.
+            public var percentage: Swift.Double
+            /// - Remark: Generated from `#/components/schemas/FileProgress/positionSeconds`.
+            public var positionSeconds: Swift.Double?
+            /// Creates a new `FileProgress`.
+            ///
+            /// - Parameters:
+            ///   - cfi:
+            ///   - pageNumber:
+            ///   - percentage:
+            ///   - positionSeconds:
+            public init(
+                cfi: Swift.String? = nil,
+                pageNumber: Swift.Int? = nil,
+                percentage: Swift.Double,
+                positionSeconds: Swift.Double? = nil
+            ) {
+                self.cfi = cfi
+                self.pageNumber = pageNumber
+                self.percentage = percentage
+                self.positionSeconds = positionSeconds
+            }
+            public enum CodingKeys: String, CodingKey {
+                case cfi
+                case pageNumber
+                case percentage
+                case positionSeconds
             }
         }
     }

@@ -6,7 +6,7 @@ import BookOrbitFeatures
 // its formats.
 extension FeatureRegistry {
     static let app = FeatureRegistry(
-        screens: [LibraryFeature.screen]
+        screens: LibraryFeature.screens
             + MyLibraryFeature.screens
             + ListeningFeature.screens
             + SettingsFeature.screens

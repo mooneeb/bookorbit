@@ -72,8 +72,10 @@ public final class SessionModel {
     }
 
     /// Refreshing while in the background keeps the refresh token from expiring during long breaks.
-    public func refreshInBackground() async {
-        guard let session = await auth.restoredSession() else { return }
-        _ = try? await session.client.authControllerMe()
+    /// Returns false when nobody is signed in.
+    public func refreshInBackground() async throws -> Bool {
+        guard let session = await auth.restoredSession() else { return false }
+        _ = try await session.client.authControllerMe().ok
+        return true
     }
 }

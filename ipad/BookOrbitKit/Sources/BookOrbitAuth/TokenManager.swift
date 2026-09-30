@@ -41,6 +41,17 @@ actor TokenManager {
         return try await refresh()
     }
 
+    /// Sends with a valid access token and, if the server rejects it, once more with a refreshed one.
+    nonisolated func sendAuthorized<Response: Sendable>(
+        _ send: @Sendable (String) async throws -> Response,
+        isRejected: @Sendable (Response) -> Bool
+    ) async throws -> Response {
+        let token = try await validAccessToken()
+        let response = try await send(token)
+        guard isRejected(response) else { return response }
+        return try await send(try await accessToken(replacing: token))
+    }
+
     func end() {
         stored = nil
         refreshTask?.cancel()
@@ -109,12 +120,10 @@ struct BearerAuthMiddleware: ClientMiddleware {
         operationID: String,
         next: @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
     ) async throws -> (HTTPResponse, HTTPBody?) {
-        let token = try await tokens.validAccessToken()
-        let (response, responseBody) = try await next(request.authorized(with: token), body, baseURL)
-        guard response.status == .unauthorized else { return (response, responseBody) }
-
-        let replacement = try await tokens.accessToken(replacing: token)
-        return try await next(request.authorized(with: replacement), body, baseURL)
+        try await tokens.sendAuthorized(
+            { token in try await next(request.authorized(with: token), body, baseURL) },
+            isRejected: { $0.0.status == .unauthorized }
+        )
     }
 }
 

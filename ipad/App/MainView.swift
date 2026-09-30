@@ -8,19 +8,20 @@ struct MainView: View {
     var body: some View {
         TabView {
             ForEach(context.registry.screens) { screen in
-                screen.makeView(context)
-                    .tabItem {
-                        Label {
-                            Text(screen.label.title)
-                        } icon: {
-                            Image(systemName: screen.label.systemImage)
-                        }
+                Tab {
+                    screen.makeView(context)
+                } label: {
+                    Label {
+                        Text(screen.label.title)
+                    } icon: {
+                        Image(systemName: screen.label.systemImage)
                     }
-            }
-            AccountView(model: model, session: context.session)
-                .tabItem {
-                    Label("Account", systemImage: "person.crop.circle")
                 }
+            }
+            Tab("Account", systemImage: "person.crop.circle") {
+                AccountView(model: model, session: context.session)
+            }
         }
+        .tabViewStyle(.sidebarAdaptable)
     }
 }

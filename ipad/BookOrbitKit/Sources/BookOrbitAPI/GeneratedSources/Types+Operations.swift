@@ -797,4 +797,624 @@ public enum Operations {
             }
         }
     }
+    /// - Remark: HTTP `GET /api/v1/books/files/{fileId}/progress`.
+    /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/progress/get(BookController_getFileProgress)`.
+    public enum BookControllerGetFileProgress {
+        public static let id: Swift.String = "BookController_getFileProgress"
+        public struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/progress/GET/path`.
+            public struct Path: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/progress/GET/path/fileId`.
+                public var fileId: Swift.Int
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - fileId:
+                public init(fileId: Swift.Int) {
+                    self.fileId = fileId
+                }
+            }
+            public var path: Operations.BookControllerGetFileProgress.Input.Path
+            /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/progress/GET/header`.
+            public struct Headers: Sendable, Hashable {
+                public var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.BookControllerGetFileProgress.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                public init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.BookControllerGetFileProgress.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            public var headers: Operations.BookControllerGetFileProgress.Input.Headers
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - headers:
+            public init(
+                path: Operations.BookControllerGetFileProgress.Input.Path,
+                headers: Operations.BookControllerGetFileProgress.Input.Headers = .init()
+            ) {
+                self.path = path
+                self.headers = headers
+            }
+        }
+        @frozen public enum Output: Sendable, Hashable {
+            public struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/progress/GET/responses/200/content`.
+                @frozen public enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/progress/GET/responses/200/content/application\/json`.
+                    case json(Components.Schemas.FileProgress)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    public var json: Components.Schemas.FileProgress {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                public var body: Operations.BookControllerGetFileProgress.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                public init(body: Operations.BookControllerGetFileProgress.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            ///
+            ///
+            /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/progress/get(BookController_getFileProgress)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.BookControllerGetFileProgress.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            public var ok: Operations.BookControllerGetFileProgress.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        @frozen public enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case other(Swift.String)
+            public init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            public var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                }
+            }
+            public static var allCases: [Self] {
+                [
+                    .json
+                ]
+            }
+        }
+    }
+    /// - Remark: HTTP `POST /api/v1/books/files/{fileId}/progress`.
+    /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/progress/post(BookController_saveFileProgress)`.
+    public enum BookControllerSaveFileProgress {
+        public static let id: Swift.String = "BookController_saveFileProgress"
+        public struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/progress/POST/path`.
+            public struct Path: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/progress/POST/path/fileId`.
+                public var fileId: Swift.Int
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - fileId:
+                public init(fileId: Swift.Int) {
+                    self.fileId = fileId
+                }
+            }
+            public var path: Operations.BookControllerSaveFileProgress.Input.Path
+            /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/progress/POST/requestBody`.
+            @frozen public enum Body: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/progress/POST/requestBody/content/application\/json`.
+                case json(Components.Schemas.SaveProgressDto)
+            }
+            public var body: Operations.BookControllerSaveFileProgress.Input.Body
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - body:
+            public init(
+                path: Operations.BookControllerSaveFileProgress.Input.Path,
+                body: Operations.BookControllerSaveFileProgress.Input.Body
+            ) {
+                self.path = path
+                self.body = body
+            }
+        }
+        @frozen public enum Output: Sendable, Hashable {
+            public struct Created: Sendable, Hashable {
+                /// Creates a new `Created`.
+                public init() {}
+            }
+            ///
+            ///
+            /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/progress/post(BookController_saveFileProgress)/responses/201`.
+            ///
+            /// HTTP response code: `201 created`.
+            case created(Operations.BookControllerSaveFileProgress.Output.Created)
+            ///
+            ///
+            /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/progress/post(BookController_saveFileProgress)/responses/201`.
+            ///
+            /// HTTP response code: `201 created`.
+            public static var created: Self {
+                .created(.init())
+            }
+            /// The associated value of the enum case if `self` is `.created`.
+            ///
+            /// - Throws: An error if `self` is not `.created`.
+            /// - SeeAlso: `.created`.
+            public var created: Operations.BookControllerSaveFileProgress.Output.Created {
+                get throws {
+                    switch self {
+                    case let .created(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "created",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+    }
+    /// - Remark: HTTP `POST /api/v1/books/files/{fileId}/sessions`.
+    /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/sessions/post(ReadingSessionController_saveSession)`.
+    public enum ReadingSessionControllerSaveSession {
+        public static let id: Swift.String = "ReadingSessionController_saveSession"
+        public struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/sessions/POST/path`.
+            public struct Path: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/sessions/POST/path/fileId`.
+                public var fileId: Swift.Int
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - fileId:
+                public init(fileId: Swift.Int) {
+                    self.fileId = fileId
+                }
+            }
+            public var path: Operations.ReadingSessionControllerSaveSession.Input.Path
+            /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/sessions/POST/requestBody`.
+            @frozen public enum Body: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/v1/books/files/{fileId}/sessions/POST/requestBody/content/application\/json`.
+                case json(Components.Schemas.SaveReadingSessionDto)
+            }
+            public var body: Operations.ReadingSessionControllerSaveSession.Input.Body
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - body:
+            public init(
+                path: Operations.ReadingSessionControllerSaveSession.Input.Path,
+                body: Operations.ReadingSessionControllerSaveSession.Input.Body
+            ) {
+                self.path = path
+                self.body = body
+            }
+        }
+        @frozen public enum Output: Sendable, Hashable {
+            public struct NoContent: Sendable, Hashable {
+                /// Creates a new `NoContent`.
+                public init() {}
+            }
+            ///
+            ///
+            /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/sessions/post(ReadingSessionController_saveSession)/responses/204`.
+            ///
+            /// HTTP response code: `204 noContent`.
+            case noContent(Operations.ReadingSessionControllerSaveSession.Output.NoContent)
+            ///
+            ///
+            /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/sessions/post(ReadingSessionController_saveSession)/responses/204`.
+            ///
+            /// HTTP response code: `204 noContent`.
+            public static var noContent: Self {
+                .noContent(.init())
+            }
+            /// The associated value of the enum case if `self` is `.noContent`.
+            ///
+            /// - Throws: An error if `self` is not `.noContent`.
+            /// - SeeAlso: `.noContent`.
+            public var noContent: Operations.ReadingSessionControllerSaveSession.Output.NoContent {
+                get throws {
+                    switch self {
+                    case let .noContent(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "noContent",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+    }
+    /// - Remark: HTTP `GET /api/v1/books/{bookId}/bookmarks`.
+    /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/get(BookmarkController_getBookmarks)`.
+    public enum BookmarkControllerGetBookmarks {
+        public static let id: Swift.String = "BookmarkController_getBookmarks"
+        public struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/GET/path`.
+            public struct Path: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/GET/path/bookId`.
+                public var bookId: Swift.Int
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - bookId:
+                public init(bookId: Swift.Int) {
+                    self.bookId = bookId
+                }
+            }
+            public var path: Operations.BookmarkControllerGetBookmarks.Input.Path
+            /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/GET/header`.
+            public struct Headers: Sendable, Hashable {
+                public var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.BookmarkControllerGetBookmarks.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                public init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.BookmarkControllerGetBookmarks.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            public var headers: Operations.BookmarkControllerGetBookmarks.Input.Headers
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - headers:
+            public init(
+                path: Operations.BookmarkControllerGetBookmarks.Input.Path,
+                headers: Operations.BookmarkControllerGetBookmarks.Input.Headers = .init()
+            ) {
+                self.path = path
+                self.headers = headers
+            }
+        }
+        @frozen public enum Output: Sendable, Hashable {
+            public struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/GET/responses/200/content`.
+                @frozen public enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/GET/responses/200/content/application\/json`.
+                    case json([Components.Schemas.BookmarkResponseDto])
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    public var json: [Components.Schemas.BookmarkResponseDto] {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                public var body: Operations.BookmarkControllerGetBookmarks.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                public init(body: Operations.BookmarkControllerGetBookmarks.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            ///
+            ///
+            /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/get(BookmarkController_getBookmarks)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.BookmarkControllerGetBookmarks.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            public var ok: Operations.BookmarkControllerGetBookmarks.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        @frozen public enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case other(Swift.String)
+            public init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            public var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                }
+            }
+            public static var allCases: [Self] {
+                [
+                    .json
+                ]
+            }
+        }
+    }
+    /// - Remark: HTTP `POST /api/v1/books/{bookId}/bookmarks`.
+    /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/post(BookmarkController_createBookmark)`.
+    public enum BookmarkControllerCreateBookmark {
+        public static let id: Swift.String = "BookmarkController_createBookmark"
+        public struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/POST/path`.
+            public struct Path: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/POST/path/bookId`.
+                public var bookId: Swift.Int
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - bookId:
+                public init(bookId: Swift.Int) {
+                    self.bookId = bookId
+                }
+            }
+            public var path: Operations.BookmarkControllerCreateBookmark.Input.Path
+            /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/POST/header`.
+            public struct Headers: Sendable, Hashable {
+                public var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.BookmarkControllerCreateBookmark.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                public init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.BookmarkControllerCreateBookmark.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            public var headers: Operations.BookmarkControllerCreateBookmark.Input.Headers
+            /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/POST/requestBody`.
+            @frozen public enum Body: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/POST/requestBody/content/application\/json`.
+                case json(Components.Schemas.CreateBookmarkDto)
+            }
+            public var body: Operations.BookmarkControllerCreateBookmark.Input.Body
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - headers:
+            ///   - body:
+            public init(
+                path: Operations.BookmarkControllerCreateBookmark.Input.Path,
+                headers: Operations.BookmarkControllerCreateBookmark.Input.Headers = .init(),
+                body: Operations.BookmarkControllerCreateBookmark.Input.Body
+            ) {
+                self.path = path
+                self.headers = headers
+                self.body = body
+            }
+        }
+        @frozen public enum Output: Sendable, Hashable {
+            public struct Created: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/POST/responses/201/content`.
+                @frozen public enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/POST/responses/201/content/application\/json`.
+                    case json(Components.Schemas.BookmarkResponseDto)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    public var json: Components.Schemas.BookmarkResponseDto {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                public var body: Operations.BookmarkControllerCreateBookmark.Output.Created.Body
+                /// Creates a new `Created`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                public init(body: Operations.BookmarkControllerCreateBookmark.Output.Created.Body) {
+                    self.body = body
+                }
+            }
+            ///
+            ///
+            /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/post(BookmarkController_createBookmark)/responses/201`.
+            ///
+            /// HTTP response code: `201 created`.
+            case created(Operations.BookmarkControllerCreateBookmark.Output.Created)
+            /// The associated value of the enum case if `self` is `.created`.
+            ///
+            /// - Throws: An error if `self` is not `.created`.
+            /// - SeeAlso: `.created`.
+            public var created: Operations.BookmarkControllerCreateBookmark.Output.Created {
+                get throws {
+                    switch self {
+                    case let .created(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "created",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        @frozen public enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case other(Swift.String)
+            public init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            public var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                }
+            }
+            public static var allCases: [Self] {
+                [
+                    .json
+                ]
+            }
+        }
+    }
+    /// - Remark: HTTP `DELETE /api/v1/books/{bookId}/bookmarks/{bookmarkId}`.
+    /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/{bookmarkId}/delete(BookmarkController_deleteBookmark)`.
+    public enum BookmarkControllerDeleteBookmark {
+        public static let id: Swift.String = "BookmarkController_deleteBookmark"
+        public struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/{bookmarkId}/DELETE/path`.
+            public struct Path: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/{bookmarkId}/DELETE/path/bookId`.
+                public var bookId: Swift.Int
+                /// - Remark: Generated from `#/paths/api/v1/books/{bookId}/bookmarks/{bookmarkId}/DELETE/path/bookmarkId`.
+                public var bookmarkId: Swift.Int
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - bookId:
+                ///   - bookmarkId:
+                public init(
+                    bookId: Swift.Int,
+                    bookmarkId: Swift.Int
+                ) {
+                    self.bookId = bookId
+                    self.bookmarkId = bookmarkId
+                }
+            }
+            public var path: Operations.BookmarkControllerDeleteBookmark.Input.Path
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            public init(path: Operations.BookmarkControllerDeleteBookmark.Input.Path) {
+                self.path = path
+            }
+        }
+        @frozen public enum Output: Sendable, Hashable {
+            public struct NoContent: Sendable, Hashable {
+                /// Creates a new `NoContent`.
+                public init() {}
+            }
+            ///
+            ///
+            /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/{bookmarkId}/delete(BookmarkController_deleteBookmark)/responses/204`.
+            ///
+            /// HTTP response code: `204 noContent`.
+            case noContent(Operations.BookmarkControllerDeleteBookmark.Output.NoContent)
+            ///
+            ///
+            /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/{bookmarkId}/delete(BookmarkController_deleteBookmark)/responses/204`.
+            ///
+            /// HTTP response code: `204 noContent`.
+            public static var noContent: Self {
+                .noContent(.init())
+            }
+            /// The associated value of the enum case if `self` is `.noContent`.
+            ///
+            /// - Throws: An error if `self` is not `.noContent`.
+            /// - SeeAlso: `.noContent`.
+            public var noContent: Operations.BookmarkControllerDeleteBookmark.Output.NoContent {
+                get throws {
+                    switch self {
+                    case let .noContent(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "noContent",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+    }
 }

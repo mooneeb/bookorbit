@@ -4,9 +4,11 @@ import BookOrbitFeatureKit
 import SwiftUI
 
 public enum LibraryFeature {
-    public static let screen = FeatureScreen(id: "library", label: FeatureLabel("Library", systemImage: "books.vertical")) { context in
-        AnyView(BookListScreen(context: context))
-    }
+    public static let screens = [
+        FeatureScreen(id: "library", label: FeatureLabel("Library", systemImage: "books.vertical")) { context in
+            AnyView(BookListScreen(context: context))
+        },
+    ]
 }
 
 struct BookListScreen: View {

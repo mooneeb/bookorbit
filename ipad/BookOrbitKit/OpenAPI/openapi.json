@@ -5263,13 +5263,20 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileProgress"
+                }
+              }
+            }
           }
         },
         "tags": ["Book"],
@@ -5287,7 +5294,7 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer"
             }
           }
         ],
@@ -14030,7 +14037,7 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer"
             }
           }
         ],
@@ -14676,7 +14683,7 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer"
             }
           }
         ],
@@ -14710,7 +14717,7 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer"
             }
           }
         ],
@@ -14753,7 +14760,7 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer"
             }
           },
           {
@@ -14761,7 +14768,7 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer"
             }
           }
         ],
@@ -34167,6 +34174,27 @@
           }
         },
         "required": ["items", "total", "page", "size"]
+      },
+      "FileProgress": {
+        "type": "object",
+        "properties": {
+          "cfi": {
+            "type": "string",
+            "nullable": true
+          },
+          "pageNumber": {
+            "type": "integer",
+            "nullable": true
+          },
+          "percentage": {
+            "type": "number"
+          },
+          "positionSeconds": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": ["percentage"]
       }
     }
   }

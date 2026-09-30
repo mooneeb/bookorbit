@@ -72,7 +72,7 @@ function loadOverlay() {
       patchOwners[operationId] = file;
     }
   }
-  return merged;
+  return { ...merged, schemaOwners };
 }
 
 // The server does not declare response schemas (its services return plain TypeScript types), so
@@ -82,7 +82,7 @@ function applyOverlay(document, overlay) {
   document.components.schemas ??= {};
   for (const [name, schema] of Object.entries(overlay.schemas)) {
     if (document.components.schemas[name]) {
-      throw new Error(`overlay schema ${name} now exists on the server; remove it from overlay.json`);
+      throw new Error(`overlay schema ${name} now exists on the server; remove it from ${overlay.schemaOwners[name]}`);
     }
     document.components.schemas[name] = schema;
   }
@@ -101,6 +101,12 @@ function applyOverlay(document, overlay) {
     const operation = operations.get(operationId);
     if (!operation) throw new Error(`patched operation ${operationId} does not exist on the server`);
     if (patch.requestBody) operation.requestBody = patch.requestBody;
+    // Nest documents ParseIntPipe path parameters as `number`, which would become Double in Swift.
+    for (const [name, schema] of Object.entries(patch.parameters ?? {})) {
+      const parameter = operation.parameters?.find((candidate) => candidate.name === name);
+      if (!parameter) throw new Error(`operation ${operationId} has no parameter ${name}`);
+      parameter.schema = schema;
+    }
     for (const [status, response] of Object.entries(patch.responses ?? {})) {
       operation.responses[status] = response;
     }

@@ -23,6 +23,7 @@ ipad/
 | `BookOrbitAuth`         | Server address, sign-in, Keychain tokens, silent refresh, sign-out, sign-in UI | 01, 03 |
 | `BookOrbitFeatureKit`   | The extension point (`FeatureRegistry`, `FeatureScreen`, `ReaderEntryPoint`)   | 01     |
 | `BookOrbitLibrary`      | Paged book list, covers, placeholder book detail                               | 01, 03 |
+| `BookOrbitReading`      | Reading position, bookmarks, and reading sessions, shared by every reader      | 01     |
 | `BookOrbitPDFReader`    | PDF reader                                                                     | 04     |
 | `BookOrbitEPUBReader`   | EPUB reader                                                                    | 05     |
 | `BookOrbitComicsReader` | Comics reader                                                                  | 07     |
@@ -88,7 +89,9 @@ Each feature owns one overlay, `Tools/openapi/overlays/<feature>.json`:
 
 - `operations`: the `operationId`s to generate. The script merges every overlay's list into the generator config.
 - `schemas`: shapes added to the document. The server does not declare response schemas (its services return plain TypeScript types), so the overlays supply what the app decodes. Two overlays may declare the same schema only if they are identical.
-- `patches`: request bodies and responses replaced per `operationId`. Each operation can be patched by one overlay only.
+- `patches`: request bodies, responses, and path parameter schemas replaced per `operationId`. Each operation can be patched by one overlay only. Nest documents integer path parameters as `number`, so patch them to `integer` or Swift sees `Double`.
+
+`overlays/reading.json` owns the operations every reader shares: file progress, bookmarks, and reading sessions. Their Swift calls live in `BookOrbitReading` (`ReadingClient`), so the PDF, EPUB, and comics readers use it instead of calling those endpoints themselves. Extend that overlay and target rather than declaring the same operations in a reader's overlay.
 
 The export fails loudly if an overlay names an operation the server does not have.
 
@@ -98,6 +101,9 @@ Tickets that run at the same time touch their own package target and their own o
 
 - On a conflict in `BookOrbitKit/OpenAPI/openapi.json` or `Sources/BookOrbitAPI/GeneratedSources/`, take main's version and rerun `ipad/Tools/regenerate-api-client.sh`.
 - On a conflict in one of the lists (one entry per line), keep both lines.
+- After any merge that touches `server/` or `ipad/Tools/openapi/`, rerun `ipad/Tools/regenerate-api-client.sh` and commit the result.
+- Before reporting done, every ticket runs `ipad/Tools/regenerate-api-client.sh` followed by `git diff --exit-code`, so the committed client always matches the server and the overlays.
+- Tickets 09 to 12 each get sliced into several tickets. Slices of one phase that run in parallel each add their own target (wired in the three lists above); otherwise they run one after another in the phase's target.
 
 ## Tests
 

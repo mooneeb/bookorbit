@@ -456,4 +456,320 @@ public struct Client: APIProtocol {
             }
         )
     }
+    /// - Remark: HTTP `GET /api/v1/books/files/{fileId}/progress`.
+    /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/progress/get(BookController_getFileProgress)`.
+    public func bookControllerGetFileProgress(_ input: Operations.BookControllerGetFileProgress.Input) async throws -> Operations.BookControllerGetFileProgress.Output {
+        try await client.send(
+            input: input,
+            forOperation: Operations.BookControllerGetFileProgress.id,
+            serializer: { input in
+                let path = try converter.renderedPath(
+                    template: "/api/v1/books/files/{}/progress",
+                    parameters: [
+                        input.path.fileId
+                    ]
+                )
+                var request: HTTPTypes.HTTPRequest = .init(
+                    soar_path: path,
+                    method: .get
+                )
+                suppressMutabilityWarning(&request)
+                converter.setAcceptHeader(
+                    in: &request.headerFields,
+                    contentTypes: input.headers.accept
+                )
+                return (request, nil)
+            },
+            deserializer: { response, responseBody in
+                switch response.status.code {
+                case 200:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.BookControllerGetFileProgress.Output.Ok.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            Components.Schemas.FileProgress.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .ok(.init(body: body))
+                default:
+                    return .undocumented(
+                        statusCode: response.status.code,
+                        .init(
+                            headerFields: response.headerFields,
+                            body: responseBody
+                        )
+                    )
+                }
+            }
+        )
+    }
+    /// - Remark: HTTP `POST /api/v1/books/files/{fileId}/progress`.
+    /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/progress/post(BookController_saveFileProgress)`.
+    public func bookControllerSaveFileProgress(_ input: Operations.BookControllerSaveFileProgress.Input) async throws -> Operations.BookControllerSaveFileProgress.Output {
+        try await client.send(
+            input: input,
+            forOperation: Operations.BookControllerSaveFileProgress.id,
+            serializer: { input in
+                let path = try converter.renderedPath(
+                    template: "/api/v1/books/files/{}/progress",
+                    parameters: [
+                        input.path.fileId
+                    ]
+                )
+                var request: HTTPTypes.HTTPRequest = .init(
+                    soar_path: path,
+                    method: .post
+                )
+                suppressMutabilityWarning(&request)
+                let body: OpenAPIRuntime.HTTPBody?
+                switch input.body {
+                case let .json(value):
+                    body = try converter.setRequiredRequestBodyAsJSON(
+                        value,
+                        headerFields: &request.headerFields,
+                        contentType: "application/json; charset=utf-8"
+                    )
+                }
+                return (request, body)
+            },
+            deserializer: { response, responseBody in
+                switch response.status.code {
+                case 201:
+                    return .created(.init())
+                default:
+                    return .undocumented(
+                        statusCode: response.status.code,
+                        .init(
+                            headerFields: response.headerFields,
+                            body: responseBody
+                        )
+                    )
+                }
+            }
+        )
+    }
+    /// - Remark: HTTP `POST /api/v1/books/files/{fileId}/sessions`.
+    /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/sessions/post(ReadingSessionController_saveSession)`.
+    public func readingSessionControllerSaveSession(_ input: Operations.ReadingSessionControllerSaveSession.Input) async throws -> Operations.ReadingSessionControllerSaveSession.Output {
+        try await client.send(
+            input: input,
+            forOperation: Operations.ReadingSessionControllerSaveSession.id,
+            serializer: { input in
+                let path = try converter.renderedPath(
+                    template: "/api/v1/books/files/{}/sessions",
+                    parameters: [
+                        input.path.fileId
+                    ]
+                )
+                var request: HTTPTypes.HTTPRequest = .init(
+                    soar_path: path,
+                    method: .post
+                )
+                suppressMutabilityWarning(&request)
+                let body: OpenAPIRuntime.HTTPBody?
+                switch input.body {
+                case let .json(value):
+                    body = try converter.setRequiredRequestBodyAsJSON(
+                        value,
+                        headerFields: &request.headerFields,
+                        contentType: "application/json; charset=utf-8"
+                    )
+                }
+                return (request, body)
+            },
+            deserializer: { response, responseBody in
+                switch response.status.code {
+                case 204:
+                    return .noContent(.init())
+                default:
+                    return .undocumented(
+                        statusCode: response.status.code,
+                        .init(
+                            headerFields: response.headerFields,
+                            body: responseBody
+                        )
+                    )
+                }
+            }
+        )
+    }
+    /// - Remark: HTTP `GET /api/v1/books/{bookId}/bookmarks`.
+    /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/get(BookmarkController_getBookmarks)`.
+    public func bookmarkControllerGetBookmarks(_ input: Operations.BookmarkControllerGetBookmarks.Input) async throws -> Operations.BookmarkControllerGetBookmarks.Output {
+        try await client.send(
+            input: input,
+            forOperation: Operations.BookmarkControllerGetBookmarks.id,
+            serializer: { input in
+                let path = try converter.renderedPath(
+                    template: "/api/v1/books/{}/bookmarks",
+                    parameters: [
+                        input.path.bookId
+                    ]
+                )
+                var request: HTTPTypes.HTTPRequest = .init(
+                    soar_path: path,
+                    method: .get
+                )
+                suppressMutabilityWarning(&request)
+                converter.setAcceptHeader(
+                    in: &request.headerFields,
+                    contentTypes: input.headers.accept
+                )
+                return (request, nil)
+            },
+            deserializer: { response, responseBody in
+                switch response.status.code {
+                case 200:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.BookmarkControllerGetBookmarks.Output.Ok.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            [Components.Schemas.BookmarkResponseDto].self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .ok(.init(body: body))
+                default:
+                    return .undocumented(
+                        statusCode: response.status.code,
+                        .init(
+                            headerFields: response.headerFields,
+                            body: responseBody
+                        )
+                    )
+                }
+            }
+        )
+    }
+    /// - Remark: HTTP `POST /api/v1/books/{bookId}/bookmarks`.
+    /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/post(BookmarkController_createBookmark)`.
+    public func bookmarkControllerCreateBookmark(_ input: Operations.BookmarkControllerCreateBookmark.Input) async throws -> Operations.BookmarkControllerCreateBookmark.Output {
+        try await client.send(
+            input: input,
+            forOperation: Operations.BookmarkControllerCreateBookmark.id,
+            serializer: { input in
+                let path = try converter.renderedPath(
+                    template: "/api/v1/books/{}/bookmarks",
+                    parameters: [
+                        input.path.bookId
+                    ]
+                )
+                var request: HTTPTypes.HTTPRequest = .init(
+                    soar_path: path,
+                    method: .post
+                )
+                suppressMutabilityWarning(&request)
+                converter.setAcceptHeader(
+                    in: &request.headerFields,
+                    contentTypes: input.headers.accept
+                )
+                let body: OpenAPIRuntime.HTTPBody?
+                switch input.body {
+                case let .json(value):
+                    body = try converter.setRequiredRequestBodyAsJSON(
+                        value,
+                        headerFields: &request.headerFields,
+                        contentType: "application/json; charset=utf-8"
+                    )
+                }
+                return (request, body)
+            },
+            deserializer: { response, responseBody in
+                switch response.status.code {
+                case 201:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.BookmarkControllerCreateBookmark.Output.Created.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            Components.Schemas.BookmarkResponseDto.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .created(.init(body: body))
+                default:
+                    return .undocumented(
+                        statusCode: response.status.code,
+                        .init(
+                            headerFields: response.headerFields,
+                            body: responseBody
+                        )
+                    )
+                }
+            }
+        )
+    }
+    /// - Remark: HTTP `DELETE /api/v1/books/{bookId}/bookmarks/{bookmarkId}`.
+    /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/{bookmarkId}/delete(BookmarkController_deleteBookmark)`.
+    public func bookmarkControllerDeleteBookmark(_ input: Operations.BookmarkControllerDeleteBookmark.Input) async throws -> Operations.BookmarkControllerDeleteBookmark.Output {
+        try await client.send(
+            input: input,
+            forOperation: Operations.BookmarkControllerDeleteBookmark.id,
+            serializer: { input in
+                let path = try converter.renderedPath(
+                    template: "/api/v1/books/{}/bookmarks/{}",
+                    parameters: [
+                        input.path.bookId,
+                        input.path.bookmarkId
+                    ]
+                )
+                var request: HTTPTypes.HTTPRequest = .init(
+                    soar_path: path,
+                    method: .delete
+                )
+                suppressMutabilityWarning(&request)
+                return (request, nil)
+            },
+            deserializer: { response, responseBody in
+                switch response.status.code {
+                case 204:
+                    return .noContent(.init())
+                default:
+                    return .undocumented(
+                        statusCode: response.status.code,
+                        .init(
+                            headerFields: response.headerFields,
+                            body: responseBody
+                        )
+                    )
+                }
+            }
+        )
+    }
 }

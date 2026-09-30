@@ -3,8 +3,8 @@ import os
 
 public enum AppIdentity {
     /// Also the logger subsystem and the Keychain service prefix, so every identifier the app
-    /// leaves on the device traces back to one name.
-    public static let bundleIdentifier = "dev.mooneeb.bookorbit"
+    /// leaves on the device follows the bundle identifier set in the xcconfig.
+    public static let bundleIdentifier = Bundle.main.bundleIdentifier ?? "dev.mooneeb.bookorbit"
 }
 
 /// Logs in the project's format: `[event] [start|end|fail] key=value ... - message`. Messages are
@@ -34,7 +34,8 @@ public func failureFields(_ error: any Error) -> String {
     "errorClass=\(type(of: error)) error=\"\(sanitizeLogValue(String(describing: error)))\""
 }
 
-/// Makes a value safe inside a quoted log field. Mirrors the server's `sanitizeLogValue`.
+/// Same rules as the server's `sanitizeLogValue`: one line, at most `maxLength` characters, then
+/// backslashes and quotes escaped, so the value cannot end its quoted field early.
 public func sanitizeLogValue(_ value: String, maxLength: Int = 200) -> String {
     let singleLine = value.map { $0.isNewline || $0 == "\t" ? " " : $0 }
     return String(singleLine.prefix(maxLength))

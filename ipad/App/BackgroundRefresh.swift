@@ -9,12 +9,13 @@ enum BackgroundRefresh {
     static func schedule() {
         // The Mac build keeps running while its window is closed, so it has nothing to schedule.
         guard !ProcessInfo.processInfo.isMacCatalystApp else { return }
+        let started = ContinuousClock.now
         let request = BGAppRefreshTaskRequest(identifier: identifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 4 * 60 * 60)
         do {
             try BGTaskScheduler.shared.submit(request)
         } catch {
-            log.error("[background.schedule_refresh] [fail] identifier=\(identifier) \(failureFields(error)) - could not schedule background refresh")
+            log.error("[background.schedule_refresh] [fail] identifier=\(identifier) durationMs=\(started.millisecondsElapsed) \(failureFields(error)) - could not schedule background refresh")
         }
     }
 
@@ -22,7 +23,11 @@ enum BackgroundRefresh {
         let started = ContinuousClock.now
         log.info("[background.refresh] [start] identifier=\(identifier) - background refresh started")
         schedule()
-        await AppEnvironment.model.refreshInBackground()
-        log.info("[background.refresh] [end] identifier=\(identifier) durationMs=\(started.millisecondsElapsed) - background refresh completed")
+        do {
+            let refreshed = try await AppEnvironment.model.refreshInBackground()
+            log.info("[background.refresh] [end] identifier=\(identifier) durationMs=\(started.millisecondsElapsed) refreshed=\(refreshed) - background refresh completed")
+        } catch {
+            log.error("[background.refresh] [fail] identifier=\(identifier) durationMs=\(started.millisecondsElapsed) refreshed=false \(failureFields(error)) - background refresh failed")
+        }
     }
 }

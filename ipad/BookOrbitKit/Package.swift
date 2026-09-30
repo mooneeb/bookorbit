@@ -24,6 +24,7 @@ let package = Package(
                 "BookOrbitAuth",
                 "BookOrbitFeatureKit",
                 "BookOrbitLibrary",
+                "BookOrbitReading",
                 "BookOrbitPDFReader",
                 "BookOrbitEPUBReader",
                 "BookOrbitComicsReader",
@@ -53,13 +54,41 @@ let package = Package(
         ),
         .target(name: "BookOrbitFeatureKit", dependencies: ["BookOrbitAPI", "BookOrbitAuth"]),
         .target(name: "BookOrbitLibrary", dependencies: ["BookOrbitAPI", "BookOrbitAuth", "BookOrbitFeatureKit"]),
-        .target(name: "BookOrbitPDFReader", dependencies: ["BookOrbitFeatureKit", "BookOrbitInk", "BookOrbitSync"]),
+        .target(name: "BookOrbitReading", dependencies: ["BookOrbitAPI", "BookOrbitAuth"]),
+        .target(
+            name: "BookOrbitPDFReader",
+            dependencies: [
+                "BookOrbitAPI",
+                "BookOrbitAuth",
+                "BookOrbitFeatureKit",
+                "BookOrbitInk",
+                "BookOrbitReading",
+                "BookOrbitSync",
+            ]
+        ),
         .target(
             name: "BookOrbitEPUBReader",
-            dependencies: ["BookOrbitFeatureKit", "BookOrbitSync"],
+            dependencies: [
+                "BookOrbitAPI",
+                "BookOrbitAuth",
+                "BookOrbitFeatureKit",
+                "BookOrbitInk",
+                "BookOrbitReading",
+                "BookOrbitSync",
+            ],
             resources: [.copy("Resources")]
         ),
-        .target(name: "BookOrbitComicsReader", dependencies: ["BookOrbitFeatureKit", "BookOrbitInk", "BookOrbitSync"]),
+        .target(
+            name: "BookOrbitComicsReader",
+            dependencies: [
+                "BookOrbitAPI",
+                "BookOrbitAuth",
+                "BookOrbitFeatureKit",
+                "BookOrbitInk",
+                "BookOrbitReading",
+                "BookOrbitSync",
+            ]
+        ),
         .target(name: "BookOrbitInk", dependencies: ["BookOrbitAPI", "BookOrbitAuth"]),
         .target(name: "BookOrbitSync", dependencies: ["BookOrbitAPI", "BookOrbitAuth"]),
         .target(name: "BookOrbitMyLibrary", dependencies: ["BookOrbitFeatureKit"]),
@@ -70,6 +99,7 @@ let package = Package(
         .testTarget(name: "BookOrbitCoreTests", dependencies: ["BookOrbitCore"]),
         .testTarget(name: "BookOrbitAuthTests", dependencies: ["BookOrbitAuth", "BookOrbitTestSupport"]),
         .testTarget(name: "BookOrbitFeatureKitTests", dependencies: ["BookOrbitFeatureKit", "BookOrbitTestSupport"]),
+        .testTarget(name: "BookOrbitReadingTests", dependencies: ["BookOrbitReading", "BookOrbitTestSupport"]),
         .testTarget(name: "BookOrbitLibraryTests", dependencies: ["BookOrbitLibrary", "BookOrbitTestSupport"]),
     ]
 )

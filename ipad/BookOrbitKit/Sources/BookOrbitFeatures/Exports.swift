@@ -12,5 +12,6 @@
 @_exported import BookOrbitListening
 @_exported import BookOrbitMyLibrary
 @_exported import BookOrbitPDFReader
+@_exported import BookOrbitReading
 @_exported import BookOrbitSettings
 @_exported import BookOrbitSync

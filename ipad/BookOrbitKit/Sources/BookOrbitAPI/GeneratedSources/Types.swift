@@ -29,6 +29,24 @@ public protocol APIProtocol: Sendable {
     /// - Remark: HTTP `POST /api/v1/books/query`.
     /// - Remark: Generated from `#/paths//api/v1/books/query/post(BookController_globalQuery)`.
     func bookControllerGlobalQuery(_ input: Operations.BookControllerGlobalQuery.Input) async throws -> Operations.BookControllerGlobalQuery.Output
+    /// - Remark: HTTP `GET /api/v1/books/files/{fileId}/progress`.
+    /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/progress/get(BookController_getFileProgress)`.
+    func bookControllerGetFileProgress(_ input: Operations.BookControllerGetFileProgress.Input) async throws -> Operations.BookControllerGetFileProgress.Output
+    /// - Remark: HTTP `POST /api/v1/books/files/{fileId}/progress`.
+    /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/progress/post(BookController_saveFileProgress)`.
+    func bookControllerSaveFileProgress(_ input: Operations.BookControllerSaveFileProgress.Input) async throws -> Operations.BookControllerSaveFileProgress.Output
+    /// - Remark: HTTP `POST /api/v1/books/files/{fileId}/sessions`.
+    /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/sessions/post(ReadingSessionController_saveSession)`.
+    func readingSessionControllerSaveSession(_ input: Operations.ReadingSessionControllerSaveSession.Input) async throws -> Operations.ReadingSessionControllerSaveSession.Output
+    /// - Remark: HTTP `GET /api/v1/books/{bookId}/bookmarks`.
+    /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/get(BookmarkController_getBookmarks)`.
+    func bookmarkControllerGetBookmarks(_ input: Operations.BookmarkControllerGetBookmarks.Input) async throws -> Operations.BookmarkControllerGetBookmarks.Output
+    /// - Remark: HTTP `POST /api/v1/books/{bookId}/bookmarks`.
+    /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/post(BookmarkController_createBookmark)`.
+    func bookmarkControllerCreateBookmark(_ input: Operations.BookmarkControllerCreateBookmark.Input) async throws -> Operations.BookmarkControllerCreateBookmark.Output
+    /// - Remark: HTTP `DELETE /api/v1/books/{bookId}/bookmarks/{bookmarkId}`.
+    /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/{bookmarkId}/delete(BookmarkController_deleteBookmark)`.
+    func bookmarkControllerDeleteBookmark(_ input: Operations.BookmarkControllerDeleteBookmark.Input) async throws -> Operations.BookmarkControllerDeleteBookmark.Output
 }
 
 /// Convenience overloads for operation inputs.
@@ -86,6 +104,68 @@ extension APIProtocol {
             headers: headers,
             body: body
         ))
+    }
+    /// - Remark: HTTP `GET /api/v1/books/files/{fileId}/progress`.
+    /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/progress/get(BookController_getFileProgress)`.
+    public func bookControllerGetFileProgress(
+        path: Operations.BookControllerGetFileProgress.Input.Path,
+        headers: Operations.BookControllerGetFileProgress.Input.Headers = .init()
+    ) async throws -> Operations.BookControllerGetFileProgress.Output {
+        try await bookControllerGetFileProgress(Operations.BookControllerGetFileProgress.Input(
+            path: path,
+            headers: headers
+        ))
+    }
+    /// - Remark: HTTP `POST /api/v1/books/files/{fileId}/progress`.
+    /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/progress/post(BookController_saveFileProgress)`.
+    public func bookControllerSaveFileProgress(
+        path: Operations.BookControllerSaveFileProgress.Input.Path,
+        body: Operations.BookControllerSaveFileProgress.Input.Body
+    ) async throws -> Operations.BookControllerSaveFileProgress.Output {
+        try await bookControllerSaveFileProgress(Operations.BookControllerSaveFileProgress.Input(
+            path: path,
+            body: body
+        ))
+    }
+    /// - Remark: HTTP `POST /api/v1/books/files/{fileId}/sessions`.
+    /// - Remark: Generated from `#/paths//api/v1/books/files/{fileId}/sessions/post(ReadingSessionController_saveSession)`.
+    public func readingSessionControllerSaveSession(
+        path: Operations.ReadingSessionControllerSaveSession.Input.Path,
+        body: Operations.ReadingSessionControllerSaveSession.Input.Body
+    ) async throws -> Operations.ReadingSessionControllerSaveSession.Output {
+        try await readingSessionControllerSaveSession(Operations.ReadingSessionControllerSaveSession.Input(
+            path: path,
+            body: body
+        ))
+    }
+    /// - Remark: HTTP `GET /api/v1/books/{bookId}/bookmarks`.
+    /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/get(BookmarkController_getBookmarks)`.
+    public func bookmarkControllerGetBookmarks(
+        path: Operations.BookmarkControllerGetBookmarks.Input.Path,
+        headers: Operations.BookmarkControllerGetBookmarks.Input.Headers = .init()
+    ) async throws -> Operations.BookmarkControllerGetBookmarks.Output {
+        try await bookmarkControllerGetBookmarks(Operations.BookmarkControllerGetBookmarks.Input(
+            path: path,
+            headers: headers
+        ))
+    }
+    /// - Remark: HTTP `POST /api/v1/books/{bookId}/bookmarks`.
+    /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/post(BookmarkController_createBookmark)`.
+    public func bookmarkControllerCreateBookmark(
+        path: Operations.BookmarkControllerCreateBookmark.Input.Path,
+        headers: Operations.BookmarkControllerCreateBookmark.Input.Headers = .init(),
+        body: Operations.BookmarkControllerCreateBookmark.Input.Body
+    ) async throws -> Operations.BookmarkControllerCreateBookmark.Output {
+        try await bookmarkControllerCreateBookmark(Operations.BookmarkControllerCreateBookmark.Input(
+            path: path,
+            headers: headers,
+            body: body
+        ))
+    }
+    /// - Remark: HTTP `DELETE /api/v1/books/{bookId}/bookmarks/{bookmarkId}`.
+    /// - Remark: Generated from `#/paths//api/v1/books/{bookId}/bookmarks/{bookmarkId}/delete(BookmarkController_deleteBookmark)`.
+    public func bookmarkControllerDeleteBookmark(path: Operations.BookmarkControllerDeleteBookmark.Input.Path) async throws -> Operations.BookmarkControllerDeleteBookmark.Output {
+        try await bookmarkControllerDeleteBookmark(Operations.BookmarkControllerDeleteBookmark.Input(path: path))
     }
 }
 

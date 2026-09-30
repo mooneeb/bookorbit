@@ -108,7 +108,7 @@ public actor AuthManager {
         let refreshToken = await session?.tokens.refreshToken
         await session?.tokens.end()
         current = nil
-        wipeLocalData()
+        wipeLocalData(started: started)
 
         guard let server, let refreshToken else {
             Self.log.info("[auth.sign_out] [end] sessionId=\(sessionId) durationMs=\(started.millisecondsElapsed) revoked=false - no session to revoke")
@@ -125,17 +125,17 @@ public actor AuthManager {
         }
     }
 
-    private func wipeLocalData() {
+    private func wipeLocalData(started: ContinuousClock.Instant) {
         do {
             try sessionStore.clear()
         } catch {
-            Self.log.error("[auth.wipe] [fail] target=sessionStore \(failureFields(error)) - could not clear tokens")
+            Self.log.error("[auth.wipe] [fail] target=sessionStore durationMs=\(started.millisecondsElapsed) \(failureFields(error)) - could not clear tokens")
         }
         urlSession.configuration.urlCache?.removeAllCachedResponses()
         do {
             try accountStorage.wipe()
         } catch {
-            Self.log.error("[auth.wipe] [fail] target=accountStorage \(failureFields(error)) - could not wipe account data")
+            Self.log.error("[auth.wipe] [fail] target=accountStorage durationMs=\(started.millisecondsElapsed) \(failureFields(error)) - could not wipe account data")
         }
     }
 
@@ -199,11 +199,8 @@ public final class AuthenticatedSession: Sendable {
         var url = server.baseURL.appending(path: path)
         if !queryItems.isEmpty { url.append(queryItems: queryItems) }
 
-        let token = try await tokens.validAccessToken()
-        var (data, status) = try await get(url, token: token)
-        if status == 401 {
-            (data, status) = try await get(url, token: try await tokens.accessToken(replacing: token))
-        }
+        let requestURL = url
+        let (data, status) = try await tokens.sendAuthorized({ token in try await self.get(requestURL, token: token) }, isRejected: { $0.1 == 401 })
         guard (200..<300).contains(status) else { throw SessionError.unexpectedResponse(statusCode: status) }
         return data
     }
