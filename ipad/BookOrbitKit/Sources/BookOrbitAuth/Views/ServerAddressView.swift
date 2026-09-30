@@ -1,7 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-/// First launch: asks which BookOrbit server to use.
 public struct ServerAddressView: View {
     private let model: SessionModel
     @State private var address = ""
@@ -27,7 +26,7 @@ public struct ServerAddressView: View {
                 if let errorMessage {
                     Text(errorMessage).foregroundStyle(.red)
                 } else if model.sessionEndedByServer {
-                    Text("Your session ended. Sign in again.")
+                    Text(UserMessages.sessionEnded)
                 }
             }
 
@@ -52,11 +51,11 @@ public struct ServerAddressView: View {
             do {
                 try await model.connect(to: address)
             } catch let error as ServerAddressError {
-                errorMessage = error == .empty ? "Enter your server's address." : "That is not a valid server address."
-            } catch ServerCheckError.serverUnreachable {
-                errorMessage = "Server unreachable. Check your connection (is Tailscale on?) and try again."
+                errorMessage = error.userMessage
+            } catch let error as ServerCheckError {
+                errorMessage = error.userMessage
             } catch {
-                errorMessage = "No BookOrbit server answered at that address."
+                errorMessage = ServerCheckError.notABookOrbitServer.userMessage
             }
         }
     }

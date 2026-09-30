@@ -82,41 +82,6 @@ extension Components {
                 case refreshToken
             }
         }
-        /// - Remark: Generated from `#/components/schemas/ApiError`.
-        public struct ApiError: Codable, Hashable, Sendable {
-            /// - Remark: Generated from `#/components/schemas/ApiError/statusCode`.
-            public var statusCode: Swift.Int
-            /// - Remark: Generated from `#/components/schemas/ApiError/message`.
-            public var message: Swift.String
-            /// - Remark: Generated from `#/components/schemas/ApiError/errorCode`.
-            public var errorCode: Swift.String?
-            /// - Remark: Generated from `#/components/schemas/ApiError/retryAfterSeconds`.
-            public var retryAfterSeconds: Swift.Int?
-            /// Creates a new `ApiError`.
-            ///
-            /// - Parameters:
-            ///   - statusCode:
-            ///   - message:
-            ///   - errorCode:
-            ///   - retryAfterSeconds:
-            public init(
-                statusCode: Swift.Int,
-                message: Swift.String,
-                errorCode: Swift.String? = nil,
-                retryAfterSeconds: Swift.Int? = nil
-            ) {
-                self.statusCode = statusCode
-                self.message = message
-                self.errorCode = errorCode
-                self.retryAfterSeconds = retryAfterSeconds
-            }
-            public enum CodingKeys: String, CodingKey {
-                case statusCode
-                case message
-                case errorCode
-                case retryAfterSeconds
-            }
-        }
         /// - Remark: Generated from `#/components/schemas/OidcProviderSummary`.
         public struct OidcProviderSummary: Codable, Hashable, Sendable {
             /// - Remark: Generated from `#/components/schemas/OidcProviderSummary/slug`.
@@ -308,6 +273,41 @@ extension Components {
                 case refreshTokenExpiresAt
                 case sessionId
                 case user
+            }
+        }
+        /// - Remark: Generated from `#/components/schemas/ApiError`.
+        public struct ApiError: Codable, Hashable, Sendable {
+            /// - Remark: Generated from `#/components/schemas/ApiError/statusCode`.
+            public var statusCode: Swift.Int
+            /// - Remark: Generated from `#/components/schemas/ApiError/message`.
+            public var message: Swift.String
+            /// - Remark: Generated from `#/components/schemas/ApiError/errorCode`.
+            public var errorCode: Swift.String?
+            /// - Remark: Generated from `#/components/schemas/ApiError/retryAfterSeconds`.
+            public var retryAfterSeconds: Swift.Int?
+            /// Creates a new `ApiError`.
+            ///
+            /// - Parameters:
+            ///   - statusCode:
+            ///   - message:
+            ///   - errorCode:
+            ///   - retryAfterSeconds:
+            public init(
+                statusCode: Swift.Int,
+                message: Swift.String,
+                errorCode: Swift.String? = nil,
+                retryAfterSeconds: Swift.Int? = nil
+            ) {
+                self.statusCode = statusCode
+                self.message = message
+                self.errorCode = errorCode
+                self.retryAfterSeconds = retryAfterSeconds
+            }
+            public enum CodingKeys: String, CodingKey {
+                case statusCode
+                case message
+                case errorCode
+                case retryAfterSeconds
             }
         }
         /// - Remark: Generated from `#/components/schemas/SortSpec`.

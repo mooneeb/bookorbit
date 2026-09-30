@@ -3,8 +3,7 @@ import OpenAPIRuntime
 import OpenAPIURLSession
 
 public enum BookOrbitClient {
-    /// Builds a generated API client for one server. `serverURL` is the server's base address; the
-    /// generated paths already include the `/api/v1` prefix.
+    /// `serverURL` is the server's base address: the generated paths already include `/api/v1`.
     public static func make(
         serverURL: URL,
         session: URLSession,

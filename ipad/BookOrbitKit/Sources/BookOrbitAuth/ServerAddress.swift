@@ -1,7 +1,6 @@
 import Foundation
 
-/// The BookOrbit server the app talks to, as typed on first launch (for example
-/// `books.mooneeb.dev`). HTTPS is assumed when no scheme is given.
+/// HTTPS is assumed when no scheme is typed, as in `books.mooneeb.dev`.
 public struct ServerAddress: Hashable, Sendable, Codable, CustomStringConvertible {
     public let baseURL: URL
 

@@ -1,12 +1,11 @@
 import BookOrbitAPI
+import BookOrbitCore
 import Foundation
 import OpenAPIRuntime
-import os
 
-/// Signs the reader in and out of one BookOrbit server using the server's native client kind, so
-/// tokens come back in response bodies instead of cookies.
+/// Uses the server's native client kind, so tokens come back in response bodies instead of cookies.
 public actor AuthManager {
-    private static let logger = Logger(subsystem: "app.bookorbit.ipad", category: "auth")
+    private static let log = EventLog(category: "auth")
     private let sessionStore: any SessionStore
     private let accountStorage: AccountStorage
     private let urlSession: URLSession
@@ -14,7 +13,7 @@ public actor AuthManager {
     private var current: AuthenticatedSession?
     private let events: AsyncStream<SessionEvent>.Continuation
 
-    /// Session changes the reader did not ask for, such as the session being revoked from the web.
+    /// Session changes the reader did not ask for, such as the session being revoked on the server.
     public nonisolated let sessionEvents: AsyncStream<SessionEvent>
 
     public init(
@@ -30,14 +29,12 @@ public actor AuthManager {
         (sessionEvents, events) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(8))
     }
 
-    /// The session saved by an earlier launch, if the reader has not signed out since.
     public func restoredSession() -> AuthenticatedSession? {
         if let current { return current }
         guard let stored = try? sessionStore.load() else { return nil }
         return makeSession(stored)
     }
 
-    /// Confirms a BookOrbit server answers at the address, before asking for credentials.
     public func checkServer(_ server: ServerAddress) async throws(ServerCheckError) -> LoginOptions {
         let client = BookOrbitClient.make(serverURL: server.baseURL, session: urlSession)
         do {
@@ -52,6 +49,19 @@ public actor AuthManager {
     }
 
     public func signIn(to server: ServerAddress, username: String, password: String) async throws -> AuthenticatedSession {
+        let started = ContinuousClock.now
+        Self.log.info("[auth.sign_in] [start] method=password - sign in started")
+        do {
+            let session = try await performSignIn(to: server, username: username, password: password)
+            Self.log.info("[auth.sign_in] [end] userId=\(session.user.id) sessionId=\(session.sessionId) durationMs=\(started.millisecondsElapsed) - sign in completed")
+            return session
+        } catch {
+            Self.log.notice("[auth.sign_in] [fail] method=password durationMs=\(started.millisecondsElapsed) \(failureFields(error)) - sign in failed")
+            throw error
+        }
+    }
+
+    private func performSignIn(to server: ServerAddress, username: String, password: String) async throws -> AuthenticatedSession {
         let client = BookOrbitClient.make(serverURL: server.baseURL, session: urlSession)
         let output: Operations.AuthControllerLogin.Output
         do {
@@ -59,7 +69,7 @@ public actor AuthManager {
                 body: .json(.init(username: username, password: password, clientKind: .native, deviceLabel: deviceLabel))
             )
         } catch {
-            throw Reachability.isUnreachable(error) ? SignInError.serverUnreachable : SignInError.unexpectedResponse(statusCode: 0)
+            throw Reachability.isUnreachable(error) ? SignInError.serverUnreachable : SignInError.noResponse
         }
 
         let response: Components.Schemas.NativeAuthResponse
@@ -84,29 +94,33 @@ public actor AuthManager {
         await current?.tokens.end()
         try accountStorage.claim(server: server, userId: stored.user.id)
         try sessionStore.save(stored)
-        Self.logger.info("[auth.sign_in] [end] userId=\(stored.user.id) sessionId=\(stored.credentials.sessionId) - signed in")
         return makeSession(stored)
     }
 
-    /// Signs out: forgets the tokens, wipes everything stored for the account on this device, and
-    /// revokes the session on the server. Local data is wiped even when the server is unreachable.
+    /// Local data is wiped before the server is told, so an unreachable server never leaves an
+    /// account's data behind.
     public func signOut() async -> SignOutOutcome {
         let started = ContinuousClock.now
         let session = restoredSession()
+        let sessionId = session.map { String($0.sessionId) } ?? "none"
+        Self.log.info("[auth.sign_out] [start] sessionId=\(sessionId) - sign out started")
         let server = session?.server
         let refreshToken = await session?.tokens.refreshToken
         await session?.tokens.end()
         current = nil
         wipeLocalData()
 
-        guard let server, let refreshToken else { return .revokedOnThisDeviceOnly }
+        guard let server, let refreshToken else {
+            Self.log.info("[auth.sign_out] [end] sessionId=\(sessionId) durationMs=\(started.millisecondsElapsed) revoked=false - no session to revoke")
+            return .revokedOnThisDeviceOnly
+        }
         let client = BookOrbitClient.make(serverURL: server.baseURL, session: urlSession)
         do {
             _ = try await client.authControllerLogout(body: .json(.init(refreshToken: refreshToken))).ok
-            Self.logger.info("[auth.sign_out] [end] durationMs=\(started.millisecondsElapsed) revoked=true - signed out")
+            Self.log.info("[auth.sign_out] [end] sessionId=\(sessionId) durationMs=\(started.millisecondsElapsed) revoked=true - sign out completed")
             return .revoked
         } catch {
-            Self.logger.notice("[auth.sign_out] [fail] durationMs=\(started.millisecondsElapsed) errorClass=\(type(of: error)) revoked=false - server revoke failed, local data wiped")
+            Self.log.notice("[auth.sign_out] [fail] sessionId=\(sessionId) durationMs=\(started.millisecondsElapsed) revoked=false \(failureFields(error)) - server revoke failed, local data wiped")
             return .revokedOnThisDeviceOnly
         }
     }
@@ -115,13 +129,13 @@ public actor AuthManager {
         do {
             try sessionStore.clear()
         } catch {
-            Self.logger.error("[auth.wipe] [fail] errorClass=\(type(of: error)) target=sessionStore - could not clear tokens")
+            Self.log.error("[auth.wipe] [fail] target=sessionStore \(failureFields(error)) - could not clear tokens")
         }
         urlSession.configuration.urlCache?.removeAllCachedResponses()
         do {
             try accountStorage.wipe()
         } catch {
-            Self.logger.error("[auth.wipe] [fail] errorClass=\(type(of: error)) target=accountStorage - could not wipe account data")
+            Self.log.error("[auth.wipe] [fail] target=accountStorage \(failureFields(error)) - could not wipe account data")
         }
     }
 
@@ -161,12 +175,11 @@ public actor AuthManager {
     }
 }
 
-/// A signed-in session: the account, and authenticated access to its server.
 public final class AuthenticatedSession: Sendable {
     public let server: ServerAddress
     public let user: AccountUser
     let sessionId: Int
-    /// The generated API client. Requests carry the access token, which refreshes silently.
+    /// Requests carry the access token, which refreshes silently.
     public let client: Client
     let tokens: TokenManager
     private let urlSession: URLSession
@@ -180,8 +193,8 @@ public final class AuthenticatedSession: Sendable {
         self.urlSession = urlSession
     }
 
-    /// Fetches raw bytes (covers, book files) from a server path such as `/api/v1/books/7/thumbnail`,
-    /// authenticated and refreshed the same way as `client`. Throws `SessionError`.
+    /// For responses the generated client cannot model, such as images and book files. Throws
+    /// `SessionError`.
     public func data(path: String, queryItems: [URLQueryItem] = []) async throws -> Data {
         var url = server.baseURL.appending(path: path)
         if !queryItems.isEmpty { url.append(queryItems: queryItems) }
@@ -202,7 +215,7 @@ public final class AuthenticatedSession: Sendable {
             let (data, response) = try await urlSession.data(for: request)
             return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
         } catch {
-            throw SessionError(error) ?? SessionError.unexpectedResponse(statusCode: 0)
+            throw Reachability.sessionError(forTransportError: error)
         }
     }
 }

@@ -1,11 +1,9 @@
 import BookOrbitAPI
 
-/// What the library list knows about a book: enough to show it and to decide which readers can
-/// open it.
 public struct BookSummary: Identifiable, Hashable, Sendable {
     public struct File: Hashable, Sendable {
         public let id: Int
-        /// Lowercased file format, such as `epub`, `pdf`, or `cbz`.
+        /// Lowercased, so readers can match formats without caring how the server spelled them.
         public let format: String?
         public let role: String
 
@@ -20,7 +18,7 @@ public struct BookSummary: Identifiable, Hashable, Sendable {
     public let title: String
     public let authors: [String]
     public let hasCover: Bool
-    /// Changes whenever the cover changes, so cover URLs that include it can be cached forever.
+    /// Part of cover URLs, so a changed cover is a new URL and old ones can be cached forever.
     public let coverVersion: String
     public let files: [File]
 

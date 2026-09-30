@@ -10,21 +10,26 @@ public struct AccountStorage: Sendable {
         self.root = root
     }
 
-    /// The default location, in Application Support, excluded from backups.
     public static func standard() -> AccountStorage {
         let base = URL.applicationSupportDirectory.appending(path: "BookOrbit/Account", directoryHint: .isDirectory)
         return AccountStorage(root: base)
     }
 
-    /// A feature-owned folder inside the account's storage, created on demand.
     public func directory(named name: String) throws -> URL {
+        try prepareRoot()
         let url = root.appending(path: name, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    /// Account data can be re-downloaded from the server, and must not follow a device backup to
+    /// another device where a different account may sign in.
+    private func prepareRoot() throws {
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         var rootURL = root
-        try? rootURL.setResourceValues(values)
-        return url
+        try rootURL.setResourceValues(values)
     }
 
     /// Makes the storage belong to the given account, wiping whatever another account left behind
@@ -36,7 +41,7 @@ public struct AccountStorage: Sendable {
             return
         }
         try wipe()
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try prepareRoot()
         try JSONEncoder().encode(owner).write(to: markerURL, options: .atomic)
     }
 

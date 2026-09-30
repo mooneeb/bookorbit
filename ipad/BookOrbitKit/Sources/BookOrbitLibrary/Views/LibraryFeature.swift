@@ -1,10 +1,10 @@
 #if os(iOS)
+import BookOrbitAuth
 import BookOrbitFeatureKit
 import SwiftUI
 
 public enum LibraryFeature {
-    /// The plain paged list of the reader's books. Ticket 03 replaces it with full library browsing.
-    public static let screen = FeatureScreen(id: "library", title: "Library", systemImage: "books.vertical") { context in
+    public static let screen = FeatureScreen(id: "library", label: FeatureLabel("Library", systemImage: "books.vertical")) { context in
         AnyView(BookListScreen(context: context))
     }
 }
@@ -69,23 +69,15 @@ struct BookListContent: View {
 }
 
 struct LoadFailureRow: View {
-    let failure: LoadFailure
+    let failure: SessionError
     let retry: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
-            Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text(failure.userMessage).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button("Try Again", action: retry)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var message: LocalizedStringResource {
-        switch failure {
-        case .serverUnreachable: "Server unreachable. Check your connection (is Tailscale on?)."
-        case .sessionExpired: "Your session ended. Sign in again."
-        case .unexpected: "Could not load books."
-        }
     }
 }
 

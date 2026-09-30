@@ -1,0 +1,139 @@
+{
+  "operations": ["BookController_globalQuery"],
+  "schemas": {
+    "SortSpec": {
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "dir": {
+          "type": "string",
+          "enum": ["asc", "desc"]
+        }
+      },
+      "required": ["field", "dir"]
+    },
+    "BookQuery": {
+      "type": "object",
+      "properties": {
+        "sort": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SortSpec"
+          }
+        },
+        "pagination": {
+          "type": "object",
+          "properties": {
+            "page": {
+              "type": "integer"
+            },
+            "size": {
+              "type": "integer"
+            }
+          },
+          "required": ["page", "size"]
+        },
+        "q": {
+          "type": "string"
+        }
+      },
+      "required": ["sort", "pagination"]
+    },
+    "BookFileRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "format": {
+          "type": "string",
+          "nullable": true
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "role"]
+    },
+    "BookCard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string",
+          "nullable": true
+        },
+        "authors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "hasCover": {
+          "type": "boolean"
+        },
+        "coverVersion": {
+          "type": "string"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/BookFileRef"
+          }
+        }
+      },
+      "required": ["id", "authors", "hasCover", "coverVersion", "files"]
+    },
+    "BooksPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/BookCard"
+          }
+        },
+        "total": {
+          "type": "integer"
+        },
+        "page": {
+          "type": "integer"
+        },
+        "size": {
+          "type": "integer"
+        }
+      },
+      "required": ["items", "total", "page", "size"]
+    }
+  },
+  "patches": {
+    "BookController_globalQuery": {
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/BookQuery"
+            }
+          }
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BooksPage"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

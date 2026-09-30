@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 
-/// Drives the app between choosing a server, signing in, and being signed in.
 @MainActor @Observable
 public final class SessionModel {
     public enum Phase {
@@ -12,7 +11,6 @@ public final class SessionModel {
     }
 
     public private(set) var phase: Phase = .launching
-    /// Set when the server ended the session (for example, it was revoked from the web).
     public private(set) var sessionEndedByServer = false
     public let auth: AuthManager
     private let defaults: UserDefaults
@@ -24,13 +22,13 @@ public final class SessionModel {
         self.defaults = defaults
     }
 
-    /// The address typed last time, kept after sign-out so signing back in is quick.
+    /// Kept after sign-out so signing back in is quick.
     public var lastServerAddress: String {
         defaults.string(forKey: Self.serverKey) ?? ""
     }
 
-    /// Restores the saved session, then follows session events. Safe to call from every window;
-    /// only the first call does anything.
+    /// Call once per app launch, not per window: it keeps following session events until the app
+    /// quits. Later calls return immediately.
     public func start() async {
         guard !started else { return }
         started = true
@@ -73,7 +71,7 @@ public final class SessionModel {
         return outcome
     }
 
-    /// Keeps the session alive while the app is in the background by refreshing its access token.
+    /// Refreshing while in the background keeps the refresh token from expiring during long breaks.
     public func refreshInBackground() async {
         guard let session = await auth.restoredSession() else { return }
         _ = try? await session.client.authControllerMe()

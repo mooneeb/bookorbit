@@ -47,6 +47,20 @@ private func routeLibrary(_ server: StubServer, total: Int) {
         #expect(server.requests("POST", "/api/v1/books/query").count == 3)
     }
 
+    @Test func onlyRowsNearTheEndOfWhatIsLoadedFetchTheNextPage() async throws {
+        let server = StubServer()
+        routeLibrary(server, total: 100)
+        let list = await BookList(session: try await server.signedInSession(), pageSize: 30)
+        await list.loadMore()
+        let loaded = await list.books
+
+        await list.loadMoreIfNeeded(after: loaded[5])
+        #expect(await list.books.count == 30)
+
+        await list.loadMoreIfNeeded(after: loaded[25])
+        #expect(await list.books.count == 60)
+    }
+
     @Test func aBookKnowsItsFormatsAndWhetherItHasACover() async throws {
         let server = StubServer()
         server.route("POST", "/api/v1/books/query") { _ in

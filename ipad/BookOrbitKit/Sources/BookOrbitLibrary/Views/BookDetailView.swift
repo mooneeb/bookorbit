@@ -2,8 +2,6 @@
 import BookOrbitFeatureKit
 import SwiftUI
 
-/// Placeholder book detail: cover, title, authors, formats, and a button for every registered
-/// reader that can open the book. Ticket 03 replaces it with the full detail page.
 struct BookDetailView: View {
     let book: BookSummary
     let context: FeatureContext
@@ -56,9 +54,9 @@ struct ReaderButton: View {
     var body: some View {
         Button(action: tapped) {
             Label {
-                Text(reader.title)
+                Text(reader.label.title)
             } icon: {
-                Image(systemName: reader.systemImage)
+                Image(systemName: reader.label.systemImage)
             }
         }
         .buttonStyle(.borderedProminent)

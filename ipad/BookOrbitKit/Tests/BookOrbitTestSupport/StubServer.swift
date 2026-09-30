@@ -59,7 +59,6 @@ public final class StubServer: Sendable {
         StubURLProtocol.unregister(host: host)
     }
 
-    /// A URLSession configuration whose requests are answered by stub servers.
     public static var sessionConfiguration: URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
@@ -70,7 +69,7 @@ public final class StubServer: Sendable {
         state.withLock { $0.routes["\(method) \(path)"] = handler }
     }
 
-    /// Makes every request fail the way it does when the host cannot be reached (Tailscale off).
+    /// Fails every request the way an unreachable host does, as when the VPN is off.
     public func goOffline() {
         state.withLock { $0.unreachable = true }
     }

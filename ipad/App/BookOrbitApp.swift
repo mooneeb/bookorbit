@@ -20,7 +20,10 @@ struct BookOrbitApp: App {
 
 @MainActor
 enum AppEnvironment {
-    static let model = SessionModel(
-        auth: AuthManager(sessionStore: KeychainSessionStore(), accountStorage: .standard())
-    )
+    /// Started here rather than from a view, so the session event loop outlives any one window.
+    static let model: SessionModel = {
+        let model = SessionModel(auth: AuthManager(sessionStore: KeychainSessionStore(), accountStorage: .standard()))
+        Task { await model.start() }
+        return model
+    }()
 }

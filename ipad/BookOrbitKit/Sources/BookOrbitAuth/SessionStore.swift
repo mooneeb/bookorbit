@@ -1,7 +1,6 @@
 import Foundation
 import Synchronization
 
-/// Everything needed to resume a signed-in session after the app restarts.
 public struct StoredSession: Codable, Sendable, Equatable {
     public var server: ServerAddress
     public var user: AccountUser
@@ -22,8 +21,6 @@ public struct Credentials: Codable, Sendable, Equatable {
     public var sessionId: Int
 }
 
-/// Where the signed-in session (including both tokens) is persisted. The app uses
-/// `KeychainSessionStore`; tests and previews use `InMemorySessionStore`.
 public protocol SessionStore: Sendable {
     func load() throws -> StoredSession?
     func save(_ session: StoredSession) throws

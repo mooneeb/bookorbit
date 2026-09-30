@@ -1,15 +1,14 @@
 import BookOrbitAPI
+import BookOrbitCore
 import Foundation
 import HTTPTypes
 import OpenAPIRuntime
-import os
 
-/// Owns one session's tokens: hands out a valid access token, refreshes it when it expires or the
-/// server rejects it, and persists every rotated refresh token. Concurrent callers share a single
-/// refresh, because the server rotates the refresh token on each use.
+/// Concurrent callers share a single refresh, because the server rotates the refresh token on each
+/// use and a second refresh with the old token would race the first.
 actor TokenManager {
     private static let refreshMargin: TimeInterval = 30
-    private static let logger = Logger(subsystem: "app.bookorbit.ipad", category: "auth")
+    private static let log = EventLog(category: "auth")
 
     private var stored: StoredSession?
     private var refreshTask: Task<String, any Error>?
@@ -34,8 +33,8 @@ actor TokenManager {
         return try await refresh()
     }
 
-    /// Called after the server answered 401 to `rejectedToken`. Another request may already have
-    /// refreshed it, in which case the newer token is returned without refreshing again.
+    /// Another request may already have refreshed the rejected token; its replacement is reused
+    /// instead of refreshing twice.
     func accessToken(replacing rejectedToken: String) async throws -> String {
         guard let credentials = stored?.credentials else { throw SessionError.signedOut }
         if credentials.accessToken != rejectedToken { return credentials.accessToken }
@@ -57,18 +56,24 @@ actor TokenManager {
 
     private func performRefresh() async throws -> String {
         guard let current = stored else { throw SessionError.signedOut }
+        let sessionId = current.credentials.sessionId
         let started = ContinuousClock.now
+        Self.log.info("[auth.refresh] [start] sessionId=\(sessionId) - refresh started")
+
         let output: Operations.AuthControllerRefresh.Output
         do {
             output = try await refreshClient.authControllerRefresh(body: .json(.init(refreshToken: current.credentials.refreshToken)))
         } catch {
-            Self.logger.error("[auth.refresh] [fail] sessionId=\(current.credentials.sessionId) durationMs=\(started.millisecondsElapsed) errorClass=\(type(of: error)) - refresh failed")
-            throw Reachability.isUnreachable(error) ? SessionError.serverUnreachable : SessionError.unexpectedResponse(statusCode: 0)
+            Self.log.error("[auth.refresh] [fail] sessionId=\(sessionId) durationMs=\(started.millisecondsElapsed) \(failureFields(error)) - refresh failed")
+            throw Reachability.sessionError(forTransportError: error)
         }
 
         switch output {
         case .ok(let ok):
-            let refreshed = try ok.body.json
+            guard let refreshed = try? ok.body.json else {
+                Self.log.error("[auth.refresh] [fail] sessionId=\(sessionId) durationMs=\(started.millisecondsElapsed) errorClass=DecodingError error=\"unreadable body\" - refresh failed")
+                throw SessionError.invalidResponse
+            }
             guard var next = stored else { throw SessionError.signedOut }
             next.credentials = Credentials(
                 accessToken: refreshed.accessToken,
@@ -79,23 +84,18 @@ actor TokenManager {
             )
             stored = next
             try sessionStore.save(next)
+            Self.log.info("[auth.refresh] [end] sessionId=\(sessionId) durationMs=\(started.millisecondsElapsed) - refresh completed")
             return refreshed.accessToken
         case .default(let statusCode, _) where statusCode == 400 || statusCode == 401 || statusCode == 403:
-            Self.logger.notice("[auth.refresh] [fail] sessionId=\(current.credentials.sessionId) durationMs=\(started.millisecondsElapsed) status=\(statusCode) - session expired")
+            Self.log.notice("[auth.refresh] [fail] sessionId=\(sessionId) durationMs=\(started.millisecondsElapsed) status=\(statusCode) errorClass=SessionError error=\"session expired\" - refresh rejected")
             stored = nil
             try? sessionStore.clear()
             await onSessionExpired()
             throw SessionError.sessionExpired
         case .default(let statusCode, _):
+            Self.log.error("[auth.refresh] [fail] sessionId=\(sessionId) durationMs=\(started.millisecondsElapsed) status=\(statusCode) errorClass=SessionError error=\"unexpected status\" - refresh failed")
             throw SessionError.unexpectedResponse(statusCode: statusCode)
         }
-    }
-}
-
-extension ContinuousClock.Instant {
-    var millisecondsElapsed: Int64 {
-        let elapsed = ContinuousClock.now - self
-        return elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000
     }
 }
 

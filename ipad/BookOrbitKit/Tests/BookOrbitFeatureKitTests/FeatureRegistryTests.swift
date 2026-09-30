@@ -4,7 +4,7 @@ import Testing
 
 @Suite struct FeatureRegistryTests {
     private func reader(_ id: String, formats: Set<String>) -> ReaderEntryPoint {
-        ReaderEntryPoint(id: id, title: "Read", systemImage: "book", formats: formats) { _, _ in AnyView(EmptyView()) }
+        ReaderEntryPoint(id: id, label: FeatureLabel("Read", systemImage: "book"), formats: formats) { _, _ in AnyView(EmptyView()) }
     }
 
     private func book(formats: [String]) -> BookSummary {

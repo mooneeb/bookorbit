@@ -11,9 +11,9 @@ struct MainView: View {
                 screen.makeView(context)
                     .tabItem {
                         Label {
-                            Text(screen.title)
+                            Text(screen.label.title)
                         } icon: {
-                            Image(systemName: screen.systemImage)
+                            Image(systemName: screen.label.systemImage)
                         }
                     }
             }

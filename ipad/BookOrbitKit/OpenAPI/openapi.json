@@ -33919,24 +33919,6 @@
         },
         "required": ["bookId", "fileId", "hrefs"]
       },
-      "ApiError": {
-        "type": "object",
-        "properties": {
-          "statusCode": {
-            "type": "integer"
-          },
-          "message": {
-            "type": "string"
-          },
-          "errorCode": {
-            "type": "string"
-          },
-          "retryAfterSeconds": {
-            "type": "integer"
-          }
-        },
-        "required": ["statusCode", "message"]
-      },
       "OidcProviderSummary": {
         "type": "object",
         "properties": {
@@ -34059,6 +34041,24 @@
           "sessionId",
           "user"
         ]
+      },
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "retryAfterSeconds": {
+            "type": "integer"
+          }
+        },
+        "required": ["statusCode", "message"]
       },
       "SortSpec": {
         "type": "object",

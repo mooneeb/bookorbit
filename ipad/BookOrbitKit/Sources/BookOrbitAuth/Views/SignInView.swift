@@ -1,7 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-/// Password sign-in against the chosen server.
 public struct SignInView: View {
     private let model: SessionModel
     private let server: ServerAddress
@@ -58,31 +57,10 @@ public struct SignInView: View {
             do {
                 try await model.signIn(username: username, password: password)
             } catch let error as SignInError {
-                errorMessage = Self.message(for: error)
+                errorMessage = error.userMessage
             } catch {
-                errorMessage = "Login failed. Try again."
+                errorMessage = SignInError.noResponse.userMessage
             }
-        }
-    }
-
-    private static func message(for error: SignInError) -> LocalizedStringResource {
-        switch error {
-        case .serverUnreachable:
-            "Server unreachable. Check your connection (is Tailscale on?) and try again."
-        case .invalidCredentials:
-            "Login failed: wrong username or password."
-        case .accountLocked(let retryAfterSeconds):
-            if let retryAfterSeconds {
-                "Login failed: the account is locked. Try again in \(max(1, retryAfterSeconds / 60)) min."
-            } else {
-                "Login failed: the account is temporarily locked."
-            }
-        case .passwordLoginDisabled:
-            "Login failed: password sign-in is turned off on this server."
-        case .tooManyAttempts:
-            "Login failed: too many attempts. Wait a minute and try again."
-        case .unexpectedResponse(let statusCode):
-            "Login failed: the server answered unexpectedly (\(statusCode))."
         }
     }
 }

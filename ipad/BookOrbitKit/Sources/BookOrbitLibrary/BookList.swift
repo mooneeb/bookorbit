@@ -4,14 +4,12 @@ import BookOrbitFeatureKit
 import Foundation
 import Observation
 
-/// The reader's books across all their libraries, sorted by title and loaded one page at a time so
-/// libraries with tens of thousands of books stay cheap.
 @MainActor @Observable
 public final class BookList {
     public private(set) var books: [BookSummary] = []
     public private(set) var hasMore = true
     public private(set) var isLoading = false
-    public private(set) var failure: LoadFailure?
+    public private(set) var failure: SessionError?
 
     private let session: AuthenticatedSession
     private let pageSize: Int
@@ -22,7 +20,6 @@ public final class BookList {
         self.pageSize = pageSize
     }
 
-    /// Loads the next page, unless one is already loading or the end was reached.
     public func loadMore() async {
         guard hasMore, !isLoading else { return }
         isLoading = true
@@ -39,27 +36,16 @@ public final class BookList {
             hasMore = page.items.count == pageSize && books.count < page.total
             failure = nil
         } catch {
-            failure = LoadFailure(error)
+            failure = SessionError(error) ?? .invalidResponse
         }
     }
 
-    /// Loads the next page when `book` is close to the end of what is loaded.
+    /// Called as each row appears; only the last few rows are checked, so it stays constant time
+    /// however many books are loaded.
     public func loadMoreIfNeeded(after book: BookSummary) async {
-        guard let index = books.firstIndex(of: book), index >= books.count - 10 else { return }
+        guard books.suffix(Self.prefetchDistance).contains(where: { $0.id == book.id }) else { return }
         await loadMore()
     }
-}
 
-public enum LoadFailure: Error, Equatable {
-    case serverUnreachable
-    case sessionExpired
-    case unexpected
-
-    init(_ error: any Error) {
-        switch SessionError(error) {
-        case .serverUnreachable: self = .serverUnreachable
-        case .sessionExpired, .signedOut: self = .sessionExpired
-        default: self = .unexpected
-        }
-    }
+    private static let prefetchDistance = 10
 }

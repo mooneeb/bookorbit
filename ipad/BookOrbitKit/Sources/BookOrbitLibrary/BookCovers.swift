@@ -3,8 +3,8 @@ import BookOrbitFeatureKit
 import Foundation
 import ImageIO
 
-/// Loads cover thumbnails, which need the session's access token and so cannot go through
-/// `AsyncImage`. The cover version in the URL lets the HTTP cache keep them.
+/// Thumbnails need the access token, so `AsyncImage` cannot load them. The cover version in the
+/// URL lets the HTTP cache keep them.
 public struct BookCovers: Sendable {
     private let session: AuthenticatedSession
 
@@ -12,7 +12,6 @@ public struct BookCovers: Sendable {
         self.session = session
     }
 
-    /// The thumbnail's image bytes, or nil when the book has no cover.
     public func thumbnail(for book: BookSummary) async throws -> Data? {
         guard book.hasCover else { return nil }
         return try await session.data(
@@ -21,7 +20,7 @@ public struct BookCovers: Sendable {
         )
     }
 
-    /// The thumbnail decoded and downsampled for display, or nil when there is none or it fails.
+    /// Downsampled while decoding, so a long list never holds full-size covers in memory.
     public func thumbnailImage(for book: BookSummary, maxPixelSize: Int = 400) async -> CGImage? {
         guard let data = try? await thumbnail(for: book),
             let source = CGImageSourceCreateWithData(data as CFData, nil)
