@@ -159,6 +159,28 @@ describe('AppInfoService', () => {
       expect((await service.getAppInfo()).updateAvailable).toBe(true);
     });
 
+    it('checks a four-part fork version against upstream releases', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValue(makeGithubResponse('v3.2.0'));
+
+      const service = new AppInfoService(makeConfig('v3.1.0.1'), makeAppSettings(true));
+      await service.onApplicationBootstrap();
+
+      const info = await service.getAppInfo();
+      expect(fetch).toHaveBeenCalledWith(GITHUB_RELEASES_API, expect.objectContaining({ headers: expect.any(Object) }));
+      expect(info.version).toBe('v3.1.0.1');
+      expect(info.latestVersion).toBe('v3.2.0');
+      expect(info.updateAvailable).toBe(true);
+    });
+
+    it('treats a four-part fork version as current when upstream has the same base release', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValue(makeGithubResponse('v3.1.0'));
+
+      const service = new AppInfoService(makeConfig('v3.1.0.4'), makeAppSettings(true));
+      await service.onApplicationBootstrap();
+
+      expect((await service.getAppInfo()).updateAvailable).toBe(false);
+    });
+
     it('skips fetch and leaves updateAvailable: null when version is "Local build"', async () => {
       const fetchSpy = vi.spyOn(global, 'fetch');
 
