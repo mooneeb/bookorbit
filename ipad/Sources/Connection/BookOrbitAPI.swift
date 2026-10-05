@@ -20,7 +20,7 @@ actor BookOrbitAPI {
   private let transport: URLSession
   private let store: CredentialStore
   private var saved: SavedSession?
-  private var refreshTask: Task<NativeCredentials, Error>?
+  private var refreshTask: (id: UUID, task: Task<NativeCredentials, Error>)?
   private var sessionGeneration = UUID()
 
   init(profile: ServerProfile) throws {
@@ -68,22 +68,26 @@ actor BookOrbitAPI {
         sessionId: response.sessionId), user: response.user)
     try store.write(session)
     sessionGeneration = UUID()
+    refreshTask?.task.cancel()
+    refreshTask = nil
     saved = session
     return response.user
   }
 
   func resume() async throws -> AuthUser? {
     guard saved != nil else { return nil }
+    let generation = sessionGeneration
     do {
       let user: AuthUser = try await send("auth/me")
-      guard var session = saved else { throw ConnectionError.expiredSession }
+      guard generation == sessionGeneration, var session = saved else {
+        throw ConnectionError.expiredSession
+      }
       session.user = user
       try store.write(session)
       saved = session
       return user
     } catch ConnectionError.expiredSession {
-      try store.remove()
-      saved = nil
+      if generation == sessionGeneration { try invalidateSession() }
       throw ConnectionError.expiredSession
     }
   }
@@ -94,10 +98,7 @@ actor BookOrbitAPI {
       RefreshRequest(refreshToken: saved.credentials.refreshToken))
     let (_, response) = try await raw("auth/logout", method: "POST", body: body)
     try validate(response)
-    try store.remove()
-    sessionGeneration = UUID()
-    refreshTask?.cancel()
-    self.saved = nil
+    try invalidateSession()
   }
 
   func changePassword(current: String, new: String) async throws {
@@ -106,8 +107,14 @@ actor BookOrbitAPI {
     let (_, response) = try await raw(
       "auth/change-password", method: "POST", body: body, token: accessToken())
     try validate(response)
+    try invalidateSession()
+  }
+
+  private func invalidateSession() throws {
     try store.remove()
     sessionGeneration = UUID()
+    refreshTask?.task.cancel()
+    refreshTask = nil
     saved = nil
   }
 
@@ -139,24 +146,33 @@ actor BookOrbitAPI {
   }
 
   private func refresh() async throws -> NativeCredentials {
-    if let refreshTask { return try await refreshTask.value }
-    guard var saved else { throw ConnectionError.expiredSession }
     let generation = sessionGeneration
-    let body = try JSONEncoder().encode(
-      RefreshRequest(refreshToken: saved.credentials.refreshToken))
-    let task = Task<NativeCredentials, Error> {
-      let (data, response) = try await self.raw("auth/refresh", method: "POST", body: body)
-      if response.statusCode == 401 { throw ConnectionError.expiredSession }
-      try self.validate(response)
-      return try JSONDecoder().decode(NativeCredentials.self, from: data)
+    let pending: (id: UUID, task: Task<NativeCredentials, Error>)
+    if let refreshTask {
+      pending = refreshTask
+    } else {
+      guard let saved else { throw ConnectionError.expiredSession }
+      let body = try JSONEncoder().encode(
+        RefreshRequest(refreshToken: saved.credentials.refreshToken))
+      let task = Task<NativeCredentials, Error> {
+        let (data, response) = try await self.raw("auth/refresh", method: "POST", body: body)
+        if response.statusCode == 401 { throw ConnectionError.expiredSession }
+        try self.validate(response)
+        let credentials = try JSONDecoder().decode(NativeCredentials.self, from: data)
+        guard generation == self.sessionGeneration, var session = self.saved else {
+          throw ConnectionError.expiredSession
+        }
+        session.credentials = credentials
+        try self.store.write(session)
+        self.saved = session
+        return credentials
+      }
+      pending = (UUID(), task)
+      refreshTask = pending
     }
-    refreshTask = task
-    defer { refreshTask = nil }
-    let credentials = try await task.value
+    defer { if refreshTask?.id == pending.id { refreshTask = nil } }
+    let credentials = try await pending.task.value
     guard generation == sessionGeneration else { throw ConnectionError.expiredSession }
-    saved.credentials = credentials
-    try store.write(saved)
-    self.saved = saved
     return credentials
   }
 

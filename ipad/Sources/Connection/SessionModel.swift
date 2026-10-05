@@ -11,6 +11,8 @@ final class SessionModel {
   var error: String?
   var serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? ""
   private let oidc = OIDCSignIn()
+  private var sessionOperationID = UUID()
+  private var isValidating = false
 
   func connect() async {
     await perform {
@@ -31,11 +33,22 @@ final class SessionModel {
   }
 
   func returnToForeground() async {
-    guard let api, user != nil, !isBusy else { return }
-    do { user = try await api.resume() } catch ConnectionError.expiredSession {
-      user = nil
-      error = ConnectionError.expiredSession.localizedDescription
-    } catch { self.error = error.localizedDescription }
+    guard let api, user != nil, !isBusy, !isValidating else { return }
+    let operationID = sessionOperationID
+    isValidating = true
+    defer { isValidating = false }
+    do {
+      let resumedUser = try await api.resume()
+      guard self.api === api, operationID == sessionOperationID else { return }
+      user = resumedUser
+    } catch {
+      guard self.api === api, operationID == sessionOperationID else { return }
+      switch error {
+      case ConnectionError.expiredSession: user = nil
+      default: break
+      }
+      self.error = error.localizedDescription
+    }
   }
 
   func signIn(username: String, password: String) async {
@@ -70,6 +83,7 @@ final class SessionModel {
 
   func changeServer() {
     guard user == nil, !isBusy else { return }
+    sessionOperationID = UUID()
     api = nil
     options = nil
     error = nil
@@ -77,6 +91,7 @@ final class SessionModel {
 
   private func perform(_ work: () async throws -> Void) async {
     guard !isBusy else { return }
+    sessionOperationID = UUID()
     isBusy = true
     error = nil
     defer { isBusy = false }
