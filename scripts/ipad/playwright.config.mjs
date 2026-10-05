@@ -1,13 +1,17 @@
 import { defineConfig } from "@playwright/test";
 
+const runID = process.env.IPAD_TEST_RUN ?? `manual-${Date.now()}`;
+if (!/^[a-zA-Z0-9_-]+$/.test(runID)) throw new Error("IPAD_TEST_RUN must be a safe directory name");
+const artifacts = `../../test-results/ipad/${runID}`;
+
 export default defineConfig({
   testDir: ".",
   testMatch: "web.test.mjs",
   workers: 1,
   retries: 0,
   timeout: 60_000,
-  outputDir: "../../test-results/ipad/browser",
-  reporter: [["list"], ["html", { outputFolder: "../../test-results/ipad/browser-report", open: "never" }]],
+  outputDir: `${artifacts}/browser`,
+  reporter: [["list"], ["html", { outputFolder: `${artifacts}/browser-report`, open: "never" }]],
   use: {
     baseURL: "http://localhost:16484",
     browserName: "chromium",

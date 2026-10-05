@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
@@ -7,12 +9,15 @@ const require = createRequire(new URL("../../server/package.json", import.meta.u
 const { Client } = require("pg");
 const databaseName = `bookorbit_ipad_${process.pid}_e2e`;
 const databaseURL = `postgres://bookorbit:bookorbit@localhost:5432/${databaseName}`;
+const runID = `run-${process.pid}-${Date.now()}`;
 const env = {
   ...process.env,
   DATABASE_URL: databaseURL,
   E2E_DATABASE_URL: databaseURL,
   NODE_ENV: "test",
-  JWT_SECRET: "isolated-ipad-test-secret-with-at-least-32-characters",
+  APP_URL: "http://localhost:16484",
+  IPAD_TEST_RUN: runID,
+  JWT_SECRET: randomBytes(32).toString("hex"),
   SETUP_BOOTSTRAP_TOKEN: "",
   NATIVE_REDIRECT_URI: "bookorbit://oauth2-callback",
   NATIVE_ADDITIONAL_REDIRECT_URIS: "bookorbit-private://oauth2-callback",
@@ -110,6 +115,7 @@ try {
   await command("pnpm", ["ipad:contracts:check"]);
   await command("pnpm", ["--filter", "@bookorbit/types", "build"]);
   await command("pnpm", ["--filter", "@bookorbit/plugin-api", "build"]);
+  if (process.argv.includes("--web")) await command("pnpm", ["--filter", "client", "build-only"]);
   await command("pnpm", ["--filter", "server", "e2e:db:prepare"]);
   await command("pnpm", ["--filter", "server", "db:migrate"]);
   await command("pnpm", ["--filter", "server", "exec", "tsc", "-p", "tsconfig.ipad.json"]);
@@ -136,7 +142,7 @@ try {
   } else {
     await command(process.execPath, ["--test", "scripts/ipad/http.test.mjs"]);
     if (process.argv.includes("--web")) {
-      web = launch("pnpm", ["--filter", "client", "exec", "vite", "--host", "127.0.0.1", "--port", "16484", "--strictPort"], {
+      web = launch("pnpm", ["--filter", "client", "exec", "vite", "preview", "--host", "127.0.0.1", "--port", "16484", "--strictPort"], {
         env: { ...env, BOOKORBIT_API_TARGET: "http://localhost:16482" },
         stdio: "inherit",
       });
@@ -152,6 +158,7 @@ try {
       await command("pnpm", ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"]);
     }
     if (process.argv.includes("--ui")) {
+      await mkdir(`${root}/test-results/ipad/${runID}`, { recursive: true });
       await command("xcodegen", ["generate", "--spec", "ipad/project.yml"]);
       await command("xcodebuild", [
         "test",
@@ -164,7 +171,7 @@ try {
         "-derivedDataPath",
         "ipad/DerivedData",
         "-resultBundlePath",
-        `test-results/ipad/${Date.now()}.xcresult`,
+        `test-results/ipad/${runID}/native.xcresult`,
         "CODE_SIGNING_ALLOWED=NO",
       ]);
     }

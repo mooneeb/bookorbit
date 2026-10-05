@@ -54,7 +54,7 @@ pnpm ipad:test:web
 
 Each command creates and migrates a unique `bookorbit_ipad_<run>_e2e` localhost database, creates temporary content, starts the real Nest/Fastify application on port 16482, and removes its database after the run. The harness rejects other database names/hosts. It seeds 50,000 books in batches of 500, two accounts, a three-page PDF, and an external OIDC protocol fixture on port 16483. Core controllers, guards, DTO validation, services, and persistence are real. The OIDC fixture is an external-provider substitution with signed tokens and real PKCE validation.
 
-Browser tests use the actual Vue app on port 16484. Ports 16482-16484 must be free. Fixture accounts are `ipad-owner` and `ipad-restricted`, with test-only password `IpadFixture123`. To inspect the fixture interactively:
+Browser tests build the actual Vue app and serve its production output on port 16484, avoiding development compilation during timed UI assertions. Ports 16482-16484 must be free. Fixture accounts are `ipad-owner` and `ipad-restricted`, with test-only password `IpadFixture123`. To inspect the fixture interactively:
 
 ```sh
 pnpm ipad:serve:test
@@ -73,7 +73,7 @@ xcrun simctl create 'BookOrbit Test iPad' \
 pnpm ipad:test:ui
 ```
 
-Use `xcrun simctl list devicetypes` to select an available device type if the identifier differs. `IPAD_TEST_DESTINATION` overrides the Xcode destination. XCTest attachments and `.xcresult` bundles are retained under `test-results/ipad/`. Browser reports, failure traces, and screenshots are retained there too. No automatic retry or baseline acceptance is enabled.
+Use `xcrun simctl list devicetypes` to select an available device type if the identifier differs. `IPAD_TEST_DESTINATION` overrides the Xcode destination. Each run retains evidence under `test-results/ipad/run-<pid>-<timestamp>/`: native attachments in `native.xcresult`, browser screenshots/traces in `browser/`, and the browser report in `browser-report/`. Later runs preserve earlier evidence. No automatic retry or baseline acceptance is enabled.
 
 ## Current evidence and remaining work
 
@@ -83,9 +83,13 @@ Use `xcrun simctl list devicetypes` to select an available device type if the id
 | IPAD-E01-A05 HTTP test              | Authenticated HTTP                    | Restricted account cannot list, inspect, or download an inaccessible library                                                                                                  |
 | IPAD-E01-A01-web                    | Actual browser                        | Local login, bounded large-library query, search, record reopen/reload, portrait/landscape screenshots                                                                        |
 | IPAD-E01-A05-web                    | Actual browser and HTTP               | Restricted navigation and denied file delivery                                                                                                                                |
+| IPAD-E01-A01-web-oidc               | Actual browser                        | Controlled provider sign-in and access to the authorized library                                                                                                              |
+| IPAD-E01-A03-web                    | Actual browser and HTTP               | Delivered PDF page navigation, saved page 2 and reopen/resume                                                                                                                 |
 | testIPADE01A01LocalLoginAndRelaunch | Native XCUITest                       | Compiled login/search/details/rotation/relaunch, accessibility audit and public-API session revocation/recovery journey; execution still required                             |
 | testIPADE01A01OIDCLoginAndRelaunch  | Native XCUITest                       | Compiled system authentication, controlled OIDC and relaunch journey; execution still required                                                                                |
 
-The browser library portrait and detail landscape screenshots from the initial passing run were opened and inspected by the implementing agent. Controls and content were reachable; the portrait library title truncates in the compact toolbar while remaining visible in the sidebar. This review does not establish human-approved visual regression baselines.
+The implementing agent opened and inspected the final browser library portrait, detail landscape, initial PDF page and resumed PDF page screenshots. Controls and content were reachable; the portrait library title truncates in the compact toolbar while remaining visible in the sidebar. See [verification.md](verification.md) for the test IDs, environment, artifact paths, inspection findings and corrected failures. This review does not establish human-approved visual regression baselines.
 
 Remaining issue #2 deliverables include dashboard/author/series/organization workflows, table/filter/saved-view parity, metadata and cover management, the ebook/PDF/comic/audio readers and their preferences/progress/bookmarks, Read Along/TTS/audio bridging, native engine/CFI/signing proofs, the complete native/browser/artifact acceptance matrix, human-reviewed visual baselines, performance/accessibility budgets and audits, physical-device evidence, AltStore installation/renewal, and the integrated human walkthrough. PDF ink and explicit offline packages remain assigned to issue #3. These requirements have not been waived or represented as passing.
+
+See [the interim two-axis review](review.md) for findings and resolutions against the starting commit.

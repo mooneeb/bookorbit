@@ -28,7 +28,7 @@ export async function startOidcProvider() {
       } else if (url.pathname === '/authorize') {
         const code = randomUUID();
         const redirectUri = url.searchParams.get('redirect_uri') ?? '';
-        if (!['bookorbit://oauth2-callback', 'bookorbit-private://oauth2-callback'].includes(redirectUri)) {
+        if (!['bookorbit://oauth2-callback', 'bookorbit-private://oauth2-callback', 'http://localhost:16484/oauth2-callback'].includes(redirectUri)) {
           response.writeHead(400).end();
           return;
         }

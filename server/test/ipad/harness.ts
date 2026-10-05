@@ -80,6 +80,7 @@ async function main() {
       libraryId: library.id,
       libraryFolderId: libraryFolder.id,
       folderPath: join(folder, `book-${offset + index}`),
+      addedAt: new Date('2026-01-01T00:00:00Z'),
     }));
     const created = await db.insert(schema.books).values(batch).returning({ id: schema.books.id });
     await db.insert(schema.bookMetadata).values(
