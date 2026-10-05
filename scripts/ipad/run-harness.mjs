@@ -166,6 +166,8 @@ try {
         "ipad/BookOrbit.xcodeproj",
         "-scheme",
         "BookOrbit",
+        "-parallel-testing-enabled",
+        "NO",
         "-destination",
         process.env.IPAD_TEST_DESTINATION ?? "platform=iOS Simulator,name=BookOrbit Test iPad",
         "-derivedDataPath",

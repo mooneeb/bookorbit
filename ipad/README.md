@@ -75,6 +75,8 @@ pnpm ipad:test:ui
 
 Use `xcrun simctl list devicetypes` to select an available device type if the identifier differs. `IPAD_TEST_DESTINATION` overrides the Xcode destination. Each run retains evidence under `test-results/ipad/run-<pid>-<timestamp>/`: native attachments in `native.xcresult`, browser screenshots/traces in `browser/`, and the browser report in `browser-report/`. Later runs preserve earlier evidence. No automatic retry or baseline acceptance is enabled.
 
+Native tests run serially on the selected simulator. After an interrupted simulator boot, consult [verification.md](verification.md) for the current recovery checkpoint before starting another run.
+
 ## Current evidence and remaining work
 
 | Named test                          | Boundary                              | Current coverage                                                                                                                                                              |

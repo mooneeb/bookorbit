@@ -4,7 +4,7 @@ Date: 2026-10-05. These results cover the implemented entry/browsing foundation 
 
 ## Environment
 
-macOS 27.0 (26A428), Xcode 27.0 (27A266a), Node 25.7.0, pnpm 11.22.0, Playwright 1.63.0 with its Chromium headless shell, and the local PostgreSQL dev container. Native deployment targets iPadOS 26; the iOS 26.0 arm64 simulator runtime was still downloading when this evidence was recorded.
+macOS 27.0 (26A428), Xcode 27.0 (27A266a), Node 25.7.0, pnpm 11.22.0, Playwright 1.63.0 with its Chromium headless shell, and the local PostgreSQL dev container. Native deployment targets iPadOS 26. The iOS 26.0 arm64 simulator runtime (23A343) was installed, but native execution remains blocked by the simulator recovery described below.
 
 The real BookOrbit server uses `http://localhost:16482`; the production Vue build uses `http://localhost:16484`. OIDC is enabled with the external protocol fixture displayed as `Test identity provider`. Each run migrates and seeds a separate temporary database with 50,000 books. The public HTTP API, actual browser/native UI, and delivered files are the agreed test boundaries. No assertion queries private database state.
 
@@ -15,7 +15,7 @@ The real BookOrbit server uses `http://localhost:16482`; the production Vue buil
 - `pnpm ipad:contracts:check`: passed, including in the final harness run.
 - `pnpm --filter server exec eslint .`: passed after the review fixes.
 - `xcrun swift-format lint --strict` on both changed session files: passed.
-- `xcodebuild build-for-testing`: passed for the app and two XCUITest journeys with signing disabled. This is compilation evidence only. Native UI execution and its accessibility audit remain unverified because no simulator runtime is installed yet.
+- `xcodebuild build-for-testing`: passed for the app and two XCUITest journeys with signing disabled. This is compilation evidence only. Native UI execution and its accessibility audit remain unverified.
 - The first full regression run passed 14,692 server tests but failed two existing config expectations after adding the callback setting. Both expectations were updated; all 25 config tests then passed. The separately executed full client suite passed 7,163 tests. The complete regression rerun passed 14,693 server tests but failed the existing real-filesystem watcher pause/resume timing test; it stopped before the client stage. All 39 watcher tests passed in an isolated diagnostic run, which does not erase the full-run failure. The six existing skips are the opt-in qBittorrent daemon reproduction (five tests) and the podcast-disabled configuration case while that feature is enabled (one test). No new issue #2 test is skipped.
 
 ## Screenshot inspection
@@ -32,6 +32,18 @@ Artifact root: `test-results/ipad/run-11644-1791219645293/browser/`. The harness
 | IPAD-E01-A03-web | PDF reopened at page 2, 1024 x 1366 portrait | `web-IPAD-E01-A03-web-read--30704-F-and-resume-its-saved-page/IPAD-E01-A03-pdf-resumed.png`      | Passage 2 is visible, counter 2 of 3. Page placement and toolbar are intact; the following page begins below the viewport.                                                                                          |
 
 ## Failures and corrections
+
+### Native simulator recovery
+
+The initial native run passed all four HTTP tests, then stalled in Xcode preflight without starting either native test. When the disk filled, that attempt was stopped. Task-generated build output and browser runtime caches were removed; source changes, dependency installations, user files and captured evidence were preserved. The installed simulator asset occupies approximately 7.5 GiB. Its removal was interrupted before the user authorized resuming after freeing space.
+
+The resumed attempt used the cached runtime, restarted the local PostgreSQL container and disabled parallel native testing to avoid creating multiple active test devices. Run `run-32399-1791221842979` passed all four HTTP tests without retries. Xcode again stalled before test execution. A one-second process sample shows its simulator profile queue blocked in the kernel `stat` call while loading a runtime profile. Simulator boot and cache creation were also blocked. Stopping orphaned processes from the task-created simulator released substantial swap allocation; free disk space stabilized at approximately 44 GiB. These measurements do not attribute all system storage or memory use to this task.
+
+Service restarts and runtime unmount/remount attempts did not restore booting. The system-owned `simdiskimaged` service remained blocked; a noninteractive administrator restart was unavailable because macOS requires a password. No password was requested. A Mac restart is the next recovery step before native UI work can resume. The harness was stopped, with its temporary database and server processes cleaned up. This is an interrupted environment attempt, not a native test pass or an assertion failure.
+
+The run directory preserves `run.log`, `xcode-stall.sample` and `core-simulator-recovery.log`. No native screenshots, accessibility result or valid native test report were produced. The prior compiled tests still require actual execution.
+
+### Browser and regression checks
 
 Cold Vite development compilation exceeded the initial navigation assertion deadline. The harness now builds and serves production output before timed UI assertions. A search assertion counted a hidden tooltip from an old card; the corrected test verifies the authorized response and visible results. The PDF record route legitimately retains a details query parameter; its assertion now accepts that route.
 
