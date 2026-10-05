@@ -14,6 +14,12 @@
   "private": true,
   "packageManager": "pnpm@11.22.0",
   "scripts": {
+    "ipad:contracts": "node scripts/ipad/generate-contracts.mjs",
+    "ipad:contracts:check": "node scripts/ipad/generate-contracts.mjs --check",
+    "ipad:test:http": "node scripts/ipad/run-harness.mjs",
+    "ipad:test:ui": "node scripts/ipad/run-harness.mjs --ui",
+    "ipad:test:web": "node scripts/ipad/run-harness.mjs --web",
+    "ipad:serve:test": "node scripts/ipad/run-harness.mjs --serve",
     "setup": "bash ./scripts/bootstrap/local.sh",
     "dev": "concurrently --names \"types,server,client\" --prefix-colors \"cyan,blue,green\" \"pnpm --filter @bookorbit/types dev\" \"pnpm run dev:server\" \"pnpm run dev:client\"",
     "dev:client": "cd client && pnpm dev -- --host",
@@ -61,6 +67,7 @@
   "devDependencies": {
     "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^21.2.3",
+    "@playwright/test": "^1.63.0",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/github": "^12.0.10",
     "@semantic-release/release-notes-generator": "^14.1.1",

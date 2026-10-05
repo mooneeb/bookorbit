@@ -1,7 +1,8 @@
 import { AuthClientDto } from './auth-client.dto';
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import type { OidcCallbackRequest } from '@bookorbit/types';
 
-export class OidcCallbackDto extends AuthClientDto {
+export class OidcCallbackDto extends AuthClientDto implements OidcCallbackRequest {
   @IsString()
   @IsNotEmpty()
   @MaxLength(2048)

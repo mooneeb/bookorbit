@@ -10,6 +10,10 @@ export const appConfig = registerAs('app', () => ({
   // client binary, so it is the same for every provider on every deployment; configurable only so
   // a rebranded fork can change it.
   nativeRedirectUri: process.env.NATIVE_REDIRECT_URI?.trim() || 'bookorbit://oauth2-callback',
+  nativeAdditionalRedirectUris: (process.env.NATIVE_ADDITIONAL_REDIRECT_URIS ?? '')
+    .split(',')
+    .map((uri) => uri.trim())
+    .filter(Boolean),
   version: process.env.APP_VERSION ?? 'Local build',
   githubReleasesRepo: process.env.GITHUB_RELEASES_REPO?.trim() || 'bookorbit/bookorbit',
   githubReleasesToken: process.env.GITHUB_RELEASES_TOKEN?.trim() || undefined,

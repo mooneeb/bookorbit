@@ -167,6 +167,33 @@ export interface AuthClientOptions {
   deviceLabel?: string;
 }
 
+export interface LoginRequest extends AuthClientOptions {
+  username: string;
+  password: string;
+}
+
+export interface RefreshRequest {
+  refreshToken?: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface OidcStateResponse {
+  state: string;
+  authorizationEndpoint: string;
+}
+
+export interface OidcCallbackRequest extends AuthClientOptions {
+  code: string;
+  codeVerifier: string;
+  redirectUri: string;
+  nonce: string;
+  state: string;
+}
+
 export interface NativeCredentials {
   accessToken: string;
   accessTokenExpiresAt: string;

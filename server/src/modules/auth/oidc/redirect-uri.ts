@@ -10,6 +10,7 @@ export interface RedirectUriPolicy {
   appUrl: string;
   /** Private-use scheme the native clients hand to the IdP, e.g. `bookorbit://oauth2-callback`. */
   nativeRedirectUri: string;
+  nativeAdditionalRedirectUris?: readonly string[];
 }
 
 /**
@@ -35,5 +36,5 @@ export function isAllowedRedirectUri(candidate: string, policy: RedirectUriPolic
   // literal string "null" with an empty pathname for every non-special scheme, so normalizing
   // would collapse `bookorbit://oauth2-callback` and `evil://anything` to the same value and
   // accept any private-use scheme an attacker supplied.
-  return candidate === policy.nativeRedirectUri;
+  return candidate === policy.nativeRedirectUri || (policy.nativeAdditionalRedirectUris?.includes(candidate) ?? false);
 }

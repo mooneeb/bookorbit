@@ -39,3 +39,10 @@ test-results/
 
 # vite-plugin-pwa dev service worker output
 dev-dist
+
+# Native generated projects and builds
+ipad/BookOrbit.xcodeproj/
+ipad/Info.plist
+ipad/.build/
+ipad/DerivedData/
+server/dist-ipad/
