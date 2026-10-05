@@ -168,13 +168,16 @@ try {
         "BookOrbit",
         "-parallel-testing-enabled",
         "NO",
+        "-collect-test-diagnostics",
+        "never",
         "-destination",
         process.env.IPAD_TEST_DESTINATION ?? "platform=iOS Simulator,name=BookOrbit Test iPad",
         "-derivedDataPath",
         "ipad/DerivedData",
         "-resultBundlePath",
         `test-results/ipad/${runID}/native.xcresult`,
-        "CODE_SIGNING_ALLOWED=NO",
+        "CODE_SIGNING_ALLOWED=YES",
+        "CODE_SIGN_IDENTITY=-",
       ]);
     }
   }

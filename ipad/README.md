@@ -13,7 +13,8 @@ xcodegen generate --spec ipad/project.yml
 xcodebuild build-for-testing \
   -project ipad/BookOrbit.xcodeproj -scheme BookOrbit \
   -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath ipad/DerivedData CODE_SIGNING_ALLOWED=NO
+  -derivedDataPath ipad/DerivedData \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-
 ```
 
 Open the generated `ipad/BookOrbit.xcodeproj` in Xcode to run the app. Enter the server's base URL, including any deployment path prefix. The app appends `/api/v1`. HTTPS is recommended for a server outside localhost; the simulator can use `http://localhost:16482` with the fixture below. HTTP localhost in the simulator reaches the Mac. A physical iPad needs an address reachable from that device.
@@ -63,10 +64,15 @@ BOOKORBIT_API_TARGET=http://localhost:16482 pnpm --filter client exec vite --por
 
 Stop the fixture with Ctrl-C. Never point these commands at a home or production database.
 
-For native UI execution, install the pinned iOS 26.0 arm64 runtime and create a simulator:
+For native UI execution, check `xcrun simctl list runtimes` and reuse the installed iOS 26.0 arm64 runtime. If it is missing, install it once:
 
 ```sh
 xcodebuild -downloadPlatform iOS -buildVersion 26.0 -architectureVariant arm64
+```
+
+The runtime asset used here occupies approximately 7.5 GiB; its generated shared cache adds approximately 3.9 GiB, before device data and build output. Create a simulator only if a suitable one is not already available:
+
+```sh
 xcrun simctl create 'BookOrbit Test iPad' \
   com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M4-16GB \
   com.apple.CoreSimulator.SimRuntime.iOS-26-0
@@ -75,7 +81,7 @@ pnpm ipad:test:ui
 
 Use `xcrun simctl list devicetypes` to select an available device type if the identifier differs. `IPAD_TEST_DESTINATION` overrides the Xcode destination. Each run retains evidence under `test-results/ipad/run-<pid>-<timestamp>/`: native attachments in `native.xcresult`, browser screenshots/traces in `browser/`, and the browser report in `browser-report/`. Later runs preserve earlier evidence. No automatic retry or baseline acceptance is enabled.
 
-Native tests run serially on the selected simulator. After an interrupted simulator boot, consult [verification.md](verification.md) for the current recovery checkpoint before starting another run.
+Native tests run serially on the selected simulator with ad hoc signing. Disabling Xcode signing prevented Keychain access in the tested build. This simulator signature does not require a developer account and does not provide physical-device signing evidence. Verbose system diagnostics are disabled because post-failure `simctl diagnose` stalled on this Mac; test failures, console logs, screenshots, recordings and `.xcresult` reports are retained. After an interrupted simulator boot, consult [verification.md](verification.md) for the current recovery checkpoint before starting another run.
 
 ## Current evidence and remaining work
 
@@ -87,10 +93,10 @@ Native tests run serially on the selected simulator. After an interrupted simula
 | IPAD-E01-A05-web                    | Actual browser and HTTP               | Restricted navigation and denied file delivery                                                                                                                                |
 | IPAD-E01-A01-web-oidc               | Actual browser                        | Controlled provider sign-in and access to the authorized library                                                                                                              |
 | IPAD-E01-A03-web                    | Actual browser and HTTP               | Delivered PDF page navigation, saved page 2 and reopen/resume                                                                                                                 |
-| testIPADE01A01LocalLoginAndRelaunch | Native XCUITest                       | Compiled login/search/details/rotation/relaunch, accessibility audit and public-API session revocation/recovery journey; execution still required                             |
-| testIPADE01A01OIDCLoginAndRelaunch  | Native XCUITest                       | Compiled system authentication, controlled OIDC and relaunch journey; execution still required                                                                                |
+| testIPADE01A01LocalLoginAndRelaunch | Native XCUITest                       | Passed actual login/search/details/rotation/relaunch, full library accessibility audit, and public-API session revocation/recovery journey                                    |
+| testIPADE01A01OIDCLoginAndRelaunch  | Native XCUITest                       | Passed actual system authentication, controlled OIDC, relaunch and sign-out journey                                                                                           |
 
-The implementing agent opened and inspected the final browser library portrait, detail landscape, initial PDF page and resumed PDF page screenshots. Controls and content were reachable; the portrait library title truncates in the compact toolbar while remaining visible in the sidebar. See [verification.md](verification.md) for the test IDs, environment, artifact paths, inspection findings and corrected failures. This review does not establish human-approved visual regression baselines.
+The implementing agent opened and inspected the final browser library portrait, detail landscape, initial PDF page and resumed PDF page screenshots, and all five final native library/detail/search/expired-session/OIDC captures. Controls and content were reachable; the portrait library title truncates in the compact toolbar while remaining visible in the sidebar. See [verification.md](verification.md) for the test IDs, environment, artifact paths, inspection findings and corrected failures. This review does not establish human-approved visual regression baselines.
 
 Remaining issue #2 deliverables include dashboard/author/series/organization workflows, table/filter/saved-view parity, metadata and cover management, the ebook/PDF/comic/audio readers and their preferences/progress/bookmarks, Read Along/TTS/audio bridging, native engine/CFI/signing proofs, the complete native/browser/artifact acceptance matrix, human-reviewed visual baselines, performance/accessibility budgets and audits, physical-device evidence, AltStore installation/renewal, and the integrated human walkthrough. PDF ink and explicit offline packages remain assigned to issue #3. These requirements have not been waived or represented as passing.
 

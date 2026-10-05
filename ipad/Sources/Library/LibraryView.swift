@@ -23,15 +23,35 @@ struct LibraryView: View {
             library.libraryID = item.id
             Task { await library.searchBooks() }
           }
+          .listRowBackground(Color(uiColor: .systemBackground))
         }
       }
+      .buttonStyle(.plain)
+      .font(.body)
+      .foregroundStyle(.primary)
       .navigationTitle("Libraries")
+      .safeAreaInset(edge: .bottom) {
+        Button("Sign out") { Task { await session.signOut() } }
+          .buttonStyle(.plain)
+          .font(.body)
+          .foregroundStyle(.primary)
+          .frame(maxWidth: .infinity, minHeight: 44)
+          .padding()
+          .background(.background)
+          .disabled(session.isBusy)
+          .accessibilityIdentifier("signOut")
+      }
     } detail: {
       NavigationStack {
         VStack(spacing: 0) {
           HStack {
-            Text("\(library.total.formatted()) books").font(.subheadline).foregroundStyle(
-              .secondary)
+            Group {
+              if library.total == 1 {
+                Text("1 book")
+              } else {
+                Text("\(library.total.formatted()) books")
+              }
+            }.font(.subheadline).foregroundStyle(.primary)
             Spacer()
             Picker("Sort books", selection: $library.sort) {
               Text("Title").tag("title")
@@ -65,23 +85,23 @@ struct LibraryView: View {
           }
           if library.isBusy { ProgressView("Loading books…").padding() }
           HStack {
-            Button("Previous") { Task { await library.previousPage() } }.disabled(
-              !library.canGoBack)
+            if library.canGoBack {
+              Button("Previous") { Task { await library.previousPage() } }
+                .font(.body).foregroundStyle(.primary)
+            }
             Spacer()
-            Text("Page \(library.page + 1)").foregroundStyle(.secondary)
+            Text("Page \(library.page + 1)").font(.body).foregroundStyle(.primary)
             Spacer()
-            Button("Next") { Task { await library.nextPage() } }.disabled(!library.canGoNext)
+            if library.canGoNext {
+              Button("Next") { Task { await library.nextPage() } }
+                .font(.body).foregroundStyle(.primary)
+            }
           }.padding()
         }
         .navigationTitle("Books")
         .searchable(text: $library.search, prompt: "Search books")
         .onSubmit(of: .search) { Task { await library.searchBooks() } }
         .toolbar {
-          ToolbarItem(placement: .primaryAction) {
-            Button("Sign out") { Task { await session.signOut() } }
-              .disabled(session.isBusy)
-              .accessibilityIdentifier("signOut")
-          }
           ToolbarItem(placement: .topBarTrailing) {
             Picker("Book presentation", selection: $presentation) {
               Label("List", systemImage: "list.bullet").tag("list")

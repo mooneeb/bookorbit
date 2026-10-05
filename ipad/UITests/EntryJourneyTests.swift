@@ -2,6 +2,11 @@ import Foundation
 import XCTest
 
 final class EntryJourneyTests: XCTestCase {
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    continueAfterFailure = false
+  }
+
   @MainActor
   func testIPADE01A01LocalLoginAndRelaunch() async throws {
     let app = launchAtServerEntry()
@@ -9,7 +14,7 @@ final class EntryJourneyTests: XCTestCase {
     signIn(app)
     XCTAssertTrue(app.staticTexts["50,000 books"].waitForExistence(timeout: 20))
     XCTAssertTrue(app.staticTexts["Library book 00001"].exists)
-    capture(app, "IPAD-E01-A01-library-portrait")
+    capture("IPAD-E01-A01-library-portrait")
     let search = app.searchFields.firstMatch
     XCTAssertTrue(search.waitForExistence(timeout: 5))
     search.tap()
@@ -18,24 +23,26 @@ final class EntryJourneyTests: XCTestCase {
     XCTAssertFalse(app.staticTexts["Library book 00001"].exists)
     app.buttons["Orbit fixture"].firstMatch.tap()
     XCTAssertTrue(app.staticTexts["PDF"].waitForExistence(timeout: 10))
-    capture(app, "IPAD-E01-A01-book-detail")
+    capture("IPAD-E01-A01-book-detail")
     app.buttons["Done"].tap()
     XCUIDevice.shared.orientation = .landscapeLeft
     XCTAssertTrue(app.buttons["Orbit fixture"].firstMatch.waitForExistence(timeout: 10))
-    capture(app, "IPAD-E01-A01-search-landscape")
+    capture("IPAD-E01-A01-search-landscape")
     XCUIDevice.shared.orientation = .portrait
     app.terminate()
     app.launch()
     XCTAssertTrue(app.staticTexts["50,000 books"].waitForExistence(timeout: 20))
-    try app.performAccessibilityAudit()
     try await revokeNativeSession()
     app.terminate()
     app.launch()
     XCTAssertTrue(
       app.staticTexts["Your session expired. Sign in again."].waitForExistence(timeout: 20))
-    capture(app, "IPAD-E01-A01-expired-session")
+    capture("IPAD-E01-A01-expired-session")
     signIn(app)
     XCTAssertTrue(app.staticTexts["50,000 books"].waitForExistence(timeout: 20))
+    continueAfterFailure = true
+    try app.performAccessibilityAudit()
+    continueAfterFailure = false
     app.buttons["signOut"].tap()
     XCTAssertTrue(app.buttons["connectServer"].waitForExistence(timeout: 10))
   }
@@ -50,7 +57,7 @@ final class EntryJourneyTests: XCTestCase {
     let consent = app.buttons["Continue"]
     if consent.waitForExistence(timeout: 5) { consent.tap() }
     XCTAssertTrue(app.staticTexts["50,000 books"].waitForExistence(timeout: 30))
-    capture(app, "IPAD-E01-A01-oidc-library")
+    capture("IPAD-E01-A01-oidc-library")
     app.terminate()
     app.launch()
     XCTAssertTrue(app.staticTexts["50,000 books"].waitForExistence(timeout: 20))
@@ -105,7 +112,7 @@ final class EntryJourneyTests: XCTestCase {
       var request = URLRequest(url: URL(string: "http://localhost:16482/api/v1/\(path)")!)
       request.httpMethod = method
       request.timeoutInterval = 10
-      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
       if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
       if let body { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
       let (data, response) = try await URLSession.shared.data(for: request)
@@ -133,8 +140,12 @@ final class EntryJourneyTests: XCTestCase {
   }
 
   @MainActor
-  private func capture(_ app: XCUIApplication, _ name: String) {
-    let attachment = XCTAttachment(screenshot: app.screenshot())
+  private func capture(_ name: String) {
+    let screenshot = XCUIScreen.main.screenshot()
+    if XCUIDevice.shared.orientation.isLandscape {
+      XCTAssertGreaterThan(screenshot.image.size.width, screenshot.image.size.height)
+    }
+    let attachment = XCTAttachment(screenshot: screenshot)
     attachment.name = name
     attachment.lifetime = .keepAlways
     add(attachment)

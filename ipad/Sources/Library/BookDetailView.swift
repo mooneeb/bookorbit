@@ -14,7 +14,9 @@ struct BookDetailView: View {
           List {
             Section {
               Text(book.title ?? "Untitled book").font(.title)
-              Text(book.authors.map(\.name).joined(separator: ", "))
+              if !book.authors.isEmpty {
+                Text(book.authors.map(\.name).joined(separator: ", "))
+              }
               Text(book.libraryName).foregroundStyle(.secondary)
             }
             Section("Files") {
