@@ -73,6 +73,7 @@ export * from "./reading-session";
 export * from "./reading-session-source-bucket";
 export * from "./shared-reading-insights";
 export * from "./annotation";
+export * from "./bookmark";
 export * from "./hardcover";
 export * from "./readwise";
 export * from "./storygraph";

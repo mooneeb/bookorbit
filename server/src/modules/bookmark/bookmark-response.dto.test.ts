@@ -19,7 +19,9 @@ describe('BookmarkResponseDto', () => {
       cfi: null,
       title: '00:01:23',
       positionSeconds: null,
-      createdAt,
+      fileId: null,
+      pageNumber: null,
+      createdAt: createdAt.toISOString(),
     });
   });
 

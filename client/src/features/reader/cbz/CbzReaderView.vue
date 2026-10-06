@@ -33,6 +33,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import ReaderSettingsSheet from '@/features/reader/shared/components/ReaderSettingsSheet.vue'
 import CbzSettingsPanel from './components/CbzSettingsPanel.vue'
 import NextIssueCard from './components/NextIssueCard.vue'
+import ReaderBookmarksButton from '../shared/components/ReaderBookmarksButton.vue'
 
 const TWO_PAGE_BREAKPOINT = 900
 // A page turn that only just landed on the last page must not carry through into the next book:
@@ -93,7 +94,15 @@ const pageDimensions = ref<Array<{ width: number; height: number } | undefined>>
 const stripImagesReady = ref(false)
 const zoomScale = ref(1)
 
-watch(showSettings, setVisibilityLock)
+const bookmarksOpen = ref(false)
+watch([showSettings, bookmarksOpen], ([settings, bookmarks]) => setVisibilityLock(settings || bookmarks))
+
+function handleBookmarksOpen(open: boolean) {
+  bookmarksOpen.value = open
+}
+function openBookmarkedPage(page: number) {
+  goToPage(page - 1)
+}
 
 // The settings surface is one panel in two containers: an anchored popover where there
 // is room beside the page, a bottom sheet where the thumb is and the page must stay visible.
@@ -595,6 +604,7 @@ function onWheel(e: WheelEvent) {
 
 // ── Keyboard ───────────────────────────────────────────────────────────────────
 function onKeyDown(e: KeyboardEvent) {
+  if (bookmarksOpen.value) return
   const target = (e.composedPath?.()[0] || e.target) as HTMLElement | null
   if (target?.tagName === 'INPUT') return
   const isRtl = direction.value === 'rtl'
@@ -838,6 +848,15 @@ onUnmounted(() => {
             {{ t('reader.peek.startReading') }}
           </button>
         </div>
+        <ReaderBookmarksButton
+          v-if="!props.peekMode"
+          :book-id="props.bookId"
+          :file-id="props.fileId"
+          :current-page="currentPage + 1"
+          :page-count="pageCount"
+          @navigate="openBookmarkedPage"
+          @update:open="handleBookmarksOpen"
+        />
         <div class="hidden items-center md:flex" :aria-label="t('reader.cbz.zoomControls')" role="group">
           <Tooltip>
             <TooltipTrigger as-child>

@@ -2,6 +2,9 @@ import SwiftUI
 import UIKit
 
 struct ComicReaderView: View {
+  let api: BookOrbitAPI
+  let bookID: Int
+  let fileID: Int
   let title: String
   let showsPageControls: Bool
   @State private var model: ComicReaderModel
@@ -10,13 +13,17 @@ struct ComicReaderView: View {
   @State private var isNavigating = false
   @State private var isTurning = false
   @State private var isEditingPreferences = false
+  @State private var isBrowsingBookmarks = false
   @ScaledMetric(relativeTo: .body) private var actionWidth = 150.0
   @Environment(\.dismiss) private var dismiss
 
   init(
-    api: BookOrbitAPI, file: BookDetailFile, title: String = "Comic reader",
+    api: BookOrbitAPI, bookID: Int, file: BookDetailFile, title: String = "Comic reader",
     showsPageControls: Bool = true
   ) {
+    self.api = api
+    self.bookID = bookID
+    fileID = file.id
     self.title = title
     self.showsPageControls = showsPageControls
     _model = State(initialValue: ComicReaderModel(api: api, file: file))
@@ -76,6 +83,14 @@ struct ComicReaderView: View {
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("readerSettings")
                 .disabled(model.isClosing || preferences.isLoading)
+              Button {
+                isBrowsingBookmarks = true
+              } label: {
+                Text("Bookmarks").frame(maxWidth: .infinity, minHeight: 44)
+                  .contentShape(Rectangle())
+              }
+              .accessibilityIdentifier("readerBookmarks")
+              .disabled(model.isClosing || isTurning)
             }
           }
           Button("Close reader", action: closeReader)
@@ -93,10 +108,15 @@ struct ComicReaderView: View {
     .task { await model.load() }
     .task { if showsPageControls { await preferences.load() } }
     .onDisappear {
-      if !isNavigating && !isEditingPreferences {
+      if !isNavigating && !isEditingPreferences && !isBrowsingBookmarks {
         model.close()
         preferences.close()
       }
+    }
+    .fullScreenCover(isPresented: $isBrowsingBookmarks) {
+      ReaderBookmarksView(
+        api: api, bookID: bookID, fileID: fileID, currentPage: model.pageIndex + 1,
+        pageCount: model.pageCount, onSelect: model.didTurn)
     }
     .fullScreenCover(isPresented: $isEditingPreferences) {
       ReaderPreferencesView(model: preferences)

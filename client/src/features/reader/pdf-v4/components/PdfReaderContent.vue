@@ -27,6 +27,7 @@ import { usePdfResponsiveSpread } from '../composables/usePdfResponsiveSpread'
 import { usePdfSidebarLayout, type PdfSidebarTab } from '../composables/usePdfSidebarLayout'
 import NoteDialog from '../../shared/components/NoteDialog.vue'
 import PdfSelectionPopup from './PdfSelectionPopup.vue'
+import ReaderBookmarksButton from '../../shared/components/ReaderBookmarksButton.vue'
 
 const props = defineProps<{
   documentId: string
@@ -59,6 +60,7 @@ const { isFullscreen, isFullscreenSupported, toggleFullscreen } = useFullscreen(
 
 const sidebar = usePdfSidebarLayout()
 const settingsOpen = ref(false)
+const bookmarksOpen = ref(false)
 const pendingExternalUrl = ref<URL | null>(null)
 const restoredInitialPage = ref(false)
 const viewerSurface = ref<HTMLElement | null>(null)
@@ -75,7 +77,7 @@ const currentZoomMode = computed<PdfReaderSettings['zoomMode']>(() => {
 })
 const currentRotation = computed(() => fromRotation(rotation.value))
 const externalHost = computed(() => pendingExternalUrl.value?.hostname ?? '')
-const hasOpenUi = computed(() => sidebar.open.value || settingsOpen.value || pendingExternalUrl.value !== null)
+const hasOpenUi = computed(() => sidebar.open.value || settingsOpen.value || bookmarksOpen.value || pendingExternalUrl.value !== null)
 const {
   pinned: headerPinned,
   visible: headerVisible,
@@ -146,6 +148,10 @@ function handleSelectTool() {
 
 function handleSettingsOpen(open: boolean) {
   settingsOpen.value = open
+}
+
+function handleBookmarksOpen(open: boolean) {
+  bookmarksOpen.value = open
 }
 
 function handleStartReading() {
@@ -260,6 +266,7 @@ function handleReaderActivity() {
 
 function handleKeydown(event: KeyboardEvent) {
   revealHeader()
+  if (bookmarksOpen.value) return
   const target = event.target as HTMLElement | null
   const editing = target?.matches('input, textarea, select, button, a, [role="button"], [role="menuitem"], [contenteditable="true"]') === true
 
@@ -433,6 +440,17 @@ onUnmounted(() => {
       @update:settings-open="handleSettingsOpen"
       @start-reading="handleStartReading"
     >
+      <template #bookmarks>
+        <ReaderBookmarksButton
+          v-if="!props.peekMode"
+          :book-id="props.bookId"
+          :file-id="props.fileId"
+          :current-page="scrollState.currentPage"
+          :page-count="scrollState.totalPages"
+          @navigate="handleGoToPage"
+          @update:open="handleBookmarksOpen"
+        />
+      </template>
       <template #settings>
         <PdfReaderSettingsPanel
           :scroll-mode="currentScrollMode"

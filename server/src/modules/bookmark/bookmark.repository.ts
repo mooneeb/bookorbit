@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
@@ -28,7 +28,44 @@ export class BookmarkRepository {
       .orderBy(asc(bookmarks.createdAt), asc(bookmarks.id));
   }
 
-  async findLiveByLocation(userId: number, bookId: number, data: Pick<NewBookmark, 'cfi' | 'positionSeconds'>): Promise<BookmarkRow | null> {
+  async findFilePage(bookId: number, userId: number, fileId: number, limit: number, beforeId?: number) {
+    return this.db
+      .select()
+      .from(bookmarks)
+      .where(
+        and(
+          eq(bookmarks.bookId, bookId),
+          eq(bookmarks.userId, userId),
+          eq(bookmarks.fileId, fileId),
+          isNull(bookmarks.deletedAt),
+          beforeId == null ? undefined : lt(bookmarks.id, beforeId),
+        ),
+      )
+      .orderBy(desc(bookmarks.id))
+      .limit(limit);
+  }
+
+  async findLiveByLocation(
+    userId: number,
+    bookId: number,
+    data: Pick<NewBookmark, 'cfi' | 'positionSeconds' | 'fileId' | 'pageNumber'>,
+  ): Promise<BookmarkRow | null> {
+    if (data.fileId != null && data.pageNumber != null) {
+      const [row] = await this.db
+        .select()
+        .from(bookmarks)
+        .where(
+          and(
+            eq(bookmarks.userId, userId),
+            eq(bookmarks.bookId, bookId),
+            eq(bookmarks.fileId, data.fileId),
+            eq(bookmarks.pageNumber, data.pageNumber),
+            isNull(bookmarks.deletedAt),
+          ),
+        )
+        .limit(1);
+      return row ?? null;
+    }
     if (data.cfi != null) {
       const [row] = await this.db
         .select()
@@ -60,10 +97,18 @@ export class BookmarkRepository {
     return null;
   }
 
-  async create(userId: number, bookId: number, data: Pick<NewBookmark, 'cfi' | 'title' | 'positionSeconds'>) {
+  async create(userId: number, bookId: number, data: Pick<NewBookmark, 'cfi' | 'title' | 'positionSeconds' | 'fileId' | 'pageNumber'>) {
     const [row] = await this.db
       .insert(bookmarks)
-      .values({ userId, bookId, cfi: data.cfi ?? null, title: data.title, positionSeconds: data.positionSeconds ?? null })
+      .values({
+        userId,
+        bookId,
+        cfi: data.cfi ?? null,
+        title: data.title,
+        positionSeconds: data.positionSeconds ?? null,
+        fileId: data.fileId ?? null,
+        pageNumber: data.pageNumber ?? null,
+      })
       .onConflictDoNothing()
       .returning();
     return row ?? null;
@@ -77,15 +122,17 @@ export class BookmarkRepository {
   async restoreAtLocation(
     userId: number,
     bookId: number,
-    data: Pick<NewBookmark, 'cfi' | 'positionSeconds'>,
+    data: Pick<NewBookmark, 'cfi' | 'positionSeconds' | 'fileId' | 'pageNumber'>,
     values: Pick<NewBookmark, 'title' | 'origin' | 'devicePos' | 'pageno'>,
   ): Promise<BookmarkRow | null> {
     const location =
-      data.cfi != null
-        ? eq(bookmarks.cfi, data.cfi)
-        : data.positionSeconds != null
-          ? and(eq(bookmarks.positionSeconds, data.positionSeconds), isNull(bookmarks.cfi))
-          : null;
+      data.fileId != null && data.pageNumber != null
+        ? and(eq(bookmarks.fileId, data.fileId), eq(bookmarks.pageNumber, data.pageNumber))
+        : data.cfi != null
+          ? eq(bookmarks.cfi, data.cfi)
+          : data.positionSeconds != null
+            ? and(eq(bookmarks.positionSeconds, data.positionSeconds), isNull(bookmarks.cfi))
+            : null;
     if (!location) return null;
 
     const [row] = await this.db
@@ -107,15 +154,7 @@ export class BookmarkRepository {
     const result = await this.db
       .update(bookmarks)
       .set({ deletedAt: new Date() })
-      .where(
-        and(
-          eq(bookmarks.id, bookmarkId),
-          eq(bookmarks.bookId, bookId),
-          eq(bookmarks.userId, userId),
-          isNotNull(bookmarks.cfi),
-          isNull(bookmarks.deletedAt),
-        ),
-      )
+      .where(and(eq(bookmarks.id, bookmarkId), eq(bookmarks.bookId, bookId), eq(bookmarks.userId, userId), isNull(bookmarks.deletedAt)))
       .returning({ id: bookmarks.id });
     return result.length > 0;
   }

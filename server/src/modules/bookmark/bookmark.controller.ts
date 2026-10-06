@@ -1,9 +1,13 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Permission } from '@bookorbit/types';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { BookmarkService } from './bookmark.service';
 import { CreateBookmarkDto } from './dto/create-bookmark.dto';
+import { BookmarkPageDto } from './dto/bookmark-page.dto';
+import { CreateFixedPageBookmarkDto } from './dto/create-fixed-page-bookmark.dto';
 
 @Controller('books/:bookId/bookmarks')
 export class BookmarkController {
@@ -15,11 +19,25 @@ export class BookmarkController {
   }
 
   @Post()
+  @RequirePermission(Permission.LibraryDownload)
   createBookmark(@Param('bookId', ParseIntPipe) bookId: number, @Body() dto: CreateBookmarkDto, @CurrentUser() user: RequestUser) {
     return this.bookmarkService.createBookmark(bookId, user, dto);
   }
 
+  @Get('page')
+  @RequirePermission(Permission.LibraryDownload)
+  getPage(@Param('bookId', ParseIntPipe) bookId: number, @Query() dto: BookmarkPageDto, @CurrentUser() user: RequestUser) {
+    return this.bookmarkService.getPage(bookId, user, dto);
+  }
+
+  @Post('fixed-page')
+  @RequirePermission(Permission.LibraryDownload)
+  createFixedPageBookmark(@Param('bookId', ParseIntPipe) bookId: number, @Body() dto: CreateFixedPageBookmarkDto, @CurrentUser() user: RequestUser) {
+    return this.bookmarkService.createFixedPageBookmark(bookId, user, dto);
+  }
+
   @Delete(':bookmarkId')
+  @RequirePermission(Permission.LibraryDownload)
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteBookmark(
     @Param('bookId', ParseIntPipe) bookId: number,

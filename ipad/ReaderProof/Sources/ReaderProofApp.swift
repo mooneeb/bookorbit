@@ -100,11 +100,11 @@ private struct ReaderProofBookView: View {
     .task { await model.load() }
     .fullScreenCover(item: $selectedFile) { file in
       if file.format?.lowercased() == "cbz" {
-        ComicProofView(api: model.api, file: file)
+        ComicProofView(api: model.api, bookID: model.bookID, file: file)
       } else if file.format?.lowercased() == "epub" {
         EPUBProofView(api: model.api, bookID: model.bookID, file: file)
       } else {
-        PDFReaderView(api: model.api, file: file)
+        PDFReaderView(api: model.api, bookID: model.bookID, file: file)
       }
     }
     .fullScreenCover(item: $nativeChapterFile) { file in

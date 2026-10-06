@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct PDFReaderView: View {
+  let api: BookOrbitAPI
+  let bookID: Int
+  let fileID: Int
   @State private var model: PDFReaderModel
   @State private var preferences: ReaderPreferencesModel
   @State private var confirmsDiscard = false
@@ -8,11 +11,15 @@ struct PDFReaderView: View {
   @State private var isSearching = false
   @State private var isBrowsingContents = false
   @State private var isEditingPreferences = false
+  @State private var isBrowsingBookmarks = false
   @State private var isTurning = false
   @ScaledMetric(relativeTo: .body) private var actionWidth = 150.0
   @Environment(\.dismiss) private var dismiss
 
-  init(api: BookOrbitAPI, file: BookDetailFile) {
+  init(api: BookOrbitAPI, bookID: Int, file: BookDetailFile) {
+    self.api = api
+    self.bookID = bookID
+    fileID = file.id
     _model = State(initialValue: PDFReaderModel(api: api, file: file))
     _preferences = State(
       initialValue: ReaderPreferencesModel(api: api, fileID: file.id, group: "pdf"))
@@ -76,6 +83,14 @@ struct PDFReaderView: View {
               .frame(minHeight: 44)
               .accessibilityIdentifier("readerSettings")
               .disabled(model.isClosing || preferences.isLoading)
+            Button {
+              isBrowsingBookmarks = true
+            } label: {
+              Text("Bookmarks").frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("readerBookmarks")
+            .disabled(model.document == nil || model.isClosing || isTurning)
             Button("Close reader", action: closeReader)
               .frame(minHeight: 44)
               .disabled(model.isClosing)
@@ -93,9 +108,18 @@ struct PDFReaderView: View {
     .task { await model.load() }
     .task { await preferences.load() }
     .onDisappear {
-      if !isNavigating && !isSearching && !isBrowsingContents && !isEditingPreferences {
+      if !isNavigating && !isSearching && !isBrowsingContents && !isEditingPreferences
+        && !isBrowsingBookmarks
+      {
         model.close()
         preferences.close()
+      }
+    }
+    .fullScreenCover(isPresented: $isBrowsingBookmarks) {
+      if let document = model.document {
+        ReaderBookmarksView(
+          api: api, bookID: bookID, fileID: fileID, currentPage: model.pageIndex + 1,
+          pageCount: document.pageCount, onSelect: model.didTurn)
       }
     }
     .fullScreenCover(isPresented: $isEditingPreferences) {

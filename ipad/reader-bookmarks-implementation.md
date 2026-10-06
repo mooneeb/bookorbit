@@ -1,0 +1,25 @@
+# Fixed-page reader bookmarks
+
+Issue #2 implementation checkpoint for online PDF and comic bookmarks. Runtime acceptance belongs to the independent feature tester; this checkpoint does not claim the whole issue is complete.
+
+## Contract and persistence
+
+`packages/types/src/bookmark.ts` owns bookmark response, cursor page, and EPUB/fixed-page create payloads. Generated Swift decodes these contracts. The existing EPUB composable derives its response projection from the shared contract.
+
+The owning bookmark module adds authenticated `GET /api/v1/books/:bookId/bookmarks/page?fileId=...&limit=...&beforeId=...` and `POST /api/v1/books/:bookId/bookmarks/fixed-page`. Fixed-page requests verify book access, exact file ownership, and PDF/CBZ/CBR/CB7 format. Reads return at most 100 items, default 40, with one extra row to determine a descending-ID cursor. Queries filter by user, book, file, and live state and use a matching composite index. Existing EPUB reads remain compatible. Bookmark mutations and the fixed-page page route require `library_download`, matching the reader entry permission.
+
+The schema adds nullable file/page fields, a file foreign key, a fixed-page consistency check, and unique user/book/file/page location ownership. Drizzle Kit generated `0102_fixed_page_bookmarks.sql` and its snapshot; no migration SQL was written by hand. Existing EPUB/audio locations stay distinct. Fixed-page rows have no CFI or audio position and therefore do not enter KOReader CFI conversion. Deletion uses the existing tombstone behavior. An explicit online create may restore a deleted location; no offline replay is introduced. Repeated creates of a live page return its existing bookmark and title.
+
+## Reader behavior
+
+Production PDF and comic controls open a shared native bookmark form for the current file and logical page. Readers remain alive while the bookmark screen is presented. Selecting a valid saved page returns to the reader and uses its normal progress-saving path. Pages outside the current document cannot be opened. Title validation, server-confirmed saves/removals, deletion confirmation, failed-write draft retention, load retry, and relaunch retrieval are explicit. Native list retrieval and web rendering retain at most 40 bookmarks at once, with at most 32 prior cursors and a first-page action.
+
+Both production web PDF and comic readers expose the same server-backed page bookmarks through a shared permission-aware sheet and composable. Their embedded PDF contents remain a separate capability. Bookmark dialogs prevent background reader keyboard navigation; the comic menu stays visible while the sheet is open. Peek mode does not expose bookmark writes. Acknowledged mutations remain visible even if the subsequent list reload fails. UI text uses the web locale catalog; other configured locales retain the existing English fallback. Native localization remains part of the broader reader localization work.
+
+## Verification status
+
+Drizzle generation completed. An initial local `db:migrate` attempt did not apply migrations because this checkout has no `server/.env` or `DATABASE_URL`; its exact failure is preserved in `/tmp/bookorbit-fixed-bookmarks-migrate.log`. The independent isolated harness must apply the migration before testing. No user credentials, production database, physical iPad, download, or runtime installation is required.
+
+Implementation checks passed: shared package TypeScript build, production server TypeScript check, full Vue client typecheck, full server/client ESLint, generated-contract freshness, strict handwritten Swift formatting/syntax checks, and the production native Swift 6 build. Logs are `/tmp/bookorbit-fixed-bookmarks-{types,server-typecheck,client-typecheck,server-eslint,client-eslint}.log` and `/tmp/bookorbit-fixed-bookmarks-build-final.log`. The native build retains the existing OIDC initializer deprecation and AppIntents metadata warning. Earlier failed builds remain in `build.log` and `build-corrected.log`: broad numeric-field generation changed existing progress and shelf-limit contracts. Generation is now scoped to the three new bookmark numeric fields, and the generated diff leaves every existing model unchanged. Existing DTO/insert mapping assertions were updated for the new nullable fields and canonical ISO timestamp; behavioral test execution remains the separate tester's task.
+
+Before acceptance, test public HTTP validation/ownership/permissions, paginated retrieval, duplicate and explicit restore semantics, independent EPUB/audio state, and unchanged delivered book bytes together with actual native/web create/open/delete/cancel/retry/relaunch/concurrent flows. Include full unfiltered accessibility audits, large text and long titles, rotation/window layouts, exact file identity, failed loads/writes, and actual inspected screenshots. Native EPUB passage bookmarks and audio position bookmarks belong to their remaining reader integrations; this feature claims fixed-page behavior only.

@@ -1025,6 +1025,28 @@ struct CbxReaderDefaultsPatchBodySet: Codable, Sendable, Equatable {
     var `autoAdvance`: Bool?
 }
 
+struct BookmarkResponse: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `bookId`: Int
+    var `cfi`: String?
+    var `title`: String
+    var `positionSeconds`: Double?
+    var `fileId`: Int?
+    var `pageNumber`: Int?
+    var `createdAt`: String
+}
+
+struct BookmarksPage: Codable, Sendable, Equatable {
+    var `items`: [BookmarkResponse]
+    var `nextCursor`: Int?
+}
+
+struct CreateFixedPageBookmarkPayload: Codable, Sendable, Equatable {
+    var `fileId`: Int
+    var `pageNumber`: Int
+    var `title`: String
+}
+
 struct UserDashboardSettingsResponse: Codable, Sendable, Equatable {
     var `settings`: UserSettings
 }

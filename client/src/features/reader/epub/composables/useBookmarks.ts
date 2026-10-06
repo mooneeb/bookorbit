@@ -1,13 +1,8 @@
 import { computed, ref } from 'vue'
 import { api } from '@/lib/api'
+import type { BookmarkResponse } from '@bookorbit/types'
 
-export interface Bookmark {
-  id: number
-  bookId: number
-  cfi: string
-  title: string
-  createdAt: string
-}
+export type Bookmark = Pick<BookmarkResponse, 'id' | 'bookId' | 'title' | 'createdAt'> & { cfi: string }
 
 export function useBookmarks() {
   const bookmarks = ref<Bookmark[]>([])

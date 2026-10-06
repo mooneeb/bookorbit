@@ -416,6 +416,8 @@ export const bookmarks = pgTable(
       .references(() => books.id, { onDelete: 'cascade' }),
     // EPUB: CFI string pinpoints exact location. Null for audio bookmarks.
     cfi: varchar('cfi', { length: 2000 }),
+    fileId: integer('file_id').references(() => bookFiles.id, { onDelete: 'cascade' }),
+    pageNumber: integer('page_number'),
     title: varchar('title', { length: 500 }).notNull(),
     note: text('note'),
     chapterId: varchar('chapter_id', { length: 80 }),
@@ -438,6 +440,14 @@ export const bookmarks = pgTable(
   (t) => [
     uniqueIndex('bookmarks_user_book_client_id_uidx').on(t.userId, t.bookId, t.clientId),
     index('bookmarks_user_book_idx').on(t.userId, t.bookId),
+    index('bookmarks_user_book_file_id_idx').on(t.userId, t.bookId, t.fileId, t.id),
+    uniqueIndex('bookmarks_user_book_file_page_uidx')
+      .on(t.userId, t.bookId, t.fileId, t.pageNumber)
+      .where(sql`${t.fileId} is not null and ${t.pageNumber} is not null`),
+    check(
+      'bookmarks_fixed_page_chk',
+      sql`(${t.fileId} is null and ${t.pageNumber} is null) or (${t.fileId} is not null and ${t.pageNumber} is not null and ${t.pageNumber} between 1 and 1000000 and ${t.cfi} is null and ${t.positionSeconds} is null)`,
+    ),
     index('bookmarks_book_id_idx').on(t.bookId),
     index('bookmarks_deleted_at_idx')
       .on(t.deletedAt)

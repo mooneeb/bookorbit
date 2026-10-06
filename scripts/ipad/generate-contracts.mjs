@@ -11,6 +11,7 @@ const entries = [
   "author",
   "book",
   "book-selection",
+  "bookmark",
   "collection",
   "comic",
   "custom-metadata",
@@ -145,6 +146,9 @@ const integerFields = new Set([
   "randomSeed",
   "rotation",
   "spreadGap",
+  "BookmarkResponsePageNumber",
+  "CreateFixedPageBookmarkPayloadPageNumber",
+  "BookmarksPageNextCursor",
 ]);
 const declarations = new Map();
 const patchRequests = new Set([
@@ -252,7 +256,8 @@ function swiftType(type, name, field) {
     const optional = values.length !== type.types.length;
     let value;
     if (values.every((part) => part.flags & ts.TypeFlags.StringLike)) value = "String";
-    else if (values.every((part) => part.flags & ts.TypeFlags.NumberLike)) value = integerFields.has(field) ? "Int" : "Double";
+    else if (values.every((part) => part.flags & ts.TypeFlags.NumberLike))
+      value = integerFields.has(field) || integerFields.has(name) ? "Int" : "Double";
     else if (values.every((part) => part.flags & ts.TypeFlags.BooleanLike)) value = "Bool";
     else if (values.length === 1) value = swiftType(values[0], name, field);
     else if (name === "GroupRuleRulesItem") value = generateRuleNode();
@@ -262,7 +267,7 @@ function swiftType(type, name, field) {
     return value + (optional ? "?" : "");
   }
   if (type.flags & ts.TypeFlags.StringLike) return "String";
-  if (type.flags & ts.TypeFlags.NumberLike) return integerFields.has(field) ? "Int" : "Double";
+  if (type.flags & ts.TypeFlags.NumberLike) return integerFields.has(field) || integerFields.has(name) ? "Int" : "Double";
   if (type.flags & ts.TypeFlags.BooleanLike) return "Bool";
   if (checker.isArrayType(type)) return `[${swiftType(checker.getTypeArguments(type)[0], `${name}Item`, field)}]`;
   const indexed = checker.getIndexTypeOfType(type, ts.IndexKind.String);
@@ -368,6 +373,9 @@ for (const name of [
   "CbxReaderPreferencePatchBody",
   "PdfReaderDefaultsPatchBody",
   "CbxReaderDefaultsPatchBody",
+  "BookmarkResponse",
+  "BookmarksPage",
+  "CreateFixedPageBookmarkPayload",
 ]) {
   const symbol = symbols.get(name);
   if (!symbol) throw new Error(`Missing shared contract: ${name}`);

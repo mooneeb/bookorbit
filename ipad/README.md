@@ -20,6 +20,8 @@ Production comic entry and native page navigation are implemented and awaiting t
 
 Native PDF/comic appearance and five page animations are implemented and awaiting independent acceptance. Defaults and per-book settings are server/account scoped; the existing account synchronization setting controls look-field PATCHes, while native animations remain local and respect Reduce Motion. [reader-preferences-implementation.md](reader-preferences-implementation.md) records canonical contracts, passing production compilation and the required shared-reader regression handoff.
 
+Online PDF/comic bookmarks now use one canonical contract and owning server module across native and web readers. File-specific cursor paging bounds memory, while acknowledged saves/removals, explicit deletion confirmation, retry and normal page navigation preserve the reader session. Drizzle Kit generated the schema migration. [reader-bookmarks-implementation.md](reader-bookmarks-implementation.md) records the implementation and independent acceptance boundary.
+
 Native saved views and table-column controls are implemented and awaiting independent acceptance. Snapshots preserve the active query, search, presentation and column visibility/order/width, scoped to the server, user and library location. The bounded catalog supports rename, duplicate, favorites and confirmed deletion. Native table rows remain paged and virtualized while wide configured columns scroll horizontally. The web saved-view type now comes from the same canonical shared contract. [saved-view-implementation.md](saved-view-implementation.md) records checks and limitations.
 
 ## Build
