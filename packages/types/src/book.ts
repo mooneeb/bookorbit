@@ -57,6 +57,18 @@ export type UserBookStatus = {
   updatedAt: string;
 };
 
+export type SetBookReadingStatusPayload = {
+  status?: ReadStatus;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+};
+
+export const PERSONAL_NOTE_MAX_LENGTH = 10000;
+
+export type UpdateBookPersonalNotePayload = {
+  note?: string | null;
+};
+
 export const READING_ATTEMPT_OUTCOMES = ["completed", "skimmed", "abandoned"] as const;
 export type ReadingAttemptOutcome = (typeof READING_ATTEMPT_OUTCOMES)[number];
 

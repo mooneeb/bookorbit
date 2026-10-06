@@ -136,6 +136,9 @@ struct BookDetail: Codable, Sendable, Equatable, Identifiable {
     var `seriesIndex`: String?
     var `seriesMemberships`: [BookSeriesMembership]?
     var `rating`: Double?
+    var `readStatus`: UserBookStatus?
+    var `personalNote`: String?
+    var `personalNoteUpdatedAt`: String?
     var `communityRatings`: [BookCommunityRating]
     var `providerIds`: BookDetailProviderIds
     var `hardcoverEditionId`: String?
@@ -191,6 +194,14 @@ struct BookSeriesMembership: Codable, Sendable, Equatable {
     var `seriesIndex`: String?
     var `displayOrder`: Int
     var `expectedBookCount`: Int?
+}
+
+struct UserBookStatus: Codable, Sendable, Equatable {
+    var `status`: String
+    var `source`: String
+    var `startedAt`: String?
+    var `finishedAt`: String?
+    var `updatedAt`: String
 }
 
 struct BookCommunityRating: Codable, Sendable, Equatable {
@@ -1171,6 +1182,16 @@ struct CreateFixedPageBookmarkPayload: Codable, Sendable, Equatable {
     var `title`: String
 }
 
+struct SetBookReadingStatusPayload: Encodable, Sendable, Equatable {
+    var `status`: String?
+    var `startedAt`: FieldUpdate<String>?
+    var `finishedAt`: FieldUpdate<String>?
+}
+
+struct UpdateBookPersonalNotePayload: Encodable, Sendable, Equatable {
+    var `note`: FieldUpdate<String>?
+}
+
 struct UserDashboardSettingsResponse: Codable, Sendable, Equatable {
     var `settings`: UserSettings
 }
@@ -1179,6 +1200,7 @@ struct UserSettings: Codable, Sendable, Equatable {
     var `dashboardConfig`: DashboardConfig?
     var `dashboardShelfConfig`: DashboardShelfConfig?
     var `syncReaderPreferences`: Bool?
+    var `timezone`: String?
 }
 
 struct DashboardConfig: Codable, Sendable, Equatable {
@@ -1205,6 +1227,11 @@ extension PdfReaderSettings {
 
 extension CbxReaderSettings {
     static var readerDefault: Self { Self(fitMode: "fit-page", viewMode: "single", scrollMode: "paginated", direction: "ltr", spreadAlignment: "normal", spreadGap: 0, forceTwoPage: false, widePageSingletonMode: "auto", bgColor: "black", autoAdvance: false) }
+}
+
+enum BookReadingVocabulary {
+    static let statuses: [String] = ["unread", "want_to_read", "reading", "on_hold", "rereading", "read", "skimmed", "abandoned"]
+    static let noteMaximum = 10000
 }
 
 enum ReaderLayoutBounds {

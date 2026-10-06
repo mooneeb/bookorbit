@@ -139,12 +139,14 @@ actor BookOrbitAPI {
   }
 
   func boundedJSON<T: Decodable & Sendable>(
-    _ path: String, method: String = "GET", query: [URLQueryItem] = [],
+    _ path: String, method: String = "GET", body: Data? = nil, query: [URLQueryItem] = [],
     byteLimit: Int = 1024 * 1024
   ) async throws -> T {
     let generation = sessionGeneration
     var request = URLRequest(url: profile.endpoint(path, query: query))
     request.httpMethod = method
+    request.httpBody = body
+    if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
     request.timeoutInterval = 120
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")

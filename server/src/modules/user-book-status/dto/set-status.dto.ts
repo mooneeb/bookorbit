@@ -1,8 +1,8 @@
 import { IsIn, IsString, Matches, ValidateIf } from 'class-validator';
-import type { ReadStatus } from '@bookorbit/types';
+import type { ReadStatus, SetBookReadingStatusPayload } from '@bookorbit/types';
 import { READ_STATUSES } from '../user-book-status.constants';
 
-export class SetStatusDto {
+export class SetStatusDto implements SetBookReadingStatusPayload {
   @ValidateIf((_, value) => value !== undefined)
   @IsIn(READ_STATUSES)
   status?: ReadStatus;

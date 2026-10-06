@@ -56,7 +56,7 @@ const projections = {
   AuthUser: ["id", "username", "name", "active", "isSuperuser", "isDefaultPassword", "permissions"],
   UserDashboardSettingsResponse: ["settings"],
   UserReaderSettingsResponse: ["settings", "permissions"],
-  UserSettings: ["dashboardConfig", "dashboardShelfConfig", "syncReaderPreferences"],
+  UserSettings: ["dashboardConfig", "dashboardShelfConfig", "syncReaderPreferences", "timezone"],
   Library: ["id", "type", "accessLevel", "name", "bookCount"],
   BookCard: ["id", "title", "authors", "files", "hasCover", "coverVersion", "readingProgress", "seriesName"],
   BookDetail: [
@@ -81,6 +81,9 @@ const projections = {
     "seriesIndex",
     "seriesMemberships",
     "rating",
+    "readStatus",
+    "personalNote",
+    "personalNoteUpdatedAt",
     "communityRatings",
     "providerIds",
     "hardcoverEditionId",
@@ -156,6 +159,8 @@ const patchRequests = new Set([
   "AudioMetadataUpdatePayload",
   "ComicMetadataUpdatePayload",
   "BookSeriesMembershipUpdatePayload",
+  "SetBookReadingStatusPayload",
+  "UpdateBookPersonalNotePayload",
 ]);
 const requestModels = new Set([...patchRequests, "BookMetadataAndLocksUpdatePayload", "SaveFileProgressPayload"]);
 const nullableResponses = new Set([
@@ -388,6 +393,8 @@ for (const name of [
   "BookmarkResponse",
   "BookmarksPage",
   "CreateFixedPageBookmarkPayload",
+  "SetBookReadingStatusPayload",
+  "UpdateBookPersonalNotePayload",
 ]) {
   const symbol = symbols.get(name);
   if (!symbol) throw new Error(`Missing shared contract: ${name}`);
@@ -426,6 +433,16 @@ const readerLayoutLimits = ["CBX_SPREAD_GAP_MIN", "CBX_SPREAD_GAP_MAX"].map((nam
   if (!Number.isInteger(value)) throw new Error(`${name} must remain an integer literal`);
   return value;
 });
+
+const readingStatuses = checker.getDeclaredTypeOfSymbol(symbols.get("ReadStatus"));
+if (!readingStatuses.isUnion() || !readingStatuses.types.every((part) => part.flags & ts.TypeFlags.StringLiteral))
+  throw new Error("Reading status vocabulary changed");
+const personalNoteLimit = checker.getTypeAtLocation(symbols.get("PERSONAL_NOTE_MAX_LENGTH").valueDeclaration.initializer).value;
+if (!Number.isInteger(personalNoteLimit)) throw new Error("Personal note limit must remain an integer literal");
+declarations.set(
+  "BookReadingVocabulary",
+  `enum BookReadingVocabulary {\n    static let statuses: [String] = [${readingStatuses.types.map((part) => JSON.stringify(part.value)).join(", ")}]\n    static let noteMaximum = ${personalNoteLimit}\n}`,
+);
 declarations.set(
   "ReaderLayoutBounds",
   `enum ReaderLayoutBounds {\n    static let spreadGapMinimum = ${readerLayoutLimits[0]}\n    static let spreadGapMaximum = ${readerLayoutLimits[1]}\n}`,

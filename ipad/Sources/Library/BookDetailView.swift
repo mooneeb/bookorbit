@@ -8,6 +8,7 @@ struct BookDetailView: View {
   @State private var collectionResult: String?
   @State private var isEditingCovers = false
   @State private var selectedFile: BookDetailFile?
+  @State private var isEditingReading = false
 
   init(api: BookOrbitAPI, bookID: Int, canEditMetadata: Bool) {
     self.canEditMetadata = canEditMetadata
@@ -52,6 +53,21 @@ struct BookDetailView: View {
                 .accessibilityIdentifier("addToCollection")
               if let collectionResult { Text(collectionResult) }
             }
+            Section("Your reading") {
+              LabeledContent(
+                "Status", value: BookReadingDraft.label(book.readStatus?.status ?? "unread")
+              )
+              .accessibilityIdentifier("bookReadingCurrentStatus")
+              if let note = book.personalNote {
+                Text(note).fixedSize(horizontal: false, vertical: true)
+                  .accessibilityIdentifier("bookReadingCurrentNote")
+              }
+              Button {
+                isEditingReading = true
+              } label: {
+                Text("Edit your reading").frame(minHeight: 44).contentShape(Rectangle())
+              }.accessibilityIdentifier("editBookReading")
+            }
             if !book.customMetadata.isEmpty {
               Section("Custom fields") {
                 ForEach(book.customMetadata, id: \.fieldId) { field in
@@ -78,7 +94,7 @@ struct BookDetailView: View {
       .toolbar { Button("Done", action: dismiss.callAsFunction) }
     }
     .task { await model.load() }
-    .fullScreenCover(item: $selectedFile) { file in
+    .fullScreenCover(item: $selectedFile, onDismiss: { Task { await model.load() } }) { file in
       if ["cbz", "cbr", "cb7"].contains(file.format?.lowercased() ?? "") {
         ComicReaderView(api: model.api, bookID: model.bookID, file: file)
       } else {
@@ -86,6 +102,15 @@ struct BookDetailView: View {
       }
     }
     .fullScreenCover(item: $model.draft) { draft in MetadataEditorView(model: model, draft: draft) }
+    .fullScreenCover(isPresented: $isEditingReading, onDismiss: { Task { await model.load() } }) {
+      if let book = model.book {
+        BookReadingView(api: model.api, book: book, acknowledged: model.acknowledgeReading) {
+          saved in
+          model.acknowledgeReading(saved)
+          isEditingReading = false
+        }
+      }
+    }
     .fullScreenCover(isPresented: $isEditingCovers, onDismiss: { Task { await model.load() } }) {
       if let book = model.book { CoverEditorView(api: model.api, book: book) }
     }

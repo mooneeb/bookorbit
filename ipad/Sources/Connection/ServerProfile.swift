@@ -49,7 +49,7 @@ enum ConnectionError: LocalizedError {
     case .insufficientStorage: "There is not enough free space to open this book file."
     case .resourceTooLarge: "This EPUB resource exceeds the renderer proof's 8 MB limit."
     case .responseTooLarge:
-      "The metadata preview is too large to compare. Try finding a specific matching record."
+      "The server response is too large to open safely."
     case .comicPageTooLarge: "This comic page exceeds the reader's 20 MB image limit."
     case .http(401): "The username or password is incorrect."
     case .http(let status): "The server could not complete the request (\(status)). Try again."

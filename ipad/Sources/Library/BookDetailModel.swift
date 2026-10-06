@@ -28,6 +28,11 @@ final class BookDetailModel {
     draft = MetadataDraft(book: book)
   }
 
+  func acknowledgeReading(_ saved: BookDetail) {
+    guard saved.id == bookID else { return }
+    book = saved
+  }
+
   func saveMetadata() async {
     guard let book, let draft, draft.isValid, !isSaving else { return }
     isSaving = true

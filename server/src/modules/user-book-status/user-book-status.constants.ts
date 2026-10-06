@@ -1,6 +1,6 @@
-import type { ReadStatus, ReadStatusSource } from '@bookorbit/types';
+import { READ_STATUSES as SHARED_READ_STATUSES, type ReadStatus, type ReadStatusSource } from '@bookorbit/types';
 
-export const READ_STATUSES: readonly ReadStatus[] = ['unread', 'want_to_read', 'reading', 'on_hold', 'rereading', 'read', 'skimmed', 'abandoned'];
+export const READ_STATUSES: readonly ReadStatus[] = SHARED_READ_STATUSES;
 
 export const READ_STATUS_SOURCES: readonly ReadStatusSource[] = ['auto', 'manual'];
 
