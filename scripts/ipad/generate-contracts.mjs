@@ -6,7 +6,7 @@ import path from "node:path";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(path.join(root, "server/package.json"));
 const ts = require("typescript");
-const entries = ["auth", "book", "book-selection", "collection", "comic", "epub", "library", "permissions", "query"].map((name) =>
+const entries = ["auth", "author", "book", "book-selection", "collection", "comic", "epub", "library", "permissions", "query", "series"].map((name) =>
   path.join(root, `packages/types/src/${name}.ts`),
 );
 const program = ts.createProgram(entries, {
@@ -79,8 +79,26 @@ const integerFields = new Set([
   "size",
   "total",
   "bookCount",
+  "bookTotal",
+  "bookId",
+  "coverBookId",
+  "coverBookIds",
+  "nextBookId",
   "publishedYear",
   "pageCount",
+  "readCount",
+  "readingCount",
+  "expectedBookCount",
+  "gapCount",
+  "gaps",
+  "possibleGaps",
+  "all",
+  "notStarted",
+  "inProgress",
+  "complete",
+  "hasGaps",
+  "birthYear",
+  "deathYear",
   "width",
   "height",
 ]);
@@ -170,6 +188,11 @@ for (const name of [
   "SaveFileProgressPayload",
   "EpubBookInfo",
   "ComicPageCountResponse",
+  "AuthorsPage",
+  "AuthorDetail",
+  "AuthorBooksPage",
+  "SeriesPage",
+  "SeriesBooksPage",
 ]) {
   const symbol = symbols.get(name);
   if (!symbol) throw new Error(`Missing shared contract: ${name}`);

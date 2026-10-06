@@ -301,6 +301,113 @@ struct ComicPageCountResponse: Codable, Sendable, Equatable {
     var `pageCount`: Int
 }
 
+struct AuthorsPage: Codable, Sendable, Equatable {
+    var `items`: [AuthorSummary]
+    var `total`: Int
+    var `page`: Int
+    var `size`: Int
+}
+
+struct AuthorSummary: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `sortName`: String?
+    var `description`: String?
+    var `imageUrl`: String?
+    var `bookCount`: Int
+    var `lastAddedAt`: String?
+    var `coverBookId`: Int?
+}
+
+struct AuthorDetail: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `sortName`: String?
+    var `description`: String?
+    var `imageUrl`: String?
+    var `bookCount`: Int
+    var `lastAddedAt`: String?
+    var `coverBookId`: Int?
+    var `birthDate`: String?
+    var `birthYear`: Int?
+    var `deathDate`: String?
+    var `deathYear`: Int?
+    var `website`: String?
+    var `genres`: [String]
+    var `influences`: [String]
+    var `metadataProvider`: String?
+    var `metadataProviderId`: String?
+}
+
+struct AuthorBooksPage: Codable, Sendable, Equatable {
+    var `items`: [BookCard]
+    var `total`: Int
+    var `page`: Int
+    var `size`: Int
+    var `bookTotal`: Int
+}
+
+struct SeriesPage: Codable, Sendable, Equatable {
+    var `items`: [SeriesSummary]
+    var `total`: Int
+    var `page`: Int
+    var `size`: Int
+    var `facets`: SeriesFacets
+}
+
+struct SeriesSummary: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `bookCount`: Int
+    var `readCount`: Int
+    var `authors`: [String]
+    var `coverBookIds`: [Int]
+    var `lastAddedAt`: String?
+    var `readingCount`: Int
+    var `libraryNames`: [String]
+    var `expectedBookCount`: Int?
+    var `volumes`: [SeriesVolumeSlot]
+    var `volumesTruncated`: Bool
+    var `gaps`: [Int]
+    var `gapCount`: Int
+    var `nextBookId`: Int?
+    var `nextIndex`: String?
+    var `nextTitle`: String?
+}
+
+struct SeriesVolumeSlot: Codable, Sendable, Equatable {
+    var `index`: Double?
+    var `bookId`: Int?
+    var `title`: String?
+    var `status`: String
+}
+
+struct SeriesFacets: Codable, Sendable, Equatable {
+    var `all`: Int
+    var `notStarted`: Int
+    var `inProgress`: Int
+    var `complete`: Int
+    var `hasGaps`: Int
+}
+
+struct SeriesBooksPage: Codable, Sendable, Equatable {
+    var `items`: [BookCard]
+    var `total`: Int
+    var `page`: Int
+    var `size`: Int
+    var `seriesInfo`: SeriesDetail
+}
+
+struct SeriesDetail: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `bookCount`: Int
+    var `readCount`: Int
+    var `authors`: [String]
+    var `possibleGaps`: [Int]
+    var `expectedBookCount`: Int?
+}
+
 enum CoverMedium: String, Codable, Sendable, CaseIterable, Identifiable {
     case ebook
     case audio

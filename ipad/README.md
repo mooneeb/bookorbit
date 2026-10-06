@@ -2,6 +2,10 @@
 
 Implementation of [issue #2](https://github.com/mooneeb/bookorbit/issues/2) is in progress. This checkout provides a native server profile, local/OIDC sign-in, Keychain credentials, refresh/logout, default-password change, bounded library search/sort with list/grid/basic table presentation, book/file details, collection creation/membership, text and bibliographic metadata editing/clearing/locks, ebook/audio cover upload/revert, and production PDF reading with native page curl, direct page navigation, contents, text search and cross-client resume. The complete issue is not finished.
 
+Native author and series browsing is implemented and awaiting its independent test handoff. The authenticated sidebar opens forty-result directories with server search, sorting/direction and accessible-library filtering. Author filters cover photo, sort name, multiple books and recent additions; series filters cover reading/completion/gaps and author name. Profiles expose authorized book pages, biography/series information and the existing permission-aware book details/PDF entry. Query parameter names and sort values follow the existing owning controllers' DTOs, and response models derive from the canonical author/series contracts. No full-library client processing is introduced.
+
+The current workflow completes feature implementation, then hands autonomous local API/native/browser/file testing to a separate agent while the implementing agent builds the next feature. Each confirmed defect receives a separate repair agent, and the tester verifies the resulting correction. Isolated checkouts preserve the tested source, existing dependencies/runtimes are reused, and heavy checks are serialized to avoid exhausting this Mac. Physical-device and human-reviewed baseline requirements remain explicit residual gates; unattended simulator testing does not satisfy them.
+
 ## Build
 
 Use Xcode 27, XcodeGen 2.46, Node 24 or later, and the pnpm version declared in the root package.json. The deployment target is iPadOS 26. The private bundle identity is `com.mooneeb.bookorbit.private`; retain it for future upgrades and signing renewal.

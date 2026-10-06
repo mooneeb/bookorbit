@@ -7,6 +7,7 @@ struct LibraryView: View {
   @State private var selectedBook: Int?
   @State private var presentation = "list"
   @State private var isCreatingCollection = false
+  @State private var organization: OrganizationKind?
 
   init(session: SessionModel, api: BookOrbitAPI) {
     self.session = session
@@ -19,6 +20,10 @@ struct LibraryView: View {
         Button("All books") {
           Task { await library.select(.all) }
         }
+        Button("Authors") { organization = .authors }
+          .accessibilityIdentifier("browseAuthors")
+        Button("Series") { organization = .series }
+          .accessibilityIdentifier("browseSeries")
         ForEach(library.libraries) { item in
           Button(item.name) {
             Task { await library.select(.library(id: item.id, name: item.name)) }
@@ -129,6 +134,11 @@ struct LibraryView: View {
       }
     }
     .task { await library.load() }
+    .sheet(item: $organization) { kind in
+      OrganizationDirectoryView(
+        api: library.api, kind: kind, libraries: library.libraries,
+        canEditMetadata: session.user?.hasPermission(.libraryEditMetadata) == true)
+    }
     .sheet(isPresented: $isCreatingCollection) {
       CreateCollectionView(collections: library.collections) { collection in
         Task { await library.select(.collection(id: collection.id, name: collection.name)) }

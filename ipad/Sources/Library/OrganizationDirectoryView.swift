@@ -1,0 +1,196 @@
+import SwiftUI
+
+struct OrganizationDirectoryView: View {
+  let libraries: [Library]
+  let canEditMetadata: Bool
+  @Environment(\.dismiss) private var dismiss
+  @State private var model: OrganizationDirectoryModel
+  @State private var selection: OrganizationSelection?
+  @State private var showingFilters = false
+  @State private var draftFilters = OrganizationFilters()
+
+  init(api: BookOrbitAPI, kind: OrganizationKind, libraries: [Library], canEditMetadata: Bool) {
+    self.libraries = libraries
+    self.canEditMetadata = canEditMetadata
+    _model = State(initialValue: OrganizationDirectoryModel(api: api, kind: kind))
+  }
+
+  var body: some View {
+    NavigationStack {
+      VStack(spacing: 0) {
+        if let error = model.error {
+          ContentUnavailableView {
+            Label(
+              "Could not load \(model.kind.title.lowercased())", systemImage: "wifi.exclamationmark"
+            )
+          } description: {
+            Text(error)
+          } actions: {
+            Button("Try again") { Task { await model.load() } }
+          }
+        } else {
+          List {
+            if model.kind == .authors {
+              ForEach(model.authors) { author in
+                Button {
+                  selection = OrganizationSelection(id: author.id, name: author.name)
+                } label: {
+                  VStack(alignment: .leading, spacing: 6) {
+                    Text(author.name).font(.headline)
+                    if let sortName = author.sortName { Text(sortName).font(.subheadline) }
+                    Text(bookCount(author.bookCount)).font(.subheadline)
+                  }
+                  .foregroundStyle(Color(uiColor: .label))
+                  .padding(.vertical, 8)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("author\(author.id)")
+              }
+            } else {
+              ForEach(model.series) { series in
+                Button {
+                  selection = OrganizationSelection(id: series.id, name: series.name)
+                } label: {
+                  VStack(alignment: .leading, spacing: 6) {
+                    Text(series.name).font(.headline)
+                    Text(series.authors.joined(separator: ", ")).font(.subheadline)
+                    Text(
+                      "\(bookCount(series.bookCount)), \(series.readCount) read, \(series.readingCount) in progress"
+                    )
+                    .font(.subheadline)
+                    if series.gapCount > 0 {
+                      Text("\(series.gapCount) missing volumes").font(.subheadline)
+                    }
+                    if let next = series.nextTitle { Text("Up next: \(next)").font(.subheadline) }
+                  }
+                  .foregroundStyle(Color(uiColor: .label))
+                  .padding(.vertical, 8)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("series\(series.id)")
+              }
+            }
+          }
+          .overlay {
+            if model.total == 0 && !model.isBusy {
+              ContentUnavailableView.search(text: model.search)
+            }
+          }
+        }
+        if model.isBusy { ProgressView("Loading \(model.kind.title.lowercased())…").padding() }
+        OrganizationPagingView(
+          page: model.page, total: model.total,
+          canGoBack: model.canGoBack, canGoNext: model.canGoNext,
+          previous: { Task { await model.previousPage() } },
+          next: { Task { await model.nextPage() } })
+      }
+      .navigationTitle(model.kind.title)
+      .searchable(text: $model.search, prompt: "Search \(model.kind.title.lowercased())")
+      .onSubmit(of: .search) { Task { await model.load() } }
+      .toolbar {
+        ToolbarItem(placement: .topBarLeading) { Button("Done", action: dismiss.callAsFunction) }
+        ToolbarItem(placement: .topBarTrailing) {
+          Menu("Sort") {
+            Picker("Sort by", selection: $model.sort) {
+              ForEach(model.kind.sorts, id: \.value) { sort in Text(sort.title).tag(sort.value) }
+            }
+            Toggle("Descending", isOn: $model.descending)
+          }
+          .accessibilityIdentifier("organizationSort")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Filters") {
+            draftFilters = model.filters
+            showingFilters = true
+          }
+          .accessibilityIdentifier("organizationFilters")
+        }
+      }
+      .navigationDestination(item: $selection) { selected in
+        OrganizationDetailView(
+          api: model.api, kind: model.kind, selection: selected,
+          libraryID: model.filters.libraryID, canEditMetadata: canEditMetadata)
+      }
+      .onChange(of: model.sort) { Task { await model.load() } }
+      .onChange(of: model.descending) { Task { await model.load() } }
+      .task { await model.load() }
+      .sheet(isPresented: $showingFilters) { filters }
+    }
+  }
+
+  private var filters: some View {
+    NavigationStack {
+      Form {
+        Picker("Library", selection: $draftFilters.libraryID) {
+          Text("All accessible libraries").tag(nil as Int?)
+          ForEach(libraries) { library in Text(library.name).tag(Optional(library.id)) }
+        }
+        if model.kind == .authors {
+          Picker("Photo", selection: $draftFilters.photo) {
+            Text("Any").tag("")
+            Text("Has photo").tag("true")
+            Text("Missing photo").tag("false")
+          }
+          Picker("Sort name", selection: $draftFilters.sortName) {
+            Text("Any").tag("")
+            Text("Has sort name").tag("true")
+            Text("Missing sort name").tag("false")
+          }
+          Toggle("At least two books", isOn: $draftFilters.multipleBooks)
+          Toggle("Books added in the last 30 days", isOn: $draftFilters.recent)
+        } else {
+          Picker("Reading status", selection: $draftFilters.completion) {
+            Text("Any").tag("")
+            Text("Not started").tag("not_started")
+            Text("In progress").tag("in_progress")
+            Text("Complete").tag("complete")
+            Text("Missing volumes").tag("has_gaps")
+          }
+          TextField("Author name", text: $draftFilters.author)
+        }
+        Button("Reset filters") { draftFilters = OrganizationFilters() }
+      }
+      .navigationTitle("Filters")
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showingFilters = false } }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Apply") {
+            model.filters = draftFilters
+            showingFilters = false
+            Task { await model.load() }
+          }
+        }
+      }
+    }
+  }
+}
+
+struct OrganizationPagingView: View {
+  let page: Int
+  let total: Int
+  let canGoBack: Bool
+  let canGoNext: Bool
+  let previous: () -> Void
+  let next: () -> Void
+
+  var body: some View {
+    HStack {
+      if canGoBack { Button("Previous", action: previous) }
+      Spacer()
+      Text("Page \(page + 1), \(total.formatted()) results").font(.subheadline)
+      Spacer()
+      if canGoNext { Button("Next", action: next) }
+    }
+    .foregroundStyle(Color(uiColor: .label))
+    .padding()
+    .background(Color(uiColor: .systemBackground))
+  }
+}
+
+private func bookCount(_ count: Int) -> String {
+  count == 1 ? "1 book" : "\(count.formatted()) books"
+}
