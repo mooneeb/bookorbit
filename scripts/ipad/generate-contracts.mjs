@@ -13,6 +13,7 @@ const entries = [
   "book-selection",
   "collection",
   "comic",
+  "custom-metadata",
   "dashboard",
   "epub",
   "library",
@@ -70,6 +71,7 @@ const projections = {
     "authors",
     "genres",
     "tags",
+    "customMetadata",
     "files",
     "lockedFields",
     "coverMedia",
@@ -93,6 +95,7 @@ const integerFields = new Set([
   "libraryIds",
   "smartScopeId",
   "fileId",
+  "fieldId",
   "page",
   "size",
   "total",
@@ -186,6 +189,35 @@ function generateRuleNode() {
 }
 
 function swiftType(type, name, field) {
+  if (type.aliasSymbol?.name === "CustomMetadataPrimitiveValue") {
+    const expected = ts.TypeFlags.String | ts.TypeFlags.Number | ts.TypeFlags.BooleanLiteral | ts.TypeFlags.Null;
+    if (!type.isUnion() || type.types.some((part) => !(part.flags & expected))) throw new Error("Custom metadata primitive contract changed");
+    declarations.set(
+      "CustomMetadataPrimitiveValue",
+      `enum CustomMetadataPrimitiveValue: Codable, Sendable, Equatable {
+    case string(String), number(Double), boolean(Bool), null
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null }
+        else if let value = try? container.decode(Bool.self) { self = .boolean(value) }
+        else if let value = try? container.decode(Double.self) { self = .number(value) }
+        else { self = .string(try container.decode(String.self)) }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .boolean(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        }
+    }
+}`,
+    );
+    return "CustomMetadataPrimitiveValue";
+  }
   if (type.aliasSymbol?.name === "CoverMedium") return "CoverMedium";
   if (field === "coverMedia" && checker.isArrayType(type)) return "[CoverMedium]";
   if (type.isUnion()) {

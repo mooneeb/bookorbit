@@ -52,6 +52,19 @@ struct BookDetailView: View {
                 .accessibilityIdentifier("addToCollection")
               if let collectionResult { Text(collectionResult) }
             }
+            if !book.customMetadata.isEmpty {
+              Section("Custom fields") {
+                ForEach(book.customMetadata, id: \.fieldId) { field in
+                  VStack(alignment: .leading, spacing: 4) {
+                    Text(field.label).font(.headline)
+                    Text(field.value.displayText)
+                      .fixedSize(horizontal: false, vertical: true)
+                      .accessibilityIdentifier("customMetadataValue\(field.fieldId)")
+                  }
+                  .accessibilityElement(children: .combine)
+                }
+              }
+            }
           }
         } else if let error = model.error {
           ContentUnavailableView(

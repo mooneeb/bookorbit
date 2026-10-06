@@ -47,7 +47,8 @@ final class BookDetailModel {
         genres: updateNames(draft.genres, original: book.genres),
         tags: updateNames(draft.tags, original: book.tags),
         publishedDate: update(draft.publishedDate, original: book.publishedDate),
-        authors: updateNames(draft.authors, original: book.authors.map(\.name)))
+        authors: updateNames(draft.authors, original: book.authors.map(\.name)),
+        customMetadata: draft.customUpdates.isEmpty ? nil : draft.customUpdates)
       let payload = BookMetadataAndLocksUpdatePayload(
         metadata: metadata, lockedFields: draft.lockedFields.sorted())
       self.book = try await api.send(
@@ -91,6 +92,7 @@ final class MetadataDraft: Identifiable {
   var authors: String
   var genres: String
   var tags: String
+  var customFields: [CustomMetadataDraft]
   var lockedFields: Set<String>
 
   init(book: BookDetail) {
@@ -107,10 +109,12 @@ final class MetadataDraft: Identifiable {
     authors = book.authors.map(\.name).joined(separator: "\n")
     genres = book.genres.joined(separator: "\n")
     tags = book.tags.joined(separator: "\n")
+    customFields = book.customMetadata.map(CustomMetadataDraft.init)
     lockedFields = Set(book.lockedFields)
   }
 
   var isValid: Bool { validationMessage == nil }
+  var customUpdates: [CustomMetadataBookValueInput] { customFields.compactMap(\.update) }
 
   var isPublicationLocked: Bool {
     lockedFields.contains("publishedYear")
@@ -127,6 +131,7 @@ final class MetadataDraft: Identifiable {
   }
 
   var validationMessage: String? {
+    if let message = customFields.compactMap(\.validationMessage).first { return message }
     if title.unicodeScalars.count > 1000 || subtitle.unicodeScalars.count > 1000 {
       return "Title and subtitle must be no longer than 1,000 characters."
     }

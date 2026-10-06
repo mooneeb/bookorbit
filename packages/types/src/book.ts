@@ -3,7 +3,7 @@ import type { BookMetadataLockField } from "./metadata-lock";
 import type { AudiobookChapter, NarratorRef } from "./audiobook";
 import type { ComicMetadataFields } from "./metadata-fetch";
 import type { BookFileWriteField, WriteResult } from "./file-write";
-import type { CustomMetadataBookValue } from "./custom-metadata";
+import type { CustomMetadataBookValue, CustomMetadataBookValueInput } from "./custom-metadata";
 import type { CoverAspectRatio } from "./library";
 import { DEFAULT_FORMAT_PRIORITY } from "./library";
 import type { SeriesIndex } from "./series-index";
@@ -375,7 +375,7 @@ export type BookMetadataUpdatePayload = Partial<
     | "genres"
     | "tags"
   >
-> & { authors?: string[] };
+> & { authors?: string[]; customMetadata?: CustomMetadataBookValueInput[] };
 
 export type BookMetadataAndLocksUpdatePayload = {
   metadata?: BookMetadataUpdatePayload;

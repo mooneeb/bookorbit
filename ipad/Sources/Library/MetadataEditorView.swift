@@ -109,6 +109,7 @@ struct MetadataEditorView: View {
                 identifier: "metadata\(medium == .ebook ? "" : "Audio")CoverLock")
             }
           }
+          if !draft.customFields.isEmpty { CustomMetadataFieldsView(fields: $draft.customFields) }
         }
         .padding()
       }

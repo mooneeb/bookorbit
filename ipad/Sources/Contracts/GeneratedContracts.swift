@@ -131,6 +131,7 @@ struct BookDetail: Codable, Sendable, Equatable, Identifiable {
     var `authors`: [BookDetailAuthorsItem]
     var `genres`: [String]
     var `tags`: [String]
+    var `customMetadata`: [CustomMetadataBookValue]
     var `files`: [BookDetailFile]
     var `lockedFields`: [String]
     var `coverMedia`: [CoverMedium]
@@ -142,6 +143,37 @@ struct BookDetailAuthorsItem: Codable, Sendable, Equatable, Identifiable {
     var `id`: Int
     var `name`: String
     var `sortName`: String?
+}
+
+struct CustomMetadataBookValue: Codable, Sendable, Equatable {
+    var `fieldId`: Int
+    var `key`: String
+    var `label`: String
+    var `type`: String
+    var `displayOrder`: Double
+    var `value`: CustomMetadataPrimitiveValue
+}
+
+enum CustomMetadataPrimitiveValue: Codable, Sendable, Equatable {
+    case string(String), number(Double), boolean(Bool), null
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null }
+        else if let value = try? container.decode(Bool.self) { self = .boolean(value) }
+        else if let value = try? container.decode(Double.self) { self = .number(value) }
+        else { self = .string(try container.decode(String.self)) }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .boolean(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        }
+    }
 }
 
 struct BookDetailFile: Codable, Sendable, Equatable, Identifiable {
@@ -320,6 +352,12 @@ struct BookMetadataUpdatePayload: Encodable, Sendable, Equatable {
     var `tags`: [String]?
     var `publishedDate`: FieldUpdate<String>?
     var `authors`: [String]?
+    var `customMetadata`: [CustomMetadataBookValueInput]?
+}
+
+struct CustomMetadataBookValueInput: Codable, Sendable, Equatable {
+    var `fieldId`: Int
+    var `value`: CustomMetadataPrimitiveValue
 }
 
 struct BookMetadataAndLocksUpdatePayload: Encodable, Sendable, Equatable {
