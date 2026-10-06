@@ -30,8 +30,12 @@ struct DashboardSettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
               TextField("Shelf name", text: $shelf.label)
               Toggle("Enabled", isOn: $shelf.enabled)
-              Text(DashboardShelfType(rawValue: shelf.type)?.title ?? "Podcast shelf").font(
-                .subheadline)
+              Text(DashboardShelfType(rawValue: shelf.type)?.title ?? "Podcast shelf")
+                .font(.body)
+                .foregroundStyle(Color(uiColor: .label))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .accessibilityElement(children: .combine)
               Stepper(
                 "Books per row: \(Int(shelf.limit))", value: $shelf.limit, in: 1...50, step: 1)
               Stepper("Rows: \(Int(shelf.rows))", value: $shelf.rows, in: 1...3, step: 1)
