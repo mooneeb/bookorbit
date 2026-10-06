@@ -18,6 +18,62 @@ final class EntryJourneyTests: XCTestCase {
   }
 
   @MainActor
+  func testIPADE01A01TableBrowseSearchAndOpen() async throws {
+    let app = launchAtServerEntry()
+    connect(app)
+    signIn(app)
+    XCTAssertTrue(app.staticTexts["50,000 books"].waitForExistence(timeout: 20))
+    let tableMode = app.buttons["Table"]
+    XCTAssertTrue(tableMode.waitForExistence(timeout: 5))
+    tableMode.tap()
+    let table = app.descendants(matching: .any)["libraryTable"].firstMatch
+    XCTAssertTrue(table.waitForExistence(timeout: 10))
+    let firstBook = app.cells["tableBook2"]
+    XCTAssertTrue(firstBook.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertEqual(firstBook.label, "Library book 00001")
+    XCTAssertGreaterThanOrEqual(firstBook.frame.width, 44)
+    XCTAssertGreaterThanOrEqual(firstBook.frame.height, 44)
+    let rows = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH %@", "tableBook"))
+    XCTAssertGreaterThan(rows.count, 0)
+    XCTAssertLessThanOrEqual(rows.count, 40)
+    capture("IPAD-E01-A01-table-library-portrait")
+    try auditLibrary(app, state: "table-portrait")
+    app.buttons["Next"].tap()
+    XCTAssertTrue(app.staticTexts["Page 2"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.cells["tableBook42"].waitForExistence(timeout: 10))
+    XCTAssertEqual(app.cells["tableBook42"].label, "Library book 00041")
+    XCTAssertFalse(firstBook.exists)
+    XCTAssertLessThanOrEqual(rows.count, 40)
+    capture("IPAD-E01-A01-table-library-next-page")
+    app.buttons["Previous"].tap()
+    XCTAssertTrue(app.staticTexts["Page 1"].waitForExistence(timeout: 10))
+    XCTAssertTrue(firstBook.waitForExistence(timeout: 10))
+    let search = app.searchFields.firstMatch
+    search.tap()
+    search.typeText("Orbit fixture\n")
+    XCTAssertTrue(app.staticTexts["1 book"].waitForExistence(timeout: 10))
+    let result = app.cells["tableBook1"]
+    XCTAssertTrue(result.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertEqual(result.label, "Orbit fixture")
+    XCTAssertEqual(rows.count, 1)
+    XCTAssertFalse(firstBook.exists)
+    capture("IPAD-E01-A01-table-search-result")
+    try auditLibrary(app, state: "table-search")
+    XCUIDevice.shared.orientation = .landscapeLeft
+    XCTAssertTrue(result.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    capture("IPAD-E01-A01-table-search-landscape")
+    try auditLibrary(app, state: "table-landscape")
+    XCUIDevice.shared.orientation = .portrait
+    result.tap()
+    XCTAssertTrue(app.staticTexts["PDF"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["readFile1"].exists)
+    capture("IPAD-E01-A01-table-opened-book")
+    app.buttons["Done"].tap()
+    app.buttons["signOut"].tap()
+    XCTAssertTrue(app.buttons["connectServer"].waitForExistence(timeout: 10))
+  }
+
+  @MainActor
   func testIPADE01A01LocalLoginAndRelaunch() async throws {
     let app = launchAtServerEntry()
     connect(app)
@@ -51,10 +107,28 @@ final class EntryJourneyTests: XCTestCase {
     signIn(app)
     XCTAssertTrue(app.staticTexts["50,000 books"].waitForExistence(timeout: 20))
     continueAfterFailure = true
-    try app.performAccessibilityAudit()
+    try auditLibrary(app, state: "list-after-sign-in")
     continueAfterFailure = false
     app.buttons["signOut"].tap()
     XCTAssertTrue(app.buttons["connectServer"].waitForExistence(timeout: 10))
+  }
+
+  @MainActor
+  private func auditLibrary(_ app: XCUIApplication, state: String) throws {
+    let hierarchy = XCTAttachment(string: app.debugDescription)
+    hierarchy.name = "IPAD-E01-A01-\(state)-hierarchy"
+    hierarchy.lifetime = .keepAlways
+    add(hierarchy)
+    try app.performAccessibilityAudit { issue in
+      let attachment = XCTAttachment(
+        string:
+          "\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
+      )
+      attachment.name = "IPAD-E01-A01-\(state)-accessibility-issue"
+      attachment.lifetime = .keepAlways
+      self.add(attachment)
+      return false
+    }
   }
 
   @MainActor

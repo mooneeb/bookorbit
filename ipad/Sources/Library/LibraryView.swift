@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct LibraryView: View {
   @Bindable var session: SessionModel
@@ -32,6 +33,8 @@ struct LibraryView: View {
       .buttonStyle(.plain)
       .font(.body)
       .foregroundStyle(.primary)
+      .scrollContentBackground(.hidden)
+      .background(Color(uiColor: .systemBackground))
       .navigationTitle("Libraries")
       .safeAreaInset(edge: .bottom) {
         Button("Sign out") { Task { await session.signOut() } }
@@ -48,13 +51,7 @@ struct LibraryView: View {
       NavigationStack {
         VStack(spacing: 0) {
           HStack {
-            Group {
-              if library.total == 1 {
-                Text("1 book")
-              } else {
-                Text("\(library.total.formatted()) books")
-              }
-            }.font(.subheadline).foregroundStyle(.primary)
+            LibraryBookCountView(total: library.total)
             Spacer()
             Picker("Sort books", selection: $library.sort) {
               Text("Title").tag("title")
@@ -62,7 +59,9 @@ struct LibraryView: View {
               Text("Author").tag("author")
             }
             .onChange(of: library.sort) { Task { await library.searchBooks() } }
-          }.padding()
+          }
+          .padding()
+          .background(Color(uiColor: .systemBackground))
           if let error = library.error {
             ContentUnavailableView {
               Label("Could not load books", systemImage: "wifi.exclamationmark")
@@ -73,6 +72,8 @@ struct LibraryView: View {
             }
           } else if presentation == "grid" {
             BookGrid(books: library.books) { selectedBook = $0 }
+          } else if presentation == "table" {
+            BookTableView(books: library.books) { selectedBook = $0 }
           } else {
             List(library.books) { book in
               Button {
@@ -112,6 +113,7 @@ struct LibraryView: View {
             Picker("Book presentation", selection: $presentation) {
               Label("List", systemImage: "list.bullet").tag("list")
               Label("Grid", systemImage: "square.grid.2x2").tag("grid")
+              Label("Table", systemImage: "tablecells").tag("table")
             }.pickerStyle(.segmented)
           }
         }
@@ -149,9 +151,11 @@ private struct CollectionSidebar: View {
   let select: (BookCollection) -> Void
 
   var body: some View {
-    Section("Collections") {
+    Section {
       Button("New collection", action: create)
         .padding(.vertical, 4)
+        .foregroundStyle(Color(uiColor: .label))
+        .listRowBackground(Color(uiColor: .systemBackground))
         .accessibilityIdentifier("newCollection")
       if collections.total > 0 || !collections.search.isEmpty {
         HStack {
@@ -177,11 +181,39 @@ private struct CollectionSidebar: View {
       if collections.canGoNext {
         Button("Next collections") { Task { await collections.nextPage() } }
       }
+    } header: {
+      Text("Collections")
+        .foregroundStyle(Color(uiColor: .label))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .systemBackground))
     }
   }
 }
 
 private struct BookSelection: Identifiable { let id: Int }
+
+private struct LibraryBookCountView: UIViewRepresentable {
+  let total: Int
+
+  func makeUIView(context: Context) -> UILabel {
+    let label = UILabel()
+    label.font = .preferredFont(forTextStyle: .subheadline)
+    label.adjustsFontForContentSizeCategory = true
+    label.textColor = .label
+    label.backgroundColor = .systemBackground
+    label.numberOfLines = 0
+    return label
+  }
+
+  func updateUIView(_ label: UILabel, context: Context) {
+    label.text = total == 1 ? "1 book" : "\(total.formatted()) books"
+  }
+
+  func sizeThatFits(_ proposal: ProposedViewSize, uiView: UILabel, context: Context) -> CGSize? {
+    uiView.sizeThatFits(
+      CGSize(width: proposal.width ?? .greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
+  }
+}
 
 private struct BookGrid: View {
   let books: [BookCard]
