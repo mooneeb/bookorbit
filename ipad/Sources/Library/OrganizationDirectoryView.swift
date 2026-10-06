@@ -24,15 +24,7 @@ struct OrganizationDirectoryView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         if let error = model.error {
-          ContentUnavailableView {
-            Label(
-              "Could not load \(model.kind.title.lowercased())", systemImage: "wifi.exclamationmark"
-            )
-          } description: {
-            Text(error)
-          } actions: {
-            Button("Try again") { Task { await model.load() } }
-          }
+          loadFailure(error)
         } else {
           List {
             if model.kind == .authors {
@@ -137,6 +129,39 @@ struct OrganizationDirectoryView: View {
       .task { await model.load() }
       .sheet(isPresented: $showingFilters) { filters }
     }
+  }
+
+  private func loadFailure(_ error: String) -> some View {
+    ScrollView {
+      VStack(spacing: 16) {
+        Image(systemName: "wifi.exclamationmark")
+          .font(.largeTitle)
+          .accessibilityHidden(true)
+        Text("Could not load \(model.kind.title.lowercased())")
+          .font(.title2.bold())
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityAddTraits(.isHeader)
+        Text(error)
+          .font(.body)
+          .fixedSize(horizontal: false, vertical: true)
+        Button {
+          Task { await model.load() }
+        } label: {
+          Text("Try again")
+            .font(.body)
+            .padding(.horizontal, 16)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+      }
+      .foregroundStyle(Color(uiColor: .label))
+      .multilineTextAlignment(.center)
+      .padding()
+      .frame(maxWidth: .infinity)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color(uiColor: .systemBackground))
   }
 
   private var emptyDirectory: some View {
