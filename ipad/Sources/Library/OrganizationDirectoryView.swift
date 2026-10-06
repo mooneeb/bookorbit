@@ -186,13 +186,38 @@ struct OrganizationPagingView: View {
     HStack {
       if canGoBack { Button("Previous", action: previous) }
       Spacer()
-      Text("Page \(page + 1), \(total.formatted()) results").font(.subheadline)
+      OrganizationPageSummaryView(page: page, total: total)
       Spacer()
       if canGoNext { Button("Next", action: next) }
     }
     .foregroundStyle(Color(uiColor: .label))
     .padding()
     .background(Color(uiColor: .systemBackground))
+  }
+}
+
+private struct OrganizationPageSummaryView: UIViewRepresentable {
+  let page: Int
+  let total: Int
+
+  func makeUIView(context: Context) -> UILabel {
+    let label = UILabel()
+    label.font = .preferredFont(forTextStyle: .subheadline)
+    label.adjustsFontForContentSizeCategory = true
+    label.textColor = .label
+    label.backgroundColor = .systemBackground
+    label.textAlignment = .center
+    label.numberOfLines = 0
+    return label
+  }
+
+  func updateUIView(_ label: UILabel, context: Context) {
+    label.text = "Page \(page + 1), \(total.formatted()) results"
+  }
+
+  func sizeThatFits(_ proposal: ProposedViewSize, uiView: UILabel, context: Context) -> CGSize? {
+    uiView.sizeThatFits(
+      CGSize(width: proposal.width ?? .greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
   }
 }
 
