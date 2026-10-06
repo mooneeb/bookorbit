@@ -35,7 +35,9 @@ struct DashboardView: View {
                   ? DashboardShelfType(rawValue: shelf.configuration.type)?.title ?? "Books"
                   : shelf.configuration.label
               )
-              .font(.title2).accessibilityAddTraits(.isHeader)
+              .font(.title2)
+              .fixedSize(horizontal: false, vertical: true)
+              .accessibilityAddTraits(.isHeader)
               if shelf.failed {
                 Label("Could not load this shelf", systemImage: "exclamationmark.triangle")
                 Button("Try again") { Task { await model.load() } }
