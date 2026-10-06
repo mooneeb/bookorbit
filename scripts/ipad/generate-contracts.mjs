@@ -6,7 +6,9 @@ import path from "node:path";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(path.join(root, "server/package.json"));
 const ts = require("typescript");
-const entries = ["auth", "book", "library", "permissions", "query"].map((name) => path.join(root, `packages/types/src/${name}.ts`));
+const entries = ["auth", "book", "book-selection", "collection", "epub", "library", "permissions", "query"].map((name) =>
+  path.join(root, `packages/types/src/${name}.ts`),
+);
 const program = ts.createProgram(entries, {
   strict: true,
   target: ts.ScriptTarget.ES2022,
@@ -36,14 +38,59 @@ const projections = {
   AuthUser: ["id", "username", "name", "active", "isSuperuser", "isDefaultPassword", "permissions"],
   Library: ["id", "type", "accessLevel", "name", "bookCount"],
   BookCard: ["id", "title", "authors", "files", "hasCover", "coverVersion", "readingProgress", "seriesName"],
-  BookDetail: ["id", "libraryId", "libraryName", "title", "description", "authors", "files", "lockedFields", "coverVersion"],
+  BookDetail: [
+    "id",
+    "libraryId",
+    "libraryName",
+    "title",
+    "subtitle",
+    "description",
+    "publisher",
+    "publishedDate",
+    "publishedYear",
+    "language",
+    "pageCount",
+    "isbn10",
+    "isbn13",
+    "authors",
+    "genres",
+    "tags",
+    "files",
+    "lockedFields",
+    "coverMedia",
+    "covers",
+    "coverVersion",
+  ],
   BookDetailFile: ["id", "format", "role", "filename", "sizeBytes", "durationSeconds"],
   BookQuery: ["sort", "pagination", "q", "collapseSeries"],
+  Collection: ["id", "userId", "mediaType", "name", "isPublic", "isOwner", "bookCount"],
+  BookIdsSelection: ["bookIds"],
+  EpubBookInfo: ["containerPath", "rootPath", "manifest", "optionalFiles"],
 };
-const integerFields = new Set(["id", "sessionId", "libraryId", "fileId", "page", "size", "total", "bookCount"]);
+const aliases = { Collection: "BookCollection" };
+const integerFields = new Set([
+  "id",
+  "bookIds",
+  "userId",
+  "sessionId",
+  "libraryId",
+  "fileId",
+  "page",
+  "size",
+  "total",
+  "bookCount",
+  "publishedYear",
+  "pageCount",
+  "width",
+  "height",
+]);
 const declarations = new Map();
+const patchRequests = new Set(["BookMetadataUpdatePayload"]);
+const requestModels = new Set([...patchRequests, "BookMetadataAndLocksUpdatePayload", "SaveFileProgressPayload"]);
 
 function swiftType(type, name, field) {
+  if (type.aliasSymbol?.name === "CoverMedium") return "CoverMedium";
+  if (field === "coverMedia" && checker.isArrayType(type)) return "[CoverMedium]";
   if (type.isUnion()) {
     const values = type.types.filter((part) => !(part.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined)));
     const optional = values.length !== type.types.length;
@@ -62,7 +109,7 @@ function swiftType(type, name, field) {
     const symbolName = type.aliasSymbol?.name ?? type.symbol?.name;
     const modelName = symbols.has(symbolName) ? symbolName : name;
     generateModel(modelName, type);
-    return modelName;
+    return aliases[modelName] ?? modelName;
   }
   throw new Error(`Unsupported type in ${name}: ${checker.typeToString(type)}`);
 }
@@ -75,13 +122,29 @@ function generateModel(name, type) {
   const fields = selected.map((field) => {
     const property = properties.find((candidate) => candidate.name === field);
     if (!property) throw new Error(`${name}.${field} no longer exists in the shared contract`);
-    const propertyType = checker.getTypeOfSymbolAtLocation(property, property.valueDeclaration ?? property.declarations[0]);
-    let target = swiftType(propertyType, `${name}${field[0].toUpperCase()}${field.slice(1)}`, field);
+    const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? program.getSourceFile(entries[0]);
+    const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
+    const reference =
+      declaration.type && ts.isTypeReferenceNode(declaration.type) ? checker.getSymbolAtLocation(declaration.type.typeName) : undefined;
+    const canonical = reference && reference.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(reference) : reference;
+    let target;
+    if (canonical && requestModels.has(canonical.name)) {
+      generateModel(canonical.name, checker.getDeclaredTypeOfSymbol(canonical));
+      target = canonical.name;
+    } else {
+      target = swiftType(propertyType, `${name}${field[0].toUpperCase()}${field.slice(1)}`, field);
+    }
+    if (patchRequests.has(name) && propertyType.isUnion() && propertyType.types.some((part) => part.flags & ts.TypeFlags.Null)) {
+      target = `FieldUpdate<${target.replace(/\?$/, "")}>?`;
+    }
     if (property.flags & ts.SymbolFlags.Optional && !target.endsWith("?")) target += "?";
     return `    var \`${field}\`: ${target}`;
   });
   const identifiable = selected.includes("id") ? ", Identifiable" : "";
-  declarations.set(name, `struct ${name}: Codable, Sendable, Equatable${identifiable} {\n${fields.join("\n")}\n}`);
+  declarations.set(
+    name,
+    `struct ${aliases[name] ?? name}: ${requestModels.has(name) ? "Encodable" : "Codable"}, Sendable, Equatable${identifiable} {\n${fields.join("\n")}\n}`,
+  );
 }
 
 for (const name of [
@@ -97,6 +160,15 @@ for (const name of [
   "BooksPage",
   "BookDetail",
   "BookQuery",
+  "CollectionsPage",
+  "CollectionPageQuery",
+  "CreateCollectionPayload",
+  "BookIdsSelection",
+  "BookMetadataUpdatePayload",
+  "BookMetadataAndLocksUpdatePayload",
+  "FileReadingProgress",
+  "SaveFileProgressPayload",
+  "EpubBookInfo",
 ]) {
   const symbol = symbols.get(name);
   if (!symbol) throw new Error(`Missing shared contract: ${name}`);
@@ -104,6 +176,11 @@ for (const name of [
 }
 
 const permission = symbols.get("Permission");
+const coverMedium = checker.getDeclaredTypeOfSymbol(symbols.get("CoverMedium"));
+declarations.set(
+  "CoverMedium",
+  `enum CoverMedium: String, Codable, Sendable, CaseIterable, Identifiable {\n${coverMedium.types.map((type) => `    case ${type.value}`).join("\n")}\n    var id: String { rawValue }\n}`,
+);
 const permissionType = checker.getDeclaredTypeOfSymbol(permission);
 const cases = permissionType.types.map((type) => {
   if (typeof type.value !== "string") throw new Error("Permission must remain a string enum");

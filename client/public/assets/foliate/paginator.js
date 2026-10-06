@@ -479,6 +479,7 @@ export class Paginator extends HTMLElement {
   #scrollBounds
   #touchState
   #touchScrolled
+  #pointerNavigation = new AbortController()
   #lastVisibleRange
   constructor() {
     super()
@@ -598,14 +599,14 @@ export class Paginator extends HTMLElement {
       }, 250),
     )
 
-    const opts = { passive: false }
+    const opts = { passive: false, signal: this.#pointerNavigation.signal }
     this.addEventListener('touchstart', this.#onTouchStart.bind(this), opts)
     this.addEventListener('touchmove', this.#onTouchMove.bind(this), opts)
-    this.addEventListener('touchend', this.#onTouchEnd.bind(this))
+    this.addEventListener('touchend', this.#onTouchEnd.bind(this), { signal: this.#pointerNavigation.signal })
     this.addEventListener('load', ({ detail: { doc } }) => {
       doc.addEventListener('touchstart', this.#onTouchStart.bind(this), opts)
       doc.addEventListener('touchmove', this.#onTouchMove.bind(this), opts)
-      doc.addEventListener('touchend', this.#onTouchEnd.bind(this))
+      doc.addEventListener('touchend', this.#onTouchEnd.bind(this), { signal: this.#pointerNavigation.signal })
     })
 
     this.addEventListener('relocate', ({ detail }) => {
@@ -617,7 +618,7 @@ export class Paginator extends HTMLElement {
       }
     })
     const checkPointerSelection = debounce((range, sel) => {
-      if (!sel.rangeCount) return
+      if (this.#pointerNavigation.signal.aborted || !sel.rangeCount) return
       const selRange = sel.getRangeAt(0)
       const backward = selectionIsBackward(sel)
       if (backward && selRange.compareBoundaryPoints(Range.START_TO_START, range) < 0) this.prev()
@@ -625,8 +626,8 @@ export class Paginator extends HTMLElement {
     }, 700)
     this.addEventListener('load', ({ detail: { doc } }) => {
       let isPointerSelecting = false
-      doc.addEventListener('pointerdown', () => (isPointerSelecting = true))
-      doc.addEventListener('pointerup', () => (isPointerSelecting = false))
+      doc.addEventListener('pointerdown', () => (isPointerSelecting = true), { signal: this.#pointerNavigation.signal })
+      doc.addEventListener('pointerup', () => (isPointerSelecting = false), { signal: this.#pointerNavigation.signal })
       let isKeyboardSelecting = false
       doc.addEventListener('keydown', () => (isKeyboardSelecting = true))
       doc.addEventListener('keyup', () => (isKeyboardSelecting = false))
@@ -636,7 +637,7 @@ export class Paginator extends HTMLElement {
         if (!range) return
         const sel = doc.getSelection()
         if (!sel.rangeCount) return
-        if (isPointerSelecting && sel.type === 'Range') checkPointerSelection(range, sel)
+        if (!this.#pointerNavigation.signal.aborted && isPointerSelecting && sel.type === 'Range') checkPointerSelection(range, sel)
         else if (isKeyboardSelecting) {
           const selRange = sel.getRangeAt(0).cloneRange()
           const backward = selectionIsBackward(sel)
@@ -850,6 +851,10 @@ export class Paginator extends HTMLElement {
       xy: 0,
     }
   }
+  disablePointerNavigation() {
+    this.#pointerNavigation.abort()
+    this.#touchScrolled = false
+  }
   #onTouchMove(e) {
     const state = this.#touchState
     if (state.pinched) return
@@ -886,7 +891,7 @@ export class Paginator extends HTMLElement {
     // at this point I'm basically throwing `requestAnimationFrame` at
     // anything that doesn't work
     requestAnimationFrame(() => {
-      if (globalThis.visualViewport.scale === 1) this.snap(this.#touchState.vx, this.#touchState.vy)
+      if (!this.#pointerNavigation.signal.aborted && globalThis.visualViewport.scale === 1) this.snap(this.#touchState.vx, this.#touchState.vy)
     })
   }
   // allows one to process rects as if they were LTR and horizontal
@@ -1145,6 +1150,7 @@ export class Paginator extends HTMLElement {
     this.#view.document.defaultView.focus()
   }
   destroy() {
+    this.#pointerNavigation.abort()
     this.#observer.unobserve(this)
     this.#view.destroy()
     this.#view = null

@@ -5,6 +5,7 @@ struct LibraryView: View {
   @State private var library: LibraryModel
   @State private var selectedBook: Int?
   @State private var presentation = "list"
+  @State private var isCreatingCollection = false
 
   init(session: SessionModel, api: BookOrbitAPI) {
     self.session = session
@@ -15,15 +16,17 @@ struct LibraryView: View {
     NavigationSplitView {
       List {
         Button("All books") {
-          library.libraryID = nil
-          Task { await library.searchBooks() }
+          Task { await library.select(.all) }
         }
         ForEach(library.libraries) { item in
           Button(item.name) {
-            library.libraryID = item.id
-            Task { await library.searchBooks() }
+            Task { await library.select(.library(id: item.id, name: item.name)) }
           }
           .listRowBackground(Color(uiColor: .systemBackground))
+        }
+        CollectionSidebar(collections: library.collections, create: { isCreatingCollection = true })
+        { collection in
+          Task { await library.select(.collection(id: collection.id, name: collection.name)) }
         }
       }
       .buttonStyle(.plain)
@@ -79,7 +82,10 @@ struct LibraryView: View {
                   Text(book.title ?? "Untitled book").font(.headline)
                   Text(book.authors.joined(separator: ", ")).font(.subheadline).foregroundStyle(
                     .secondary)
-                }.padding(.vertical, 8)
+                }
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
               }.buttonStyle(.plain)
             }
           }
@@ -98,7 +104,7 @@ struct LibraryView: View {
             }
           }.padding()
         }
-        .navigationTitle("Books")
+        .navigationTitle(library.location.title)
         .searchable(text: $library.search, prompt: "Search books")
         .onSubmit(of: .search) { Task { await library.searchBooks() } }
         .toolbar {
@@ -111,13 +117,21 @@ struct LibraryView: View {
         }
         .sheet(
           item: Binding(
-            get: { selectedBook.map(BookSelection.init) }, set: { selectedBook = $0?.id })
+            get: { selectedBook.map(BookSelection.init) }, set: { selectedBook = $0?.id }),
+          onDismiss: { Task { await library.refreshBooks() } }
         ) { selection in
-          BookDetailView(api: library.api, bookID: selection.id)
+          BookDetailView(
+            api: library.api, bookID: selection.id,
+            canEditMetadata: session.user?.hasPermission(.libraryEditMetadata) == true)
         }
       }
     }
     .task { await library.load() }
+    .sheet(isPresented: $isCreatingCollection) {
+      CreateCollectionView(collections: library.collections) { collection in
+        Task { await library.select(.collection(id: collection.id, name: collection.name)) }
+      }
+    }
     .alert(
       "Could not sign out",
       isPresented: Binding(get: { session.error != nil }, set: { if !$0 { session.error = nil } })
@@ -125,6 +139,44 @@ struct LibraryView: View {
       Button("OK") { session.error = nil }
     } message: {
       Text(session.error ?? "")
+    }
+  }
+}
+
+private struct CollectionSidebar: View {
+  @Bindable var collections: CollectionModel
+  let create: () -> Void
+  let select: (BookCollection) -> Void
+
+  var body: some View {
+    Section("Collections") {
+      Button("New collection", action: create)
+        .padding(.vertical, 4)
+        .accessibilityIdentifier("newCollection")
+      if collections.total > 0 || !collections.search.isEmpty {
+        HStack {
+          Image(systemName: "magnifyingglass").accessibilityHidden(true)
+          TextField("Find collection", text: $collections.search)
+            .textFieldStyle(.roundedBorder)
+            .onSubmit { Task { await collections.load() } }
+            .accessibilityIdentifier("collectionSearch")
+        }
+      }
+      ForEach(collections.items) { collection in
+        Button(collection.name) { select(collection) }
+          .listRowBackground(Color(uiColor: .systemBackground))
+      }
+      if collections.isBusy { ProgressView("Loading collections…") }
+      if let error = collections.error {
+        Text(error)
+        Button("Try again") { Task { await collections.load() } }
+      }
+      if collections.canGoBack {
+        Button("Previous collections") { Task { await collections.previousPage() } }
+      }
+      if collections.canGoNext {
+        Button("Next collections") { Task { await collections.nextPage() } }
+      }
     }
   }
 }

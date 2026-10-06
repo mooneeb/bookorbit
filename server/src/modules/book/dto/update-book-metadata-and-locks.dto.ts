@@ -1,10 +1,10 @@
 import { Type } from 'class-transformer';
 import { IsArray, IsIn, IsOptional, ValidateNested, ArrayUnique } from 'class-validator';
-import { BOOK_METADATA_LOCK_FIELDS, type BookMetadataLockField } from '@bookorbit/types';
+import { BOOK_METADATA_LOCK_FIELDS, type BookMetadataLockField, type BookMetadataAndLocksUpdatePayload } from '@bookorbit/types';
 
 import { UpdateBookMetadataDto } from './update-book-metadata.dto';
 
-export class UpdateBookMetadataAndLocksDto {
+export class UpdateBookMetadataAndLocksDto implements BookMetadataAndLocksUpdatePayload {
   @IsOptional()
   @ValidateNested()
   @Type(() => UpdateBookMetadataDto)

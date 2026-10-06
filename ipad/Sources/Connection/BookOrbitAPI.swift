@@ -120,20 +120,269 @@ actor BookOrbitAPI {
 
   func send<T: Decodable & Sendable>(
     _ path: String, method: String = "GET", body: Data? = nil,
+    query: [URLQueryItem] = [],
     authenticated: Bool = true
   ) async throws -> T {
     let token = authenticated ? try await accessToken() : nil
-    var (data, response) = try await raw(path, method: method, body: body, token: token)
+    var (data, response) = try await raw(
+      path, method: method, body: body, query: query, token: token)
     if response.statusCode == 401 && authenticated {
       let credentials = try await refresh()
       (data, response) = try await raw(
-        path, method: method, body: body, token: credentials.accessToken)
+        path, method: method, body: body, query: query, token: credentials.accessToken)
       if response.statusCode == 401 { throw ConnectionError.expiredSession }
     }
     try validate(response)
     do { return try JSONDecoder().decode(T.self, from: data) } catch {
       throw ConnectionError.invalidResponse
     }
+  }
+
+  func sendEmpty(
+    _ path: String, method: String = "POST", body: Data? = nil, query: [URLQueryItem] = []
+  ) async throws {
+    let generation = sessionGeneration
+    let token = try await accessToken()
+    try ensureSession(generation)
+    var (_, response) = try await raw(path, method: method, body: body, query: query, token: token)
+    try ensureSession(generation)
+    if response.statusCode == 401 {
+      let credentials = try await refresh()
+      try ensureSession(generation)
+      (_, response) = try await raw(
+        path, method: method, body: body, query: query, token: credentials.accessToken)
+      try ensureSession(generation)
+      if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    }
+    try validate(response)
+  }
+
+  func uploadCover(bookID: Int, medium: CoverMedium, selection: StagedCoverImage) async throws {
+    let generation = sessionGeneration
+    let token = try await accessToken()
+    try ensureSession(generation)
+    let body = try coverUploadBody(selection.file, contentType: selection.contentType)
+    defer { try? FileManager.default.removeItem(at: body.file) }
+    var request = URLRequest(
+      url: profile.endpoint(
+        "books/\(bookID)/cover", query: [URLQueryItem(name: "medium", value: medium.rawValue)]))
+    request.httpMethod = "POST"
+    request.setValue(
+      "multipart/form-data; boundary=\(body.boundary)", forHTTPHeaderField: "Content-Type")
+    request.setValue(String(body.length), forHTTPHeaderField: "Content-Length")
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    var result = try await transport.upload(for: request, fromFile: body.file)
+    try ensureSession(generation)
+    if (result.1 as? HTTPURLResponse)?.statusCode == 401 {
+      let credentials = try await refresh()
+      try ensureSession(generation)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      result = try await transport.upload(for: request, fromFile: body.file)
+      try ensureSession(generation)
+    }
+    try Task.checkCancellation()
+    guard let response = result.1 as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    guard response.statusCode == 204 else { throw ConnectionError.invalidResponse }
+  }
+
+  private func coverUploadBody(_ image: URL, contentType: String) throws -> (
+    file: URL, boundary: String, length: Int64
+  ) {
+    let size = try image.resourceValues(forKeys: [.fileSizeKey]).fileSize
+    guard let size, size > 0, size <= CoverImageImport.byteLimit else {
+      throw CoverImageError.tooLarge
+    }
+    let boundary = "BookOrbit-\(UUID().uuidString)"
+    let header = Data(
+      "--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"cover\"\r\nContent-Type: \(contentType)\r\n\r\n"
+        .utf8)
+    let footer = Data("\r\n--\(boundary)--\r\n".utf8)
+    let file = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "cover-upload-\(UUID().uuidString).multipart")
+    guard FileManager.default.createFile(atPath: file.path, contents: nil) else {
+      throw ConnectionError.insufficientStorage
+    }
+    var completed = false
+    defer { if !completed { try? FileManager.default.removeItem(at: file) } }
+    let input = try FileHandle(forReadingFrom: image)
+    defer { try? input.close() }
+    let output = try FileHandle(forWritingTo: file)
+    defer { try? output.close() }
+    try output.write(contentsOf: header)
+    var received = 0
+    while let chunk = try input.read(upToCount: 64 * 1024), !chunk.isEmpty {
+      try Task.checkCancellation()
+      received += chunk.count
+      guard received <= size else { throw CoverImageError.tooLarge }
+      try output.write(contentsOf: chunk)
+    }
+    guard received == size else { throw CoverImageError.invalidImage }
+    try output.write(contentsOf: footer)
+    completed = true
+    return (file, boundary, Int64(header.count + received + footer.count))
+  }
+
+  func coverImage(bookID: Int, medium: CoverMedium, version: String) async throws -> Data {
+    let generation = sessionGeneration
+    var request = URLRequest(
+      url: profile.endpoint(
+        "books/\(bookID)/cover",
+        query: [
+          URLQueryItem(name: "medium", value: medium.rawValue),
+          URLQueryItem(name: "strict", value: "true"),
+          URLQueryItem(name: "t", value: version),
+        ]))
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(generation)
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(generation)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    try ensureSession(generation)
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    guard response.mimeType?.hasPrefix("image/") == true else { throw CoverImageError.invalidImage }
+    guard response.expectedContentLength <= CoverImageImport.byteLimit else {
+      throw CoverImageError.tooLarge
+    }
+    var data = Data()
+    for try await byte in bytes {
+      guard data.count < CoverImageImport.byteLimit else { throw CoverImageError.tooLarge }
+      data.append(byte)
+      if data.count % (64 * 1024) == 0 {
+        try Task.checkCancellation()
+        try ensureSession(generation)
+      }
+    }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    return data
+  }
+
+  func deliveredFile(fileID: Int, expectedSize: Double, mimeType: String) async throws -> URL {
+    guard expectedSize.isFinite, expectedSize > 0, expectedSize.rounded() == expectedSize,
+      expectedSize < Double(Int64.max)
+    else { throw ConnectionError.invalidResponse }
+    let byteLimit = Int64(expectedSize)
+    let folder = FileManager.default.temporaryDirectory
+    let capacity = try FileManager.default.attributesOfFileSystem(forPath: folder.path)
+    if let freeBytes = capacity[.systemFreeSize] as? NSNumber,
+      byteLimit > freeBytes.int64Value - 128 * 1024 * 1024
+    {
+      throw ConnectionError.insufficientStorage
+    }
+
+    let generation = sessionGeneration
+    var request = URLRequest(url: profile.endpoint("books/files/\(fileID)/serve"))
+    request.setValue(mimeType, forHTTPHeaderField: "Accept")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(generation)
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      try ensureSession(generation)
+      let credentials = try await refresh()
+      try ensureSession(generation)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    try ensureSession(generation)
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    guard response.mimeType == mimeType else { throw ConnectionError.invalidResponse }
+    if response.expectedContentLength >= 0 && response.expectedContentLength != byteLimit {
+      throw ConnectionError.fileChanged
+    }
+
+    let destination = folder.appendingPathComponent("bookorbit-\(UUID().uuidString).content")
+    guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
+      throw ConnectionError.insufficientStorage
+    }
+    var completed = false
+    defer { if !completed { try? FileManager.default.removeItem(at: destination) } }
+    let handle = try FileHandle(forWritingTo: destination)
+    defer { try? handle.close() }
+    var buffer = Data()
+    buffer.reserveCapacity(64 * 1024)
+    var received: Int64 = 0
+    for try await byte in bytes {
+      guard received < byteLimit else { throw ConnectionError.fileChanged }
+      buffer.append(byte)
+      received += 1
+      if buffer.count == 64 * 1024 {
+        try Task.checkCancellation()
+        try ensureSession(generation)
+        try handle.write(contentsOf: buffer)
+        buffer.removeAll(keepingCapacity: true)
+      }
+    }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    guard received == byteLimit else { throw ConnectionError.fileChanged }
+    if !buffer.isEmpty { try handle.write(contentsOf: buffer) }
+    completed = true
+    return destination
+  }
+
+  private func ensureSession(_ generation: UUID) throws {
+    guard generation == sessionGeneration, saved != nil else {
+      throw ConnectionError.expiredSession
+    }
+  }
+
+  func epubResource(bookID: Int, fileID: Int, path: String, expectedSize: Int?) async throws -> Data
+  {
+    let limit = 8 * 1024 * 1024
+    if let expectedSize, !(0...limit).contains(expectedSize) {
+      throw ConnectionError.resourceTooLarge
+    }
+    let generation = sessionGeneration
+    var request = URLRequest(
+      url: profile.endpoint(
+        "epub/\(bookID)/file/\(path)", query: [URLQueryItem(name: "fileId", value: String(fileID))])
+    )
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(generation)
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(generation)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    try ensureSession(generation)
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    guard response.expectedContentLength <= limit else { throw ConnectionError.resourceTooLarge }
+    var data = Data()
+    for try await byte in bytes {
+      guard data.count < limit else { throw ConnectionError.resourceTooLarge }
+      data.append(byte)
+      if data.count % (64 * 1024) == 0 {
+        try Task.checkCancellation()
+        try ensureSession(generation)
+      }
+    }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    if let expectedSize, data.count != expectedSize { throw ConnectionError.fileChanged }
+    return data
   }
 
   private func accessToken() async throws -> String {
@@ -176,10 +425,12 @@ actor BookOrbitAPI {
     return credentials
   }
 
-  private func raw(_ path: String, method: String, body: Data?, token: String? = nil) async throws
+  private func raw(
+    _ path: String, method: String, body: Data?, query: [URLQueryItem] = [], token: String? = nil
+  ) async throws
     -> (Data, HTTPURLResponse)
   {
-    var request = URLRequest(url: profile.endpoint(path))
+    var request = URLRequest(url: profile.endpoint(path, query: query))
     request.httpMethod = method
     request.httpBody = body
     request.setValue("application/json", forHTTPHeaderField: "Accept")

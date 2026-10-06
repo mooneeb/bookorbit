@@ -54,7 +54,7 @@ import { UpdateBookFileDto } from './dto/update-book-file.dto';
 import { SetStatusDto } from '../user-book-status/dto/set-status.dto';
 import { Permission, AuditAction, AuditResource } from '@bookorbit/types';
 import type { BookDeletionAuditMeta } from '@bookorbit/types';
-import type { BookQuery } from '@bookorbit/types';
+import type { BookQuery, FileReadingProgress } from '@bookorbit/types';
 import { UpdateBookMetadataLocksDto } from '../book-metadata-lock/dto/update-book-metadata-locks.dto';
 import { UpdateReadAloudSyncSettingsDto } from './dto/update-read-aloud-sync-settings.dto';
 
@@ -523,25 +523,31 @@ export class BookController {
   }
 
   @Get('files/:fileId/progress')
-  async getFileProgress(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser) {
-    return (
-      (await this.bookService.getProgress(user.id, fileId, user)) ?? {
-        cfi: null,
-        pageNumber: null,
-        positionSeconds: null,
-        mediaOverlayFragment: null,
-        mediaOverlaySectionIndex: null,
-        percentage: 0,
-        koboLocationSource: null,
-        koboLocationType: null,
-        koboLocationValue: null,
-        koboContentSourceProgressPercent: null,
-        koreaderProgress: null,
-        narrationPercentage: null,
-        narrationUpdatedAt: null,
-        textUpdatedAt: null,
-      }
-    );
+  async getFileProgress(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser): Promise<FileReadingProgress> {
+    const progress = await this.bookService.getProgress(user.id, fileId, user);
+    if (progress) {
+      return {
+        ...progress,
+        narrationUpdatedAt: progress.narrationUpdatedAt?.toISOString() ?? null,
+        textUpdatedAt: progress.textUpdatedAt?.toISOString() ?? null,
+      };
+    }
+    return {
+      cfi: null,
+      pageNumber: null,
+      positionSeconds: null,
+      mediaOverlayFragment: null,
+      mediaOverlaySectionIndex: null,
+      percentage: 0,
+      koboLocationSource: null,
+      koboLocationType: null,
+      koboLocationValue: null,
+      koboContentSourceProgressPercent: null,
+      koreaderProgress: null,
+      narrationPercentage: null,
+      narrationUpdatedAt: null,
+      textUpdatedAt: null,
+    };
   }
 
   @Post('files/:fileId/progress')

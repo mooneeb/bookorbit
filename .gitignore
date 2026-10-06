@@ -43,6 +43,8 @@ dev-dist
 # Native generated projects and builds
 ipad/BookOrbit.xcodeproj/
 ipad/Info.plist
+ipad/ReaderProof/Info.plist
 ipad/.build/
 ipad/DerivedData/
+ipad/DeviceReaderProofData/
 server/dist-ipad/

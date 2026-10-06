@@ -4,6 +4,7 @@ import { and, type SQL } from 'drizzle-orm';
 import {
   APP_FEATURES,
   type BookQuery,
+  type CollectionPageQuery,
   type BooksPage,
   type JumpBucketsQuery,
   type JumpBucketsResponse,
@@ -12,6 +13,7 @@ import {
   type PodcastPage,
 } from '@bookorbit/types';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { assertOffsetWithinLimit } from '../../common/constants/pagination.constants';
 import { resolveTimeZone } from '../../common/utils/timezone.utils';
 import type { RequestUser } from '../../common/types/request-user';
 import { normalizeIconValue } from '../../common/utils/icon-value.utils';
@@ -137,6 +139,28 @@ export class CollectionService {
     }
     const collections = await this.collectionRepo.findAllVisibleForUser(user.id, visibleBooksWhere);
     return collections.map((collection) => this.toResponse(collection, user));
+  }
+
+  async findPage(query: CollectionPageQuery, user: RequestUser) {
+    assertOffsetWithinLimit(query.page ?? 0, query.size ?? 40);
+    const event = 'collection.list_page';
+    const startedAt = Date.now();
+    const context = `userId=${user.id} page=${query.page ?? 0} size=${query.size ?? 40} mediaType=${query.mediaType ?? 'all'} owned=${query.owned ?? false} qPresent=${Boolean(query.q)}`;
+    this.logger.log(`[${event}] [start] ${context} - collection page started`);
+    try {
+      const visibleBooksWhere = await this.buildViewerBookWhere(user);
+      const result = await this.collectionRepo.findVisiblePage(user.id, query, visibleBooksWhere);
+      this.logger.log(
+        `[${event}] [end] ${context} durationMs=${Date.now() - startedAt} total=${result.total} returned=${result.items.length} - collection page completed`,
+      );
+      return { ...result, items: result.items.map((collection) => this.toResponse(collection, user)) };
+    } catch (error) {
+      const { errorClass, errorMessage } = this.buildErrorLogFields(error);
+      this.logger.error(
+        `[${event}] [fail] ${context} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${errorMessage}" - collection page failed`,
+      );
+      throw error;
+    }
   }
 
   /**

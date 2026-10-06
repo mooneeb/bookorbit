@@ -221,6 +221,33 @@ export type BookCard = {
   collapsedSeries?: import("./series-collapse").CollapsedSeriesInfo;
 };
 
+export type FileProgressSource = "text" | "narration";
+
+export type FileReadingProgress = {
+  cfi: string | null;
+  pageNumber: number | null;
+  percentage: number;
+  positionSeconds: number | null;
+  mediaOverlayFragment: string | null;
+  mediaOverlaySectionIndex: number | null;
+  koboLocationSource: string | null;
+  koboLocationType: string | null;
+  koboLocationValue: string | null;
+  koboContentSourceProgressPercent: number | null;
+  koreaderProgress: string | null;
+  narrationPercentage: number | null;
+  narrationUpdatedAt: string | null;
+  textUpdatedAt: string | null;
+};
+
+/** Omitted narration locators preserve their stored values; explicit null clears them. */
+export type SaveFileProgressPayload = Partial<
+  Omit<FileReadingProgress, "percentage" | "narrationPercentage" | "narrationUpdatedAt" | "textUpdatedAt">
+> & {
+  percentage: number;
+  source?: FileProgressSource;
+};
+
 export type BookDetailFile = {
   id: number;
   format: string | null;
@@ -330,6 +357,29 @@ export type BookMetadataSaveResult = {
   book: BookDetail;
   write: WriteResult | null;
   libraryAutoWriteEnabled: boolean;
+};
+
+export type BookMetadataUpdatePayload = Partial<
+  Pick<
+    BookDetail,
+    | "title"
+    | "subtitle"
+    | "description"
+    | "publisher"
+    | "publishedDate"
+    | "publishedYear"
+    | "language"
+    | "pageCount"
+    | "isbn10"
+    | "isbn13"
+    | "genres"
+    | "tags"
+  >
+> & { authors?: string[] };
+
+export type BookMetadataAndLocksUpdatePayload = {
+  metadata?: BookMetadataUpdatePayload;
+  lockedFields: BookMetadataLockField[];
 };
 
 export type BookMetadataRefreshPreviewFields = {

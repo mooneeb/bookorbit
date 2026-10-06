@@ -1,19 +1,22 @@
 import 'reflect-metadata';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import fastifyCookie from '@fastify/cookie';
+import fastifyMultipart from '@fastify/multipart';
 import { hash } from 'bcryptjs';
 import { eq } from 'drizzle-orm';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
+import { Permission } from '@bookorbit/types';
 
 import { AppModule } from '../../src/app.module';
 import { DB } from '../../src/db';
 import * as schema from '../../src/db/schema';
 import { GlobalExceptionFilter } from '../../src/common/filters/http-exception.filter';
+import { BookCoverStore } from '../../src/modules/book-cover-store/book-cover-store.service';
 import { sanitizeLogValue } from '../../src/common/utils/log-sanitize.utils';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { FIXTURE_CLIENT_ID, FIXTURE_ISSUER, startOidcProvider } from './oidc-provider';
@@ -27,6 +30,8 @@ async function main() {
     throw new Error('The iPad harness requires its own localhost bookorbit_ipad_<run>_e2e database');
   }
   const folder = await mkdtemp(join(tmpdir(), 'bookorbit-ipad-'));
+  const progressOnly = process.env.IPAD_PROGRESS_ONLY === '1';
+  const apiPort = progressOnly ? 16487 : 16482;
   process.env.APP_DATA_PATH = join(folder, 'data');
   process.env.COVER_SLOTS_BACKFILL_MODE = 'skip';
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), { logger: false, abortOnError: false });
@@ -34,6 +39,7 @@ async function main() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalFilters(new GlobalExceptionFilter());
   await app.register(fastifyCookie as never);
+  await app.register(fastifyMultipart as never, { limits: { fileSize: 20 * 1024 * 1024 } });
   const db = app.get<NodePgDatabase<typeof schema>>(DB);
 
   const passwordHash = await hash('IpadFixture123', 4);
@@ -56,7 +62,15 @@ async function main() {
     isDefaultPassword: false,
     provisioningMethod: 'local',
   });
-  const oidc = await startOidcProvider();
+  const [reader, editor] = await db
+    .insert(schema.users)
+    .values([
+      { username: 'ipad-reader', name: 'Library Viewer', passwordHash, isDefaultPassword: false, provisioningMethod: 'local' },
+      { username: 'ipad-editor', name: 'Metadata Editor', passwordHash, isDefaultPassword: false, provisioningMethod: 'local' },
+    ])
+    .returning({ id: schema.users.id });
+  await db.insert(schema.userPermissions).values({ userId: editor.id, permissionName: Permission.LibraryEditMetadata });
+  const oidc = progressOnly ? undefined : await startOidcProvider();
   const [provider] = await db
     .insert(schema.oidcProviders)
     .values({
@@ -74,6 +88,10 @@ async function main() {
     oidcIssuer: FIXTURE_ISSUER,
   });
   const [library] = await db.insert(schema.libraries).values({ name: 'Large library', watch: false }).returning();
+  await db.insert(schema.userLibraryAccess).values([
+    { userId: reader.id, libraryId: library.id, accessLevel: 'viewer' },
+    { userId: editor.id, libraryId: library.id, accessLevel: 'editor' },
+  ]);
   const [libraryFolder] = await db.insert(schema.libraryFolders).values({ libraryId: library.id, path: folder }).returning();
   for (let offset = 0; offset < 50_000; offset += 500) {
     const batch = Array.from({ length: 500 }, (_, index) => ({
@@ -112,13 +130,70 @@ async function main() {
     })
     .returning({ id: schema.bookFiles.id });
   await db.update(schema.books).set({ primaryFileId: file.id }).where(eq(schema.books.id, 1));
-  await app.listen(16482, '127.0.0.1');
-  console.log(
-    `[ipad.harness] [end] runId=${process.pid} durationMs=${Date.now() - started} books=50000 - localhost server ready at http://localhost:16482`,
-  );
+  if (process.env.IPAD_READER_PROOF_EPUB) {
+    const epubPath = join(folder, 'reader-proof.epub');
+    await copyFile(process.env.IPAD_READER_PROOF_EPUB, epubPath);
+    const [epub] = await db
+      .insert(schema.bookFiles)
+      .values({
+        bookId: 2,
+        libraryFolderId: libraryFolder.id,
+        absolutePath: epubPath,
+        ino: 2n,
+        format: 'epub',
+        role: 'content',
+        sizeBytes: (await stat(epubPath)).size,
+      })
+      .returning({ id: schema.bookFiles.id });
+    await db.update(schema.books).set({ primaryFileId: epub.id }).where(eq(schema.books.id, 2));
+    await db.update(schema.bookMetadata).set({ title: 'Native renderer proof' }).where(eq(schema.bookMetadata.bookId, 2));
+  }
+  const coverFixtureFolder = process.env.IPAD_COVER_FIXTURE_DIR;
+  if (!coverFixtureFolder) throw new Error('The iPad harness requires its generated cover fixture folder');
+  for (const bookId of [6, 8]) {
+    const mixedPDF = join(folder, `cover-book-${bookId}.pdf`);
+    const mixedAudio = join(folder, `cover-audio-${bookId}.m4a`);
+    await copyFile(pdfPath, mixedPDF);
+    await copyFile(join(coverFixtureFolder, 'cover-audio.m4a'), mixedAudio);
+    const mixedFiles = await db
+      .insert(schema.bookFiles)
+      .values([
+        {
+          bookId,
+          libraryFolderId: libraryFolder.id,
+          absolutePath: mixedPDF,
+          ino: BigInt(bookId),
+          format: 'pdf',
+          role: 'content',
+          sizeBytes: pdf.length,
+        },
+        {
+          bookId,
+          libraryFolderId: libraryFolder.id,
+          absolutePath: mixedAudio,
+          ino: BigInt(bookId + 1),
+          format: 'm4a',
+          role: 'content',
+          sizeBytes: (await stat(mixedAudio)).size,
+        },
+      ])
+      .returning({ id: schema.bookFiles.id });
+    await db.update(schema.books).set({ primaryFileId: mixedFiles[0].id }).where(eq(schema.books.id, bookId));
+  }
+  await app.listen(apiPort, '127.0.0.1');
+  const coverStore = app.get(BookCoverStore);
+  for (const bookId of [6, 8]) {
+    for (const medium of ['ebook', 'audio'] as const) {
+      await coverStore.saveExtracted(bookId, medium, await readFile(join(coverFixtureFolder, `${medium}-extracted.png`)), {
+        origin: 'embedded',
+        overwrite: true,
+      });
+    }
+  }
+  console.log(`[ipad.harness] [end] runId=${process.pid} durationMs=${Date.now() - started} books=50000 port=${apiPort} - localhost server ready`);
   const close = async () => {
     await app.close();
-    await new Promise<void>((resolve, reject) => oidc.close((error) => (error ? reject(error) : resolve())));
+    if (oidc) await new Promise<void>((resolve, reject) => oidc.close((error) => (error ? reject(error) : resolve())));
     await rm(folder, { recursive: true, force: true });
     process.exit(0);
   };

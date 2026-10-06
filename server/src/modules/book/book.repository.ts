@@ -2390,6 +2390,11 @@ export class BookRepository {
       ? { narrationPercentage: this.clampProgressPercentage(narration.percentage), narrationUpdatedAt: narration.updatedAt }
       : {};
     const textColumns = textUpdatedAt ? { textUpdatedAt } : {};
+    const narrationPosition = {
+      ...(positionSeconds !== undefined ? { positionSeconds } : {}),
+      ...(mediaOverlayFragment !== undefined ? { mediaOverlayFragment } : {}),
+      ...(mediaOverlaySectionIndex !== undefined ? { mediaOverlaySectionIndex } : {}),
+    };
     await this.db
       .insert(readingProgress)
       .values({
@@ -2416,9 +2421,7 @@ export class BookRepository {
           cfi,
           pageNumber,
           percentage,
-          positionSeconds: positionSeconds ?? null,
-          mediaOverlayFragment: mediaOverlayFragment ?? null,
-          mediaOverlaySectionIndex: mediaOverlaySectionIndex ?? null,
+          ...narrationPosition,
           koboLocationSource: normalizedKoboLocationSource,
           koboLocationType: normalizedKoboLocationType,
           koboLocationValue: normalizedKoboLocationValue,

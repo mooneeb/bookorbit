@@ -1,6 +1,12 @@
 import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { MetadataProviderKey, SERIES_INDEX_MAX_LENGTH, SERIES_INDEX_PATTERN, type SeriesIndex } from '@bookorbit/types';
+import {
+  MetadataProviderKey,
+  SERIES_INDEX_MAX_LENGTH,
+  SERIES_INDEX_PATTERN,
+  type BookMetadataUpdatePayload,
+  type SeriesIndex,
+} from '@bookorbit/types';
 import { MAX_SERIES_TOTAL_BOOKS } from '../../../common/utils/series-total-books.utils';
 import { PROVIDER_ID_MAX_LENGTHS } from '../../../common/utils/provider-id.utils';
 import { CustomMetadataValueDto } from '../../custom-metadata/dto/custom-metadata-value.dto';
@@ -46,9 +52,12 @@ export class CommunityRatingDto {
   @IsOptional() @IsInt() @Min(0) ratingCount?: number | null;
 }
 
-export class UpdateBookMetadataDto {
-  @IsOptional() @IsString() @MaxLength(1000) title?: string | null;
-  @IsOptional() @IsString() @MaxLength(1000) subtitle?: string | null;
+export class UpdateBookMetadataDto implements BookMetadataUpdatePayload {
+  // PostgreSQL counts presentation selectors; MaxLength's emoji handling excludes them.
+  @IsOptional() @IsString() @Matches(/^.{0,1000}$/su, { message: '$property must be shorter than or equal to 1000 characters' }) title?:
+    string | null;
+  @IsOptional() @IsString() @Matches(/^.{0,1000}$/su, { message: '$property must be shorter than or equal to 1000 characters' }) subtitle?:
+    string | null;
   @IsOptional() @IsString() description?: string | null;
   @IsOptional() @IsString() @MaxLength(500) publisher?: string | null;
   @IsOptional() @IsString() @Matches(/^\d{4}-\d{2}-\d{2}$/) publishedDate?: string | null;
@@ -63,9 +72,21 @@ export class UpdateBookMetadataDto {
   @IsOptional() @IsString() @MaxLength(13) isbn13?: string | null;
   @IsOptional() @IsInt() @Min(1) @Max(5) rating?: number | null;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CommunityRatingDto) communityRatings?: CommunityRatingDto[] | null;
-  @IsOptional() @IsArray() @IsString({ each: true }) authors?: string[];
-  @IsOptional() @IsArray() @IsString({ each: true }) genres?: string[];
-  @IsOptional() @IsArray() @IsString({ each: true }) tags?: string[];
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(/^.{0,500}$/su, { each: true, message: 'Each author must be no longer than 500 characters' })
+  authors?: string[];
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(/^.{0,200}$/su, { each: true, message: 'Each genre must be no longer than 200 characters' })
+  genres?: string[];
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(/^.{0,200}$/su, { each: true, message: 'Each tag must be no longer than 200 characters' })
+  tags?: string[];
   @IsOptional() @IsString() @MaxLength(PROVIDER_ID_MAX_LENGTHS.googleBooksId) googleBooksId?: string | null;
   @IsOptional() @IsString() @MaxLength(PROVIDER_ID_MAX_LENGTHS.goodreadsId) goodreadsId?: string | null;
   @IsOptional() @IsString() @MaxLength(PROVIDER_ID_MAX_LENGTHS.amazonId) amazonId?: string | null;

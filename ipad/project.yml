@@ -42,6 +42,45 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mooneeb.bookorbit.private.uitests
         GENERATE_INFOPLIST_FILE: YES
+  BookOrbitReaderProof:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+        excludes: [BookOrbitApp.swift]
+      - path: ReaderProof/Sources
+      - path: ReaderProof/EPUBProof
+        type: folder
+        buildPhase: resources
+      - path: ../client/public/assets/foliate
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        BOOKORBIT_READER_PROOF_BUNDLE_IDENTIFIER: com.mooneeb.bookorbit.readerproof
+        PRODUCT_BUNDLE_IDENTIFIER: $(BOOKORBIT_READER_PROOF_BUNDLE_IDENTIFIER)
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: BookOrbit Reader Proof
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+    info:
+      path: ReaderProof/Info.plist
+      properties:
+        NSLocalNetworkUsageDescription: Connect to your BookOrbit server on your private network.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+  BookOrbitReaderProofUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [ReaderProof/UITests]
+    dependencies:
+      - target: BookOrbitReaderProof
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mooneeb.bookorbit.readerproof.uitests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   BookOrbit:
     build:
@@ -50,3 +89,10 @@ schemes:
     test:
       gatherCoverageData: true
       targets: [BookOrbitUITests]
+  BookOrbitReaderProof:
+    build:
+      targets:
+        BookOrbitReaderProof: all
+    test:
+      gatherCoverageData: true
+      targets: [BookOrbitReaderProofUITests]

@@ -21,8 +21,8 @@ struct ServerProfile: Equatable, Sendable {
     self.url = url
   }
 
-  func endpoint(_ path: String) -> URL {
-    url.appendingPathComponent("api/v1/\(path)")
+  func endpoint(_ path: String, query: [URLQueryItem] = []) -> URL {
+    url.appendingPathComponent("api/v1/\(path)").appending(queryItems: query)
   }
 }
 
@@ -31,6 +31,9 @@ enum ConnectionError: LocalizedError {
   case invalidResponse
   case expiredSession
   case denied
+  case fileChanged
+  case insufficientStorage
+  case resourceTooLarge
   case http(Int)
   case keychain(OSStatus)
 
@@ -40,6 +43,9 @@ enum ConnectionError: LocalizedError {
     case .invalidResponse: "The server returned an incompatible response."
     case .expiredSession: "Your session expired. Sign in again."
     case .denied: "Your account does not have access to this action."
+    case .fileChanged: "The book file changed. Close the reader and reopen the book."
+    case .insufficientStorage: "There is not enough free space to open this book file."
+    case .resourceTooLarge: "This EPUB resource exceeds the renderer proof's 8 MB limit."
     case .http(401): "The username or password is incorrect."
     case .http(let status): "The server could not complete the request (\(status)). Try again."
     case .keychain: "Your credentials could not be saved securely. Unlock your iPad and try again."

@@ -17,8 +17,10 @@
     "ipad:contracts": "node scripts/ipad/generate-contracts.mjs",
     "ipad:contracts:check": "node scripts/ipad/generate-contracts.mjs --check",
     "ipad:test:http": "node scripts/ipad/run-harness.mjs",
+    "ipad:test:progress": "node scripts/ipad/run-harness.mjs --progress-only",
     "ipad:test:ui": "node scripts/ipad/run-harness.mjs --ui",
     "ipad:test:web": "node scripts/ipad/run-harness.mjs --web",
+    "ipad:test:cross-client": "node scripts/ipad/run-harness.mjs --ui --web --cross-client",
     "ipad:serve:test": "node scripts/ipad/run-harness.mjs --serve",
     "setup": "bash ./scripts/bootstrap/local.sh",
     "dev": "concurrently --names \"types,server,client\" --prefix-colors \"cyan,blue,green\" \"pnpm --filter @bookorbit/types dev\" \"pnpm run dev:server\" \"pnpm run dev:client\"",
@@ -58,7 +60,11 @@
     "db:seed": "bash ./scripts/db/seed-baseline.sh",
     "e2e:db:prepare": "bash ./scripts/e2e/prepare-db.sh",
     "e2e:db:migrate": "pnpm --filter server e2e:db:migrate",
-    "prepare": "husky"
+    "prepare": "husky",
+    "ipad:test:pdf-reader": "node scripts/ipad/run-harness.mjs --ui --web --pdf-reader",
+    "ipad:test:reader-proof": "node scripts/ipad/run-harness.mjs --ui --reader-proof",
+    "ipad:test:reader-cross-client": "node scripts/ipad/run-harness.mjs --ui --web --reader-proof",
+    "ipad:test:epub-proof": "node scripts/ipad/run-harness.mjs --ui --reader-proof --epub-proof"
   },
   "engines": {
     "node": ">=24",

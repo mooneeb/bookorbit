@@ -106,10 +106,10 @@ struct BookFileRef: Codable, Sendable, Equatable, Identifiable {
     var `format`: String?
     var `role`: String
     var `sizeBytes`: Double?
-    var `mediaOverlay`: BookFileRefMediaOverlay?
+    var `mediaOverlay`: EpubMediaOverlayCapability?
 }
 
-struct BookFileRefMediaOverlay: Codable, Sendable, Equatable {
+struct EpubMediaOverlayCapability: Codable, Sendable, Equatable {
     var `available`: Bool
     var `durationSeconds`: Double?
 }
@@ -119,10 +119,22 @@ struct BookDetail: Codable, Sendable, Equatable, Identifiable {
     var `libraryId`: Int
     var `libraryName`: String
     var `title`: String?
+    var `subtitle`: String?
     var `description`: String?
+    var `publisher`: String?
+    var `publishedDate`: String?
+    var `publishedYear`: Int?
+    var `language`: String?
+    var `pageCount`: Int?
+    var `isbn10`: String?
+    var `isbn13`: String?
     var `authors`: [BookDetailAuthorsItem]
+    var `genres`: [String]
+    var `tags`: [String]
     var `files`: [BookDetailFile]
     var `lockedFields`: [String]
+    var `coverMedia`: [CoverMedium]
+    var `covers`: BookDetailCovers
     var `coverVersion`: String
 }
 
@@ -141,6 +153,18 @@ struct BookDetailFile: Codable, Sendable, Equatable, Identifiable {
     var `durationSeconds`: Double?
 }
 
+struct BookDetailCovers: Codable, Sendable, Equatable {
+    var `ebook`: BookCoverSlot?
+    var `audio`: BookCoverSlot?
+}
+
+struct BookCoverSlot: Codable, Sendable, Equatable {
+    var `source`: String
+    var `updatedAt`: String
+    var `width`: Int?
+    var `height`: Int?
+}
+
 struct BookQuery: Codable, Sendable, Equatable {
     var `sort`: [SortSpec]
     var `pagination`: BookQueryPagination
@@ -156,6 +180,119 @@ struct SortSpec: Codable, Sendable, Equatable {
 struct BookQueryPagination: Codable, Sendable, Equatable {
     var `page`: Int
     var `size`: Int
+}
+
+struct CollectionsPage: Codable, Sendable, Equatable {
+    var `items`: [BookCollection]
+    var `total`: Int
+    var `page`: Int
+    var `size`: Int
+}
+
+struct BookCollection: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `userId`: Int
+    var `mediaType`: String
+    var `name`: String
+    var `isPublic`: Bool
+    var `isOwner`: Bool
+    var `bookCount`: Int
+}
+
+struct CollectionPageQuery: Codable, Sendable, Equatable {
+    var `page`: Int?
+    var `size`: Int?
+    var `q`: String?
+    var `mediaType`: String?
+    var `owned`: Bool?
+}
+
+struct CreateCollectionPayload: Codable, Sendable, Equatable {
+    var `name`: String
+    var `icon`: String
+    var `description`: String?
+    var `mediaType`: String?
+    var `isPublic`: Bool?
+    var `syncToKobo`: Bool?
+}
+
+struct BookIdsSelection: Codable, Sendable, Equatable {
+    var `bookIds`: [Int]
+}
+
+struct BookMetadataUpdatePayload: Encodable, Sendable, Equatable {
+    var `title`: FieldUpdate<String>?
+    var `subtitle`: FieldUpdate<String>?
+    var `description`: FieldUpdate<String>?
+    var `publisher`: FieldUpdate<String>?
+    var `publishedYear`: FieldUpdate<Int>?
+    var `language`: FieldUpdate<String>?
+    var `pageCount`: FieldUpdate<Int>?
+    var `isbn13`: FieldUpdate<String>?
+    var `isbn10`: FieldUpdate<String>?
+    var `genres`: [String]?
+    var `tags`: [String]?
+    var `publishedDate`: FieldUpdate<String>?
+    var `authors`: [String]?
+}
+
+struct BookMetadataAndLocksUpdatePayload: Encodable, Sendable, Equatable {
+    var `metadata`: BookMetadataUpdatePayload?
+    var `lockedFields`: [String]
+}
+
+struct FileReadingProgress: Codable, Sendable, Equatable {
+    var `cfi`: String?
+    var `pageNumber`: Double?
+    var `percentage`: Double
+    var `positionSeconds`: Double?
+    var `mediaOverlayFragment`: String?
+    var `mediaOverlaySectionIndex`: Double?
+    var `koboLocationSource`: String?
+    var `koboLocationType`: String?
+    var `koboLocationValue`: String?
+    var `koboContentSourceProgressPercent`: Double?
+    var `koreaderProgress`: String?
+    var `narrationPercentage`: Double?
+    var `narrationUpdatedAt`: String?
+    var `textUpdatedAt`: String?
+}
+
+struct SaveFileProgressPayload: Encodable, Sendable, Equatable {
+    var `cfi`: String?
+    var `pageNumber`: Double?
+    var `positionSeconds`: Double?
+    var `mediaOverlayFragment`: String?
+    var `mediaOverlaySectionIndex`: Double?
+    var `koboLocationSource`: String?
+    var `koboLocationType`: String?
+    var `koboLocationValue`: String?
+    var `koboContentSourceProgressPercent`: Double?
+    var `koreaderProgress`: String?
+    var `percentage`: Double
+    var `source`: String?
+}
+
+struct EpubBookInfo: Codable, Sendable, Equatable {
+    var `containerPath`: String
+    var `rootPath`: String
+    var `manifest`: [EpubManifestItem]
+    var `optionalFiles`: [String]?
+}
+
+struct EpubManifestItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `href`: String
+    var `mediaType`: String
+    var `properties`: [String]?
+    var `mediaOverlay`: String?
+    var `size`: Int
+}
+
+enum CoverMedium: String, Codable, Sendable, CaseIterable, Identifiable {
+    case ebook
+    case audio
+    var id: String { rawValue }
 }
 
 enum Permission: String, Sendable {

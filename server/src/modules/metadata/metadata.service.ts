@@ -949,9 +949,14 @@ export class MetadataService {
 
   private normalizeUniqueRelationNames(values: string[]): string[] {
     const names = values.map((value) => {
-      const truncated = normalizeMetadataText(value)?.substring(0, MAX_RELATION_NAME_LENGTH);
+      const normalized = normalizeMetadataText(value);
+      const codePoints: string[] = [];
+      for (const codePoint of normalized ?? '') {
+        if (codePoints.length === MAX_RELATION_NAME_LENGTH) break;
+        codePoints.push(codePoint);
+      }
       // Truncating can strand a trailing space, so normalize again after the cut.
-      return normalizeMetadataText(truncated);
+      return normalizeMetadataText(codePoints.join(''));
     });
     return [...new Set(names.filter((name): name is string => name !== null))];
   }
