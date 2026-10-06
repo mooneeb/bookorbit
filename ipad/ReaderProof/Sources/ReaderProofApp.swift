@@ -37,7 +37,7 @@ private struct ReaderProofLibraryView: View {
   var body: some View {
     NavigationStack {
       List {
-        Text("\(library.total.formatted()) books")
+        Text(library.total == 1 ? "1 book" : "\(library.total.formatted()) books")
         ForEach(library.books) { book in
           Button(book.title ?? "Untitled book") { selectedBook = book }
         }
