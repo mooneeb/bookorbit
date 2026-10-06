@@ -6,6 +6,7 @@ struct DashboardSettingsView: View {
   @State private var shelves: [ScrollerConfig]
   @State private var layout: String
   @State private var sync: Bool
+  @State private var showingScopeSelection = false
 
   init(model: DashboardModel) {
     self.model = model
@@ -42,6 +43,7 @@ struct DashboardSettingsView: View {
             ForEach(DashboardShelfType.allCases.filter { $0 != .smartScope }) { type in
               Button(type.title) { add(type) }
             }
+            Button("Smart scope") { showingScopeSelection = true }
           }.disabled(shelves.count >= 8)
         }
         if let error = model.settingsError {
@@ -61,6 +63,16 @@ struct DashboardSettingsView: View {
         }
       }
       .interactiveDismissDisabled(model.isSaving)
+      .sheet(isPresented: $showingScopeSelection) {
+        SmartScopePicker(api: model.api) { scope in
+          guard shelves.count < 8 else { return }
+          shelves.append(
+            ScrollerConfig(
+              id: UUID().uuidString, type: DashboardShelfType.smartScope.rawValue,
+              label: scope.name, enabled: true, order: Double(shelves.count + 1), limit: 20,
+              rows: 1, smartScopeId: scope.id))
+        }
+      }
     }
   }
 

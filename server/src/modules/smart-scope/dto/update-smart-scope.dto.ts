@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ICON_VALUE_MAX_LENGTH, type SmartScopeFilter } from '@bookorbit/types';
+import { ICON_VALUE_MAX_LENGTH, type SmartScopeFilter, type UpdateSmartScopePayload } from '@bookorbit/types';
 import { IsArray, IsBoolean, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, ValidateIf, ValidateNested } from 'class-validator';
 import { SortSpecDto } from './create-smart-scope.dto';
 
@@ -7,7 +7,7 @@ function trimString(value: unknown): unknown {
   return typeof value === 'string' ? value.trim() : value;
 }
 
-export class UpdateSmartScopeDto {
+export class UpdateSmartScopeDto implements UpdateSmartScopePayload {
   @IsOptional()
   @IsString()
   @MaxLength(255)

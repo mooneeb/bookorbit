@@ -13,9 +13,13 @@ final class LibraryModel {
   var error: String?
   var search = ""
   var sort = "title"
+  var descending = false
+  var secondarySort: [SortSpec] = []
+  private(set) var filter: GroupRule?
   private(set) var location = BookLocation.all
   private var requestID = UUID()
   let pageSize = 40
+  private var randomSeed = Int.random(in: 0...Int(Int32.max))
 
   init(api: BookOrbitAPI) {
     self.api = api
@@ -35,10 +39,38 @@ final class LibraryModel {
   }
 
   func searchBooks() async { await query(page: 0) }
+  func chooseSort(_ field: String) async {
+    sort = field
+    descending = field == "addedAt"
+    secondarySort = []
+    randomSeed = Int.random(in: 0...Int(Int32.max))
+    await query(page: 0)
+  }
   func refreshBooks() async { await query(page: page) }
   func select(_ location: BookLocation) async {
     self.location = location
     search = ""
+    filter = nil
+    secondarySort = []
+    if case .scope(_, _, let defaultSort) = location, let first = defaultSort.first {
+      sort = first.field
+      descending = first.dir == "desc"
+      secondarySort = Array(defaultSort.dropFirst().prefix(4))
+    } else {
+      sort = "title"
+      descending = false
+    }
+    randomSeed = Int.random(in: 0...Int(Int32.max))
+    await query(page: 0)
+  }
+  func apply(filter: GroupRule?, sort: [SortSpec]) async {
+    self.filter = filter
+    if let first = sort.first {
+      self.sort = first.field
+      descending = first.dir == "desc"
+    }
+    secondarySort = Array(sort.dropFirst().prefix(4))
+    randomSeed = Int.random(in: 0...Int(Int32.max))
     await query(page: 0)
   }
   func nextPage() async { if canGoNext { await query(page: page + 1) } }
@@ -52,9 +84,12 @@ final class LibraryModel {
     defer { if requestID == id { isBusy = false } }
     do {
       let query = BookQuery(
-        sort: [SortSpec(field: sort, dir: sort == "addedAt" ? "desc" : "asc")],
+        filter: filter,
+        sort: [SortSpec(field: sort, dir: descending ? "desc" : "asc")] + secondarySort,
         pagination: BookQueryPagination(page: page, size: pageSize), q: search,
-        collapseSeries: false)
+        collapseSeries: false,
+        randomSeed: sort == "random" || secondarySort.contains { $0.field == "random" }
+          ? randomSeed : nil)
       let path = location.queryPath
       let result: BooksPage = try await api.send(
         path, method: "POST", body: JSONEncoder().encode(query))
@@ -73,11 +108,12 @@ enum BookLocation {
   case all
   case library(id: Int, name: String)
   case collection(id: Int, name: String)
+  case scope(id: Int, name: String, sort: [SortSpec])
 
   var title: String {
     switch self {
     case .all: "Books"
-    case .library(_, let name), .collection(_, let name): name
+    case .library(_, let name), .collection(_, let name), .scope(_, let name, _): name
     }
   }
 
@@ -86,6 +122,7 @@ enum BookLocation {
     case .all: "books/query"
     case .library(let id, _): "libraries/\(id)/books"
     case .collection(let id, _): "collections/\(id)/books/query"
+    case .scope(let id, _, _): "smart-scopes/\(id)/books/query"
     }
   }
 }

@@ -9,6 +9,8 @@ struct LibraryView: View {
   @State private var isCreatingCollection = false
   @State private var organization: OrganizationKind?
   @State private var showingDashboard = false
+  @State private var showingScopes = false
+  @State private var showingQuery = false
 
   init(session: SessionModel, api: BookOrbitAPI) {
     self.session = session
@@ -27,6 +29,8 @@ struct LibraryView: View {
           .accessibilityIdentifier("browseAuthors")
         Button("Series") { organization = .series }
           .accessibilityIdentifier("browseSeries")
+        Button("Smart scopes") { showingScopes = true }
+          .accessibilityIdentifier("browseSmartScopes")
         ForEach(library.libraries) { item in
           Button(item.name) {
             Task { await library.select(.library(id: item.id, name: item.name)) }
@@ -61,12 +65,21 @@ struct LibraryView: View {
           HStack {
             LibraryBookCountView(total: library.total)
             Spacer()
-            Picker("Sort books", selection: $library.sort) {
+            Picker(
+              "Sort books",
+              selection: Binding(
+                get: { library.sort }, set: { field in Task { await library.chooseSort(field) } })
+            ) {
               Text("Title").tag("title")
               Text("Recently added").tag("addedAt")
               Text("Author").tag("author")
+              if !["title", "addedAt", "author"].contains(library.sort) {
+                Text(queryFieldLabel(library.sort)).tag(library.sort)
+              }
             }
-            .onChange(of: library.sort) { Task { await library.searchBooks() } }
+            Button("Filter and sort") { showingQuery = true }
+              .font(.body).frame(minHeight: 44)
+              .accessibilityIdentifier("libraryFilters")
           }
           .padding()
           .background(Color(uiColor: .systemBackground))
@@ -142,6 +155,16 @@ struct LibraryView: View {
         DashboardView(api: library.api, serverURL: session.serverURL, user: user)
       }
     }
+    .sheet(isPresented: $showingScopes) {
+      if let user = session.user {
+        SmartScopeView(api: library.api, user: user) { scope in
+          Task {
+            await library.select(.scope(id: scope.id, name: scope.name, sort: scope.defaultSort))
+          }
+        }
+      }
+    }
+    .sheet(isPresented: $showingQuery) { LibraryQueryView(library: library) }
     .sheet(item: $organization) { kind in
       OrganizationDirectoryView(
         api: library.api, kind: kind, libraries: library.libraries,

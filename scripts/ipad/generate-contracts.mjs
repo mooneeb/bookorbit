@@ -19,6 +19,7 @@ const entries = [
   "permissions",
   "query",
   "series",
+  "smart-scope",
 ].map((name) => path.join(root, `packages/types/src/${name}.ts`));
 const program = ts.createProgram(entries, {
   strict: true,
@@ -75,12 +76,13 @@ const projections = {
     "coverVersion",
   ],
   BookDetailFile: ["id", "format", "role", "filename", "sizeBytes", "durationSeconds"],
-  BookQuery: ["sort", "pagination", "q", "collapseSeries"],
+  BookQuery: ["filter", "sort", "pagination", "q", "collapseSeries", "randomSeed"],
+  SmartScope: ["id", "userId", "mediaType", "name", "icon", "filter", "defaultSort", "isPublic", "syncToKobo", "koboSyncEnabled", "isOwner"],
   Collection: ["id", "userId", "mediaType", "name", "isPublic", "isOwner", "bookCount"],
   BookIdsSelection: ["bookIds"],
   EpubBookInfo: ["containerPath", "rootPath", "spine", "manifest", "optionalFiles"],
 };
-const aliases = { Collection: "BookCollection" };
+const aliases = { Collection: "BookCollection", SmartScope: "BookSmartScope" };
 const integerFields = new Set([
   "id",
   "bookIds",
@@ -116,10 +118,71 @@ const integerFields = new Set([
   "deathYear",
   "width",
   "height",
+  "randomSeed",
 ]);
 const declarations = new Map();
 const patchRequests = new Set(["BookMetadataUpdatePayload"]);
 const requestModels = new Set([...patchRequests, "BookMetadataAndLocksUpdatePayload", "SaveFileProgressPayload"]);
+
+function generateValueUnion(type, name) {
+  if (declarations.has(name)) return name;
+  const cases = type.types.map((part) => {
+    if (part.flags & ts.TypeFlags.StringLike) return { name: "string", type: "String" };
+    if (part.flags & ts.TypeFlags.NumberLike) return { name: "number", type: "Double" };
+    if (checker.isArrayType(part)) {
+      const item = checker.getTypeArguments(part)[0];
+      if (item.flags & ts.TypeFlags.StringLike) return { name: "strings", type: "[String]" };
+      if (item.flags & ts.TypeFlags.NumberLike) return { name: "numbers", type: "[Double]" };
+    }
+    throw new Error(`Unsupported value union in ${name}: ${checker.typeToString(type)}`);
+  });
+  if (new Set(cases.map((value) => value.name)).size !== cases.length) throw new Error(`Ambiguous union in ${name}`);
+  declarations.set(
+    name,
+    `enum ${name}: Codable, Sendable, Equatable {\n${cases.map((value) => `    case ${value.name}(${value.type})`).join("\n")}\n\n    init(from decoder: any Decoder) throws {\n        let container = try decoder.singleValueContainer()\n${cases.map((value) => `        if let value = try? container.decode(${value.type}.self) { self = .${value.name}(value); return }`).join("\n")}\n        throw DecodingError.typeMismatch(Self.self, .init(codingPath: decoder.codingPath, debugDescription: "Invalid filter value"))\n    }\n\n    func encode(to encoder: any Encoder) throws {\n        var container = encoder.singleValueContainer()\n        switch self {\n${cases.map((value) => `        case .${value.name}(let value): try container.encode(value)`).join("\n")}\n        }\n    }\n}`,
+  );
+  return name;
+}
+
+function generateRule() {
+  if (declarations.has("Rule")) return;
+  declarations.set("Rule", "");
+  const variants = checker.getDeclaredTypeOfSymbol(symbols.get("Rule")).types;
+  const fields = new Map();
+  for (const variant of variants) {
+    const discriminator = checker.getTypeOfPropertyOfType(variant, "type");
+    if (!(discriminator?.flags & ts.TypeFlags.StringLiteral) || discriminator.value !== "rule") throw new Error("Rule discriminator changed");
+    for (const property of checker.getPropertiesOfType(variant)) {
+      const declaration = property.valueDeclaration ?? property.declarations[0];
+      const type = checker.getTypeOfSymbolAtLocation(property, declaration);
+      const target = swiftType(type, `Rule${property.name[0].toUpperCase()}${property.name.slice(1)}`, property.name);
+      const existing = fields.get(property.name);
+      if (existing && existing.target !== target) throw new Error(`Rule variant changed: ${property.name}`);
+      fields.set(property.name, { target, count: (existing?.count ?? 0) + 1 });
+    }
+  }
+  declarations.set(
+    "Rule",
+    `struct Rule: Codable, Sendable, Equatable {\n${[...fields].map(([field, value]) => `    var \`${field}\`: ${value.target}${value.count !== variants.length && !value.target.endsWith("?") ? "?" : ""}`).join("\n")}\n}`,
+  );
+}
+
+function generateRuleNode() {
+  if (declarations.has("FilterNode")) return "FilterNode";
+  declarations.set("FilterNode", "");
+  generateRule();
+  const group = checker.getDeclaredTypeOfSymbol(symbols.get("GroupRule"));
+  const discriminator = checker.getTypeOfPropertyOfType(group, "type");
+  const join = checker.getTypeOfPropertyOfType(group, "join");
+  if (discriminator?.value !== "group" || !join?.isUnion() || join.types.some((part) => !["AND", "OR"].includes(part.value)))
+    throw new Error("Group rule vocabulary changed");
+  generateModel("GroupRule", group);
+  declarations.set(
+    "FilterNode",
+    `indirect enum FilterNode: Codable, Sendable, Equatable {\n    case rule(Rule)\n    case group(GroupRule)\n\n    private enum CodingKeys: String, CodingKey { case type }\n\n    init(from decoder: any Decoder) throws {\n        let container = try decoder.container(keyedBy: CodingKeys.self)\n        switch try container.decode(String.self, forKey: .type) {\n        case "rule": self = .rule(try Rule(from: decoder))\n        case "group": self = .group(try GroupRule(from: decoder))\n        default: throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Invalid filter node")\n        }\n    }\n\n    func encode(to encoder: any Encoder) throws {\n        switch self {\n        case .rule(let value): try value.encode(to: encoder)\n        case .group(let value): try value.encode(to: encoder)\n        }\n    }\n}`,
+  );
+  return "FilterNode";
+}
 
 function swiftType(type, name, field) {
   if (type.aliasSymbol?.name === "CoverMedium") return "CoverMedium";
@@ -131,7 +194,10 @@ function swiftType(type, name, field) {
     if (values.every((part) => part.flags & ts.TypeFlags.StringLike)) value = "String";
     else if (values.every((part) => part.flags & ts.TypeFlags.BooleanLike)) value = "Bool";
     else if (values.length === 1) value = swiftType(values[0], name, field);
-    else throw new Error(`Unsupported union in ${name}: ${checker.typeToString(type)}`);
+    else if (name === "GroupRuleRulesItem") value = generateRuleNode();
+    else if (type.aliasSymbol?.name === "RuleValue" || name === "RuleValue" || name === "RuleValueTo") {
+      value = generateValueUnion({ types: values }, name);
+    } else throw new Error(`Unsupported union in ${name}: ${checker.typeToString(type)}`);
     return value + (optional ? "?" : "");
   }
   if (type.flags & ts.TypeFlags.StringLike) return "String";
@@ -161,7 +227,13 @@ function generateModel(name, type) {
       declaration.type && ts.isTypeReferenceNode(declaration.type) ? checker.getSymbolAtLocation(declaration.type.typeName) : undefined;
     const canonical = reference && reference.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(reference) : reference;
     let target;
-    if (canonical && requestModels.has(canonical.name)) {
+    if (field === "filter" && ["SmartScope", "CreateSmartScopePayload", "UpdateSmartScopePayload"].includes(name)) {
+      const filter = checker.getDeclaredTypeOfSymbol(symbols.get("SmartScopeFilter"));
+      if (!filter.isUnion() || !filter.types.some((part) => part.aliasSymbol?.name === "GroupRule"))
+        throw new Error("Book scope filter contract changed");
+      generateModel("GroupRule", checker.getDeclaredTypeOfSymbol(symbols.get("GroupRule")));
+      target = "GroupRule?";
+    } else if (canonical && requestModels.has(canonical.name)) {
       generateModel(canonical.name, checker.getDeclaredTypeOfSymbol(canonical));
       target = canonical.name;
     } else {
@@ -211,6 +283,11 @@ for (const name of [
   "DashboardScrollerBatchRequest",
   "DashboardScrollerBatchResponse",
   "DashboardShelfConfig",
+  "SmartScopesPage",
+  "SmartScopePageQuery",
+  "CreateSmartScopePayload",
+  "UpdateSmartScopePayload",
+  "SetSmartScopeKoboSyncPayload",
 ]) {
   const symbol = symbols.get(name);
   if (!symbol) throw new Error(`Missing shared contract: ${name}`);
@@ -218,6 +295,34 @@ for (const name of [
 }
 
 generateModel("UserDashboardSettingsResponse", checker.getDeclaredTypeOfSymbol(symbols.get("AuthUser")));
+
+const operatorsDeclaration = symbols.get("FIELD_OPERATORS").valueDeclaration.initializer;
+if (!ts.isObjectLiteralExpression(operatorsDeclaration)) throw new Error("Filter vocabulary must remain a literal map");
+const operatorMap = operatorsDeclaration.properties.map((property) => {
+  if (!ts.isPropertyAssignment(property) || !ts.isArrayLiteralExpression(property.initializer)) throw new Error("Filter vocabulary changed");
+  return `        ${JSON.stringify(property.name.getText())}: [${property.initializer.elements
+    .map((value) => {
+      if (!ts.isStringLiteral(value)) throw new Error("Filter operators must remain literal strings");
+      return JSON.stringify(value.text);
+    })
+    .join(", ")}],`;
+});
+const filterChoices = ["CommunityRatingProvider", "ReadStatus", "BookFormat"].map((name) => {
+  const type = checker.getDeclaredTypeOfSymbol(symbols.get(name));
+  if (!type.isUnion() || !type.types.every((part) => part.flags & ts.TypeFlags.StringLiteral)) throw new Error(`${name} vocabulary changed`);
+  return `    static let ${name === "CommunityRatingProvider" ? "ratingProviders" : name === "ReadStatus" ? "readStatuses" : "formats"}: [String] = [${type.types.map((part) => JSON.stringify(part.value)).join(", ")}]`;
+});
+declarations.set(
+  "FilterVocabulary",
+  `enum FilterVocabulary {\n    static let operators: [String: [String]] = [\n${operatorMap.join("\n")}\n    ]\n${filterChoices.join("\n")}\n}`,
+);
+
+const sortDeclaration = symbols.get("SORT_FIELDS").valueDeclaration.initializer;
+if (!ts.isArrayLiteralExpression(sortDeclaration) || !sortDeclaration.elements.every(ts.isStringLiteral)) throw new Error("Sort vocabulary changed");
+declarations.set(
+  "SortVocabulary",
+  `enum SortVocabulary {\n    static let fields: [String] = [${sortDeclaration.elements.map((value) => JSON.stringify(value.text)).join(", ")}]\n}`,
+);
 
 const permission = symbols.get("Permission");
 const coverMedium = checker.getDeclaredTypeOfSymbol(symbols.get("CoverMedium"));

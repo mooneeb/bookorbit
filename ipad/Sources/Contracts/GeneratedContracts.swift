@@ -166,10 +166,96 @@ struct BookCoverSlot: Codable, Sendable, Equatable {
 }
 
 struct BookQuery: Codable, Sendable, Equatable {
+    var `filter`: GroupRule?
     var `sort`: [SortSpec]
     var `pagination`: BookQueryPagination
     var `q`: String?
     var `collapseSeries`: Bool?
+    var `randomSeed`: Int?
+}
+
+struct GroupRule: Codable, Sendable, Equatable {
+    var `type`: String
+    var `join`: String
+    var `rules`: [FilterNode]
+}
+
+indirect enum FilterNode: Codable, Sendable, Equatable {
+    case rule(Rule)
+    case group(GroupRule)
+
+    private enum CodingKeys: String, CodingKey { case type }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .type) {
+        case "rule": self = .rule(try Rule(from: decoder))
+        case "group": self = .group(try GroupRule(from: decoder))
+        default: throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Invalid filter node")
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        switch self {
+        case .rule(let value): try value.encode(to: encoder)
+        case .group(let value): try value.encode(to: encoder)
+        }
+    }
+}
+
+struct Rule: Codable, Sendable, Equatable {
+    var `type`: String
+    var `field`: String
+    var `operator`: String
+    var `value`: RuleValue?
+    var `valueTo`: RuleValueTo?
+    var `provider`: String?
+}
+
+enum RuleValue: Codable, Sendable, Equatable {
+    case string(String)
+    case number(Double)
+    case numbers([Double])
+    case strings([String])
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(String.self) { self = .string(value); return }
+        if let value = try? container.decode(Double.self) { self = .number(value); return }
+        if let value = try? container.decode([Double].self) { self = .numbers(value); return }
+        if let value = try? container.decode([String].self) { self = .strings(value); return }
+        throw DecodingError.typeMismatch(Self.self, .init(codingPath: decoder.codingPath, debugDescription: "Invalid filter value"))
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .numbers(let value): try container.encode(value)
+        case .strings(let value): try container.encode(value)
+        }
+    }
+}
+
+enum RuleValueTo: Codable, Sendable, Equatable {
+    case string(String)
+    case number(Double)
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(String.self) { self = .string(value); return }
+        if let value = try? container.decode(Double.self) { self = .number(value); return }
+        throw DecodingError.typeMismatch(Self.self, .init(codingPath: decoder.codingPath, debugDescription: "Invalid filter value"))
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        }
+    }
 }
 
 struct SortSpec: Codable, Sendable, Equatable {
@@ -446,6 +532,59 @@ struct ScrollerConfig: Codable, Sendable, Equatable, Identifiable {
     var `smartScopeId`: Int?
 }
 
+struct SmartScopesPage: Codable, Sendable, Equatable {
+    var `items`: [BookSmartScope]
+    var `total`: Int
+    var `page`: Int
+    var `size`: Int
+}
+
+struct BookSmartScope: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `userId`: Int
+    var `mediaType`: String
+    var `name`: String
+    var `icon`: String?
+    var `filter`: GroupRule?
+    var `defaultSort`: [SortSpec]
+    var `isPublic`: Bool
+    var `syncToKobo`: Bool
+    var `koboSyncEnabled`: Bool
+    var `isOwner`: Bool
+}
+
+struct SmartScopePageQuery: Codable, Sendable, Equatable {
+    var `page`: Int?
+    var `size`: Int?
+    var `q`: String?
+    var `mediaType`: String?
+    var `owned`: Bool?
+}
+
+struct CreateSmartScopePayload: Codable, Sendable, Equatable {
+    var `name`: String
+    var `icon`: String
+    var `mediaType`: String?
+    var `libraryId`: Int?
+    var `filter`: GroupRule?
+    var `defaultSort`: [SortSpec]
+    var `isPublic`: Bool?
+    var `syncToKobo`: Bool?
+}
+
+struct UpdateSmartScopePayload: Codable, Sendable, Equatable {
+    var `name`: String?
+    var `icon`: String?
+    var `filter`: GroupRule?
+    var `defaultSort`: [SortSpec]?
+    var `isPublic`: Bool?
+    var `syncToKobo`: Bool?
+}
+
+struct SetSmartScopeKoboSyncPayload: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+}
+
 struct UserDashboardSettingsResponse: Codable, Sendable, Equatable {
     var `settings`: UserSettings
 }
@@ -466,6 +605,49 @@ struct WidgetConfig: Codable, Sendable, Equatable, Identifiable {
     var `type`: String
     var `enabled`: Bool
     var `order`: Double
+}
+
+enum FilterVocabulary {
+    static let operators: [String: [String]] = [
+        "title": ["contains", "notContains", "startsWith", "endsWith", "eq", "notEq", "isEmpty", "isNotEmpty"],
+        "publisher": ["contains", "notContains", "eq", "notEq", "includesAny", "excludesAll", "isEmpty", "isNotEmpty"],
+        "language": ["eq", "notEq", "includesAny", "excludesAll", "isEmpty", "isNotEmpty"],
+        "series": ["contains", "notContains", "eq", "notEq", "includesAny", "excludesAll", "isEmpty", "isNotEmpty"],
+        "author": ["includesAny", "includesAll", "excludesAll", "isEmpty", "isNotEmpty"],
+        "genre": ["includesAny", "includesAll", "excludesAll", "isEmpty", "isNotEmpty"],
+        "tag": ["includesAny", "includesAll", "excludesAll", "isEmpty", "isNotEmpty"],
+        "collection": ["includesAny", "excludesAll", "isEmpty", "isNotEmpty"],
+        "library": ["includesAny", "excludesAll"],
+        "format": ["includesAny", "excludesAll"],
+        "fileSize": ["eq", "notEq", "gt", "gte", "lt", "lte", "between", "isEmpty", "isNotEmpty"],
+        "publishedDate": ["before", "after", "between", "withinLast", "isEmpty", "isNotEmpty"],
+        "publishedYear": ["eq", "notEq", "gt", "gte", "lt", "lte", "between", "isEmpty", "isNotEmpty"],
+        "seriesIndex": ["eq", "notEq", "gt", "gte", "lt", "lte", "between", "isEmpty", "isNotEmpty"],
+        "pageCount": ["gt", "gte", "lt", "lte", "between", "isEmpty", "isNotEmpty"],
+        "addedAt": ["before", "after", "between", "withinLast"],
+        "startedAt": ["before", "after", "between", "withinLast", "isEmpty", "isNotEmpty"],
+        "finishedAt": ["before", "after", "between", "withinLast", "isEmpty", "isNotEmpty"],
+        "fileAvailability": ["isMissing", "isPresent"],
+        "rating": ["eq", "gt", "gte", "lt", "lte", "isEmpty", "isNotEmpty"],
+        "communityRating": ["eq", "notEq", "gt", "gte", "lt", "lte", "between", "isEmpty", "isNotEmpty"],
+        "communityRatingCount": ["eq", "notEq", "gt", "gte", "lt", "lte", "between", "isEmpty", "isNotEmpty"],
+        "readProgress": ["isUnread", "isInProgress", "isFinished"],
+        "readStatus": ["includesAny", "excludesAll", "isEmpty", "isNotEmpty"],
+        "description": ["isEmpty", "isNotEmpty"],
+        "isbn": ["isEmpty", "isNotEmpty", "eq"],
+        "metadataScore": ["gt", "gte", "lt", "lte", "between", "isEmpty", "isNotEmpty"],
+        "cover": ["isMissing", "isPresent"],
+        "audioCover": ["isMissing", "isPresent"],
+        "lockStatus": ["isLocked", "isUnlocked"],
+        "seriesStatus": ["isUpNext"],
+    ]
+    static let ratingProviders: [String] = ["google", "goodreads", "amazon", "hardcover", "openLibrary", "itunes", "audible", "ranobedb", "any"]
+    static let readStatuses: [String] = ["unread", "want_to_read", "reading", "on_hold", "rereading", "read", "skimmed", "abandoned"]
+    static let formats: [String] = ["epub", "fb2", "pdf", "cbz", "cb7", "mobi", "azw3", "azw", "m4b", "m4a", "mp3", "flac", "kepub", "cbr", "opus", "ogg"]
+}
+
+enum SortVocabulary {
+    static let fields: [String] = ["relevance", "author", "title", "series", "seriesIndex", "addedAt", "updatedAt", "publishedDate", "publishedYear", "pageCount", "rating", "publisher", "fileSize", "readProgress", "readStatus", "format", "lastReadAt", "startedAt", "finishedAt", "random", "language", "metadataScore", "collectionOrder"]
 }
 
 enum CoverMedium: String, Codable, Sendable, CaseIterable, Identifiable {
