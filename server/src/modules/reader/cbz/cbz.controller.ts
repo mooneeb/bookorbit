@@ -3,13 +3,14 @@ import type { FastifyReply } from 'fastify';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../../common/types/request-user';
 import { CbzService } from './cbz.service';
+import { ComicPageCountResponseDto } from './dto/comic-page-count-response.dto';
 
 @Controller('cbz')
 export class CbzController {
   constructor(private readonly cbzService: CbzService) {}
 
   @Get('files/:fileId/pages')
-  async getPageCount(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser) {
+  async getPageCount(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser): Promise<ComicPageCountResponseDto> {
     return { pageCount: await this.cbzService.getPageCount(fileId, user) };
   }
 

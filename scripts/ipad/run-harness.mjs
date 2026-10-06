@@ -23,6 +23,7 @@ const metadataClearsProof = process.argv.includes("--metadata-clears-proof");
 const coverProof = process.argv.includes("--cover-proof");
 const readerProof = process.argv.includes("--reader-proof");
 const epubProof = process.argv.includes("--epub-proof");
+const comicProof = process.argv.includes("--comic-proof");
 const pdfReader = process.argv.includes("--pdf-reader");
 const inspectWeb = process.argv.includes("--inspect-web");
 if (inspectWeb && !process.argv.includes("--web")) throw new Error("Browser inspection requires --web");
@@ -31,6 +32,9 @@ if (readerProof && (!process.argv.includes("--ui") || crossClient)) {
   throw new Error("Reader proof requires --ui and runs separately from the production cross-client gate");
 }
 if (epubProof && !readerProof) throw new Error("EPUB proof requires the separate reader proof target");
+if (comicProof && (!readerProof || epubProof || !process.argv.includes("--web"))) {
+  throw new Error("Comic proof requires the separate reader proof target and --web, without --epub-proof");
+}
 if (crossClient && (!process.argv.includes("--ui") || !process.argv.includes("--web"))) {
   throw new Error("Cross-client verification requires both --ui and --web");
 }
@@ -60,6 +64,7 @@ const env = {
   IPAD_COVER_PROOF: coverProof ? "1" : "0",
   IPAD_COVER_FIXTURE_DIR: `${root}/test-results/ipad/${runID}/cover-fixture`,
   IPAD_READER_PROOF: readerProof ? "1" : "0",
+  IPAD_COMIC_PROOF: comicProof ? "1" : "0",
   IPAD_PDF_READER: pdfReader ? "1" : "0",
   ...(epubProof ? { IPAD_READER_PROOF_EPUB: `${root}/test-results/ipad/${runID}/reader-fixture/reader-proof.epub` } : {}),
   JWT_SECRET: randomBytes(32).toString("hex"),
@@ -219,11 +224,13 @@ async function runNativeTests() {
         "CODE_SIGN_IDENTITY=-",
         ...(nativeTests.length
           ? nativeTests.map((name) => `-only-testing:${name}`)
-          : pdfReader
-            ? ["-only-testing:BookOrbitUITests/EntryJourneyTests/testIPADE01A03ProductionPDFCurlAndResume"]
-            : readerProof && !epubProof
-              ? ["-only-testing:BookOrbitReaderProofUITests/PDFReaderProofTests"]
-              : []),
+          : comicProof
+            ? ["-only-testing:BookOrbitReaderProofUITests/ComicReaderProofTests"]
+            : pdfReader
+              ? ["-only-testing:BookOrbitUITests/EntryJourneyTests/testIPADE01A03ProductionPDFCurlAndResume"]
+              : readerProof && !epubProof
+                ? ["-only-testing:BookOrbitReaderProofUITests/PDFReaderProofTests"]
+                : []),
       ]);
     } catch (error) {
       nativeFailure = error;

@@ -20,6 +20,7 @@ import { BookCoverStore } from '../../src/modules/book-cover-store/book-cover-st
 import { sanitizeLogValue } from '../../src/common/utils/log-sanitize.utils';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { FIXTURE_CLIENT_ID, FIXTURE_ISSUER, startOidcProvider } from './oidc-provider';
+import { createComicFixture } from './comic-fixture';
 
 const started = Date.now();
 
@@ -205,6 +206,21 @@ async function main() {
       .returning({ id: schema.bookFiles.id });
     await db.update(schema.books).set({ primaryFileId: mixedFiles[0].id }).where(eq(schema.books.id, bookId));
   }
+  const comicPath = join(folder, 'orbit-comic.cbz');
+  await createComicFixture(comicPath);
+  const [comic] = await db
+    .insert(schema.bookFiles)
+    .values({
+      bookId: 10,
+      libraryFolderId: libraryFolder.id,
+      absolutePath: comicPath,
+      ino: 10n,
+      format: 'cbz',
+      role: 'content',
+      sizeBytes: (await stat(comicPath)).size,
+    })
+    .returning({ id: schema.bookFiles.id });
+  await db.update(schema.books).set({ primaryFileId: comic.id }).where(eq(schema.books.id, 10));
   await app.listen(apiPort, '127.0.0.1');
   const coverStore = app.get(BookCoverStore);
   for (const bookId of [6, 8]) {

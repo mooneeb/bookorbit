@@ -34,6 +34,7 @@ enum ConnectionError: LocalizedError {
   case fileChanged
   case insufficientStorage
   case resourceTooLarge
+  case comicPageTooLarge
   case http(Int)
   case keychain(OSStatus)
 
@@ -46,6 +47,7 @@ enum ConnectionError: LocalizedError {
     case .fileChanged: "The book file changed. Close the reader and reopen the book."
     case .insufficientStorage: "There is not enough free space to open this book file."
     case .resourceTooLarge: "This EPUB resource exceeds the renderer proof's 8 MB limit."
+    case .comicPageTooLarge: "This comic page exceeds the reader's 20 MB image limit."
     case .http(401): "The username or password is incorrect."
     case .http(let status): "The server could not complete the request (\(status)). Try again."
     case .keychain: "Your credentials could not be saved securely. Unlock your iPad and try again."

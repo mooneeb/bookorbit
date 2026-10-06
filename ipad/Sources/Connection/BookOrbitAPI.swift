@@ -268,6 +268,49 @@ actor BookOrbitAPI {
     return data
   }
 
+  func comicPage(fileID: Int, pageIndex: Int) async throws -> Data {
+    guard pageIndex >= 0 else { throw ConnectionError.invalidResponse }
+    let limit = 20 * 1024 * 1024
+    let generation = sessionGeneration
+    var request = URLRequest(url: profile.endpoint("cbz/files/\(fileID)/pages/\(pageIndex)"))
+    request.cachePolicy = .reloadIgnoringLocalCacheData
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(generation)
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(generation)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    try ensureSession(generation)
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    guard response.mimeType?.hasPrefix("image/") == true else {
+      throw ConnectionError.invalidResponse
+    }
+    guard response.expectedContentLength <= limit else { throw ConnectionError.comicPageTooLarge }
+    var data = Data()
+    for try await byte in bytes {
+      guard data.count < limit else { throw ConnectionError.comicPageTooLarge }
+      data.append(byte)
+      if data.count % (64 * 1024) == 0 {
+        try Task.checkCancellation()
+        try ensureSession(generation)
+      }
+    }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    if response.expectedContentLength >= 0 && Int64(data.count) != response.expectedContentLength {
+      throw ConnectionError.fileChanged
+    }
+    return data
+  }
+
   func deliveredFile(fileID: Int, expectedSize: Double, mimeType: String) async throws -> URL {
     guard expectedSize.isFinite, expectedSize > 0, expectedSize.rounded() == expectedSize,
       expectedSize < Double(Int64.max)

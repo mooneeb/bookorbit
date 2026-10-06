@@ -6,7 +6,7 @@ import path from "node:path";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(path.join(root, "server/package.json"));
 const ts = require("typescript");
-const entries = ["auth", "book", "book-selection", "collection", "epub", "library", "permissions", "query"].map((name) =>
+const entries = ["auth", "book", "book-selection", "collection", "comic", "epub", "library", "permissions", "query"].map((name) =>
   path.join(root, `packages/types/src/${name}.ts`),
 );
 const program = ts.createProgram(entries, {
@@ -169,6 +169,7 @@ for (const name of [
   "FileReadingProgress",
   "SaveFileProgressPayload",
   "EpubBookInfo",
+  "ComicPageCountResponse",
 ]) {
   const symbol = symbols.get(name);
   if (!symbol) throw new Error(`Missing shared contract: ${name}`);

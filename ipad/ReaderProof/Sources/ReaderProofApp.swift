@@ -77,7 +77,7 @@ private struct ReaderProofBookView: View {
           ForEach(book.files) { file in
             VStack(alignment: .leading) {
               Text(file.filename ?? "Book file")
-              if ["pdf", "epub"].contains(file.format?.lowercased() ?? "") {
+              if ["pdf", "epub", "cbz"].contains(file.format?.lowercased() ?? "") {
                 Button("Read") { selectedFile = file }
                   .accessibilityIdentifier("readFile\(file.id)")
               }
@@ -99,7 +99,9 @@ private struct ReaderProofBookView: View {
     }
     .task { await model.load() }
     .fullScreenCover(item: $selectedFile) { file in
-      if file.format?.lowercased() == "epub" {
+      if file.format?.lowercased() == "cbz" {
+        ComicProofView(api: model.api, file: file)
+      } else if file.format?.lowercased() == "epub" {
         EPUBProofView(api: model.api, bookID: model.bookID, file: file)
       } else {
         PDFReaderView(api: model.api, file: file)

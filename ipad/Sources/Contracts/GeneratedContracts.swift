@@ -297,6 +297,10 @@ struct EpubManifestItem: Codable, Sendable, Equatable, Identifiable {
     var `size`: Int
 }
 
+struct ComicPageCountResponse: Codable, Sendable, Equatable {
+    var `pageCount`: Int
+}
+
 enum CoverMedium: String, Codable, Sendable, CaseIterable, Identifiable {
     case ebook
     case audio

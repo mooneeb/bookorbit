@@ -167,13 +167,23 @@ See [the interim two-axis review](review.md) for findings and resolutions agains
 
 ## Reader feasibility target
 
-`BookOrbitReaderProof` is a separate native app target with its own bundle identity. It reuses the existing authenticated connection and bounded library browser; The PDF reader sources are shared with the production app; the EPUB experiment remains separate pending its accessibility, security and performance gates.
+`BookOrbitReaderProof` is a separate native app target with its own bundle identity. It reuses the existing authenticated connection and bounded library browser. PDF reader sources are shared with the production app; EPUB and comic experiments remain separate pending their accessibility, security and performance gates.
 
 ```sh
 pnpm ipad:test:reader-proof
 ```
 
 This command uses the cached simulator runtime, the real isolated server and delivered PDF. The first native tracer is `testIPADE01A03PDFCurlAndResume`, covering actual delivered page text, a horizontal turn, public persisted page position, rotation and relaunch. The isolated PDF tracer passed curl, rotation, acknowledged-save relaunch and full first/resumed-page accessibility audits. A second native tracer holds a real progress request to verify closing during a pending save. Run `pnpm ipad:test:reader-cross-client` to run both native tracers and the actual web PDF handoff against the same fixture. Both native PDF tracers and the actual pixel-verified browser handoff passed together. The persistent-save-failure Retry/discard tracer also passed independently. Additional reader engines, measured performance, deterministic visual comparisons and physical-device checks remain required for issue completion.
+
+### Native comic experiment
+
+```sh
+pnpm exec node scripts/ipad/run-harness.mjs --ui --reader-proof --web --comic-proof
+```
+
+The separate proof target reads actual authenticated CBZ page images through a native horizontal curl. A generated three-image archive has intentionally shuffled entries to verify natural page ordering with independent literal image OCR. Streamed image delivery is capped at 20 MiB; ImageIO decodes off the main actor with a 3,072-pixel maximum dimension, retaining only the current/adjacent page window. Completed turns save the canonical one-based text page and clear obsolete text companions, leaving narration independent. Closing waits for acknowledgement and exposes retry or confirmed discard after a failed save.
+
+`testIPADE01A04ComicCurlRotationAndResume` verifies actual image pixels, curl, rotation, public progress, relaunch and full unfiltered audits. `IPAD-E01-A04-comic-web` opens the actual web Read action and recognizes the native-saved page before and after reopening/reload. The missing-Read, accepted stale-locator and visible web Back control REDs are retained in [verification.md](verification.md). The focused native journey and subsequent browser handoff passed against the same native-saved fixture; the existing PDF curl/resume regression also passed. This is CBZ feasibility; general comic formats, controlled failures, measured performance, physical evidence and production integration remain required.
 
 ### Local EPUB anchor experiment
 
