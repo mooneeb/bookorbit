@@ -18,6 +18,11 @@ struct OrganizationDirectoryView: View {
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
+        OrganizationSearchField(
+          text: $model.search, prompt: "Search \(model.kind.title.lowercased())"
+        ) { Task { await model.load() } }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
         if let error = model.error {
           ContentUnavailableView {
             Label(
@@ -106,8 +111,6 @@ struct OrganizationDirectoryView: View {
           next: { Task { await model.nextPage() } })
       }
       .navigationTitle(model.kind.title)
-      .searchable(text: $model.search, prompt: "Search \(model.kind.title.lowercased())")
-      .onSubmit(of: .search) { Task { await model.load() } }
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
           Menu {
