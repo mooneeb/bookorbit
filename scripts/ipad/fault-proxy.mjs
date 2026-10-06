@@ -198,6 +198,7 @@ export async function startFaultProxy() {
           if (response.statusCode !== 200 || bytes.length < 2) throw new Error("Cover fault requires a real successful image response");
           outgoing.writeHead(response.statusCode, response.headers);
           outgoing.write(bytes.subarray(0, 1));
+          let forwardedBytes = 1;
           coverHeld = true;
           coverObserver?.writeHead(200).end("held");
           const forwarded = new Promise((resolve) => {
@@ -205,9 +206,16 @@ export async function startFaultProxy() {
             outgoing.once("close", resolve);
           });
           await new Promise((resolve) => {
-            const timeout = setTimeout(finish, 20_000);
+            const keepStreaming = setInterval(() => {
+              if (!outgoing.destroyed && forwardedBytes < bytes.length - 1) {
+                outgoing.write(bytes.subarray(forwardedBytes, forwardedBytes + 1));
+                forwardedBytes++;
+              }
+            }, 5_000);
+            const timeout = setTimeout(finish, 45_000);
             function finish() {
               clearTimeout(timeout);
+              clearInterval(keepStreaming);
               outgoing.off("close", finish);
               coverHeld = false;
               coverRelease = undefined;
@@ -219,7 +227,7 @@ export async function startFaultProxy() {
             };
             outgoing.once("close", finish);
           });
-          if (!outgoing.destroyed) outgoing.end(bytes.subarray(1));
+          if (!outgoing.destroyed) outgoing.end(bytes.subarray(forwardedBytes));
         } catch {
           if (!outgoing.headersSent) outgoing.writeHead(502);
           outgoing.end();

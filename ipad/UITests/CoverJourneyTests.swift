@@ -82,10 +82,7 @@ final class CoverJourneyTests: XCTestCase {
     XCTAssertTrue(app.images["audioCoverImage"].waitForExistence(timeout: 10))
     capture("IPAD-E01-A02-cover-original")
     app.buttons["chooseEbookCover"].tap()
-    let photo = app.images.matching(
-      NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "Photo, ", "2030")
-    )
-    .firstMatch
+    let photo = coverFixturePhoto(in: app, year: "2030")
     XCTAssertTrue(photo.waitForExistence(timeout: 10))
     capture("IPAD-E01-A02-cover-photo-picker")
     let hierarchy = XCTAttachment(string: app.debugDescription)
@@ -216,9 +213,7 @@ final class CoverJourneyTests: XCTestCase {
     app.buttons["editCovers"].tap()
     XCTAssertTrue(app.images["ebookCoverImage"].waitForExistence(timeout: 10))
     app.buttons["chooseEbookCover"].tap()
-    let photo = app.images.matching(
-      NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "Photo, ", "2031")
-    ).firstMatch
+    let photo = coverFixturePhoto(in: app, year: "2031")
     XCTAssertTrue(photo.waitForExistence(timeout: 10))
     capture("IPAD-E01-A02-original-image-picker")
     let hierarchy = XCTAttachment(string: app.debugDescription)
@@ -249,13 +244,15 @@ final class CoverJourneyTests: XCTestCase {
     let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
     let sample = try XCTUnwrap(image.cropping(to: CGRect(x: 10, y: 10, width: 1, height: 1)))
     var pixel = [UInt8](repeating: 0, count: 4)
-    let context = try XCTUnwrap(
-      CGContext(
-        data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
-        space: CGColorSpace(name: CGColorSpace.sRGB)!,
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
-    context.draw(sample, in: CGRect(x: 0, y: 0, width: 1, height: 1))
-    XCTAssertEqual(pixel[3], 0, "The delivered original must preserve transparency")
+    try pixel.withUnsafeMutableBytes { buffer in
+      let context = try XCTUnwrap(
+        CGContext(
+          data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+          space: CGColorSpace(name: CGColorSpace.sRGB)!,
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+      context.draw(sample, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+      XCTAssertEqual(buffer[3], 0, "The delivered original must preserve transparency")
+    }
     let savedAudio = try await request("books/8/cover?medium=audio&strict=true", token: token)
     XCTAssertEqual(savedAudio, originalAudio)
     capture("IPAD-E01-A02-original-image-saved")
@@ -331,9 +328,7 @@ final class CoverJourneyTests: XCTestCase {
     app.buttons["editCovers"].tap()
     XCTAssertTrue(app.images["ebookCoverImage"].waitForExistence(timeout: 10))
     app.buttons["chooseEbookCover"].tap()
-    let photo = app.images.matching(
-      NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "Photo, ", "2030")
-    ).firstMatch
+    let photo = coverFixturePhoto(in: app, year: "2030")
     XCTAssertTrue(photo.waitForExistence(timeout: 10))
     photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     XCTAssertTrue(app.staticTexts["Selected image: 640 × 960"].waitForExistence(timeout: 10))
@@ -404,12 +399,11 @@ final class CoverJourneyTests: XCTestCase {
     app.buttons["editCovers"].tap()
     try await coverFault("held", method: "GET")
     app.buttons["chooseEbookCover"].tap()
-    let photo = app.images.matching(
-      NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "Photo, ", "2030")
-    ).firstMatch
+    let photo = coverFixturePhoto(in: app, year: "2030")
     XCTAssertTrue(photo.waitForExistence(timeout: 10))
     photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     XCTAssertTrue(app.staticTexts["Selected image: 640 × 960"].waitForExistence(timeout: 10))
+    try await coverFault("held", method: "GET")
     app.buttons["saveEbookCover"].tap()
     XCTAssertTrue(app.staticTexts["Ebook cover saved."].waitForExistence(timeout: 10))
     assertRenderedCover(app, color: [48, 112, 192])
@@ -455,9 +449,7 @@ final class CoverJourneyTests: XCTestCase {
     app.buttons["editCovers"].tap()
     XCTAssertTrue(app.images["ebookCoverImage"].waitForExistence(timeout: 10))
     app.buttons["chooseEbookCover"].tap()
-    let photo = app.images.matching(
-      NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "Photo, ", "2030")
-    ).firstMatch
+    let photo = coverFixturePhoto(in: app, year: "2030")
     XCTAssertTrue(photo.waitForExistence(timeout: 10))
     photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     XCTAssertTrue(app.staticTexts["Selected image: 640 × 960"].waitForExistence(timeout: 10))
@@ -517,6 +509,21 @@ final class CoverJourneyTests: XCTestCase {
   }
 
   @MainActor
+  private func coverFixturePhoto(in app: XCUIApplication, year: String) -> XCUIElement {
+    let photo = app.images.matching(
+      NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "Photo, ", year)
+    ).firstMatch
+    let picker = app.scrollViews["photosView_content_scroll_view"]
+    XCTAssertTrue(picker.waitForExistence(timeout: 10))
+    for _ in 0..<20 {
+      if photo.exists && photo.isHittable { return photo }
+      picker.swipeUp(velocity: .slow)
+    }
+    XCTAssertTrue(photo.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    return photo
+  }
+
+  @MainActor
   private func openCoverBook(_ app: XCUIApplication, server: String) async throws {
     XCUIDevice.shared.orientation = .portrait
     app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
@@ -570,18 +577,20 @@ final class CoverJourneyTests: XCTestCase {
       return
     }
     var pixel = [UInt8](repeating: 0, count: 4)
-    guard
-      let context = CGContext(
-        data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
-        space: CGColorSpace(name: CGColorSpace.sRGB)!,
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-    else {
-      XCTFail("The visible cover pixel must decode")
-      return
-    }
-    context.draw(sample, in: CGRect(x: 0, y: 0, width: 1, height: 1))
-    for channel in 0..<3 {
-      XCTAssertLessThanOrEqual(abs(Int(pixel[channel]) - color[channel]), 10)
+    pixel.withUnsafeMutableBytes { buffer in
+      guard
+        let context = CGContext(
+          data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+          space: CGColorSpace(name: CGColorSpace.sRGB)!,
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+      else {
+        XCTFail("The visible cover pixel must decode")
+        return
+      }
+      context.draw(sample, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+      for channel in 0..<3 {
+        XCTAssertLessThanOrEqual(abs(Int(buffer[channel]) - color[channel]), 10)
+      }
     }
   }
 
@@ -618,20 +627,22 @@ final class CoverJourneyTests: XCTestCase {
     XCTAssertEqual(image.width, width, file: file, line: line)
     XCTAssertEqual(image.height, height, file: file, line: line)
     var pixels = [UInt8](repeating: 0, count: width * height * 4)
-    guard
-      let context = CGContext(
-        data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
-        space: CGColorSpace(name: CGColorSpace.sRGB)!,
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-    else {
-      XCTFail("Delivered cover must render", file: file, line: line)
-      return
-    }
-    context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-    let offset = (10 * width + x) * 4
-    for channel in 0..<3 {
-      XCTAssertLessThanOrEqual(
-        abs(Int(pixels[offset + channel]) - color[channel]), 10, file: file, line: line)
+    pixels.withUnsafeMutableBytes { buffer in
+      guard
+        let context = CGContext(
+          data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+          bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+      else {
+        XCTFail("Delivered cover must render", file: file, line: line)
+        return
+      }
+      context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+      let offset = (10 * width + x) * 4
+      for channel in 0..<3 {
+        XCTAssertLessThanOrEqual(
+          abs(Int(buffer[offset + channel]) - color[channel]), 10, file: file, line: line)
+      }
     }
   }
 
