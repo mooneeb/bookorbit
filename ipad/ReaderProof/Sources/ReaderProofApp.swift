@@ -54,18 +54,23 @@ private struct ReaderProofLibraryView: View {
     }
     .task { await library.load() }
     .sheet(item: $selectedBook) { book in
-      ReaderProofBookView(api: library.api, bookID: book.id)
+      ReaderProofBookView(
+        api: library.api, bookID: book.id,
+        canRead: session.user?.isSuperuser == true
+          || session.user?.permissions.contains(Permission.libraryDownload.rawValue) == true)
     }
   }
 }
 
 private struct ReaderProofBookView: View {
+  let canRead: Bool
   @State private var model: BookDetailModel
   @State private var selectedFile: BookDetailFile?
   @State private var nativeChapterFile: BookDetailFile?
   @Environment(\.dismiss) private var dismiss
 
-  init(api: BookOrbitAPI, bookID: Int) {
+  init(api: BookOrbitAPI, bookID: Int, canRead: Bool) {
+    self.canRead = canRead
     _model = State(initialValue: BookDetailModel(api: api, bookID: bookID))
   }
 
@@ -77,11 +82,14 @@ private struct ReaderProofBookView: View {
           ForEach(book.files) { file in
             VStack(alignment: .leading) {
               Text(file.filename ?? "Book file")
-              if ["pdf", "epub", "cbz"].contains(file.format?.lowercased() ?? "") {
+              if canRead,
+                ["pdf", "epub", "cbz"].contains(file.format?.lowercased() ?? "")
+                  || AudioStreamFormat.mimeTypes[file.format?.lowercased() ?? ""] != nil
+              {
                 Button("Read") { selectedFile = file }
                   .accessibilityIdentifier("readFile\(file.id)")
               }
-              if file.format?.lowercased() == "epub" {
+              if canRead, file.format?.lowercased() == "epub" {
                 Button("Inspect native chapter") { nativeChapterFile = file }
                   .accessibilityIdentifier("inspectNativeFile\(file.id)")
               }
@@ -99,7 +107,9 @@ private struct ReaderProofBookView: View {
     }
     .task { await model.load() }
     .fullScreenCover(item: $selectedFile) { file in
-      if file.format?.lowercased() == "cbz" {
+      if AudioStreamFormat.mimeTypes[file.format?.lowercased() ?? ""] != nil {
+        AudioProofView(api: model.api, bookID: model.bookID, file: file)
+      } else if file.format?.lowercased() == "cbz" {
         ComicProofView(api: model.api, bookID: model.bookID, file: file)
       } else if file.format?.lowercased() == "epub" {
         EPUBProofView(api: model.api, bookID: model.bookID, file: file)

@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(path.join(root, "server/package.json"));
 const ts = require("typescript");
 const entries = [
+  "audiobook",
   "auth",
   "author",
   "book",
@@ -149,6 +150,14 @@ const integerFields = new Set([
   "randomSeed",
   "rotation",
   "spreadGap",
+  "schemaVersion",
+  "sequence",
+  "positionMs",
+  "endMs",
+  "assetOffsetMs",
+  "totalDurationMs",
+  "baseRevision",
+  "revision",
   "BookmarkResponsePageNumber",
   "CreateFixedPageBookmarkPayloadPageNumber",
   "BookmarksPageNextCursor",
@@ -162,7 +171,7 @@ const patchRequests = new Set([
   "SetBookReadingStatusPayload",
   "UpdateBookPersonalNotePayload",
 ]);
-const requestModels = new Set([...patchRequests, "BookMetadataAndLocksUpdatePayload", "SaveFileProgressPayload"]);
+const requestModels = new Set([...patchRequests, "BookMetadataAndLocksUpdatePayload", "SaveFileProgressPayload", "PutAudiobookPlaybackState"]);
 const nullableResponses = new Set([
   "BookFileMetadataResponse",
   "BookFileComicMetadata",
@@ -182,6 +191,8 @@ function generateValueUnion(type, name) {
     }
     throw new Error(`Unsupported value union in ${name}: ${checker.typeToString(type)}`);
   });
+  const caseOrder = ["string", "number", "numbers", "strings"];
+  cases.sort((left, right) => caseOrder.indexOf(left.name) - caseOrder.indexOf(right.name));
   if (new Set(cases.map((value) => value.name)).size !== cases.length) throw new Error(`Ambiguous union in ${name}`);
   declarations.set(
     name,
@@ -336,6 +347,9 @@ function generateModel(name, type) {
 }
 
 for (const name of [
+  "AudiobookManifest",
+  "AudiobookPlaybackState",
+  "PutAudiobookPlaybackState",
   "NativeAuthResponse",
   "NativeCredentials",
   "LoginRequest",
@@ -435,6 +449,13 @@ const readerLayoutLimits = ["CBX_SPREAD_GAP_MIN", "CBX_SPREAD_GAP_MAX"].map((nam
 });
 
 const readingStatuses = checker.getDeclaredTypeOfSymbol(symbols.get("ReadStatus"));
+const audioSchema = checker.getTypeAtLocation(symbols.get("AUDIOBOOK_MANIFEST_SCHEMA").valueDeclaration.initializer).value;
+const audioVersion = checker.getTypeAtLocation(symbols.get("AUDIOBOOK_MANIFEST_VERSION").valueDeclaration.initializer).value;
+if (typeof audioSchema !== "string" || !Number.isInteger(audioVersion)) throw new Error("Audiobook manifest vocabulary changed");
+declarations.set(
+  "AudiobookVocabulary",
+  `enum AudiobookVocabulary {\n    static let schema = ${JSON.stringify(audioSchema)}\n    static let version = ${audioVersion}\n}`,
+);
 if (!readingStatuses.isUnion() || !readingStatuses.types.every((part) => part.flags & ts.TypeFlags.StringLiteral))
   throw new Error("Reading status vocabulary changed");
 const personalNoteLimit = checker.getTypeAtLocation(symbols.get("PERSONAL_NOTE_MAX_LENGTH").valueDeclaration.initializer).value;

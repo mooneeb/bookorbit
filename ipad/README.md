@@ -16,6 +16,8 @@ Native provider matching, identifier lookup and field comparison are implemented
 
 Native personal reading status, dates and notes are implemented through the existing user-scoped routes. Account time zones, explicit date/note clears, changed-field omission and separate status/note acknowledgment are preserved. [personal-reading-implementation.md](personal-reading-implementation.md) records source verification and the pending independent acceptance handoff.
 
+The separate Reader Proof app now contains a bounded authenticated AVPlayer audio experiment with native playback, seeking, track/chapter selection and revision-aware progress saves. Its source checks passed; autonomous localhost playback and format/fault testing are pending. [audio-playback-proof-implementation.md](audio-playback-proof-implementation.md) records the transport limits and remaining production integration work.
+
 The author/series handoff now has a focused autonomous QA command and public/native/web test mapping in [organization-verification.md](organization-verification.md). Its initial eleven HTTP checks pass, while four full native accessibility audits expose concrete font-scaling and contrast defects that remain gates. The focused reader handoff and browser journeys execute after those native gates pass.
 
 Production comic entry and native page navigation are implemented and awaiting their independent acceptance handoff. The production and proof apps share the bounded page-curl engine and acknowledged progress model. Actual CBZ proof tests passed; the new production path, direct navigation and genuine CBR/CB7 delivery remain acceptance work. [comic-reader-implementation.md](comic-reader-implementation.md) records the boundary and remaining reader controls.

@@ -2,6 +2,63 @@
 // Regenerate after shared contract changes.
 import Foundation
 
+struct AudiobookManifest: Codable, Sendable, Equatable {
+    var `schema`: String
+    var `schemaVersion`: Int
+    var `revision`: String
+    var `book`: AudiobookManifestBook
+    var `assets`: [AudiobookManifestAsset]
+    var `chapters`: [AudiobookManifestChapter]
+    var `totalDurationMs`: Int
+}
+
+struct AudiobookManifestBook: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `title`: String
+    var `authors`: [String]
+    var `narrators`: [String]
+    var `hasCover`: Bool
+}
+
+struct AudiobookManifestAsset: Codable, Sendable, Equatable {
+    var `assetId`: String
+    var `fileId`: Int
+    var `sequence`: Int
+    var `format`: String
+    var `durationMs`: Int?
+    var `sizeBytes`: Double?
+    var `etag`: String
+}
+
+struct AudiobookManifestChapter: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `title`: String
+    var `assetId`: String
+    var `sequence`: Int
+    var `startMs`: Int
+    var `endMs`: Int
+    var `assetOffsetMs`: Int
+}
+
+struct AudiobookPlaybackState: Codable, Sendable, Equatable {
+    var `assetId`: String
+    var `positionMs`: Int
+    var `percentage`: Double
+    var `completed`: Bool
+    var `capturedAt`: String
+    var `revision`: Int
+    var `manifestRevision`: String
+}
+
+struct PutAudiobookPlaybackState: Encodable, Sendable, Equatable {
+    var `assetId`: String
+    var `positionMs`: Int
+    var `capturedAt`: String
+    var `operationId`: String
+    var `baseRevision`: Int
+    var `manifestRevision`: String
+}
+
 struct NativeAuthResponse: Codable, Sendable, Equatable {
     var `user`: AuthUser
     var `accessToken`: String
@@ -229,20 +286,20 @@ struct BookDetailProviderIds: Codable, Sendable, Equatable {
 }
 
 struct AudioMetadata: Codable, Sendable, Equatable {
-    var `narrators`: [AudioMetadataNarratorsItem]
+    var `narrators`: [NarratorRef]
     var `durationSeconds`: Int?
     var `abridged`: Bool
-    var `chapters`: [AudioMetadataChaptersItem]?
+    var `chapters`: [AudiobookChapter]?
 }
 
-struct AudioMetadataNarratorsItem: Codable, Sendable, Equatable, Identifiable {
+struct NarratorRef: Codable, Sendable, Equatable, Identifiable {
     var `id`: Int
     var `name`: String
     var `sortName`: String?
     var `displayOrder`: Int
 }
 
-struct AudioMetadataChaptersItem: Codable, Sendable, Equatable {
+struct AudiobookChapter: Codable, Sendable, Equatable {
     var `title`: String
     var `startMs`: Int
 }
@@ -814,7 +871,7 @@ struct MetadataCandidate: Codable, Sendable, Equatable {
     var `durationSeconds`: Int?
     var `abridged`: Bool?
     var `audibleId`: String?
-    var `chapters`: [MetadataCandidateChaptersItem]?
+    var `chapters`: [AudiobookChapter]?
     var `comicMetadata`: ComicMetadataFields?
     var `communityRating`: Double?
     var `communityRatingCount`: Int?
@@ -823,11 +880,6 @@ struct MetadataCandidate: Codable, Sendable, Equatable {
 struct MetadataSeriesMembership: Codable, Sendable, Equatable {
     var `seriesName`: String
     var `seriesIndex`: String?
-}
-
-struct MetadataCandidateChaptersItem: Codable, Sendable, Equatable {
-    var `title`: String
-    var `startMs`: Int
 }
 
 struct BookFileMetadataResponse: Codable, Sendable, Equatable {
@@ -923,12 +975,7 @@ struct BookMetadataRefreshPreviewFieldsAudioMetadata: Codable, Sendable, Equatab
     var `narrators`: [String]?
     var `durationSeconds`: FieldUpdate<Int>?
     var `abridged`: FieldUpdate<Bool>?
-    var `chapters`: [BookMetadataRefreshPreviewFieldsAudioMetadataChaptersItem]?
-}
-
-struct BookMetadataRefreshPreviewFieldsAudioMetadataChaptersItem: Codable, Sendable, Equatable {
-    var `title`: String
-    var `startMs`: Int
+    var `chapters`: [AudiobookChapter]?
 }
 
 struct MetadataFetchDiagnostics: Codable, Sendable, Equatable {
@@ -1227,6 +1274,11 @@ extension PdfReaderSettings {
 
 extension CbxReaderSettings {
     static var readerDefault: Self { Self(fitMode: "fit-page", viewMode: "single", scrollMode: "paginated", direction: "ltr", spreadAlignment: "normal", spreadGap: 0, forceTwoPage: false, widePageSingletonMode: "auto", bgColor: "black", autoAdvance: false) }
+}
+
+enum AudiobookVocabulary {
+    static let schema = "bookorbit.audiobook-manifest"
+    static let version = 2
 }
 
 enum BookReadingVocabulary {

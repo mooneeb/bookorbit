@@ -140,9 +140,10 @@ actor BookOrbitAPI {
 
   func boundedJSON<T: Decodable & Sendable>(
     _ path: String, method: String = "GET", body: Data? = nil, query: [URLQueryItem] = [],
-    byteLimit: Int = 1024 * 1024
+    byteLimit: Int = 1024 * 1024, session: UUID? = nil
   ) async throws -> T {
-    let generation = sessionGeneration
+    let generation = session ?? sessionGeneration
+    try ensureSession(generation)
     var request = URLRequest(url: profile.endpoint(path, query: query))
     request.httpMethod = method
     request.httpBody = body
@@ -512,6 +513,70 @@ actor BookOrbitAPI {
     if !buffer.isEmpty { try handle.write(contentsOf: buffer) }
     completed = true
     return destination
+  }
+
+  func authenticatedSessionGeneration() throws -> UUID {
+    try ensureSession(sessionGeneration)
+    return sessionGeneration
+  }
+
+  func audioChunk(
+    bookID: Int, assetID: String, format: String, offset: Int64, length: Int,
+    expectedSize: Int64?, generation: UUID
+  ) async throws -> AudioByteChunk {
+    guard bookID > 0, assetID.hasPrefix("aud_"),
+      UUID(uuidString: String(assetID.dropFirst(4))) != nil,
+      let mimeType = AudioStreamFormat.mimeTypes[format.lowercased()],
+      offset >= 0, (1...AudioStreamFormat.chunkLimit).contains(length)
+    else { throw ConnectionError.invalidResponse }
+    let (end, overflow) = offset.addingReportingOverflow(Int64(length) - 1)
+    guard !overflow, expectedSize == nil || end < expectedSize! else {
+      throw ConnectionError.fileChanged
+    }
+    try ensureSession(generation)
+    var request = URLRequest(
+      url: profile.endpoint("audiobooks/\(bookID)/assets/\(assetID)/content"))
+    request.setValue("bytes=\(offset)-\(end)", forHTTPHeaderField: "Range")
+    request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+    request.setValue(mimeType, forHTTPHeaderField: "Accept")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(generation)
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      try ensureSession(generation)
+      let credentials = try await refresh()
+      try ensureSession(generation)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    try ensureSession(generation)
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    let range = response.value(forHTTPHeaderField: "Content-Range") ?? ""
+    guard response.statusCode == 206, response.mimeType == mimeType,
+      response.expectedContentLength == Int64(length),
+      range.hasPrefix("bytes \(offset)-\(end)/"),
+      let total = Int64(range.dropFirst("bytes \(offset)-\(end)/".count)),
+      total > end, total <= 9_007_199_254_740_991,
+      expectedSize == nil || total == expectedSize,
+      response.value(forHTTPHeaderField: "Content-Encoding").map({ $0 == "identity" }) ?? true
+    else { throw ConnectionError.fileChanged }
+    var data = Data()
+    data.reserveCapacity(length)
+    for try await byte in bytes {
+      try Task.checkCancellation()
+      try ensureSession(generation)
+      guard data.count < length else { throw ConnectionError.fileChanged }
+      data.append(byte)
+    }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    guard data.count == length else { throw ConnectionError.fileChanged }
+    return .init(data: data, totalBytes: total, mimeType: mimeType)
   }
 
   private func ensureSession(_ generation: UUID) throws {
