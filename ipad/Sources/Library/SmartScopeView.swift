@@ -21,6 +21,7 @@ struct SmartScopeView: View {
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
+        ScopeSearchField(text: $model.search) { Task { await model.load() } }
         Toggle("Only my scopes", isOn: $model.ownedOnly).padding()
           .onChange(of: model.ownedOnly) { Task { await model.load() } }
         if let error = model.error {
@@ -71,8 +72,6 @@ struct SmartScopeView: View {
           if model.canGoNext { Button("Next") { Task { await model.nextPage() } } }
         }.font(.body).frame(minHeight: 44).padding().disabled(isSaving)
       }.navigationTitle("Smart scopes")
-        .searchable(text: $model.search, prompt: "Find a scope")
-        .onSubmit(of: .search) { Task { await model.load() } }
         .task { await model.load() }
         .sheet(item: $editing) { selection in
           SmartScopeEditor(model: model, existing: selection.scope) { scope in
@@ -133,6 +132,7 @@ struct SmartScopePicker: View {
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
+        ScopeSearchField(text: $model.search) { Task { await model.load() } }
         List(model.items) { scope in
           Button(scope.name) {
             selected(scope)
@@ -155,11 +155,38 @@ struct SmartScopePicker: View {
           if model.canGoNext { Button("Next") { Task { await model.nextPage() } } }
         }.font(.body).frame(minHeight: 44).padding()
       }.navigationTitle("Choose smart scope")
-        .searchable(text: $model.search, prompt: "Find a scope")
-        .onSubmit(of: .search) { Task { await model.load() } }
         .task { await model.load() }
     }
   }
+}
+
+private struct ScopeSearchField: View {
+  @Binding var text: String
+  let submit: () -> Void
+
+  var body: some View {
+    HStack(spacing: 8) {
+      OrganizationSearchField(
+        text: $text, prompt: "Find a scope", submit: submit,
+        clearButtonMode: .never, identifier: "smartScopeSearch")
+      if !text.isEmpty {
+        Button(action: clear) {
+          Label("Clear text", systemImage: "xmark.circle.fill")
+            .labelStyle(.iconOnly)
+            .font(.body)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+          .foregroundStyle(Color(uiColor: .label))
+          .background(
+            Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8)
+          )
+          .accessibilityIdentifier("clearScopeSearch")
+      }
+    }.padding(.horizontal).padding(.vertical, 8)
+  }
+
+  private func clear() { text = "" }
 }
 
 private struct ScopeEditSelection: Identifiable {

@@ -5,6 +5,8 @@ struct OrganizationSearchField: UIViewRepresentable {
   @Binding var text: String
   let prompt: String
   let submit: () -> Void
+  var clearButtonMode: UITextField.ViewMode = .whileEditing
+  var identifier = "organizationSearch"
 
   func makeUIView(context: Context) -> UISearchTextField {
     let field = UISearchTextField()
@@ -12,18 +14,20 @@ struct OrganizationSearchField: UIViewRepresentable {
     field.textColor = .label
     field.backgroundColor = .secondarySystemBackground
     field.returnKeyType = .search
-    field.clearButtonMode = .whileEditing
+    field.clearButtonMode = clearButtonMode
     field.delegate = context.coordinator
     field.addTarget(
       context.coordinator, action: #selector(Coordinator.changed), for: .editingChanged)
     field.setContentCompressionResistancePriority(.required, for: .vertical)
-    field.accessibilityIdentifier = "organizationSearch"
+    field.accessibilityIdentifier = identifier
     return field
   }
 
   func updateUIView(_ field: UISearchTextField, context: Context) {
     context.coordinator.parent = self
     if field.text != text { field.text = text }
+    field.clearButtonMode = clearButtonMode
+    field.accessibilityIdentifier = identifier
     let font = UIFont.preferredFont(forTextStyle: .body, compatibleWith: field.traitCollection)
     field.font = font
     field.attributedPlaceholder = NSAttributedString(
