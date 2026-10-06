@@ -77,6 +77,13 @@ final class PDFReaderModel {
     searchSelection = selection
   }
 
+  func openContentsPage(_ index: Int) {
+    guard !isClosed, !isClosing, let document, (0..<document.pageCount).contains(index)
+    else { return }
+    searchSelection = nil
+    didTurn(to: index)
+  }
+
   private func savePendingPosition() async {
     defer { saveTask = nil }
     while let page = pendingPage, !isClosed, !Task.isCancelled, let document {

@@ -5,6 +5,8 @@ struct PDFReaderView: View {
   @State private var confirmsDiscard = false
   @State private var isNavigating = false
   @State private var isSearching = false
+  @State private var isBrowsingContents = false
+  @ScaledMetric(relativeTo: .body) private var actionWidth = 150.0
   @Environment(\.dismiss) private var dismiss
 
   init(api: BookOrbitAPI, file: BookDetailFile) {
@@ -38,17 +40,19 @@ struct PDFReaderView: View {
               .buttonStyle(.plain)
               .frame(minHeight: 44)
           }
-          HStack {
+          LazyVGrid(columns: [GridItem(.adaptive(minimum: actionWidth))]) {
             Button("Go to page") { isNavigating = true }
               .frame(minHeight: 44)
               .accessibilityIdentifier("pdfNavigate")
               .disabled(model.document == nil || model.isClosing)
-            Spacer()
+            Button("Contents") { isBrowsingContents = true }
+              .frame(minHeight: 44)
+              .accessibilityIdentifier("pdfContents")
+              .disabled(model.document == nil || model.isClosing)
             Button("Search") { isSearching = true }
               .frame(minHeight: 44)
               .accessibilityIdentifier("pdfSearch")
               .disabled(model.document == nil || model.isClosing)
-            Spacer()
             Button("Close reader", action: closeReader)
               .frame(minHeight: 44)
               .disabled(model.isClosing)
@@ -65,7 +69,12 @@ struct PDFReaderView: View {
     }
     .task { await model.load() }
     .onDisappear {
-      if !isNavigating && !isSearching { model.close() }
+      if !isNavigating && !isSearching && !isBrowsingContents { model.close() }
+    }
+    .fullScreenCover(isPresented: $isBrowsingContents) {
+      if let document = model.document {
+        PDFContentsView(document: document, onSelect: model.openContentsPage)
+      }
     }
     .fullScreenCover(isPresented: $isSearching) {
       if let document = model.document {

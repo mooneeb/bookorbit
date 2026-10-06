@@ -611,3 +611,21 @@ The corrected controlled-transfer run, `run-66536-1791306706533`, passed the del
 ## Production PDF contents: TDD slice
 
 The new `testIPADE01A04PDFContentsAndResume` journey uses a real nested outline embedded in the delivered PDF by the isolated fixture. It requires root and nested titles, Back navigation, selecting the actual third passage, full unfiltered audits, public saved page three/100%, termination/relaunch and a subsequent genuine curl to passage two. Native contents implementation has not been added yet; the first execution is pending. Test boundaries remain public UI/HTTP/files, with the existing real-browser PDF handoff selected for GREEN.
+
+The genuine feature RED, `run-62920-1791306330153`, reached the actual first PDF passage and failed because the production reader had no Contents control (40.121 seconds). The actual failure screenshot `E88C6834-D40B-4EC5-9C37-CD7EEE9BE78C.png` was opened and inspected. This combined run also contained the separate cover inactivity-timeout failure recorded above; neither failure was silently retried or reclassified.
+
+The implementation reads PDFKit outlines from the already delivered local PDF. It presents at most 100 siblings per level with Previous/Next controls, retains the parent position when going Back, and guards excessive depth and ancestor cycles. Only destinations belonging to this document can open a page; external actions are not followed. A full-screen native contents view retains the underlying reader, and page selection uses its existing acknowledged progress path. The adaptive reader action grid makes room for the additional control. Strict-concurrency simulator compilation and targeted server-fixture lint passed.
+
+`run-66536-1791306706533` exited successfully: nine HTTP journeys, delayed cover (53.884 seconds), production PDF curl/resume (78.294 seconds), contents (78.871 seconds), corrected-buffer search (100.457 seconds), and actual browser PDF handoff/reopen (12.6 seconds; 13.9 seconds for browser execution). The native summary records four passes with zero failures, skips or expected failures. Full accessibility audits remain unfiltered. The existing invalid-frame runtime warning remains in the retained complete `run.log`.
+
+All twenty native and both browser PNGs were opened and inspected, together with three public progress records, five recognized-range/pixel records and both browser OCR records. Contents root and nested rows, Back/Cancel, page three after selection/relaunch and the subsequent page-two curl are readable and reachable. The public contents record confirms file one/user three/page three/100%; the final native curl and browser OCR independently confirm passage two. The search match remains visibly localized, with measured fill 0.6518867924528302 on the match and zero on the prefix, and zero after curl away/back/relaunch/subsequent curl. Both saved cover captures retain the selected image before and after release. No clipping or overlap was found in these captures. This is agent inspection, not human baseline approval.
+
+| Contents state              | PNG below this run's `native-attachments/` |
+| --------------------------- | ------------------------------------------ |
+| Root group                  | `710A1C30-7A7B-4F97-AAF5-774AB7CC8529.png` |
+| Nested chapters             | `A8A51DFF-D570-4530-A0F6-518473E40890.png` |
+| Opened third passage        | `775D09C3-B7C7-47E9-BDC7-FF79537A0C04.png` |
+| Relaunched third passage    | `60FCFC46-19B3-4D4E-A2A4-EA6436287173.png` |
+| Genuine curl to passage two | `53AAF865-F6C3-4C35-82F4-EF8AC6C850C9.png` |
+
+The environment remains cached 11-inch Pro M5/iOS 26.0, English/light/default type, selected landscape PDF state and a 1024-by-1366 browser. Outline pagination, malformed/no-outline files, large-document engine performance and the broader configuration/physical matrix are not yet proved. The complete expanded 21-native/7-browser aggregate and the four whole-issue P1 requirements remain open. Issue #2 remains incomplete.

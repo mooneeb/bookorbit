@@ -9,7 +9,7 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyMultipart from '@fastify/multipart';
 import { hash } from 'bcryptjs';
 import { eq } from 'drizzle-orm';
-import { PDFDocument, StandardFonts } from 'pdf-lib';
+import { PDFDocument, PDFHexString, PDFName, StandardFonts } from 'pdf-lib';
 import { Permission } from '@bookorbit/types';
 
 import { AppModule } from '../../src/app.module';
@@ -114,6 +114,31 @@ async function main() {
   for (let index = 0; index < 3; index++) {
     document.addPage([600, 800]).drawText(`Orbit fixture: passage ${index + 1}`, { x: 50, y: 700, font, size: 20 });
   }
+  const context = document.context;
+  const outlines = context.obj({ Type: 'Outlines' });
+  const outlinesRef = context.register(outlines);
+  const chapters = context.obj({ Title: PDFHexString.fromText('Orbit chapters'), Parent: outlinesRef, Count: 3 });
+  const chaptersRef = context.register(chapters);
+  const chapterRefs = document.getPages().map(() => context.nextRef());
+  const chapterTitles = ['First passage', 'Second passage', 'Third passage'];
+  for (const [index, page] of document.getPages().entries()) {
+    context.assign(
+      chapterRefs[index],
+      context.obj({
+        Title: PDFHexString.fromText(chapterTitles[index]),
+        Parent: chaptersRef,
+        Dest: [page.ref, 'Fit'],
+        Prev: chapterRefs[index - 1],
+        Next: chapterRefs[index + 1],
+      }),
+    );
+  }
+  chapters.set(PDFName.of('First'), chapterRefs[0]);
+  chapters.set(PDFName.of('Last'), chapterRefs[2]);
+  outlines.set(PDFName.of('First'), chaptersRef);
+  outlines.set(PDFName.of('Last'), chaptersRef);
+  outlines.set(PDFName.of('Count'), context.obj(4));
+  document.catalog.set(PDFName.of('Outlines'), outlinesRef);
   const pdf = await document.save();
   const pdfPath = join(folder, 'orbit.pdf');
   await writeFile(pdfPath, pdf);
