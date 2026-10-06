@@ -3,7 +3,7 @@ import Observation
 import UIKit
 
 @MainActor @Observable
-final class ComicProofModel {
+final class ComicReaderModel {
   let api: BookOrbitAPI
   let file: BookDetailFile
   private(set) var pageCount = 0

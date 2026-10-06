@@ -83,7 +83,7 @@ struct PDFReaderView: View {
     }
     .fullScreenCover(isPresented: $isNavigating) {
       if let document = model.document {
-        PDFPageNavigationView(
+        ReaderPageNavigationView(
           currentPage: model.pageIndex + 1, pageCount: document.pageCount, onNavigate: model.didTurn
         )
       }

@@ -40,7 +40,7 @@ struct BookDetailView: View {
                   Text(file.filename ?? "Book file")
                   Text(file.format?.uppercased() ?? "Unknown format").font(.caption)
                     .foregroundStyle(.secondary)
-                  if file.format?.lowercased() == "pdf" {
+                  if ["pdf", "cbz", "cbr", "cb7"].contains(file.format?.lowercased() ?? "") {
                     Button("Read") { selectedFile = file }
                       .accessibilityIdentifier("readFile\(file.id)")
                   }
@@ -79,7 +79,11 @@ struct BookDetailView: View {
     }
     .task { await model.load() }
     .fullScreenCover(item: $selectedFile) { file in
-      PDFReaderView(api: model.api, file: file)
+      if ["cbz", "cbr", "cb7"].contains(file.format?.lowercased() ?? "") {
+        ComicReaderView(api: model.api, file: file)
+      } else {
+        PDFReaderView(api: model.api, file: file)
+      }
     }
     .fullScreenCover(item: $model.draft) { draft in MetadataEditorView(model: model, draft: draft) }
     .fullScreenCover(isPresented: $isEditingCovers, onDismiss: { Task { await model.load() } }) {

@@ -1,15 +1,20 @@
 import SwiftUI
 
-struct PDFPageNavigationView: View {
+struct ReaderPageNavigationView: View {
   let pageCount: Int
   let onNavigate: (Int) -> Void
+  let identifierPrefix: String
   @State private var pageText: String
   @FocusState private var pageIsFocused: Bool
   @Environment(\.dismiss) private var dismiss
 
-  init(currentPage: Int, pageCount: Int, onNavigate: @escaping (Int) -> Void) {
+  init(
+    currentPage: Int, pageCount: Int, identifierPrefix: String = "pdf",
+    onNavigate: @escaping (Int) -> Void
+  ) {
     self.pageCount = pageCount
     self.onNavigate = onNavigate
+    self.identifierPrefix = identifierPrefix
     _pageText = State(initialValue: String(currentPage))
   }
 
@@ -28,7 +33,7 @@ struct PDFPageNavigationView: View {
             .keyboardType(.numbersAndPunctuation)
             .focused($pageIsFocused)
             .accessibilityLabel("Page")
-            .accessibilityIdentifier("pdfDestinationPage")
+            .accessibilityIdentifier("\(identifierPrefix)DestinationPage")
             .onSubmit(navigate)
         }
         Text("Enter a page from 1 to \(pageCount).")
@@ -45,10 +50,10 @@ struct PDFPageNavigationView: View {
               systemImage: destination == nil ? "exclamationmark.circle" : "arrow.right")
           }
           .accessibilityElement(children: .combine)
-          .accessibilityIdentifier("pdfGoToPage")
+          .accessibilityIdentifier("\(identifierPrefix)GoToPage")
           .disabled(destination == nil)
         }
-        .buttonStyle(PDFNavigationActionButtonStyle())
+        .buttonStyle(PageNavigationActionButtonStyle())
         .font(.body)
         .padding(.horizontal)
         .background(.background)
@@ -57,7 +62,7 @@ struct PDFPageNavigationView: View {
         ToolbarItemGroup(placement: .keyboard) {
           Spacer()
           Button("Hide keyboard") { pageIsFocused = false }
-            .accessibilityIdentifier("pdfDismissKeyboard")
+            .accessibilityIdentifier("\(identifierPrefix)DismissKeyboard")
         }
       }
     }
@@ -70,7 +75,7 @@ struct PDFPageNavigationView: View {
   }
 }
 
-private struct PDFNavigationActionButtonStyle: ButtonStyle {
+private struct PageNavigationActionButtonStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
       .foregroundStyle(Color(uiColor: .label))
