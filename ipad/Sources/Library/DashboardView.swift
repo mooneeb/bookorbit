@@ -96,6 +96,19 @@ struct DashboardView: View {
           .foregroundStyle(Color(uiColor: .label))
           Spacer()
           Button {
+            Task { await model.load() }
+          } label: {
+            Text("Refresh")
+              .font(.body)
+              .padding(.horizontal, 16)
+              .frame(minWidth: 44, minHeight: 44)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .foregroundStyle(Color(uiColor: .label))
+          .disabled(model.isBusy || model.isSaving)
+          .accessibilityIdentifier("dashboardRefresh")
+          Button {
             showingSettings = true
           } label: {
             Text("Shelves")
@@ -113,11 +126,6 @@ struct DashboardView: View {
         .background(Color(uiColor: .systemBackground))
       }
       .navigationTitle("Home")
-      .toolbar {
-        ToolbarItem(placement: .topBarTrailing) {
-          Button("Refresh") { Task { await model.load() } }.disabled(model.isBusy || model.isSaving)
-        }
-      }
       .task { await model.load() }
       .onDisappear(perform: model.close)
       .sheet(isPresented: $showingSettings) { DashboardSettingsView(model: model) }
