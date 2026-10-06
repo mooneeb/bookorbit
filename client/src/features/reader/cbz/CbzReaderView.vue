@@ -1034,12 +1034,14 @@ onUnmounted(() => {
         <div class="hidden sm:block">
           <Tooltip>
             <TooltipTrigger as-child>
-              <button class="viewer-btn" @click="goToFirstPage"><ChevronsLeft :size="16" /></button>
+              <button class="viewer-btn" :aria-label="t('reader.cbz.firstPage')" @click="goToFirstPage"><ChevronsLeft :size="16" /></button>
             </TooltipTrigger>
             <TooltipContent>{{ t('reader.cbz.firstPage') }}</TooltipContent>
           </Tooltip>
         </div>
-        <button class="viewer-btn" :disabled="!canGoPrev" @click="prevPage"><ChevronLeft :size="16" /></button>
+        <button class="viewer-btn" :aria-label="t('common.pagination.previousPage')" :disabled="!canGoPrev" @click="prevPage">
+          <ChevronLeft :size="16" />
+        </button>
 
         <div class="relative flex-1 min-w-0 flex items-center h-6">
           <input
@@ -1060,11 +1062,13 @@ onUnmounted(() => {
           </datalist>
         </div>
 
-        <button class="viewer-btn" :disabled="!canGoNext" @click="nextPage"><ChevronRight :size="16" /></button>
+        <button class="viewer-btn" :aria-label="t('common.pagination.nextPage')" :disabled="!canGoNext" @click="nextPage">
+          <ChevronRight :size="16" />
+        </button>
         <div class="hidden sm:block">
           <Tooltip>
             <TooltipTrigger as-child>
-              <button class="viewer-btn" @click="goToLastPage"><ChevronsRight :size="16" /></button>
+              <button class="viewer-btn" :aria-label="t('reader.cbz.lastPage')" @click="goToLastPage"><ChevronsRight :size="16" /></button>
             </TooltipTrigger>
             <TooltipContent>{{ t('reader.cbz.lastPage') }}</TooltipContent>
           </Tooltip>
