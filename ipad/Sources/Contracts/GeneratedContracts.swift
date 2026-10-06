@@ -276,8 +276,16 @@ struct SaveFileProgressPayload: Encodable, Sendable, Equatable {
 struct EpubBookInfo: Codable, Sendable, Equatable {
     var `containerPath`: String
     var `rootPath`: String
+    var `spine`: [EpubSpineItem]
     var `manifest`: [EpubManifestItem]
     var `optionalFiles`: [String]?
+}
+
+struct EpubSpineItem: Codable, Sendable, Equatable {
+    var `idref`: String
+    var `href`: String
+    var `mediaType`: String
+    var `linear`: Bool
 }
 
 struct EpubManifestItem: Codable, Sendable, Equatable, Identifiable {

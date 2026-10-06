@@ -1,4 +1,5 @@
 import UIKit
+import Vision
 import XCTest
 
 final class EPUBReaderProofTests: ReaderProofTestCase {
@@ -61,6 +62,47 @@ final class EPUBReaderProofTests: ReaderProofTestCase {
     capture("IPAD-E01-A05-plain-delivered-chapter-audit")
     try app.performAccessibilityAudit()
     closeReader(app)
+  }
+
+  @MainActor
+  func testIPADE01A05NativeDeliveredChapterAccessibility() async throws {
+    try await Self.resetProgress(fileID: 2)
+    let app = connectAndSignIn()
+    XCTAssertTrue(app.staticTexts["50,000 books"].waitForExistence(timeout: 20))
+    let search = app.searchFields.firstMatch
+    search.tap()
+    search.typeText("Native renderer proof\n")
+    let book = app.buttons["Native renderer proof"]
+    XCTAssertTrue(book.waitForExistence(timeout: 10))
+    book.tap()
+    capture("IPAD-E01-A05-native-chapter-book-details")
+    let inspect = app.buttons["inspectNativeFile2"]
+    XCTAssertTrue(inspect.waitForExistence(timeout: 5))
+    inspect.tap()
+    let chapter = app.textViews["nativeChapter"]
+    let chapterReady = chapter.wait(for: \.isHittable, toEqual: true, timeout: 10)
+    if !chapterReady { capture("IPAD-E01-A05-native-chapter-open-failure") }
+    XCTAssertTrue(chapterReady)
+    XCTAssertEqual(
+      Array(try XCTUnwrap(chapter.value as? String).utf16),
+      Array("Alpha 😀 cafe\u{301} omega.\n\nFirst chapter ends here.".utf16))
+    XCTAssertFalse(app.webViews.firstMatch.exists)
+    capture("IPAD-E01-A05-native-delivered-chapter")
+    try assertNativeChapterPixels(chapter, name: "IPAD-E01-A05-native-chapter-pixels")
+    try app.performAccessibilityAudit()
+    XCUIDevice.shared.orientation = .landscapeLeft
+    XCTAssertTrue(chapter.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertEqual(
+      Array(try XCTUnwrap(chapter.value as? String).utf16),
+      Array("Alpha 😀 cafe\u{301} omega.\n\nFirst chapter ends here.".utf16))
+    capture("IPAD-E01-A05-native-delivered-chapter-rotated")
+    try assertNativeChapterPixels(chapter, name: "IPAD-E01-A05-native-chapter-rotated-pixels")
+    try app.performAccessibilityAudit()
+    XCUIDevice.shared.orientation = .portrait
+    app.buttons["Close chapter"].tap()
+    app.buttons["Done"].tap()
+    app.buttons["signOut"].tap()
+    XCTAssertTrue(app.buttons["connectServer"].waitForExistence(timeout: 10))
   }
 
   @MainActor
@@ -202,6 +244,31 @@ final class EPUBReaderProofTests: ReaderProofTestCase {
     app.buttons["Done"].tap()
     app.buttons["signOut"].tap()
     XCTAssertTrue(app.buttons["connectServer"].waitForExistence(timeout: 10))
+  }
+
+  @MainActor
+  private func assertNativeChapterPixels(_ chapter: XCUIElement, name: String) throws {
+    let screenshot = chapter.screenshot()
+    let attachment = XCTAttachment(screenshot: screenshot)
+    attachment.name = name
+    attachment.lifetime = .keepAlways
+    add(attachment)
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.recognitionLanguages = ["en-US"]
+    request.usesLanguageCorrection = false
+    try VNImageRequestHandler(cgImage: try XCTUnwrap(screenshot.image.cgImage)).perform([request])
+    let lines = request.results?.compactMap { $0.topCandidates(1).first?.string } ?? []
+    let recognized = lines.joined(separator: " ")
+    let record = XCTAttachment(
+      data: try JSONSerialization.data(withJSONObject: ["recognizedLines": lines]),
+      uniformTypeIdentifier: "public.json")
+    record.name = "\(name)-recognized-text"
+    record.lifetime = .keepAlways
+    add(record)
+    XCTAssertTrue(recognized.contains("Alpha"))
+    XCTAssertTrue(recognized.contains("omega."))
+    XCTAssertTrue(recognized.contains("First chapter ends here."))
   }
 
   @MainActor

@@ -65,7 +65,7 @@ const projections = {
   BookQuery: ["sort", "pagination", "q", "collapseSeries"],
   Collection: ["id", "userId", "mediaType", "name", "isPublic", "isOwner", "bookCount"],
   BookIdsSelection: ["bookIds"],
-  EpubBookInfo: ["containerPath", "rootPath", "manifest", "optionalFiles"],
+  EpubBookInfo: ["containerPath", "rootPath", "spine", "manifest", "optionalFiles"],
 };
 const aliases = { Collection: "BookCollection" };
 const integerFields = new Set([
