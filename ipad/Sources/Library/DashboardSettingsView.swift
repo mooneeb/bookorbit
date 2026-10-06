@@ -56,11 +56,25 @@ struct DashboardSettingsView: View {
         if model.isSaving { ProgressView("Saving shelves…") }
       }
       .disabled(model.isSaving)
+      .safeAreaInset(edge: .bottom) {
+        HStack {
+          Button(action: dismiss.callAsFunction) {
+            Text("Cancel")
+              .font(.body)
+              .padding(.horizontal, 16)
+              .frame(minWidth: 44, minHeight: 44)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .foregroundStyle(Color(uiColor: .label))
+          .disabled(model.isSaving)
+          Spacer()
+        }
+        .padding(.horizontal)
+        .background(Color(uiColor: .systemBackground))
+      }
       .navigationTitle("Dashboard shelves")
       .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel", action: dismiss.callAsFunction).disabled(model.isSaving)
-        }
         ToolbarItem(placement: .topBarTrailing) { EditButton().disabled(model.isSaving) }
         ToolbarItem(placement: .confirmationAction) {
           Button("Save", action: save).disabled(model.isSaving)
