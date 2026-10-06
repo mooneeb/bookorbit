@@ -350,7 +350,7 @@ export class BookController {
 
     const { mtimeMs } = await stat(coverPath);
     const etag = `"${Math.floor(mtimeMs)}"`;
-    const cacheControl = query.t ? 'public, max-age=31536000, immutable' : 'private, max-age=86400';
+    const cacheControl = 'private, no-store';
 
     if (ifNoneMatch === etag) {
       reply.status(304).header('Cache-Control', cacheControl).header('ETag', etag).send();
