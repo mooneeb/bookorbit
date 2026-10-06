@@ -409,6 +409,16 @@ for (const [model, constant] of [
   declarations.set(`${model}Defaults`, `extension ${model} {\n    static var readerDefault: Self { Self(${values.join(", ")}) }\n}`);
 }
 
+const readerLayoutLimits = ["CBX_SPREAD_GAP_MIN", "CBX_SPREAD_GAP_MAX"].map((name) => {
+  const value = checker.getTypeAtLocation(symbols.get(name).valueDeclaration.initializer).value;
+  if (!Number.isInteger(value)) throw new Error(`${name} must remain an integer literal`);
+  return value;
+});
+declarations.set(
+  "ReaderLayoutBounds",
+  `enum ReaderLayoutBounds {\n    static let spreadGapMinimum = ${readerLayoutLimits[0]}\n    static let spreadGapMaximum = ${readerLayoutLimits[1]}\n}`,
+);
+
 const metadataLocks = symbols.get("BOOK_METADATA_LOCK_FIELDS").valueDeclaration.initializer;
 const coverProviders = symbols.get("COVER_SEARCH_PROVIDERS").valueDeclaration.initializer;
 if (!ts.isAsExpression(coverProviders) || !ts.isArrayLiteralExpression(coverProviders.expression)) throw new Error("Cover providers changed");

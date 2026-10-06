@@ -24,8 +24,16 @@ struct ReaderPreferencesValue: Codable, Equatable {
     ["fit-page", "fit-width", "automatic", "custom"].contains(pdf.zoomMode)
       && pdf.customScale.isFinite && (0.25...4).contains(pdf.customScale)
       && [0, 90, 180, 270].contains(pdf.rotation)
+      && ["page", "vertical", "horizontal"].contains(pdf.scrollMode)
+      && ["none", "odd", "even", "auto"].contains(pdf.spread)
       && ["fit-page", "fit-width", "fit-height", "actual"].contains(comic.fitMode)
       && ["black", "gray", "white"].contains(comic.bgColor)
+      && ["single", "two-page"].contains(comic.viewMode)
+      && ["paginated", "infinite", "long-strip"].contains(comic.scrollMode)
+      && ["ltr", "rtl"].contains(comic.direction)
+      && ["normal", "shifted"].contains(comic.spreadAlignment)
+      && (ReaderLayoutBounds.spreadGapMinimum...ReaderLayoutBounds.spreadGapMaximum).contains(
+        comic.spreadGap)
   }
 }
 
@@ -84,6 +92,8 @@ final class ReaderPreferencesModel {
             resolved.pdf.zoomMode = patch.zoomMode ?? resolved.pdf.zoomMode
             resolved.pdf.customScale = patch.customScale ?? resolved.pdf.customScale
             resolved.pdf.rotation = patch.rotation ?? resolved.pdf.rotation
+            resolved.pdf.scrollMode = patch.scrollMode ?? resolved.pdf.scrollMode
+            resolved.pdf.spread = patch.spread ?? resolved.pdf.spread
           }
           isCustomized = isCustomized || response.isCustomized
         } else {
@@ -94,6 +104,12 @@ final class ReaderPreferencesModel {
           if let patch = response.settings {
             resolved.comic.fitMode = patch.fitMode ?? resolved.comic.fitMode
             resolved.comic.bgColor = patch.bgColor ?? resolved.comic.bgColor
+            resolved.comic.viewMode = patch.viewMode ?? resolved.comic.viewMode
+            resolved.comic.scrollMode = patch.scrollMode ?? resolved.comic.scrollMode
+            resolved.comic.direction = patch.direction ?? resolved.comic.direction
+            resolved.comic.spreadAlignment = patch.spreadAlignment ?? resolved.comic.spreadAlignment
+            resolved.comic.spreadGap = patch.spreadGap ?? resolved.comic.spreadGap
+            resolved.comic.forceTwoPage = patch.forceTwoPage ?? resolved.comic.forceTwoPage
           }
           isCustomized = isCustomized || response.isCustomized
         }
@@ -160,8 +176,14 @@ final class ReaderPreferencesModel {
         let body =
           group == "pdf"
           ? try JSONEncoder().encode(
-            PdfReaderPreferencePatchBody(unset: ["zoomMode", "customScale", "rotation"]))
-          : try JSONEncoder().encode(CbxReaderPreferencePatchBody(unset: ["fitMode", "bgColor"]))
+            PdfReaderPreferencePatchBody(unset: [
+              "zoomMode", "customScale", "rotation", "scrollMode", "spread",
+            ]))
+          : try JSONEncoder().encode(
+            CbxReaderPreferencePatchBody(unset: [
+              "fitMode", "bgColor", "viewMode", "scrollMode", "direction", "spreadAlignment",
+              "spreadGap", "forceTwoPage",
+            ]))
         try await api.sendEmpty("reader/preferences/\(fileID)", method: "PATCH", body: body)
       }
       guard !isClosed else { return false }
@@ -199,10 +221,18 @@ final class ReaderPreferencesModel {
       resolved.pdf.zoomMode = pdf.zoomMode ?? resolved.pdf.zoomMode
       resolved.pdf.customScale = pdf.customScale ?? resolved.pdf.customScale
       resolved.pdf.rotation = pdf.rotation ?? resolved.pdf.rotation
+      resolved.pdf.scrollMode = pdf.scrollMode ?? resolved.pdf.scrollMode
+      resolved.pdf.spread = pdf.spread ?? resolved.pdf.spread
     }
     if let comic = server.cbx {
       resolved.comic.fitMode = comic.fitMode ?? resolved.comic.fitMode
       resolved.comic.bgColor = comic.bgColor ?? resolved.comic.bgColor
+      resolved.comic.viewMode = comic.viewMode ?? resolved.comic.viewMode
+      resolved.comic.scrollMode = comic.scrollMode ?? resolved.comic.scrollMode
+      resolved.comic.direction = comic.direction ?? resolved.comic.direction
+      resolved.comic.spreadAlignment = comic.spreadAlignment ?? resolved.comic.spreadAlignment
+      resolved.comic.spreadGap = comic.spreadGap ?? resolved.comic.spreadGap
+      resolved.comic.forceTwoPage = comic.forceTwoPage ?? resolved.comic.forceTwoPage
     }
     guard resolved.isValid else { throw ConnectionError.invalidResponse }
     defaults = resolved
@@ -214,28 +244,58 @@ final class ReaderPreferencesModel {
       let zoom = draft.pdf.zoomMode == original.pdf.zoomMode ? nil : draft.pdf.zoomMode
       let scale = draft.pdf.customScale == original.pdf.customScale ? nil : draft.pdf.customScale
       let rotation = draft.pdf.rotation == original.pdf.rotation ? nil : draft.pdf.rotation
-      guard zoom != nil || scale != nil || rotation != nil else { return }
+      let scroll = draft.pdf.scrollMode == original.pdf.scrollMode ? nil : draft.pdf.scrollMode
+      let spread = draft.pdf.spread == original.pdf.spread ? nil : draft.pdf.spread
+      guard zoom != nil || scale != nil || rotation != nil || scroll != nil || spread != nil else {
+        return
+      }
       let body =
         asDefault
         ? try JSONEncoder().encode(
           PdfReaderDefaultsPatchBody(
-            set: .init(zoomMode: zoom, customScale: scale, rotation: rotation)))
+            set: .init(
+              scrollMode: scroll, spread: spread, zoomMode: zoom, customScale: scale,
+              rotation: rotation)))
         : try JSONEncoder().encode(
           PdfReaderPreferencePatchBody(
-            set: .init(zoomMode: zoom, customScale: scale, rotation: rotation)))
+            set: .init(
+              scrollMode: scroll, spread: spread, zoomMode: zoom, customScale: scale,
+              rotation: rotation)))
       try await api.sendEmpty(
         asDefault ? "reader/defaults/pdf" : "reader/preferences/\(fileID)",
         method: "PATCH", body: body)
     } else {
       let fit = draft.comic.fitMode == original.comic.fitMode ? nil : draft.comic.fitMode
       let background = draft.comic.bgColor == original.comic.bgColor ? nil : draft.comic.bgColor
-      guard fit != nil || background != nil else { return }
+      let view = draft.comic.viewMode == original.comic.viewMode ? nil : draft.comic.viewMode
+      let scroll =
+        draft.comic.scrollMode == original.comic.scrollMode ? nil : draft.comic.scrollMode
+      let direction =
+        draft.comic.direction == original.comic.direction ? nil : draft.comic.direction
+      let alignment =
+        draft.comic.spreadAlignment == original.comic.spreadAlignment
+        ? nil : draft.comic.spreadAlignment
+      let gap = draft.comic.spreadGap == original.comic.spreadGap ? nil : draft.comic.spreadGap
+      let force =
+        draft.comic.forceTwoPage == original.comic.forceTwoPage ? nil : draft.comic.forceTwoPage
+      guard
+        fit != nil || background != nil || view != nil || scroll != nil || direction != nil
+          || alignment != nil || gap != nil || force != nil
+      else { return }
       let body =
         asDefault
         ? try JSONEncoder().encode(
-          CbxReaderDefaultsPatchBody(set: .init(fitMode: fit, bgColor: background)))
+          CbxReaderDefaultsPatchBody(
+            set: .init(
+              fitMode: fit, viewMode: view, scrollMode: scroll, direction: direction,
+              spreadAlignment: alignment, spreadGap: gap, forceTwoPage: force, bgColor: background))
+        )
         : try JSONEncoder().encode(
-          CbxReaderPreferencePatchBody(set: .init(fitMode: fit, bgColor: background)))
+          CbxReaderPreferencePatchBody(
+            set: .init(
+              fitMode: fit, viewMode: view, scrollMode: scroll, direction: direction,
+              spreadAlignment: alignment, spreadGap: gap, forceTwoPage: force, bgColor: background))
+        )
       try await api.sendEmpty(
         asDefault ? "reader/defaults/cbx" : "reader/preferences/\(fileID)",
         method: "PATCH", body: body)

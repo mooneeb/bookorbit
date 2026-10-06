@@ -1083,6 +1083,11 @@ extension CbxReaderSettings {
     static var readerDefault: Self { Self(fitMode: "fit-page", viewMode: "single", scrollMode: "paginated", direction: "ltr", spreadAlignment: "normal", spreadGap: 0, forceTwoPage: false, widePageSingletonMode: "auto", bgColor: "black", autoAdvance: false) }
 }
 
+enum ReaderLayoutBounds {
+    static let spreadGapMinimum = 0
+    static let spreadGapMaximum = 64
+}
+
 enum MetadataVocabulary {
     static let coverProviders: [String] = ["duckduckgo", "itunes", "audiobookcovers", "all"]
     static let lockFields: [String] = ["title", "subtitle", "authors", "description", "publisher", "publishedYear", "language", "pageCount", "seriesName", "seriesIndex", "isbn13", "isbn10", "genres", "tags", "rating", "communityRating", "narrators", "durationSeconds", "abridged", "googleBooksId", "goodreadsId", "amazonId", "hardcoverId", "hardcoverEditionId", "openLibraryId", "itunesId", "audibleId", "librofmId", "koboId", "comicvineId", "ranobedbId", "lubimyczytacId", "aladinId", "comicIssueNumber", "comicVolumeName", "comicStoryArcs", "comicPencillers", "comicInkers", "comicColorists", "comicLetterers", "comicCoverArtists", "comicCharacters", "comicTeams", "comicLocations", "cover", "audioCover"]

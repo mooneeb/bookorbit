@@ -22,6 +22,8 @@ Native PDF/comic appearance and five page animations are implemented and awaitin
 
 Online PDF/comic bookmarks now use one canonical contract and owning server module across native and web readers. File-specific cursor paging bounds memory, while acknowledged saves/removals, explicit deletion confirmation, retry and normal page navigation preserve the reader session. Drizzle Kit generated the schema migration. [reader-bookmarks-implementation.md](reader-bookmarks-implementation.md) records the implementation and independent acceptance boundary.
 
+Native PDF/comic continuous and facing-page layouts are implemented and awaiting independent acceptance. Logical page progress survives layout changes; paged comic pairs support alignment, bounded gaps and right-to-left controls. Continuous readers recycle visible controllers and retain bounded page geometry/images. [fixed-reader-layout-implementation.md](fixed-reader-layout-implementation.md) records the settings contract, resource bounds and remaining comic features.
+
 Native saved views and table-column controls are implemented and awaiting independent acceptance. Snapshots preserve the active query, search, presentation and column visibility/order/width, scoped to the server, user and library location. The bounded catalog supports rename, duplicate, favorites and confirmed deletion. Native table rows remain paged and virtualized while wide configured columns scroll horizontally. The web saved-view type now comes from the same canonical shared contract. [saved-view-implementation.md](saved-view-implementation.md) records checks and limitations.
 
 ## Build

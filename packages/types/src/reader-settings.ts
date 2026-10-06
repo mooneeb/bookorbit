@@ -194,8 +194,8 @@ export const AUDIO_READER_DEFAULTS: AudioReaderSettings = {
  *
  * Only the keys present in `set` are written. Every other key of the group keeps whatever the
  * stored row already holds, so a client that owns a subset of the fields can save its own without
- * having to send, and therefore without having to know, the rest. The iOS app is the only caller:
- * it keeps the layout fields on the device and sends only the look fields.
+ * having to send, and therefore without having to know, the rest. Native page animation stays
+ * on the device; supported format settings use this shared contract.
  */
 export interface ReaderDefaultsPatchBody<G extends ReaderFormatGroup = ReaderFormatGroup> {
   set: Partial<ReaderSettingsMap[G]>;

@@ -10,6 +10,7 @@ struct NativePagedView: UIViewControllerRepresentable {
   let refreshPage: (UIViewController, Int) -> Void
   let onTurn: (Int) -> Void
   var onTransition: (Bool) -> Void = { _ in }
+  var rightToLeft = false
 
   func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -17,6 +18,7 @@ struct NativePagedView: UIViewControllerRepresentable {
     let controller: UIViewController
     if animation == .fade || animation == .none {
       let discrete = DiscretePageController(fades: animation == .fade)
+      discrete.rightToLeft = rightToLeft
       discrete.onNavigate = context.coordinator.navigate
       controller = discrete
     } else {
@@ -24,7 +26,8 @@ struct NativePagedView: UIViewControllerRepresentable {
         transitionStyle: animation == .curl ? .pageCurl : .scroll,
         navigationOrientation: animation == .verticalSlide ? .vertical : .horizontal,
         options: animation == .curl
-          ? [.spineLocation: UIPageViewController.SpineLocation.min.rawValue] : nil)
+          ? [.spineLocation: (rightToLeft ? UIPageViewController.SpineLocation.max : .min).rawValue]
+          : nil)
       pages.isDoubleSided = false
       pages.dataSource = context.coordinator
       pages.delegate = context.coordinator
@@ -38,6 +41,7 @@ struct NativePagedView: UIViewControllerRepresentable {
 
   func updateUIViewController(_ controller: UIViewController, context: Context) {
     context.coordinator.configuration = self
+    (controller as? DiscretePageController)?.rightToLeft = rightToLeft
     context.coordinator.show(pageIndex, in: controller)
     context.coordinator.refresh()
   }
@@ -82,7 +86,7 @@ struct NativePagedView: UIViewControllerRepresentable {
       requestedIndex = index
       guard index != currentIndex, !isTransitioning else { return }
       let direction: UIPageViewController.NavigationDirection =
-        index > currentIndex ? .forward : .reverse
+        (index > currentIndex) != configuration.rightToLeft ? .forward : .reverse
       currentIndex = index
       pages = pages.filter { abs($0.key - index) <= 1 }
       guard let page = page(at: index) else { return }
@@ -107,14 +111,14 @@ struct NativePagedView: UIViewControllerRepresentable {
       _ controller: UIPageViewController, viewControllerBefore viewController: UIViewController
     ) -> UIViewController? {
       guard let index = pages.first(where: { $0.value === viewController })?.key else { return nil }
-      return page(at: index - 1)
+      return page(at: index + (configuration.rightToLeft ? 1 : -1))
     }
 
     func pageViewController(
       _ controller: UIPageViewController, viewControllerAfter viewController: UIViewController
     ) -> UIViewController? {
       guard let index = pages.first(where: { $0.value === viewController })?.key else { return nil }
-      return page(at: index + 1)
+      return page(at: index + (configuration.rightToLeft ? -1 : 1))
     }
 
     func pageViewController(
@@ -144,12 +148,13 @@ struct NativePagedView: UIViewControllerRepresentable {
 
     func pageViewController(
       _ controller: UIPageViewController, spineLocationFor orientation: UIInterfaceOrientation
-    ) -> UIPageViewController.SpineLocation { .min }
+    ) -> UIPageViewController.SpineLocation { configuration.rightToLeft ? .max : .min }
   }
 }
 
 @MainActor private final class DiscretePageController: UIViewController {
   var onNavigate: (Int) -> Void = { _ in }
+  var rightToLeft = false
   private let fades: Bool
   private var page: UIViewController?
   private var transitionGeneration = 0
@@ -212,7 +217,7 @@ struct NativePagedView: UIViewControllerRepresentable {
   }
 
   @objc private func didSwipe(_ gesture: UISwipeGestureRecognizer) {
-    onNavigate(gesture.direction == .left ? 1 : -1)
+    onNavigate((gesture.direction == .left ? 1 : -1) * (rightToLeft ? -1 : 1))
   }
   @objc private func accessibilityPreviousPage() -> Bool {
     onNavigate(-1)

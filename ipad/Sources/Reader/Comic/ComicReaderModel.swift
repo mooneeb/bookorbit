@@ -20,6 +20,8 @@ final class ComicReaderModel {
   private var pendingPage: Int?
   private var isLoading = false
   private var isClosed = false
+  private var pageLayout = FixedPageLayout(pageCount: 0, facing: false, singlePrefix: 0)
+  private var continuousVisible: Set<Int>?
 
   init(api: BookOrbitAPI, file: BookDetailFile) {
     self.api = api
@@ -61,12 +63,51 @@ final class ComicReaderModel {
 
   func retryPages() { loadVisiblePages() }
 
+  func configureLayout(_ layout: FixedPageLayout) {
+    guard !isClosed, layout.pageCount == pageCount, layout != pageLayout else { return }
+    pageLayout = layout
+    loadVisiblePages()
+  }
+
+  private var loadedWindow: Set<Int> {
+    if let visible = continuousVisible {
+      var window = visible
+      if let first = visible.min(), first > 0 { window.insert(first - 1) }
+      if let last = visible.max(), last + 1 < pageCount { window.insert(last + 1) }
+      window.insert(pageIndex)
+      return window
+    }
+    let layout =
+      pageLayout.pageCount == pageCount
+      ? pageLayout : FixedPageLayout(pageCount: pageCount, facing: false, singlePrefix: 0)
+    return layout.visibleWindow(around: pageIndex)
+  }
+
+  func configureContinuous(_ enabled: Bool) {
+    if enabled == (continuousVisible != nil) { return }
+    continuousVisible = enabled ? [pageIndex] : nil
+    loadVisiblePages()
+  }
+
+  func showContinuousPages(_ pages: Set<Int>) {
+    guard !isClosed, continuousVisible != nil else { return }
+    let bounded = Set(pages.filter { (0..<pageCount).contains($0) }.sorted().prefix(32))
+    guard !bounded.isEmpty, bounded != continuousVisible else { return }
+    continuousVisible = bounded
+    loadVisiblePages()
+  }
+
   private func loadVisiblePages() {
     loadTask?.cancel()
-    let center = pageIndex
-    images = images.filter { abs($0.key - center) <= 1 }
-    pageErrors = pageErrors.filter { abs($0.key - center) <= 1 }
-    let indices = [center, center - 1, center + 1].filter { (0..<pageCount).contains($0) }
+    guard !isClosed, pageCount > 0 else { return }
+    let window = loadedWindow
+    images = images.filter { window.contains($0.key) }
+    pageErrors = pageErrors.filter { window.contains($0.key) }
+    let indices = window.sorted {
+      let left = abs($0 - pageIndex)
+      let right = abs($1 - pageIndex)
+      return left == right ? $0 < $1 : left < right
+    }
     loadTask = Task {
       for index in indices {
         guard !isClosed, !Task.isCancelled else { return }
@@ -75,7 +116,7 @@ final class ComicReaderModel {
         do {
           let image = try await loader.image(at: index)
           try Task.checkCancellation()
-          guard !isClosed, abs(index - pageIndex) <= 1 else { return }
+          guard !isClosed, loadedWindow.contains(index) else { return }
           images[index] = image
         } catch is CancellationError {
           return

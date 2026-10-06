@@ -13,6 +13,7 @@ struct PDFReaderView: View {
   @State private var isEditingPreferences = false
   @State private var isBrowsingBookmarks = false
   @State private var isTurning = false
+  @State private var pageLayout = FixedPageLayout(pageCount: 0, facing: false, singlePrefix: 0)
   @ScaledMetric(relativeTo: .body) private var actionWidth = 150.0
   @Environment(\.dismiss) private var dismiss
 
@@ -32,7 +33,8 @@ struct PDFReaderView: View {
           PDFCurlView(
             document: document, pageIndex: model.pageIndex, selection: model.searchSelection,
             onTurn: model.didTurn, settings: preferences.value.pdf,
-            animation: preferences.value.pageAnimation, onTransition: { isTurning = $0 }
+            animation: preferences.value.pageAnimation, onLayout: { pageLayout = $0 },
+            onTransition: { isTurning = $0 }
           )
           .allowsHitTesting(!model.isClosing)
         } else if model.error == nil {
@@ -59,13 +61,16 @@ struct PDFReaderView: View {
               .keyboardShortcut(.leftArrow, modifiers: [])
               .accessibilityIdentifier("pdfPreviousPage")
               .disabled(
-                model.document == nil || model.pageIndex == 0 || model.isClosing || isTurning)
+                model.document == nil
+                  || pageLayout.adjacentPage(to: model.pageIndex, delta: -1) == nil
+                  || model.isClosing || isTurning)
             Button("Next page", action: nextPage)
               .frame(minHeight: 44)
               .keyboardShortcut(.rightArrow, modifiers: [])
               .accessibilityIdentifier("pdfNextPage")
               .disabled(
-                model.document == nil || model.pageIndex + 1 == model.document?.pageCount
+                model.document == nil
+                  || pageLayout.adjacentPage(to: model.pageIndex, delta: 1) == nil
                   || model.isClosing || isTurning)
             Button("Go to page") { isNavigating = true }
               .frame(minHeight: 44)
@@ -157,6 +162,12 @@ struct PDFReaderView: View {
       if await model.prepareToClose() { dismiss() }
     }
   }
-  private func previousPage() { model.didTurn(to: model.pageIndex - 1) }
-  private func nextPage() { model.didTurn(to: model.pageIndex + 1) }
+  private func previousPage() {
+    if let page = pageLayout.adjacentPage(to: model.pageIndex, delta: -1) {
+      model.didTurn(to: page)
+    }
+  }
+  private func nextPage() {
+    if let page = pageLayout.adjacentPage(to: model.pageIndex, delta: 1) { model.didTurn(to: page) }
+  }
 }

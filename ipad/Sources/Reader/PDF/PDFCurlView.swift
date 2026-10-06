@@ -9,21 +9,36 @@ struct PDFCurlView: View {
   let onTurn: (Int) -> Void
   var settings = PdfReaderSettings.readerDefault
   var animation = ReaderTurnAnimation.curl
+  var onLayout: (FixedPageLayout) -> Void = { _ in }
   var onTransition: (Bool) -> Void = { _ in }
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    let effectiveAnimation = reduceMotion ? ReaderTurnAnimation.none : animation
-    NativePagedView(
-      pageCount: document.pageCount, pageIndex: pageIndex, animation: effectiveAnimation,
+    FixedReaderSurface(
+      pageCount: document.pageCount, pageIndex: pageIndex, animation: animation,
       identifier: "pdfReader",
+      facingMode: settings.spread == "auto"
+        ? "auto" : settings.spread == "none" ? "never" : "always",
+      singlePrefix: settings.spread == "even" ? 1 : 0, forceFacing: false, minimumFacingAspect: 1.1,
+      continuousAxis: settings.scrollMode == "page" ? nil : settings.scrollMode,
+      rightToLeft: false, spreadGap: 12, pageGap: 12,
+      pageHeight: { index, size in
+        if settings.zoomMode == "fit-page" || settings.zoomMode == "automatic" {
+          return size.height
+        }
+        guard let page = document.page(at: index) else { return size.height }
+        let bounds = page.bounds(for: .cropBox)
+        let rotated = (page.rotation + settings.rotation) % 180 != 0
+        let pageWidth = rotated ? bounds.height : bounds.width
+        let pageHeight = rotated ? bounds.width : bounds.height
+        if settings.zoomMode == "custom" { return pageHeight * settings.customScale }
+        return pageWidth > 0 ? size.width * pageHeight / pageWidth : size.height
+      },
       makePage: { PDFPageController(document: document, index: $0) },
       refreshPage: { controller, _ in
         (controller as? PDFPageController)?.update(settings: settings, selection: selection)
       },
-      onTurn: onTurn, onTransition: onTransition
+      onTurn: onTurn, onLayout: onLayout, onTransition: onTransition
     )
-    .id(effectiveAnimation)
   }
 }
 

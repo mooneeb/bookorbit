@@ -59,10 +59,51 @@ struct ReaderPreferencesView: View {
             .accessibilityIdentifier("readerBackground")
           }
         }
+        Section("Page layout") {
+          if model.group == "pdf" {
+            Picker("Reading mode", selection: $draft.pdf.scrollMode) {
+              Text("Paged").tag("page")
+              Text("Continuous vertical").tag("vertical")
+              Text("Continuous horizontal").tag("horizontal")
+            }.accessibilityIdentifier("readerScrollMode")
+            Picker("Facing pages", selection: $draft.pdf.spread) {
+              Text("Single page").tag("none")
+              Text("Pairs from page one").tag("odd")
+              Text("Cover, then pairs").tag("even")
+              Text("Automatic on wide screens").tag("auto")
+            }.accessibilityIdentifier("readerFacingPages")
+          } else {
+            Picker("Reading mode", selection: $draft.comic.scrollMode) {
+              Text("Paged").tag("paginated")
+              Text("Continuous vertical").tag("infinite")
+              Text("Long strip").tag("long-strip")
+            }.accessibilityIdentifier("readerScrollMode")
+            Picker("Facing pages", selection: $draft.comic.viewMode) {
+              Text("Single page").tag("single")
+              Text("Two pages on wide screens").tag("two-page")
+            }.accessibilityIdentifier("readerFacingPages")
+            Text("Facing pages apply in paged mode. The cover remains a single page.")
+            Toggle("Use two pages in portrait", isOn: $draft.comic.forceTwoPage)
+              .accessibilityIdentifier("readerForceFacingPages")
+            Picker("Reading direction", selection: $draft.comic.direction) {
+              Text("Left to right").tag("ltr")
+              Text("Right to left").tag("rtl")
+            }.accessibilityIdentifier("readerDirection")
+            Picker("Pair alignment", selection: $draft.comic.spreadAlignment) {
+              Text("Cover, then pairs").tag("normal")
+              Text("Cover and page two, then pairs").tag("shifted")
+            }.accessibilityIdentifier("readerSpreadAlignment")
+            Stepper(
+              "Space between pages: \(draft.comic.spreadGap)", value: $draft.comic.spreadGap,
+              in: ReaderLayoutBounds.spreadGapMinimum...ReaderLayoutBounds.spreadGapMaximum
+            )
+            .accessibilityIdentifier("readerSpreadGap")
+          }
+        }
         Section("Remember settings") {
           Text(
             model.syncLook
-              ? "Appearance syncs with your account. Native page animation stays on this device."
+              ? "Page settings sync with your account. Native page animation stays on this device."
               : "Settings stay on this device, separately for each server and account.")
           Text("Save as defaults also applies these settings to this book.")
           Button("Use defaults for this book", action: useDefaults)

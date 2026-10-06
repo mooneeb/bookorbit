@@ -14,6 +14,7 @@ struct ComicReaderView: View {
   @State private var isTurning = false
   @State private var isEditingPreferences = false
   @State private var isBrowsingBookmarks = false
+  @State private var pageLayout = FixedPageLayout(pageCount: 0, facing: false, singlePrefix: 0)
   @ScaledMetric(relativeTo: .body) private var actionWidth = 150.0
   @Environment(\.dismiss) private var dismiss
 
@@ -39,7 +40,8 @@ struct ComicReaderView: View {
             pageCount: model.pageCount, pageIndex: model.pageIndex,
             images: model.images, pageErrors: model.pageErrors, onTurn: model.didTurn,
             onTransition: { isTurning = $0 }, settings: preferences.value.comic,
-            animation: preferences.value.pageAnimation
+            animation: preferences.value.pageAnimation, onLayout: updateLayout,
+            onVisible: model.showContinuousPages
           )
           .allowsHitTesting(!model.isClosing)
         } else if model.error == nil {
@@ -53,7 +55,7 @@ struct ComicReaderView: View {
         }
         VStack {
           if model.pageCount > 0 { Text("Page \(model.pageIndex + 1) of \(model.pageCount)") }
-          if let pageError = model.pageErrors[model.pageIndex] {
+          if let pageError = displayedPageError {
             Text(pageError)
             Button("Retry page", action: model.retryPages).frame(minHeight: 44)
           }
@@ -67,18 +69,28 @@ struct ComicReaderView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: actionWidth))]) {
               Button("Previous page", action: previousPage)
                 .frame(minHeight: 44)
-                .keyboardShortcut(.leftArrow, modifiers: [])
+                .keyboardShortcut(
+                  preferences.value.comic.direction == "rtl" ? .rightArrow : .leftArrow,
+                  modifiers: []
+                )
                 .accessibilityIdentifier("comicPreviousPage")
-                .disabled(model.pageIndex == 0 || model.isClosing || isTurning)
+                .disabled(
+                  pageLayout.adjacentPage(to: model.pageIndex, delta: -1) == nil || model.isClosing
+                    || isTurning)
               Button("Go to page") { isNavigating = true }
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("comicNavigate")
                 .disabled(model.isClosing || isTurning)
               Button("Next page", action: nextPage)
                 .frame(minHeight: 44)
-                .keyboardShortcut(.rightArrow, modifiers: [])
+                .keyboardShortcut(
+                  preferences.value.comic.direction == "rtl" ? .leftArrow : .rightArrow,
+                  modifiers: []
+                )
                 .accessibilityIdentifier("comicNextPage")
-                .disabled(model.pageIndex + 1 == model.pageCount || model.isClosing || isTurning)
+                .disabled(
+                  pageLayout.adjacentPage(to: model.pageIndex, delta: 1) == nil || model.isClosing
+                    || isTurning)
               Button("Reader settings") { isEditingPreferences = true }
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("readerSettings")
@@ -107,6 +119,9 @@ struct ComicReaderView: View {
     }
     .task { await model.load() }
     .task { if showsPageControls { await preferences.load() } }
+    .onChange(of: preferences.value.comic.scrollMode, initial: true) { _, mode in
+      model.configureContinuous(mode != "paginated")
+    }
     .onDisappear {
       if !isNavigating && !isEditingPreferences && !isBrowsingBookmarks {
         model.close()
@@ -142,8 +157,24 @@ struct ComicReaderView: View {
     Task { await model.load() }
   }
 
-  private func previousPage() { model.didTurn(to: model.pageIndex - 1) }
-  private func nextPage() { model.didTurn(to: model.pageIndex + 1) }
+  private var displayedPageError: String? {
+    pageLayout.pages(in: pageLayout.unit(for: model.pageIndex)).compactMap { model.pageErrors[$0] }
+      .first
+  }
+
+  private func updateLayout(_ layout: FixedPageLayout) {
+    pageLayout = layout
+    model.configureLayout(layout)
+  }
+
+  private func previousPage() {
+    if let page = pageLayout.adjacentPage(to: model.pageIndex, delta: -1) {
+      model.didTurn(to: page)
+    }
+  }
+  private func nextPage() {
+    if let page = pageLayout.adjacentPage(to: model.pageIndex, delta: 1) { model.didTurn(to: page) }
+  }
 }
 
 private struct ComicCurlView: View {
@@ -155,20 +186,31 @@ private struct ComicCurlView: View {
   let onTransition: (Bool) -> Void
   var settings = CbxReaderSettings.readerDefault
   var animation = ReaderTurnAnimation.curl
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  var onLayout: (FixedPageLayout) -> Void = { _ in }
+  var onVisible: (Set<Int>) -> Void = { _ in }
 
   var body: some View {
-    let effectiveAnimation = reduceMotion ? ReaderTurnAnimation.none : animation
-    NativePagedView(
-      pageCount: pageCount, pageIndex: pageIndex, animation: effectiveAnimation,
+    let continuous = settings.scrollMode != "paginated"
+    FixedReaderSurface(
+      pageCount: pageCount, pageIndex: pageIndex, animation: animation,
       identifier: "comicReader",
+      facingMode: !continuous && settings.viewMode == "two-page" ? "auto" : "never",
+      singlePrefix: settings.spreadAlignment == "shifted" ? 2 : 1,
+      forceFacing: settings.forceTwoPage, minimumFacingAspect: 0,
+      continuousAxis: continuous ? "vertical" : nil, rightToLeft: settings.direction == "rtl",
+      spreadGap: CGFloat(settings.spreadGap), pageGap: settings.scrollMode == "long-strip" ? 0 : 12,
+      pageHeight: { index, size in
+        if settings.fitMode == "fit-page" || settings.fitMode == "fit-height" { return size.height }
+        guard let image = images[index], image.size.width > 0 else { return size.height }
+        return settings.fitMode == "actual"
+          ? image.size.height : size.width * image.size.height / image.size.width
+      },
       makePage: { ComicPageController(index: $0, pageCount: pageCount) },
       refreshPage: { controller, index in
         (controller as? ComicPageController)?.update(
           images[index], error: pageErrors[index], settings: settings)
-      }, onTurn: onTurn, onTransition: onTransition
+      }, onTurn: onTurn, onLayout: onLayout, onTransition: onTransition, onVisible: onVisible
     )
-    .id(effectiveAnimation)
   }
 }
 
@@ -243,6 +285,7 @@ private final class ComicPageController: UIViewController, UIScrollViewDelegate 
     scroll.contentSize = size
     scroll.contentOffset = .zero
     centerImage()
+    updatePanGesture()
   }
 
   func update(_ image: UIImage?, error: String?, settings: CbxReaderSettings) {
@@ -259,7 +302,16 @@ private final class ComicPageController: UIViewController, UIScrollViewDelegate 
   }
 
   func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
-  func scrollViewDidZoom(_ scrollView: UIScrollView) { centerImage() }
+  func scrollViewDidZoom(_ scrollView: UIScrollView) {
+    centerImage()
+    updatePanGesture()
+  }
+
+  private func updatePanGesture() {
+    scroll.panGestureRecognizer.isEnabled =
+      settings.scrollMode == "paginated" || scroll.zoomScale > 1
+      || scroll.contentSize.width > scroll.bounds.width + 1
+  }
 
   private func centerImage() {
     scroll.contentInset = UIEdgeInsets(
