@@ -315,6 +315,7 @@ try {
     if (!progressOnly) await command(process.execPath, ["--test", "scripts/ipad/http.test.mjs"]);
     if (organizationProof || crossClient) await command(process.execPath, ["--test", "scripts/ipad/organization-http.test.mjs"]);
     await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);
+    if (comicProof) await command(process.execPath, ["--test", "scripts/ipad/comic-http.test.mjs"]);
     if (process.argv.includes("--ui")) stopFaultProxy = await startFaultProxy();
     if (process.argv.includes("--ui")) await runNativeTests();
     if (process.argv.includes("--web")) {
