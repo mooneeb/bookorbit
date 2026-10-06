@@ -42,21 +42,26 @@ struct DashboardView: View {
               } else if shelf.books.isEmpty {
                 Text("No matching books")
               } else {
+                let rows = bookRows(in: shelf)
                 ScrollView(.horizontal) {
-                  LazyHStack(alignment: .top, spacing: 16) {
-                    ForEach(shelf.books) { book in
-                      Button {
-                        selectedBook = OrganizationSelection(
-                          id: book.id, name: book.title ?? "Untitled book")
-                      } label: {
-                        DashboardBookCard(
-                          api: model.api, book: book,
-                          medium: shelf.configuration.type == "continue-listening"
-                            ? .audio : .ebook,
-                          namespace: model.coverNamespace)
+                  VStack(alignment: .leading, spacing: 20) {
+                    ForEach(rows.indices, id: \.self) { row in
+                      LazyHStack(alignment: .top, spacing: 16) {
+                        ForEach(rows[row]) { book in
+                          Button {
+                            selectedBook = OrganizationSelection(
+                              id: book.id, name: book.title ?? "Untitled book")
+                          } label: {
+                            DashboardBookCard(
+                              api: model.api, book: book,
+                              medium: shelf.configuration.type == "continue-listening"
+                                ? .audio : .ebook,
+                              namespace: model.coverNamespace)
+                          }
+                          .buttonStyle(.plain)
+                          .accessibilityIdentifier("dashboardBook\(book.id)")
+                        }
                       }
-                      .buttonStyle(.plain)
-                      .accessibilityIdentifier("dashboardBook\(book.id)")
                     }
                   }
                 }
@@ -113,6 +118,15 @@ struct DashboardView: View {
         content: { book in
           BookDetailView(api: model.api, bookID: book.id, canEditMetadata: canEditMetadata)
         })
+    }
+  }
+
+  private func bookRows(in shelf: DashboardShelf) -> [[BookCard]] {
+    let rowCount = Int(min(3, max(1, shelf.configuration.rows)))
+    let booksPerRow = (shelf.books.count + rowCount - 1) / rowCount
+    guard booksPerRow > 0 else { return [] }
+    return stride(from: 0, to: shelf.books.count, by: booksPerRow).map { start in
+      Array(shelf.books[start..<min(start + booksPerRow, shelf.books.count)])
     }
   }
 }
