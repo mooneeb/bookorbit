@@ -8,6 +8,7 @@ final class PDFReaderModel {
   let file: BookDetailFile
   private(set) var document: PDFDocument?
   private(set) var pageIndex = 0
+  private(set) var searchSelection: PDFSelection?
   private(set) var status = ""
   private(set) var error: String?
   private(set) var isClosing = false
@@ -59,9 +60,21 @@ final class PDFReaderModel {
       return
     }
     pageIndex = index
+    searchSelection = nil
     pendingPage = index + 1
     status = "Saving position…"
     if saveTask == nil { saveTask = Task { await savePendingPosition() } }
+  }
+
+  func openSearchMatch(_ match: PDFSearchMatch) {
+    guard !isClosed, !isClosing, let document, let page = document.page(at: match.pageIndex)
+    else { return }
+    didTurn(to: match.pageIndex)
+    let selection = PDFSelection(document: document)
+    for range in match.ranges {
+      if let part = page.selection(for: range) { selection.add(part) }
+    }
+    searchSelection = selection
   }
 
   private func savePendingPosition() async {
@@ -118,6 +131,7 @@ final class PDFReaderModel {
   func close() {
     isClosed = true
     saveTask?.cancel()
+    searchSelection = nil
     document = nil
     removeLocalFile()
   }

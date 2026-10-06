@@ -4,6 +4,7 @@ struct PDFReaderView: View {
   @State private var model: PDFReaderModel
   @State private var confirmsDiscard = false
   @State private var isNavigating = false
+  @State private var isSearching = false
   @Environment(\.dismiss) private var dismiss
 
   init(api: BookOrbitAPI, file: BookDetailFile) {
@@ -14,8 +15,11 @@ struct PDFReaderView: View {
     NavigationStack {
       VStack(spacing: 0) {
         if let document = model.document {
-          PDFCurlView(document: document, pageIndex: model.pageIndex, onTurn: model.didTurn)
-            .allowsHitTesting(!model.isClosing)
+          PDFCurlView(
+            document: document, pageIndex: model.pageIndex, selection: model.searchSelection,
+            onTurn: model.didTurn
+          )
+          .allowsHitTesting(!model.isClosing)
         } else if model.error == nil {
           ProgressView("Opening PDF…")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -40,6 +44,11 @@ struct PDFReaderView: View {
               .accessibilityIdentifier("pdfNavigate")
               .disabled(model.document == nil || model.isClosing)
             Spacer()
+            Button("Search") { isSearching = true }
+              .frame(minHeight: 44)
+              .accessibilityIdentifier("pdfSearch")
+              .disabled(model.document == nil || model.isClosing)
+            Spacer()
             Button("Close reader", action: closeReader)
               .frame(minHeight: 44)
               .disabled(model.isClosing)
@@ -56,7 +65,12 @@ struct PDFReaderView: View {
     }
     .task { await model.load() }
     .onDisappear {
-      if !isNavigating { model.close() }
+      if !isNavigating && !isSearching { model.close() }
+    }
+    .fullScreenCover(isPresented: $isSearching) {
+      if let document = model.document {
+        PDFSearchView(document: document, onSelect: model.openSearchMatch)
+      }
     }
     .fullScreenCover(isPresented: $isNavigating) {
       if let document = model.document {

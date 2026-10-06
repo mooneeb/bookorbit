@@ -241,3 +241,15 @@ The independent review found no new scope creep or material defect. The strength
 The before-guard delay run passed and is not a reproduced lifecycle RED. Its initial saved page is null, so it does not demonstrate rollback from an older numeric page or temporary-file retention. The actual feature RED was the earlier missing Go to page control. Final corrected `run-18346-1791302158522` passed nine HTTP journeys, both native PDF journeys and actual browser handoff/reopen. All fourteen PNGs, both public progress JSONs and both OCR JSONs were inspected. This resolves the focused navigation gate, not the complete production aggregate.
 
 Standards: 0 new material findings. Spec: 0 new slice findings; the 4 whole-issue P1 gaps and failed unfiltered EPUB accessibility remain open. Issue #2 remains incomplete.
+
+## PDF text search follow-up
+
+### Standards
+
+The approved-base independent review identified retained `searchSelection` during reader close. Close now clears the selection before document/file cleanup; the reviewer resolves the source finding without claiming a reproduced leak. It also identified an unsafe temporary array pointer in the new screenshot helper, and the same issue at three earlier cover-test pixel sites. All four helpers now construct the context, draw and read pixels within `withUnsafeMutableBytes`; only a measured count escapes the PDF helper. The reviewer resolves these source concerns. Formats, exact color/alpha assertions and public boundaries remain unchanged. No new documented-standard breach or material smell remains; existing optional transport duplication remains separate. Fresh PDF-search and original-resolution/alpha cover execution subsequently passed; the rendered-cover path remains pending after a picker setup failure.
+
+### Spec
+
+The independent review found one P2 coverage gap: search passage/progress assertions could pass with highlighting removed. The existing native journey now recognizes the delivered literal line from actual PDF surface pixels, asserts blue fill in the matched range and none on the unselected prefix, and checks cleared pixels after curl away/back, relaunch and another curl. No private PDFKit state is asserted, and all original passage, progress and full-audit assertions remain. The painting-disabled sensitivity run failed with exact literal OCR still present and match fill zero. The reviewer resolves the source gap. The restored three-PDF-journey/web run passed, followed by a fresh native search pass with the corrected screenshot buffer.
+
+No further material source defect or scope creep was found. Application results and phrases are bounded, previous searches stop and stale-document callbacks are rejected, but PDFKit engine memory, latency, cancellation/concurrency and broader configuration acceptance remain unproved. Standards: zero open source findings after corrections. Spec: zero open slice source findings, with the remaining cover-helper rerun and complete acceptance gates pending. The four whole-issue P1 gaps and failed unfiltered EPUB accessibility remain open. Issue #2 remains incomplete.

@@ -5,6 +5,7 @@ import UIKit
 struct PDFCurlView: UIViewControllerRepresentable {
   let document: PDFDocument
   let pageIndex: Int
+  let selection: PDFSelection?
   let onTurn: (Int) -> Void
 
   func makeCoordinator() -> Coordinator {
@@ -22,6 +23,7 @@ struct PDFCurlView: UIViewControllerRepresentable {
     controller.view.backgroundColor = .systemBackground
     if let page = context.coordinator.page(at: pageIndex) {
       controller.setViewControllers([page], direction: .forward, animated: false)
+      page.highlight(selection)
     }
     return controller
   }
@@ -29,6 +31,7 @@ struct PDFCurlView: UIViewControllerRepresentable {
   func updateUIViewController(_ controller: UIPageViewController, context: Context) {
     context.coordinator.onTurn = onTurn
     context.coordinator.show(pageIndex, in: controller)
+    (controller.viewControllers?.first as? PDFPageController)?.highlight(selection)
   }
 
   @MainActor
@@ -124,5 +127,12 @@ private final class PDFPageController: UIViewController {
     super.viewDidLayoutSubviews()
     guard let pdf = view as? PDFView else { return }
     pdf.scaleFactor = pdf.scaleFactorForSizeToFit
+  }
+
+  func highlight(_ selection: PDFSelection?) {
+    loadViewIfNeeded()
+    guard let pdf = view as? PDFView else { return }
+    selection?.color = pdf.tintColor.withAlphaComponent(0.25)
+    pdf.highlightedSelections = selection.map { [$0] }
   }
 }

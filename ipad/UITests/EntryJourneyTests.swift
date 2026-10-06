@@ -269,6 +269,114 @@ final class EntryJourneyTests: XCTestCase {
   }
 
   @MainActor
+  func testIPADE01A04PDFSearchAndResume() async throws {
+    let login = try await metadataRequest(
+      "auth/login", method: "POST",
+      body: JSONSerialization.data(withJSONObject: [
+        "username": "ipad-reader", "password": "IpadFixture123", "clientKind": "native",
+        "deviceLabel": "PDF search fixture",
+      ]))
+    let credentials = try XCTUnwrap(JSONSerialization.jsonObject(with: login) as? [String: Any])
+    let token = try XCTUnwrap(credentials["accessToken"] as? String)
+    _ = try await metadataRequest("books/files/1/progress", method: "DELETE", token: token)
+    let app = launchAtServerEntry()
+    connect(app)
+    signIn(app, username: "ipad-reader")
+    XCTAssertTrue(app.staticTexts["50,000 books"].waitForExistence(timeout: 20))
+    let search = app.searchFields.firstMatch
+    search.tap()
+    search.typeText("Orbit\n")
+    let book = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Orbit")).firstMatch
+    XCTAssertTrue(book.waitForExistence(timeout: 10))
+    book.tap()
+    let read = app.buttons["readFile1"]
+    XCTAssertTrue(read.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    read.tap()
+    XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 15))
+    let openSearch = app.buttons["pdfSearch"]
+    XCTAssertTrue(openSearch.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    openSearch.tap()
+    let query = app.textFields["pdfSearchQuery"]
+    XCTAssertTrue(query.waitForExistence(timeout: 5))
+    let find = app.buttons["pdfFindText"]
+    XCTAssertFalse(find.isEnabled)
+    replaceText(query, with: "missing lunar sentence", in: app)
+    find.tap()
+    XCTAssertTrue(app.staticTexts["No matches"].waitForExistence(timeout: 10))
+    capture("IPAD-E01-A04-pdf-search-no-matches")
+    try app.performAccessibilityAudit()
+    app.buttons["pdfClearSearch"].tap()
+    let cleared = query.value as? String
+    XCTAssertTrue(cleared == nil || cleared == "" || cleared == query.placeholderValue)
+    XCTAssertFalse(find.isEnabled)
+    XCTAssertFalse(app.staticTexts["No matches"].exists)
+    replaceText(query, with: "PASSAGE 3", in: app)
+    find.tap()
+    let result = app.buttons["pdfSearchResult0"]
+    XCTAssertTrue(result.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(result.label.contains("Page 3"))
+    XCTAssertTrue(result.label.contains("passage 3"))
+    capture("IPAD-E01-A04-pdf-search-result")
+    try app.performAccessibilityAudit()
+    result.tap()
+    XCTAssertTrue(app.staticTexts["Page 3 of 3"].waitForExistence(timeout: 10))
+    let thirdPassage = app.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS %@", "Orbit fixture: passage 3")
+    ).firstMatch
+    XCTAssertTrue(thirdPassage.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(app.staticTexts["Position saved"].waitForExistence(timeout: 10))
+    capture("IPAD-E01-A04-pdf-search-opened-passage")
+    try assertPDFSearchHighlight(in: app, page: 3, present: true, state: "opened-match")
+    try app.performAccessibilityAudit()
+    let data = try await metadataRequest("books/files/1/progress", token: token)
+    let progress = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    XCTAssertEqual(progress["pageNumber"] as? Double, 3)
+    XCTAssertEqual(progress["percentage"] as? Double, 100)
+    let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+    attachment.name = "IPAD-E01-A04-pdf-search-public-progress"
+    attachment.lifetime = .keepAlways
+    add(attachment)
+    app.otherElements["pdfReader"].swipeRight()
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Position saved"].waitForExistence(timeout: 10))
+    capture("IPAD-E01-A04-pdf-search-highlight-cleared-by-curl")
+    try assertPDFSearchHighlight(in: app, page: 2, present: false, state: "turned-away")
+    app.otherElements["pdfReader"].swipeLeft()
+    XCTAssertTrue(app.staticTexts["Page 3 of 3"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Position saved"].waitForExistence(timeout: 10))
+    capture("IPAD-E01-A04-pdf-search-return-after-curl")
+    try assertPDFSearchHighlight(in: app, page: 3, present: false, state: "returned")
+    app.buttons["Close reader"].tap()
+    app.buttons["Done"].tap()
+    app.terminate()
+    app.launch()
+    XCTAssertTrue(app.staticTexts["50,000 books"].waitForExistence(timeout: 20))
+    search.tap()
+    search.typeText("Orbit\n")
+    XCTAssertTrue(book.waitForExistence(timeout: 10))
+    book.tap()
+    XCTAssertTrue(read.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    read.tap()
+    XCTAssertTrue(app.staticTexts["Page 3 of 3"].waitForExistence(timeout: 15))
+    XCTAssertTrue(thirdPassage.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    capture("IPAD-E01-A04-pdf-search-resumed")
+    try assertPDFSearchHighlight(in: app, page: 3, present: false, state: "resumed")
+    app.otherElements["pdfReader"].swipeRight()
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Position saved"].waitForExistence(timeout: 10))
+    capture("IPAD-E01-A04-pdf-search-subsequent-curl")
+    try assertPDFSearchHighlight(in: app, page: 2, present: false, state: "subsequent-curl")
+    app.buttons["Close reader"].tap()
+    app.buttons["Done"].tap()
+    app.buttons["signOut"].tap()
+    _ = try await metadataRequest(
+      "auth/logout", method: "POST",
+      body: JSONSerialization.data(withJSONObject: [
+        "refreshToken": try XCTUnwrap(credentials["refreshToken"] as? String)
+      ]))
+  }
+
+  @MainActor
   private func pdfProgressFault(_ operation: String, method: String = "GET") async throws {
     var request = URLRequest(
       url: URL(string: "http://localhost:16485/__faults/progress/\(operation)")!)
