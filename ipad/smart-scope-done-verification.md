@@ -25,18 +25,38 @@ The full batch retained 12 passing public HTTP checks and five failing native
 tests, with no skips or expected failures. The browser gate did not run. Those
 totals do not establish that the other four native failures have this cause.
 
-## Source repair and current verification
+## First repair remained RED
 
-The Done button uses the platform's semantic label color with a plain button
-style and an individual minimum 44-point width and height. Its dismiss action,
-label, footer position, and inherited saving restriction remain the same. No
-other scope control, search field, permission rule, or test audit was changed.
+The first source repair, `cade0114`, used the platform's semantic label color
+with a plain button style and a minimum 44-point frame outside the Button.
+The corrected full native batch still reported `Contrast failed` on Done.
+I independently opened its actual screenshot and read its complete finding and
+hierarchy: the text is visibly black, but the accessibility node remains
+`{{144.8, 876.8}, {40.5, 20.5}}`. The outer frame did not enlarge the reported
+button label's bounds.
+
+Evidence in
+`/tmp/bookorbit-scope-qa-8ee493e3/test-results/ipad/run-12921-1791325526211/native-attachments/`:
+
+- Screenshot: `CE55EA89-A4BC-42A1-ABC7-293D3E08F5ED.png`.
+- Complete audit issue: `B29C3E96-B518-4E45-A453-AE146C47CB3C.txt`.
+- Hierarchy: `B840909E-0225-48EE-9EBD-2FBDB853CEAE.txt`.
+
+## Revised source repair and current verification
+
+The revised Done button has an explicit Text label with the body font, semantic
+label color, minimum 44-point width and height, and rectangular content shape
+inside the Button. This makes the enlarged label part of the actionable control.
+Its dismiss action, label, footer position, and inherited saving restriction
+remain the same. No other scope control, search field, permission rule, or test
+audit was changed.
 
 Strict Swift formatting lint, Swift frontend parsing, and `git diff --check`
 passed for the repair. These are source checks. No build or runtime test was
 run by this repair agent because the shared heavy-check queue belongs to the
 feature testers.
 
-The original tester must rerun the full unfiltered native audit on the corrected
-source. Independent inspection of the actual corrected screenshot and audit is
-still pending. This repair is not yet verified at runtime.
+The original tester must rerun the full unfiltered native audit on this revised
+source. Independent inspection of its actual corrected screenshot and audit is
+still pending. This revision is not yet verified at runtime; the first repair's
+runtime failure remains retained above.

@@ -61,10 +61,13 @@ struct SmartScopeView: View {
         }
         if model.isBusy { ProgressView("Loading scopes…").padding() }
         HStack {
-          Button("Done", action: dismiss.callAsFunction)
-            .buttonStyle(.plain)
-            .foregroundStyle(Color(uiColor: .label))
-            .frame(minWidth: 44, minHeight: 44)
+          Button(action: dismiss.callAsFunction) {
+            Text("Done")
+              .font(.body)
+              .foregroundStyle(Color(uiColor: .label))
+              .frame(minWidth: 44, minHeight: 44)
+              .contentShape(Rectangle())
+          }.buttonStyle(.plain)
           Button("New scope") { editing = ScopeEditSelection(scope: nil) }
             .accessibilityIdentifier("newSmartScope")
           Spacer()
