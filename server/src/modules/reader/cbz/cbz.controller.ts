@@ -22,7 +22,7 @@ export class CbzController {
     @Res() reply: FastifyReply,
   ) {
     const { stream, mimeType } = await this.cbzService.streamPage(fileId, pageIndex, user);
-    reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+    reply.header('Cache-Control', 'private, no-store');
     reply.type(mimeType);
     reply.send(stream);
   }
