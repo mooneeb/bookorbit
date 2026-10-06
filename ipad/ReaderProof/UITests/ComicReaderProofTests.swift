@@ -251,6 +251,8 @@ final class ComicReaderProofTests: ReaderProofTestCase {
     search.typeText("Library book 00009\n")
     let book = app.buttons["Library book 00009"]
     XCTAssertTrue(book.waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["1 book"].waitForExistence(timeout: 10))
+    capture("IPAD-E01-A04-comic-single-result-library")
     book.tap()
     capture("IPAD-E01-A04-comic-book-details")
     let read = app.buttons["readFile\(fileID)"]
