@@ -7,10 +7,13 @@ struct FilterEditor: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       if draft.isGroup {
-        Picker("Match conditions", selection: $draft.join) {
+        Picker(selection: $draft.join) {
           Text("All conditions").tag("AND")
           Text("Any condition").tag("OR")
+        } label: {
+          Text("Match conditions").font(.body)
         }
+        .font(.body)
         ForEach($draft.children) { child in
           VStack(alignment: .leading, spacing: 8) {
             AnyView(FilterEditor(draft: child, depth: depth + 1))
