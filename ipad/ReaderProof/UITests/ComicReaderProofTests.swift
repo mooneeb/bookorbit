@@ -82,6 +82,9 @@ final class ComicReaderProofTests: ReaderProofTestCase {
     XCTAssertTrue(
       retry.waitForExistence(timeout: 5),
       "A recoverable opening failure needs a visible retry action")
+    XCTAssertFalse(
+      app.staticTexts["Opening comic…"].exists,
+      "A completed opening failure must not remain in the loading state")
     try await comicFault("count-recover", fileID: fileID)
     retry.tap()
     XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 15))
@@ -141,6 +144,9 @@ final class ComicReaderProofTests: ReaderProofTestCase {
     XCTAssertFalse(app.images["comicPage1"].exists)
     capture("IPAD-E01-A05-comic-page-delivery-failed")
     try app.performAccessibilityAudit()
+    XCTAssertFalse(
+      app.staticTexts["Loading comic page…"].exists,
+      "A failed page request must not announce that it is still loading")
     try await comicFault("pages-recover", fileID: fileID)
     retry.tap()
     try assertComicPixels(1, in: app, state: "page-delivery-recovered")
