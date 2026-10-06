@@ -82,6 +82,18 @@ struct OrganizationDirectoryView: View {
           }
         }
         if model.isBusy { ProgressView("Loading \(model.kind.title.lowercased())…").padding() }
+        HStack {
+          Button("Filters") {
+            draftFilters = model.filters
+            showingFilters = true
+          }
+          .frame(minHeight: 44)
+          .accessibilityIdentifier("organizationFilters")
+          Spacer()
+        }
+        .font(.body)
+        .padding(.horizontal)
+        .background(Color(uiColor: .systemBackground))
         OrganizationPagingView(
           page: model.page, total: model.total,
           canGoBack: model.canGoBack, canGoNext: model.canGoNext,
@@ -101,13 +113,6 @@ struct OrganizationDirectoryView: View {
             Toggle("Descending", isOn: $model.descending)
           }
           .accessibilityIdentifier("organizationSort")
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-          Button("Filters") {
-            draftFilters = model.filters
-            showingFilters = true
-          }
-          .accessibilityIdentifier("organizationFilters")
         }
       }
       .navigationDestination(item: $selection) { selected in
