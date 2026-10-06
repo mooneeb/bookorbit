@@ -18,11 +18,41 @@ export async function startFaultProxy() {
   let coverObserver;
   let coverUploadsUnavailable = false;
   let coverSnapshotUnavailable = false;
+  let comicFileID;
+  let comicCountUnavailable = false;
+  let comicPagesUnavailable = false;
+  let comicProgressUnavailable = false;
+  let comicWriteArmed = false;
   const server = createServer(async (incoming, outgoing) => {
     const path = new URL(incoming.url, "http://localhost:16485").pathname;
     if (path.startsWith("/__faults/")) {
       if (incoming.method === "POST" && ["/__faults/organization/fail", "/__faults/organization/recover"].includes(path)) {
         organizationUnavailable = path.endsWith("/fail");
+        return outgoing.writeHead(204).end();
+      }
+      const comicControl = path.match(
+        /^\/__faults\/comic\/([1-9][0-9]*)\/(count-fail|count-recover|pages-fail|pages-recover|progress-fail|progress-recover|write-arm|reset)$/,
+      );
+      if (incoming.method === "POST" && comicControl) {
+        comicFileID = Number(comicControl[1]);
+        const operation = comicControl[2];
+        if (operation === "count-fail") comicCountUnavailable = true;
+        if (operation === "count-recover") comicCountUnavailable = false;
+        if (operation === "pages-fail") comicPagesUnavailable = true;
+        if (operation === "pages-recover") comicPagesUnavailable = false;
+        if (operation === "progress-fail") comicProgressUnavailable = true;
+        if (operation === "progress-recover") comicProgressUnavailable = false;
+        if (operation === "write-arm") {
+          if (armed || snapshotArmed || writeArmed || comicWriteArmed || held) return outgoing.writeHead(409).end();
+          comicWriteArmed = true;
+        }
+        if (operation === "reset") {
+          comicCountUnavailable = false;
+          comicPagesUnavailable = false;
+          comicProgressUnavailable = false;
+          comicWriteArmed = false;
+          release?.();
+        }
         return outgoing.writeHead(204).end();
       }
       if (incoming.method === "POST" && ["/__faults/cover/upload-fail", "/__faults/cover/upload-recover"].includes(path)) {
@@ -114,11 +144,21 @@ export async function startFaultProxy() {
       return outgoing.writeHead(503).end();
     }
     if (
+      (comicCountUnavailable && path === `/api/v1/cbz/files/${comicFileID}/pages`) ||
+      (comicPagesUnavailable && path.startsWith(`/api/v1/cbz/files/${comicFileID}/pages/`)) ||
+      (comicProgressUnavailable && incoming.method === "POST" && path === `/api/v1/books/files/${comicFileID}/progress`)
+    ) {
+      incoming.resume();
+      return outgoing.writeHead(503).end();
+    }
+    if (
       (armed && incoming.method === "GET" && path === "/api/v1/books/files/1/progress") ||
-      (writeArmed && incoming.method === "POST" && /^\/api\/v1\/books\/files\/[12]\/progress$/.test(path))
+      (writeArmed && incoming.method === "POST" && /^\/api\/v1\/books\/files\/[12]\/progress$/.test(path)) ||
+      (comicWriteArmed && incoming.method === "POST" && path === `/api/v1/books/files/${comicFileID}/progress`)
     ) {
       armed = false;
       writeArmed = false;
+      comicWriteArmed = false;
       held = true;
       observer?.writeHead(200).end("held");
       await new Promise((resolve) => {
