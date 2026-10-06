@@ -108,12 +108,17 @@ struct OrganizationDirectoryView: View {
       .onSubmit(of: .search) { Task { await model.load() } }
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
-          Menu("Sort") {
+          Menu {
             Picker("Sort by", selection: $model.sort) {
               ForEach(model.kind.sorts, id: \.value) { sort in Text(sort.title).tag(sort.value) }
             }
             Toggle("Descending", isOn: $model.descending)
+          } label: {
+            Image(systemName: "arrow.up.arrow.down")
+              .foregroundStyle(Color(uiColor: .label))
+              .frame(minWidth: 44, minHeight: 44)
           }
+          .accessibilityLabel("Sort")
           .accessibilityIdentifier("organizationSort")
         }
       }
