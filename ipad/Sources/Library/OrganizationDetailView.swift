@@ -87,6 +87,27 @@ struct OrganizationDetailView: View {
         }
       }
       if model.isBusy { ProgressView("Loading books…").padding() }
+      HStack {
+        Spacer()
+        Menu("Sort books") {
+          Picker("Sort by", selection: $model.sort) {
+            Text("Title").tag("title")
+            Text("Recently added").tag("addedAt")
+            if model.kind == .authors {
+              Text("Publication year").tag("publishedYear")
+            } else {
+              Text("Volume order").tag("seriesIndex")
+            }
+          }
+          Toggle("Descending", isOn: $model.descending)
+        }
+        .frame(minHeight: 44)
+      }
+      .font(.body)
+      .buttonStyle(.plain)
+      .foregroundStyle(Color(uiColor: .label))
+      .padding(.horizontal)
+      .background(Color(uiColor: .systemBackground))
       OrganizationPagingView(
         page: model.page, total: model.total,
         canGoBack: model.canGoBack, canGoNext: model.canGoNext,
@@ -94,20 +115,6 @@ struct OrganizationDetailView: View {
         next: { Task { await model.nextPage() } })
     }
     .navigationTitle(model.selection.name)
-    .toolbar {
-      Menu("Sort books") {
-        Picker("Sort by", selection: $model.sort) {
-          Text("Title").tag("title")
-          Text("Recently added").tag("addedAt")
-          if model.kind == .authors {
-            Text("Publication year").tag("publishedYear")
-          } else {
-            Text("Volume order").tag("seriesIndex")
-          }
-        }
-        Toggle("Descending", isOn: $model.descending)
-      }
-    }
     .onChange(of: model.sort) { Task { await model.load() } }
     .onChange(of: model.descending) { Task { await model.load() } }
     .task { await model.load() }
