@@ -90,6 +90,9 @@ struct OrganizationDirectoryView: View {
           .frame(minHeight: 44)
           .accessibilityIdentifier("organizationFilters")
           Spacer()
+          Button("Done", action: dismiss.callAsFunction)
+            .frame(minHeight: 44)
+            .accessibilityIdentifier("organizationDone")
         }
         .font(.body)
         .padding(.horizontal)
@@ -104,7 +107,6 @@ struct OrganizationDirectoryView: View {
       .searchable(text: $model.search, prompt: "Search \(model.kind.title.lowercased())")
       .onSubmit(of: .search) { Task { await model.load() } }
       .toolbar {
-        ToolbarItem(placement: .topBarLeading) { Button("Done", action: dismiss.callAsFunction) }
         ToolbarItem(placement: .topBarTrailing) {
           Menu("Sort") {
             Picker("Sort by", selection: $model.sort) {
