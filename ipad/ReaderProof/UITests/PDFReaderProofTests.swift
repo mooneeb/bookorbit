@@ -27,15 +27,39 @@ final class PDFReaderProofTests: ReaderProofTestCase {
         "source": "narration", "percentage": 10, "positionSeconds": 4,
         "mediaOverlayFragment": "chapter-one.xhtml#first", "mediaOverlaySectionIndex": 0,
       ]))
+    _ = try await Self.request(
+      "http://localhost:16482/api/v1/books/files/1/progress", method: "POST", token: token,
+      encodedBody: JSONSerialization.data(withJSONObject: [
+        "source": "text", "percentage": 100.0 / 3, "pageNumber": 1,
+        "cfi": "epubcfi(/6/2[c1ref]!/4/2[p1],/1:0,/1:5)",
+        "koboLocationSource": "OPS/c1.xhtml", "koboLocationType": "KoboSpan",
+        "koboLocationValue": "kobo.1.1", "koboContentSourceProgressPercent": 25,
+        "koreaderProgress": "/body/DocFragment[1]/body/p[1]/text().0",
+      ]))
+    let seededData = try await Self.request(
+      "http://localhost:16482/api/v1/books/files/1/progress", token: token)
+    let seeded = try XCTUnwrap(JSONSerialization.jsonObject(with: seededData) as? [String: Any])
+    XCTAssertEqual(seeded["pageNumber"] as? Double, 1)
+    XCTAssertEqual(seeded["cfi"] as? String, "epubcfi(/6/2[c1ref]!/4/2[p1],/1:0,/1:5)")
+    XCTAssertEqual(seeded["koboLocationSource"] as? String, "OPS/c1.xhtml")
+    XCTAssertEqual(seeded["koboLocationType"] as? String, "KoboSpan")
+    XCTAssertEqual(seeded["koboLocationValue"] as? String, "kobo.1.1")
+    XCTAssertEqual(seeded["koboContentSourceProgressPercent"] as? Double, 25)
+    XCTAssertEqual(seeded["koreaderProgress"] as? String, "/body/DocFragment[1]/body/p[1]/text().0")
+    XCTAssertEqual(seeded["positionSeconds"] as? Double, 4)
+    let seedAttachment = XCTAttachment(data: seededData, uniformTypeIdentifier: "public.json")
+    seedAttachment.name = "IPAD-E01-A03-existing-text-companions-and-narration"
+    seedAttachment.lifetime = .keepAlways
+    add(seedAttachment)
     let app = connectAndSignIn(serverURL: "http://localhost:16485")
     openPDF(app)
     XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 15))
     assertPassage(1, in: app)
-    try await Self.fault("snapshot-arm", method: "POST")
+    try await Self.fault("write-arm", method: "POST")
     app.otherElements["pdfReader"].swipeLeft()
     XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 10))
     try await Self.fault("held")
-    capture("IPAD-E01-A03-proof-older-progress-response-held")
+    capture("IPAD-E01-A03-proof-text-save-held")
     _ = try await Self.request(
       "http://localhost:16482/api/v1/books/files/1/progress", method: "POST", token: token,
       encodedBody: JSONSerialization.data(withJSONObject: [
@@ -54,10 +78,18 @@ final class PDFReaderProofTests: ReaderProofTestCase {
     add(attachment)
     let progress = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     XCTAssertEqual(progress["pageNumber"] as? Double, 2)
+    XCTAssertEqual(try XCTUnwrap(progress["percentage"] as? Double), 200.0 / 3, accuracy: 0.01)
     XCTAssertEqual(progress["positionSeconds"] as? Double, 9)
     XCTAssertEqual(progress["mediaOverlayFragment"] as? String, "chapter-one.xhtml#second")
     XCTAssertEqual(progress["mediaOverlaySectionIndex"] as? Double, 0)
     XCTAssertEqual(progress["narrationPercentage"] as? Double, 20)
+    for field in [
+      "cfi", "koboLocationSource", "koboLocationType", "koboLocationValue",
+      "koboContentSourceProgressPercent", "koreaderProgress",
+    ] {
+      XCTAssertTrue(
+        progress[field] is NSNull, "A new PDF page replaces the old text position: \(field)")
+    }
     try app.performAccessibilityAudit()
     app.buttons["Close reader"].tap()
     app.buttons["Done"].tap()
@@ -111,7 +143,7 @@ final class PDFReaderProofTests: ReaderProofTestCase {
     openPDF(app)
     XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 15))
     assertPassage(1, in: app)
-    try await Self.fault("arm", method: "POST")
+    try await Self.fault("write-arm", method: "POST")
     addTeardownBlock { try await Self.fault("snapshot-reset", method: "POST") }
     app.otherElements["pdfReader"].swipeLeft()
     XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 10))

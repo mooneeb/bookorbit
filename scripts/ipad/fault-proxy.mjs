@@ -110,7 +110,7 @@ export async function startFaultProxy() {
     }
     if (
       (armed && incoming.method === "GET" && path === "/api/v1/books/files/1/progress") ||
-      (writeArmed && incoming.method === "POST" && path === "/api/v1/books/files/2/progress")
+      (writeArmed && incoming.method === "POST" && /^\/api\/v1\/books\/files\/[12]\/progress$/.test(path))
     ) {
       armed = false;
       writeArmed = false;

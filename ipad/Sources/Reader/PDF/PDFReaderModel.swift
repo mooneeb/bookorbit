@@ -89,17 +89,10 @@ final class PDFReaderModel {
     while let page = pendingPage, !isClosed, !Task.isCancelled, let document {
       pendingPage = nil
       do {
-        let current: FileReadingProgress = try await api.send("books/files/\(file.id)/progress")
         var payload = SaveFileProgressPayload(
           percentage: Double(page) / Double(document.pageCount) * 100)
         payload.source = "text"
-        payload.cfi = current.cfi
         payload.pageNumber = Double(page)
-        payload.koboLocationSource = current.koboLocationSource
-        payload.koboLocationType = current.koboLocationType
-        payload.koboLocationValue = current.koboLocationValue
-        payload.koboContentSourceProgressPercent = current.koboContentSourceProgressPercent
-        payload.koreaderProgress = current.koreaderProgress
         try Task.checkCancellation()
         guard !isClosed else { return }
         try await api.sendEmpty(
