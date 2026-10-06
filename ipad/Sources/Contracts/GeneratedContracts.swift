@@ -408,6 +408,66 @@ struct SeriesDetail: Codable, Sendable, Equatable, Identifiable {
     var `expectedBookCount`: Int?
 }
 
+struct DashboardScrollerBatchRequest: Codable, Sendable, Equatable {
+    var `items`: [DashboardScrollerBatchItem]
+}
+
+struct DashboardScrollerBatchItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `type`: String
+    var `limit`: Double
+    var `smartScopeId`: Int?
+}
+
+struct DashboardScrollerBatchResponse: Codable, Sendable, Equatable {
+    var `items`: [DashboardScrollerBatchResult]
+}
+
+struct DashboardScrollerBatchResult: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `books`: [BookCard]
+    var `failed`: Bool
+}
+
+struct DashboardShelfConfig: Codable, Sendable, Equatable {
+    var `syncAcrossSessions`: Bool?
+    var `scrollers`: [ScrollerConfig]?
+    var `shelfLayout`: String?
+}
+
+struct ScrollerConfig: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `type`: String
+    var `label`: String
+    var `enabled`: Bool
+    var `order`: Double
+    var `limit`: Double
+    var `rows`: Double
+    var `smartScopeId`: Int?
+}
+
+struct UserDashboardSettingsResponse: Codable, Sendable, Equatable {
+    var `settings`: UserSettings
+}
+
+struct UserSettings: Codable, Sendable, Equatable {
+    var `dashboardConfig`: DashboardConfig?
+    var `dashboardShelfConfig`: DashboardShelfConfig?
+}
+
+struct DashboardConfig: Codable, Sendable, Equatable {
+    var `readingGoal`: Double?
+    var `widgets`: [WidgetConfig]?
+    var `libraryIds`: [Int]?
+}
+
+struct WidgetConfig: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `type`: String
+    var `enabled`: Bool
+    var `order`: Double
+}
+
 enum CoverMedium: String, Codable, Sendable, CaseIterable, Identifiable {
     case ebook
     case audio

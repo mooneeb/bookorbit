@@ -6,9 +6,20 @@ import path from "node:path";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(path.join(root, "server/package.json"));
 const ts = require("typescript");
-const entries = ["auth", "author", "book", "book-selection", "collection", "comic", "epub", "library", "permissions", "query", "series"].map((name) =>
-  path.join(root, `packages/types/src/${name}.ts`),
-);
+const entries = [
+  "auth",
+  "author",
+  "book",
+  "book-selection",
+  "collection",
+  "comic",
+  "dashboard",
+  "epub",
+  "library",
+  "permissions",
+  "query",
+  "series",
+].map((name) => path.join(root, `packages/types/src/${name}.ts`));
 const program = ts.createProgram(entries, {
   strict: true,
   target: ts.ScriptTarget.ES2022,
@@ -36,6 +47,8 @@ const symbols = new Map(
 // These audited projections decode existing responses without generating unused server data.
 const projections = {
   AuthUser: ["id", "username", "name", "active", "isSuperuser", "isDefaultPassword", "permissions"],
+  UserDashboardSettingsResponse: ["settings"],
+  UserSettings: ["dashboardConfig", "dashboardShelfConfig"],
   Library: ["id", "type", "accessLevel", "name", "bookCount"],
   BookCard: ["id", "title", "authors", "files", "hasCover", "coverVersion", "readingProgress", "seriesName"],
   BookDetail: [
@@ -74,6 +87,8 @@ const integerFields = new Set([
   "userId",
   "sessionId",
   "libraryId",
+  "libraryIds",
+  "smartScopeId",
   "fileId",
   "page",
   "size",
@@ -193,11 +208,16 @@ for (const name of [
   "AuthorBooksPage",
   "SeriesPage",
   "SeriesBooksPage",
+  "DashboardScrollerBatchRequest",
+  "DashboardScrollerBatchResponse",
+  "DashboardShelfConfig",
 ]) {
   const symbol = symbols.get(name);
   if (!symbol) throw new Error(`Missing shared contract: ${name}`);
   generateModel(name, checker.getDeclaredTypeOfSymbol(symbol));
 }
+
+generateModel("UserDashboardSettingsResponse", checker.getDeclaredTypeOfSymbol(symbols.get("AuthUser")));
 
 const permission = symbols.get("Permission");
 const coverMedium = checker.getDeclaredTypeOfSymbol(symbols.get("CoverMedium"));

@@ -8,6 +8,7 @@ struct LibraryView: View {
   @State private var presentation = "list"
   @State private var isCreatingCollection = false
   @State private var organization: OrganizationKind?
+  @State private var showingDashboard = false
 
   init(session: SessionModel, api: BookOrbitAPI) {
     self.session = session
@@ -17,6 +18,8 @@ struct LibraryView: View {
   var body: some View {
     NavigationSplitView {
       List {
+        Button("Home") { showingDashboard = true }
+          .accessibilityIdentifier("openDashboard")
         Button("All books") {
           Task { await library.select(.all) }
         }
@@ -134,6 +137,11 @@ struct LibraryView: View {
       }
     }
     .task { await library.load() }
+    .sheet(isPresented: $showingDashboard) {
+      if let user = session.user {
+        DashboardView(api: library.api, serverURL: session.serverURL, user: user)
+      }
+    }
     .sheet(item: $organization) { kind in
       OrganizationDirectoryView(
         api: library.api, kind: kind, libraries: library.libraries,
