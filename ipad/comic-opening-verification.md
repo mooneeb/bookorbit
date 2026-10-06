@@ -1,0 +1,18 @@
+# Comic opening recovery verification
+
+Commit `de71149b` repairs one native comic opening failure. When the initial page-count or progress request fails, the reader now presents `Retry opening` instead of continuing to show `Opening comic…`. Retrying calls the existing guarded loading operation and clears its previous error while the new request runs. The repair changes only `ComicProofView.swift` and `ComicProofModel.swift`; it does not suppress tests or accessibility checks.
+
+The actual native reproduction is retained in `run-16714-1791320223463`. `testIPADE01A05ComicOpenFailureCanRetry` failed in 39.090 seconds because the visible retry action was missing after a public page-count request returned HTTP 503. The repair agent independently opened `native-attachments/8B329411-6DAB-4AFB-B289-65212D4B4713.png`: the server error and `Close reader` are visible, but the opening spinner remains and no retry action appears. The native result reports four passing tests and this one failure, with no skipped or expected failures. This failed execution remains preserved.
+
+The corrected execution is `run-50879-1791321935136`, using the cached iPad Pro 11-inch (M5) simulator with iOS 26.0, build 23A343, and the real localhost server behind its controlled fault proxy. The same opening recovery journey passed in 46.207 seconds. It checks the actual HTTP 503 error, audits the complete native accessibility surface without filtering, requires `Retry opening`, rejects the stale opening indicator, recovers the public request and taps the retry button. It then verifies the delivered comic page's pixels with Vision OCR, checks `Page 1 of 3` and audits the complete recovered screen before closing and signing out.
+
+The repair agent independently opened these corrected attachments:
+
+- `native-attachments/CE432589-2C34-4DBD-BBB5-7002A83C7EAD.png`: the real HTTP 503 error, visible `Retry opening` and `Close reader`, with no opening spinner.
+- `native-attachments/148438E5-E11F-416B-B143-B53E73A39F9F.png`: the actual delivered image reads `Orbit comic: page 1`, its complete panel border is visible and the native counter reads `Page 1 of 3`.
+
+The independently read `native-attachments/7A2F08E2-292E-4755-BE64-312F42F53F08.json` records page 1 and the recognized text `Orbit comic: page 1`. The agent also read both native summaries, the exact failed and passing test log entries, and the executed test's unfiltered accessibility calls. This inspection is specific to the opening recovery repair; the feature tester maintains the wider comic artifact inventory separately.
+
+The corrected comic batch reports five native tests passed, zero failures, zero skips, zero expected failures and an empty `runtimeWarnings` array. Its real authenticated HTTP batch passed 12 tests, including three comic journeys, with no failures, cancellations, skips or todo tests. The final maintained browser suite passed both comic journeys in 20.2 seconds after separate browser fixes; earlier browser failures remain recorded. These wider results are regression context for this repair, not evidence that the whole native app or issue #2 is complete.
+
+Artifacts remain under `/tmp/bookorbit-comic-qa-8f548c03/test-results/ipad/` in the two run directories above. The execution logs are `/tmp/bookorbit-comic-qa-recovered-native-faults.log`, `/tmp/bookorbit-comic-qa-corrected-final.log` and `/tmp/bookorbit-comic-qa-named-controls-browser.log`. Strict Swift formatting and `git diff --check` passed for the source repair. Verification was autonomous and used no physical iPad or new runtime download. Independent Standards and Spec review remains a root integration step; this checkpoint does not grant human approval of a visual baseline or physical-device acceptance.
