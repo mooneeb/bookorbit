@@ -150,6 +150,7 @@ struct OrganizationDirectoryView: View {
         "Try another search or adjust the filters. Only items in your accessible libraries are shown."
       )
       .font(.body)
+      .fixedSize(horizontal: false, vertical: true)
     }
     .foregroundStyle(Color(uiColor: .label))
     .multilineTextAlignment(.center)
