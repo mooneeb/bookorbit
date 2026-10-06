@@ -95,6 +95,8 @@ struct OrganizationDirectoryView: View {
             .accessibilityIdentifier("organizationDone")
         }
         .font(.body)
+        .buttonStyle(.plain)
+        .foregroundStyle(Color(uiColor: .label))
         .padding(.horizontal)
         .background(Color(uiColor: .systemBackground))
         OrganizationPagingView(
