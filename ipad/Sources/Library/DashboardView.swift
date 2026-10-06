@@ -85,6 +85,15 @@ struct DashboardView: View {
       .background(Color(uiColor: .systemBackground))
       .safeAreaInset(edge: .bottom) {
         HStack {
+          Button(action: dismiss.callAsFunction) {
+            Text("Done")
+              .font(.body)
+              .padding(.horizontal, 16)
+              .frame(minWidth: 44, minHeight: 44)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .foregroundStyle(Color(uiColor: .label))
           Spacer()
           Button {
             showingSettings = true
@@ -105,7 +114,6 @@ struct DashboardView: View {
       }
       .navigationTitle("Home")
       .toolbar {
-        ToolbarItem(placement: .topBarLeading) { Button("Done", action: dismiss.callAsFunction) }
         ToolbarItem(placement: .topBarTrailing) {
           Button("Refresh") { Task { await model.load() } }.disabled(model.isBusy || model.isSaving)
         }
