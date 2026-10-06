@@ -21,6 +21,7 @@ import { sanitizeLogValue } from '../../src/common/utils/log-sanitize.utils';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { FIXTURE_CLIENT_ID, FIXTURE_ISSUER, startOidcProvider } from './oidc-provider';
 import { createComicFixture } from './comic-fixture';
+import { createOrganizationFixture } from './organization-fixture';
 
 const started = Date.now();
 
@@ -110,6 +111,7 @@ async function main() {
       })),
     );
   }
+  await createOrganizationFixture(db);
   const document = await PDFDocument.create();
   const font = await document.embedFont(StandardFonts.Helvetica);
   for (let index = 0; index < 3; index++) {

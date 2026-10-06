@@ -2,6 +2,7 @@ import { createServer, request } from "node:http";
 import { pipeline } from "node:stream/promises";
 
 export async function startFaultProxy() {
+  let organizationUnavailable = false;
   let armed = false;
   let release;
   let held = false;
@@ -20,6 +21,10 @@ export async function startFaultProxy() {
   const server = createServer(async (incoming, outgoing) => {
     const path = new URL(incoming.url, "http://localhost:16485").pathname;
     if (path.startsWith("/__faults/")) {
+      if (incoming.method === "POST" && ["/__faults/organization/fail", "/__faults/organization/recover"].includes(path)) {
+        organizationUnavailable = path.endsWith("/fail");
+        return outgoing.writeHead(204).end();
+      }
       if (incoming.method === "POST" && ["/__faults/cover/upload-fail", "/__faults/cover/upload-recover"].includes(path)) {
         coverUploadsUnavailable = path.endsWith("upload-fail");
         return outgoing.writeHead(204).end();
@@ -129,6 +134,11 @@ export async function startFaultProxy() {
         outgoing.once("close", finish);
       });
       if (outgoing.destroyed) return;
+    }
+    if (organizationUnavailable && incoming.method === "GET" && /^\/api\/v1\/(authors|series)(\/|$)/.test(path)) {
+      return outgoing
+        .writeHead(503, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ message: "Organization fixture temporarily unavailable" }));
     }
     const holdCover =
       coverArmed &&

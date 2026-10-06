@@ -24,6 +24,7 @@ const coverProof = process.argv.includes("--cover-proof");
 const readerProof = process.argv.includes("--reader-proof");
 const epubProof = process.argv.includes("--epub-proof");
 const comicProof = process.argv.includes("--comic-proof");
+const organizationProof = process.argv.includes("--organization-proof");
 const pdfReader = process.argv.includes("--pdf-reader");
 const inspectWeb = process.argv.includes("--inspect-web");
 if (inspectWeb && !process.argv.includes("--web")) throw new Error("Browser inspection requires --web");
@@ -39,12 +40,13 @@ if (crossClient && (!process.argv.includes("--ui") || !process.argv.includes("--
   throw new Error("Cross-client verification requires both --ui and --web");
 }
 if (
-  (metadataProof || metadataClearsProof || coverProof || pdfReader) &&
+  (metadataProof || metadataClearsProof || coverProof || pdfReader || organizationProof) &&
   (!process.argv.includes("--ui") || !process.argv.includes("--web") || readerProof)
 ) {
-  throw new Error("Metadata verification requires the production app with --ui and --web");
+  throw new Error("Focused verification requires the production app with --ui and --web");
 }
-if ([metadataProof, metadataClearsProof, coverProof, pdfReader].filter(Boolean).length > 1) throw new Error("Select one focused metadata journey");
+if ([metadataProof, metadataClearsProof, coverProof, pdfReader, organizationProof].filter(Boolean).length > 1)
+  throw new Error("Select one focused journey");
 const nativeTests = process.env.IPAD_TEST_ONLY?.split(",") ?? [];
 if (nativeTests.some((name) => !new RegExp(`^${nativeScheme}UITests/[A-Za-z_]\\w*(?:/[A-Za-z_]\\w*)?$`).test(name))) {
   throw new Error(`IPAD_TEST_ONLY must contain comma-separated ${nativeScheme}UITests classes or methods`);
@@ -65,6 +67,7 @@ const env = {
   IPAD_COVER_FIXTURE_DIR: `${root}/test-results/ipad/${runID}/cover-fixture`,
   IPAD_READER_PROOF: readerProof ? "1" : "0",
   IPAD_COMIC_PROOF: comicProof ? "1" : "0",
+  IPAD_ORGANIZATION_PROOF: organizationProof ? "1" : "0",
   IPAD_PDF_READER: pdfReader ? "1" : "0",
   ...(epubProof ? { IPAD_READER_PROOF_EPUB: `${root}/test-results/ipad/${runID}/reader-fixture/reader-proof.epub` } : {}),
   JWT_SECRET: randomBytes(32).toString("hex"),
@@ -310,6 +313,7 @@ try {
     await interrupt;
   } else {
     if (!progressOnly) await command(process.execPath, ["--test", "scripts/ipad/http.test.mjs"]);
+    if (organizationProof || crossClient) await command(process.execPath, ["--test", "scripts/ipad/organization-http.test.mjs"]);
     await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);
     if (process.argv.includes("--ui")) stopFaultProxy = await startFaultProxy();
     if (process.argv.includes("--ui")) await runNativeTests();
