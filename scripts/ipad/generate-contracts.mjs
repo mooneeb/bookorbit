@@ -21,6 +21,7 @@ const entries = [
   "metadata-lock",
   "permissions",
   "query",
+  "reader-settings",
   "series",
   "smart-scope",
   "table-layout",
@@ -53,7 +54,8 @@ const symbols = new Map(
 const projections = {
   AuthUser: ["id", "username", "name", "active", "isSuperuser", "isDefaultPassword", "permissions"],
   UserDashboardSettingsResponse: ["settings"],
-  UserSettings: ["dashboardConfig", "dashboardShelfConfig"],
+  UserReaderSettingsResponse: ["settings", "permissions"],
+  UserSettings: ["dashboardConfig", "dashboardShelfConfig", "syncReaderPreferences"],
   Library: ["id", "type", "accessLevel", "name", "bookCount"],
   BookCard: ["id", "title", "authors", "files", "hasCover", "coverVersion", "readingProgress", "seriesName"],
   BookDetail: [
@@ -141,6 +143,8 @@ const integerFields = new Set([
   "width",
   "height",
   "randomSeed",
+  "rotation",
+  "spreadGap",
 ]);
 const declarations = new Map();
 const patchRequests = new Set([
@@ -248,6 +252,7 @@ function swiftType(type, name, field) {
     const optional = values.length !== type.types.length;
     let value;
     if (values.every((part) => part.flags & ts.TypeFlags.StringLike)) value = "String";
+    else if (values.every((part) => part.flags & ts.TypeFlags.NumberLike)) value = integerFields.has(field) ? "Int" : "Double";
     else if (values.every((part) => part.flags & ts.TypeFlags.BooleanLike)) value = "Bool";
     else if (values.length === 1) value = swiftType(values[0], name, field);
     else if (name === "GroupRuleRulesItem") value = generateRuleNode();
@@ -352,6 +357,17 @@ for (const name of [
   "MetadataProviderSearchStatus",
   "UploadCoverFromUrlPayload",
   "CoverSearchResult",
+  "PdfReaderSettings",
+  "CbxReaderSettings",
+  "PdfReaderSettingsPatch",
+  "CbxReaderSettingsPatch",
+  "PdfReaderPreferenceResponse",
+  "CbxReaderPreferenceResponse",
+  "FixedReaderDefaultsResponse",
+  "PdfReaderPreferencePatchBody",
+  "CbxReaderPreferencePatchBody",
+  "PdfReaderDefaultsPatchBody",
+  "CbxReaderDefaultsPatchBody",
 ]) {
   const symbol = symbols.get(name);
   if (!symbol) throw new Error(`Missing shared contract: ${name}`);
@@ -359,6 +375,31 @@ for (const name of [
 }
 
 generateModel("UserDashboardSettingsResponse", checker.getDeclaredTypeOfSymbol(symbols.get("AuthUser")));
+generateModel("UserReaderSettingsResponse", checker.getDeclaredTypeOfSymbol(symbols.get("AuthUser")));
+
+for (const [model, constant] of [
+  ["PdfReaderSettings", "PDF_READER_DEFAULTS"],
+  ["CbxReaderSettings", "CBX_READER_DEFAULTS"],
+]) {
+  const initializer = symbols.get(constant).valueDeclaration.initializer;
+  if (!ts.isObjectLiteralExpression(initializer)) throw new Error(`${constant} must remain a literal object`);
+  const values = initializer.properties.map((property) => {
+    if (!ts.isPropertyAssignment(property)) throw new Error(`${constant} property changed`);
+    const expression = property.initializer;
+    let value;
+    if (ts.isStringLiteral(expression)) value = JSON.stringify(expression.text);
+    else if (ts.isNumericLiteral(expression)) value = expression.text;
+    else if (expression.kind === ts.SyntaxKind.TrueKeyword) value = "true";
+    else if (expression.kind === ts.SyntaxKind.FalseKeyword) value = "false";
+    else {
+      const literal = checker.getTypeAtLocation(expression).value;
+      if (typeof literal !== "number" || !Number.isFinite(literal)) throw new Error(`${constant} value is not a literal`);
+      value = String(literal);
+    }
+    return `${property.name.getText()}: ${value}`;
+  });
+  declarations.set(`${model}Defaults`, `extension ${model} {\n    static var readerDefault: Self { Self(${values.join(", ")}) }\n}`);
+}
 
 const metadataLocks = symbols.get("BOOK_METADATA_LOCK_FIELDS").valueDeclaration.initializer;
 const coverProviders = symbols.get("COVER_SEARCH_PROVIDERS").valueDeclaration.initializer;

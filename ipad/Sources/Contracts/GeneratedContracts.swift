@@ -866,6 +866,165 @@ enum CoverSearchResultUrl: Codable, Sendable, Equatable {
     }
 }
 
+struct PdfReaderSettings: Codable, Sendable, Equatable {
+    var `scrollMode`: String
+    var `spread`: String
+    var `zoomMode`: String
+    var `customScale`: Double
+    var `rotation`: Int
+}
+
+struct CbxReaderSettings: Codable, Sendable, Equatable {
+    var `fitMode`: String
+    var `viewMode`: String
+    var `scrollMode`: String
+    var `direction`: String
+    var `spreadAlignment`: String
+    var `spreadGap`: Int
+    var `forceTwoPage`: Bool
+    var `widePageSingletonMode`: String
+    var `bgColor`: String
+    var `autoAdvance`: Bool
+}
+
+struct PdfReaderSettingsPatch: Codable, Sendable, Equatable {
+    var `scrollMode`: String?
+    var `spread`: String?
+    var `zoomMode`: String?
+    var `customScale`: Double?
+    var `rotation`: Int?
+}
+
+struct CbxReaderSettingsPatch: Codable, Sendable, Equatable {
+    var `fitMode`: String?
+    var `viewMode`: String?
+    var `scrollMode`: String?
+    var `direction`: String?
+    var `spreadAlignment`: String?
+    var `spreadGap`: Int?
+    var `forceTwoPage`: Bool?
+    var `widePageSingletonMode`: String?
+    var `bgColor`: String?
+    var `autoAdvance`: Bool?
+}
+
+struct PdfReaderPreferenceResponse: Codable, Sendable, Equatable {
+    var `settings`: PdfReaderPreferenceResponseSettings?
+    var `isCustomized`: Bool
+}
+
+struct PdfReaderPreferenceResponseSettings: Codable, Sendable, Equatable {
+    var `scrollMode`: String?
+    var `spread`: String?
+    var `zoomMode`: String?
+    var `customScale`: Double?
+    var `rotation`: Int?
+}
+
+struct CbxReaderPreferenceResponse: Codable, Sendable, Equatable {
+    var `settings`: CbxReaderPreferenceResponseSettings?
+    var `isCustomized`: Bool
+}
+
+struct CbxReaderPreferenceResponseSettings: Codable, Sendable, Equatable {
+    var `fitMode`: String?
+    var `viewMode`: String?
+    var `scrollMode`: String?
+    var `direction`: String?
+    var `spreadAlignment`: String?
+    var `spreadGap`: Int?
+    var `forceTwoPage`: Bool?
+    var `widePageSingletonMode`: String?
+    var `bgColor`: String?
+    var `autoAdvance`: Bool?
+}
+
+struct FixedReaderDefaultsResponse: Codable, Sendable, Equatable {
+    var `pdf`: FixedReaderDefaultsResponsePdf?
+    var `cbx`: FixedReaderDefaultsResponseCbx?
+}
+
+struct FixedReaderDefaultsResponsePdf: Codable, Sendable, Equatable {
+    var `scrollMode`: String?
+    var `spread`: String?
+    var `zoomMode`: String?
+    var `customScale`: Double?
+    var `rotation`: Int?
+}
+
+struct FixedReaderDefaultsResponseCbx: Codable, Sendable, Equatable {
+    var `fitMode`: String?
+    var `viewMode`: String?
+    var `scrollMode`: String?
+    var `direction`: String?
+    var `spreadAlignment`: String?
+    var `spreadGap`: Int?
+    var `forceTwoPage`: Bool?
+    var `widePageSingletonMode`: String?
+    var `bgColor`: String?
+    var `autoAdvance`: Bool?
+}
+
+struct PdfReaderPreferencePatchBody: Codable, Sendable, Equatable {
+    var `set`: PdfReaderPreferencePatchBodySet?
+    var `unset`: [String]?
+}
+
+struct PdfReaderPreferencePatchBodySet: Codable, Sendable, Equatable {
+    var `scrollMode`: String?
+    var `spread`: String?
+    var `zoomMode`: String?
+    var `customScale`: Double?
+    var `rotation`: Int?
+}
+
+struct CbxReaderPreferencePatchBody: Codable, Sendable, Equatable {
+    var `set`: CbxReaderPreferencePatchBodySet?
+    var `unset`: [String]?
+}
+
+struct CbxReaderPreferencePatchBodySet: Codable, Sendable, Equatable {
+    var `fitMode`: String?
+    var `viewMode`: String?
+    var `scrollMode`: String?
+    var `direction`: String?
+    var `spreadAlignment`: String?
+    var `spreadGap`: Int?
+    var `forceTwoPage`: Bool?
+    var `widePageSingletonMode`: String?
+    var `bgColor`: String?
+    var `autoAdvance`: Bool?
+}
+
+struct PdfReaderDefaultsPatchBody: Codable, Sendable, Equatable {
+    var `set`: PdfReaderDefaultsPatchBodySet
+}
+
+struct PdfReaderDefaultsPatchBodySet: Codable, Sendable, Equatable {
+    var `scrollMode`: String?
+    var `spread`: String?
+    var `zoomMode`: String?
+    var `customScale`: Double?
+    var `rotation`: Int?
+}
+
+struct CbxReaderDefaultsPatchBody: Codable, Sendable, Equatable {
+    var `set`: CbxReaderDefaultsPatchBodySet
+}
+
+struct CbxReaderDefaultsPatchBodySet: Codable, Sendable, Equatable {
+    var `fitMode`: String?
+    var `viewMode`: String?
+    var `scrollMode`: String?
+    var `direction`: String?
+    var `spreadAlignment`: String?
+    var `spreadGap`: Int?
+    var `forceTwoPage`: Bool?
+    var `widePageSingletonMode`: String?
+    var `bgColor`: String?
+    var `autoAdvance`: Bool?
+}
+
 struct UserDashboardSettingsResponse: Codable, Sendable, Equatable {
     var `settings`: UserSettings
 }
@@ -873,6 +1032,7 @@ struct UserDashboardSettingsResponse: Codable, Sendable, Equatable {
 struct UserSettings: Codable, Sendable, Equatable {
     var `dashboardConfig`: DashboardConfig?
     var `dashboardShelfConfig`: DashboardShelfConfig?
+    var `syncReaderPreferences`: Bool?
 }
 
 struct DashboardConfig: Codable, Sendable, Equatable {
@@ -886,6 +1046,19 @@ struct WidgetConfig: Codable, Sendable, Equatable, Identifiable {
     var `type`: String
     var `enabled`: Bool
     var `order`: Double
+}
+
+struct UserReaderSettingsResponse: Codable, Sendable, Equatable {
+    var `settings`: UserSettings
+    var `permissions`: [String]
+}
+
+extension PdfReaderSettings {
+    static var readerDefault: Self { Self(scrollMode: "page", spread: "none", zoomMode: "fit-page", customScale: 1, rotation: 0) }
+}
+
+extension CbxReaderSettings {
+    static var readerDefault: Self { Self(fitMode: "fit-page", viewMode: "single", scrollMode: "paginated", direction: "ltr", spreadAlignment: "normal", spreadGap: 0, forceTwoPage: false, widePageSingletonMode: "auto", bgColor: "black", autoAdvance: false) }
 }
 
 enum MetadataVocabulary {

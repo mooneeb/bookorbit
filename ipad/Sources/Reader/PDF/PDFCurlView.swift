@@ -2,107 +2,36 @@ import PDFKit
 import SwiftUI
 import UIKit
 
-struct PDFCurlView: UIViewControllerRepresentable {
+struct PDFCurlView: View {
   let document: PDFDocument
   let pageIndex: Int
   let selection: PDFSelection?
   let onTurn: (Int) -> Void
+  var settings = PdfReaderSettings.readerDefault
+  var animation = ReaderTurnAnimation.curl
+  var onTransition: (Bool) -> Void = { _ in }
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-  func makeCoordinator() -> Coordinator {
-    Coordinator(document: document, pageIndex: pageIndex, onTurn: onTurn)
-  }
-
-  func makeUIViewController(context: Context) -> UIPageViewController {
-    let controller = UIPageViewController(
-      transitionStyle: .pageCurl, navigationOrientation: .horizontal,
-      options: [.spineLocation: UIPageViewController.SpineLocation.min.rawValue])
-    controller.isDoubleSided = false
-    controller.dataSource = context.coordinator
-    controller.delegate = context.coordinator
-    controller.view.accessibilityIdentifier = "pdfReader"
-    controller.view.backgroundColor = .systemBackground
-    if let page = context.coordinator.page(at: pageIndex) {
-      controller.setViewControllers([page], direction: .forward, animated: false)
-      page.highlight(selection)
-    }
-    return controller
-  }
-
-  func updateUIViewController(_ controller: UIPageViewController, context: Context) {
-    context.coordinator.onTurn = onTurn
-    context.coordinator.show(pageIndex, in: controller)
-    (controller.viewControllers?.first as? PDFPageController)?.highlight(selection)
-  }
-
-  @MainActor
-  final class Coordinator: NSObject, UIPageViewControllerDataSource, UIPageViewControllerDelegate {
-    let document: PDFDocument
-    private var currentIndex: Int
-    private var pages: [Int: PDFPageController] = [:]
-    var onTurn: (Int) -> Void
-
-    init(document: PDFDocument, pageIndex: Int, onTurn: @escaping (Int) -> Void) {
-      self.document = document
-      currentIndex = pageIndex
-      self.onTurn = onTurn
-    }
-
-    fileprivate func page(at index: Int) -> PDFPageController? {
-      guard (0..<document.pageCount).contains(index) else { return nil }
-      if let cached = pages[index] { return cached }
-      let page = PDFPageController(document: document, index: index)
-      if abs(index - currentIndex) <= 1 { pages[index] = page }
-      return page
-    }
-
-    func show(_ index: Int, in controller: UIPageViewController) {
-      guard index != currentIndex, (0..<document.pageCount).contains(index) else { return }
-      let direction: UIPageViewController.NavigationDirection =
-        index > currentIndex ? .forward : .reverse
-      currentIndex = index
-      pages = pages.filter { abs($0.key - currentIndex) <= 1 }
-      if let page = page(at: index) {
-        controller.setViewControllers([page], direction: direction, animated: false)
-      }
-    }
-
-    func pageViewController(
-      _ controller: UIPageViewController, viewControllerBefore viewController: UIViewController
-    ) -> UIViewController? {
-      guard let page = viewController as? PDFPageController else { return nil }
-      return self.page(at: page.index - 1)
-    }
-
-    func pageViewController(
-      _ controller: UIPageViewController, viewControllerAfter viewController: UIViewController
-    ) -> UIViewController? {
-      guard let page = viewController as? PDFPageController else { return nil }
-      return self.page(at: page.index + 1)
-    }
-
-    func pageViewController(
-      _ controller: UIPageViewController, didFinishAnimating finished: Bool,
-      previousViewControllers: [UIViewController], transitionCompleted completed: Bool
-    ) {
-      guard completed, let page = controller.viewControllers?.first as? PDFPageController
-      else {
-        return
-      }
-      currentIndex = page.index
-      pages = pages.filter { abs($0.key - currentIndex) <= 1 }
-      pages[currentIndex] = page
-      onTurn(currentIndex)
-    }
-
-    func pageViewController(
-      _ controller: UIPageViewController, spineLocationFor orientation: UIInterfaceOrientation
-    ) -> UIPageViewController.SpineLocation { .min }
+  var body: some View {
+    let effectiveAnimation = reduceMotion ? ReaderTurnAnimation.none : animation
+    NativePagedView(
+      pageCount: document.pageCount, pageIndex: pageIndex, animation: effectiveAnimation,
+      identifier: "pdfReader",
+      makePage: { PDFPageController(document: document, index: $0) },
+      refreshPage: { controller, _ in
+        (controller as? PDFPageController)?.update(settings: settings, selection: selection)
+      },
+      onTurn: onTurn, onTransition: onTransition
+    )
+    .id(effectiveAnimation)
   }
 }
 
 private final class PDFPageController: UIViewController {
   let index: Int
   private let document: PDFDocument
+  private let pdf = PDFView()
+  private var settings = PdfReaderSettings.readerDefault
 
   init(document: PDFDocument, index: Int) {
     self.document = document
@@ -113,26 +42,45 @@ private final class PDFPageController: UIViewController {
   required init?(coder: NSCoder) { return nil }
 
   override func loadView() {
-    let pdf = PDFView()
+    view = UIView()
+    view.backgroundColor = .systemBackground
     pdf.displayMode = .singlePage
     pdf.displaysPageBreaks = false
-    pdf.autoScales = true
     pdf.backgroundColor = .systemBackground
     pdf.document = document
     if let page = document.page(at: index) { pdf.go(to: page) }
-    view = pdf
+    view.addSubview(pdf)
   }
 
   override func viewDidLayoutSubviews() {
     super.viewDidLayoutSubviews()
-    guard let pdf = view as? PDFView else { return }
-    pdf.scaleFactor = pdf.scaleFactorForSizeToFit
+    layoutPage()
   }
 
-  func highlight(_ selection: PDFSelection?) {
+  private func layoutPage() {
+    let swapsDimensions = settings.rotation % 180 != 0
+    pdf.bounds = CGRect(
+      origin: .zero,
+      size: swapsDimensions
+        ? CGSize(width: view.bounds.height, height: view.bounds.width) : view.bounds.size)
+    pdf.center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
+    pdf.transform = CGAffineTransform(rotationAngle: CGFloat(settings.rotation) * .pi / 180)
+    pdf.autoScales = settings.zoomMode == "automatic"
+    if settings.zoomMode == "custom" {
+      pdf.scaleFactor = settings.customScale
+    } else if settings.zoomMode == "fit-width", let page = document.page(at: index) {
+      let width = page.bounds(for: pdf.displayBox).width
+      if width > 0 { pdf.scaleFactor = pdf.bounds.width / width }
+    } else {
+      pdf.scaleFactor = pdf.scaleFactorForSizeToFit
+    }
+  }
+
+  func update(settings: PdfReaderSettings, selection: PDFSelection?) {
     loadViewIfNeeded()
-    guard let pdf = view as? PDFView else { return }
+    self.settings = settings
     selection?.color = pdf.tintColor.withAlphaComponent(0.25)
     pdf.highlightedSelections = selection.map { [$0] }
+    layoutPage()
   }
 }

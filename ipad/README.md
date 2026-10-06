@@ -18,6 +18,8 @@ The author/series handoff now has a focused autonomous QA command and public/nat
 
 Production comic entry and native page navigation are implemented and awaiting their independent acceptance handoff. The production and proof apps share the bounded page-curl engine and acknowledged progress model. Actual CBZ proof tests passed; the new production path, direct navigation and genuine CBR/CB7 delivery remain acceptance work. [comic-reader-implementation.md](comic-reader-implementation.md) records the boundary and remaining reader controls.
 
+Native PDF/comic appearance and five page animations are implemented and awaiting independent acceptance. Defaults and per-book settings are server/account scoped; the existing account synchronization setting controls look-field PATCHes, while native animations remain local and respect Reduce Motion. [reader-preferences-implementation.md](reader-preferences-implementation.md) records canonical contracts, passing production compilation and the required shared-reader regression handoff.
+
 Native saved views and table-column controls are implemented and awaiting independent acceptance. Snapshots preserve the active query, search, presentation and column visibility/order/width, scoped to the server, user and library location. The bounded catalog supports rename, duplicate, favorites and confirmed deletion. Native table rows remain paged and virtualized while wide configured columns scroll horizontally. The web saved-view type now comes from the same canonical shared contract. [saved-view-implementation.md](saved-view-implementation.md) records checks and limitations.
 
 ## Build

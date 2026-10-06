@@ -2,15 +2,20 @@ import SwiftUI
 
 struct PDFReaderView: View {
   @State private var model: PDFReaderModel
+  @State private var preferences: ReaderPreferencesModel
   @State private var confirmsDiscard = false
   @State private var isNavigating = false
   @State private var isSearching = false
   @State private var isBrowsingContents = false
+  @State private var isEditingPreferences = false
+  @State private var isTurning = false
   @ScaledMetric(relativeTo: .body) private var actionWidth = 150.0
   @Environment(\.dismiss) private var dismiss
 
   init(api: BookOrbitAPI, file: BookDetailFile) {
     _model = State(initialValue: PDFReaderModel(api: api, file: file))
+    _preferences = State(
+      initialValue: ReaderPreferencesModel(api: api, fileID: file.id, group: "pdf"))
   }
 
   var body: some View {
@@ -19,7 +24,8 @@ struct PDFReaderView: View {
         if let document = model.document {
           PDFCurlView(
             document: document, pageIndex: model.pageIndex, selection: model.searchSelection,
-            onTurn: model.didTurn
+            onTurn: model.didTurn, settings: preferences.value.pdf,
+            animation: preferences.value.pageAnimation, onTransition: { isTurning = $0 }
           )
           .allowsHitTesting(!model.isClosing)
         } else if model.error == nil {
@@ -41,6 +47,19 @@ struct PDFReaderView: View {
               .frame(minHeight: 44)
           }
           LazyVGrid(columns: [GridItem(.adaptive(minimum: actionWidth))]) {
+            Button("Previous page", action: previousPage)
+              .frame(minHeight: 44)
+              .keyboardShortcut(.leftArrow, modifiers: [])
+              .accessibilityIdentifier("pdfPreviousPage")
+              .disabled(
+                model.document == nil || model.pageIndex == 0 || model.isClosing || isTurning)
+            Button("Next page", action: nextPage)
+              .frame(minHeight: 44)
+              .keyboardShortcut(.rightArrow, modifiers: [])
+              .accessibilityIdentifier("pdfNextPage")
+              .disabled(
+                model.document == nil || model.pageIndex + 1 == model.document?.pageCount
+                  || model.isClosing || isTurning)
             Button("Go to page") { isNavigating = true }
               .frame(minHeight: 44)
               .accessibilityIdentifier("pdfNavigate")
@@ -53,6 +72,10 @@ struct PDFReaderView: View {
               .frame(minHeight: 44)
               .accessibilityIdentifier("pdfSearch")
               .disabled(model.document == nil || model.isClosing)
+            Button("Reader settings") { isEditingPreferences = true }
+              .frame(minHeight: 44)
+              .accessibilityIdentifier("readerSettings")
+              .disabled(model.isClosing || preferences.isLoading)
             Button("Close reader", action: closeReader)
               .frame(minHeight: 44)
               .disabled(model.isClosing)
@@ -68,8 +91,15 @@ struct PDFReaderView: View {
       .navigationBarTitleDisplayMode(.inline)
     }
     .task { await model.load() }
+    .task { await preferences.load() }
     .onDisappear {
-      if !isNavigating && !isSearching && !isBrowsingContents { model.close() }
+      if !isNavigating && !isSearching && !isBrowsingContents && !isEditingPreferences {
+        model.close()
+        preferences.close()
+      }
+    }
+    .fullScreenCover(isPresented: $isEditingPreferences) {
+      ReaderPreferencesView(model: preferences)
     }
     .fullScreenCover(isPresented: $isBrowsingContents) {
       if let document = model.document {
@@ -103,4 +133,6 @@ struct PDFReaderView: View {
       if await model.prepareToClose() { dismiss() }
     }
   }
+  private func previousPage() { model.didTurn(to: model.pageIndex - 1) }
+  private func nextPage() { model.didTurn(to: model.pageIndex + 1) }
 }

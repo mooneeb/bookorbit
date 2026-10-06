@@ -244,6 +244,11 @@ actor BookOrbitAPI {
     return "\(profile.url.absoluteString).user.\(saved.user.id).session.\(sessionGeneration)"
   }
 
+  func storageNamespace() throws -> String {
+    guard let saved else { throw ConnectionError.expiredSession }
+    return "\(profile.url.absoluteString).user.\(saved.user.id)"
+  }
+
   private func authenticatedImage(path: String, query: [URLQueryItem]) async throws -> Data {
     let generation = sessionGeneration
     var request = URLRequest(url: profile.endpoint(path, query: query))
