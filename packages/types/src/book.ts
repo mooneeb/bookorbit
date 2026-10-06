@@ -481,6 +481,23 @@ export type BookMetadataRefreshPreviewResponse = {
   diagnostics: MetadataFetchDiagnostics;
 };
 
+export type BookFileComicMetadata = Omit<ComicMetadataFields, "issueNumber" | "volumeName"> & {
+  issueNumber?: string | null;
+  volumeName?: string | null;
+};
+
+export type BookFileMetadataResponse = Omit<
+  BookMetadataRefreshPreviewFields,
+  "seriesMemberships" | "communityRatings" | "coverUrl" | "audioCoverUrl" | "audioMetadata" | "comicMetadata"
+> & {
+  isbn10?: string | null;
+  isbn13?: string | null;
+  narrators?: string[];
+  durationSeconds?: number | null;
+  customMetadata?: CustomMetadataBookValueInput[];
+  comicMetadata?: BookFileComicMetadata;
+};
+
 export type BookKoboReadingState = {
   status: string | null;
   progressPercent: number | null;

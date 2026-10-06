@@ -10,7 +10,8 @@ final class MetadataExtraDraft {
   var ratings: [MetadataRatingDraft]
   var narrators: String
   var duration: String
-  var abridged: Bool
+  var abridged: Bool { didSet { clearsAbridged = false } }
+  var clearsAbridged = false
   var chapters: [MetadataChapterDraft]
   var comic: [String: String]
   private var originalSeries: [MetadataSeriesDraft]
@@ -123,7 +124,10 @@ final class MetadataExtraDraft {
       value.durationSeconds = Int(duration).map(FieldUpdate.set) ?? .clear
       changed = true
     }
-    if abridged != original.audioMetadata?.abridged ?? false {
+    if clearsAbridged, original.audioMetadata?.abridged != nil {
+      value.abridged = .clear
+      changed = true
+    } else if abridged != original.audioMetadata?.abridged ?? false {
       value.abridged = .set(abridged)
       changed = true
     }

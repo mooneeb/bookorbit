@@ -158,6 +158,12 @@ const patchRequests = new Set([
   "BookSeriesMembershipUpdatePayload",
 ]);
 const requestModels = new Set([...patchRequests, "BookMetadataAndLocksUpdatePayload", "SaveFileProgressPayload"]);
+const nullableResponses = new Set([
+  "BookFileMetadataResponse",
+  "BookFileComicMetadata",
+  "BookMetadataRefreshPreviewFields",
+  "BookMetadataRefreshPreviewFieldsAudioMetadata",
+]);
 
 function generateValueUnion(type, name) {
   if (declarations.has(name)) return name;
@@ -307,7 +313,11 @@ function generateModel(name, type) {
     } else {
       target = swiftType(propertyType, `${name}${field[0].toUpperCase()}${field.slice(1)}`, field);
     }
-    if (patchRequests.has(name) && propertyType.isUnion() && propertyType.types.some((part) => part.flags & ts.TypeFlags.Null)) {
+    if (
+      (patchRequests.has(name) || nullableResponses.has(name)) &&
+      propertyType.isUnion() &&
+      propertyType.types.some((part) => part.flags & ts.TypeFlags.Null)
+    ) {
       target = `FieldUpdate<${target.replace(/\?$/, "")}>?`;
     }
     if (property.flags & ts.SymbolFlags.Optional && !target.endsWith("?")) target += "?";
@@ -358,6 +368,8 @@ for (const name of [
   "SetSmartScopeKoboSyncPayload",
   "SavedView",
   "MetadataCandidate",
+  "BookFileMetadataResponse",
+  "BookMetadataRefreshPreviewResponse",
   "MetadataProviderInfo",
   "MetadataProviderSearchStatus",
   "UploadCoverFromUrlPayload",
@@ -459,6 +471,8 @@ declarations.set(
     let maximum: Int
     let read: KeyPath<BookDetail, String?>
     let write: WritableKeyPath<BookMetadataUpdatePayload, FieldUpdate<String>?>
+    let preview: KeyPath<BookMetadataRefreshPreviewFields, FieldUpdate<String>?>
+    let file: KeyPath<BookFileMetadataResponse, FieldUpdate<String>?>
 
     static let byProvider: [String: String] = [${idFields.map(([provider, field]) => `${JSON.stringify(provider)}: ${JSON.stringify(field)}`).join(", ")}]
 
@@ -467,7 +481,7 @@ ${limitFields
   .map(([field, limit]) => {
     const provider = idFields.find(([, value]) => value === field)?.[0];
     if (!provider && field !== "hardcoverEditionId") throw new Error(`Unmapped provider field ${field}`);
-    return `        .init(id: ${JSON.stringify(field)}, provider: ${JSON.stringify(provider ?? "hardcover")}, maximum: ${limit}, read: \\BookDetail.${field === "hardcoverEditionId" ? field : `providerIds.${provider}`}, write: \\BookMetadataUpdatePayload.${field}),`;
+    return `        .init(id: ${JSON.stringify(field)}, provider: ${JSON.stringify(provider ?? "hardcover")}, maximum: ${limit}, read: \\BookDetail.${field === "hardcoverEditionId" ? field : `providerIds.${provider}`}, write: \\BookMetadataUpdatePayload.${field}, preview: \\BookMetadataRefreshPreviewFields.${field}, file: \\BookFileMetadataResponse.${field}),`;
   })
   .join("\n")}
     ]

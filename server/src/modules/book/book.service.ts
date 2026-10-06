@@ -53,6 +53,7 @@ import type {
   BookKoboState,
   BookMetadataRefreshPreviewFields,
   BookMetadataRefreshPreviewResponse,
+  BookFileMetadataResponse,
   BookMetadataLockField,
   BookDeletionAuditMeta,
   BookQuery,
@@ -3488,14 +3489,31 @@ export class BookService {
     return this.getDetail(id, user);
   }
 
-  async getMetadataFromFile(id: number, user: RequestUser): Promise<Record<string, unknown>> {
-    await this.verifyBookAccess(id, user);
-    const file = await this.bookRepo.findPrimaryFile(id);
-    if (!file) throw new NotFoundException(`Book ${id} has no primary file`);
+  async getMetadataFromFile(id: number, user: RequestUser): Promise<BookFileMetadataResponse> {
+    const startedAt = Date.now();
+    const event = 'book.read_file_metadata';
+    this.logger.log(`[${event}] [start] bookId=${id} userId=${user.id} - read file metadata started`);
+    try {
+      await this.verifyBookAccess(id, user);
+      const file = await this.bookRepo.findPrimaryFile(id);
+      if (!file) throw new NotFoundException(`Book ${id} has no primary file`);
+      const result = file.format ? await this.readPrimaryFileMetadata(id, file.absolutePath, file.format) : {};
+      const fields = Object.values(result).filter((value) => value !== undefined).length;
+      this.logger.log(
+        `[${event}] [end] bookId=${id} userId=${user.id} durationMs=${Date.now() - startedAt} fields=${fields} - read file metadata completed`,
+      );
+      return result;
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'unknown';
+      const errorMessage = error instanceof Error ? sanitizeLogValue(error.message) : 'unknown';
+      this.logger.warn(
+        `[${event}] [fail] bookId=${id} userId=${user.id} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${errorMessage}" - read file metadata failed`,
+      );
+      throw error;
+    }
+  }
 
-    const { absolutePath, format } = file;
-    if (!format) return {};
-
+  private async readPrimaryFileMetadata(id: number, absolutePath: string, format: string): Promise<BookFileMetadataResponse> {
     switch (format) {
       case 'epub': {
         const parsed = await extractEpubMetadata(absolutePath);
@@ -3638,7 +3656,7 @@ export class BookService {
         if (isAudioFormat(format)) {
           const parsed = await extractAudioMetadata(absolutePath);
           if (!parsed) return {};
-          const result: Record<string, unknown> = {};
+          const result: BookFileMetadataResponse = {};
           if (parsed.title !== null) result.title = parsed.title;
           if (parsed.subtitle !== null) result.subtitle = parsed.subtitle;
           if (parsed.description !== null) result.description = parsed.description;

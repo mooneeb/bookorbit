@@ -138,6 +138,48 @@ actor BookOrbitAPI {
     }
   }
 
+  func boundedJSON<T: Decodable & Sendable>(
+    _ path: String, method: String = "GET", query: [URLQueryItem] = [],
+    byteLimit: Int = 1024 * 1024
+  ) async throws -> T {
+    let generation = sessionGeneration
+    var request = URLRequest(url: profile.endpoint(path, query: query))
+    request.httpMethod = method
+    request.timeoutInterval = 120
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(generation)
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(generation)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    guard response.mimeType == "application/json" else { throw ConnectionError.invalidResponse }
+    guard byteLimit > 0, response.expectedContentLength <= byteLimit else {
+      throw ConnectionError.responseTooLarge
+    }
+    var data = Data()
+    for try await byte in bytes {
+      try Task.checkCancellation()
+      try ensureSession(generation)
+      guard data.count < byteLimit else { throw ConnectionError.responseTooLarge }
+      data.append(byte)
+    }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    do { return try JSONDecoder().decode(T.self, from: data) } catch {
+      throw ConnectionError.invalidResponse
+    }
+  }
+
   func sendEmpty(
     _ path: String, method: String = "POST", body: Data? = nil, query: [URLQueryItem] = []
   ) async throws {

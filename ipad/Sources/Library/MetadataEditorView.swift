@@ -5,6 +5,7 @@ struct MetadataEditorView: View {
   @Bindable var draft: MetadataDraft
   @Environment(\.dismiss) private var dismiss
   @State private var isFindingMetadata = false
+  @State private var previewSource: MetadataPreviewSource?
 
   var body: some View {
     VStack(spacing: 0) {
@@ -18,6 +19,16 @@ struct MetadataEditorView: View {
         VStack(alignment: .leading, spacing: 24) {
           Button("Find and compare metadata") { isFindingMetadata = true }
             .frame(minHeight: 44).accessibilityIdentifier("findMetadata")
+          Button {
+            previewSource = .automatic
+          } label: {
+            Text("Preview automatic metadata").frame(minHeight: 44).contentShape(Rectangle())
+          }.accessibilityIdentifier("previewAutomaticMetadata")
+          Button {
+            previewSource = .embedded
+          } label: {
+            Text("Compare metadata from file").frame(minHeight: 44).contentShape(Rectangle())
+          }.accessibilityIdentifier("previewEmbeddedMetadata")
           if !draft.coverURLs.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
               ForEach(draft.coverURLs.keys.sorted(by: { $0.rawValue < $1.rawValue })) { medium in
@@ -171,6 +182,11 @@ struct MetadataEditorView: View {
       .interactiveDismissDisabled(model.isSaving)
     }
     .background(Color(uiColor: .systemBackground))
+    .fullScreenCover(item: $previewSource) { source in
+      MetadataPreviewView(api: model.api, bookID: model.bookID, source: source, draft: draft) {
+        previewSource = nil
+      }
+    }
     .fullScreenCover(isPresented: $isFindingMetadata) {
       if let book = model.book {
         MetadataSearchView(api: model.api, book: book, draft: draft) { isFindingMetadata = false }

@@ -819,6 +819,130 @@ struct MetadataCandidateChaptersItem: Codable, Sendable, Equatable {
     var `startMs`: Int
 }
 
+struct BookFileMetadataResponse: Codable, Sendable, Equatable {
+    var `googleBooksId`: FieldUpdate<String>?
+    var `goodreadsId`: FieldUpdate<String>?
+    var `amazonId`: FieldUpdate<String>?
+    var `hardcoverId`: FieldUpdate<String>?
+    var `hardcoverEditionId`: FieldUpdate<String>?
+    var `openLibraryId`: FieldUpdate<String>?
+    var `itunesId`: FieldUpdate<String>?
+    var `audibleId`: FieldUpdate<String>?
+    var `librofmId`: FieldUpdate<String>?
+    var `koboId`: FieldUpdate<String>?
+    var `comicvineId`: FieldUpdate<String>?
+    var `ranobedbId`: FieldUpdate<String>?
+    var `lubimyczytacId`: FieldUpdate<String>?
+    var `aladinId`: FieldUpdate<String>?
+    var `title`: FieldUpdate<String>?
+    var `subtitle`: FieldUpdate<String>?
+    var `authors`: [String]?
+    var `description`: FieldUpdate<String>?
+    var `publisher`: FieldUpdate<String>?
+    var `publishedYear`: FieldUpdate<Int>?
+    var `language`: FieldUpdate<String>?
+    var `pageCount`: FieldUpdate<Int>?
+    var `seriesName`: FieldUpdate<String>?
+    var `seriesIndex`: FieldUpdate<String>?
+    var `genres`: [String]?
+    var `publishedDate`: FieldUpdate<String>?
+    var `isbn10`: FieldUpdate<String>?
+    var `isbn13`: FieldUpdate<String>?
+    var `narrators`: [String]?
+    var `durationSeconds`: FieldUpdate<Int>?
+    var `customMetadata`: [CustomMetadataBookValueInput]?
+    var `comicMetadata`: BookFileComicMetadata?
+}
+
+struct BookFileComicMetadata: Codable, Sendable, Equatable {
+    var `pencillers`: [String]?
+    var `inkers`: [String]?
+    var `colorists`: [String]?
+    var `letterers`: [String]?
+    var `coverArtists`: [String]?
+    var `characters`: [String]?
+    var `teams`: [String]?
+    var `locations`: [String]?
+    var `storyArcs`: [String]?
+    var `issueNumber`: FieldUpdate<String>?
+    var `volumeName`: FieldUpdate<String>?
+}
+
+struct BookMetadataRefreshPreviewResponse: Codable, Sendable, Equatable {
+    var `metadata`: BookMetadataRefreshPreviewFields
+    var `diagnostics`: MetadataFetchDiagnostics
+}
+
+struct BookMetadataRefreshPreviewFields: Codable, Sendable, Equatable {
+    var `title`: FieldUpdate<String>?
+    var `subtitle`: FieldUpdate<String>?
+    var `description`: FieldUpdate<String>?
+    var `authors`: [String]?
+    var `genres`: [String]?
+    var `publisher`: FieldUpdate<String>?
+    var `publishedDate`: FieldUpdate<String>?
+    var `publishedYear`: FieldUpdate<Int>?
+    var `language`: FieldUpdate<String>?
+    var `pageCount`: FieldUpdate<Int>?
+    var `seriesName`: FieldUpdate<String>?
+    var `seriesIndex`: FieldUpdate<String>?
+    var `seriesMemberships`: FieldUpdate<[MetadataSeriesMembership]>?
+    var `communityRatings`: [BookCommunityRating]?
+    var `coverUrl`: String?
+    var `audioCoverUrl`: String?
+    var `googleBooksId`: FieldUpdate<String>?
+    var `goodreadsId`: FieldUpdate<String>?
+    var `amazonId`: FieldUpdate<String>?
+    var `hardcoverId`: FieldUpdate<String>?
+    var `hardcoverEditionId`: FieldUpdate<String>?
+    var `openLibraryId`: FieldUpdate<String>?
+    var `itunesId`: FieldUpdate<String>?
+    var `audibleId`: FieldUpdate<String>?
+    var `librofmId`: FieldUpdate<String>?
+    var `koboId`: FieldUpdate<String>?
+    var `comicvineId`: FieldUpdate<String>?
+    var `ranobedbId`: FieldUpdate<String>?
+    var `lubimyczytacId`: FieldUpdate<String>?
+    var `aladinId`: FieldUpdate<String>?
+    var `audioMetadata`: BookMetadataRefreshPreviewFieldsAudioMetadata?
+    var `comicMetadata`: ComicMetadataFields?
+}
+
+struct BookMetadataRefreshPreviewFieldsAudioMetadata: Codable, Sendable, Equatable {
+    var `narrators`: [String]?
+    var `durationSeconds`: FieldUpdate<Int>?
+    var `abridged`: FieldUpdate<Bool>?
+    var `chapters`: [BookMetadataRefreshPreviewFieldsAudioMetadataChaptersItem]?
+}
+
+struct BookMetadataRefreshPreviewFieldsAudioMetadataChaptersItem: Codable, Sendable, Equatable {
+    var `title`: String
+    var `startMs`: Int
+}
+
+struct MetadataFetchDiagnostics: Codable, Sendable, Equatable {
+    var `reason`: String?
+    var `activeProviders`: [String]
+    var `fieldRuleProviders`: [String]
+    var `disabledFieldRuleProviders`: [String]
+    var `enabledUnreferencedProviders`: [String]
+    var `throttledProviders`: [String]
+    var `candidateProviders`: [String]
+    var `candidateCount`: Double
+    var `resolvedFieldCount`: Double
+    var `coverSlots`: MetadataFetchDiagnosticsCoverSlots?
+}
+
+struct MetadataFetchDiagnosticsCoverSlots: Codable, Sendable, Equatable {
+    var `ebook`: MetadataFetchCoverSlotDiagnostics?
+    var `audio`: MetadataFetchCoverSlotDiagnostics?
+}
+
+struct MetadataFetchCoverSlotDiagnostics: Codable, Sendable, Equatable {
+    var `provider`: String?
+    var `pass`: Double?
+}
+
 struct MetadataProviderInfo: Codable, Sendable, Equatable {
     var `key`: String
     var `label`: String
@@ -1101,24 +1225,26 @@ enum MetadataVocabulary {
     let maximum: Int
     let read: KeyPath<BookDetail, String?>
     let write: WritableKeyPath<BookMetadataUpdatePayload, FieldUpdate<String>?>
+    let preview: KeyPath<BookMetadataRefreshPreviewFields, FieldUpdate<String>?>
+    let file: KeyPath<BookFileMetadataResponse, FieldUpdate<String>?>
 
     static let byProvider: [String: String] = ["google": "googleBooksId", "goodreads": "goodreadsId", "amazon": "amazonId", "hardcover": "hardcoverId", "openLibrary": "openLibraryId", "itunes": "itunesId", "audible": "audibleId", "audnexus": "audibleId", "librofm": "librofmId", "comicvine": "comicvineId", "ranobedb": "ranobedbId", "kobo": "koboId", "lubimyczytac": "lubimyczytacId", "aladin": "aladinId"]
 
     static let fields: [MetadataProviderField] = [
-        .init(id: "googleBooksId", provider: "google", maximum: 50, read: \BookDetail.providerIds.google, write: \BookMetadataUpdatePayload.googleBooksId),
-        .init(id: "goodreadsId", provider: "goodreads", maximum: 50, read: \BookDetail.providerIds.goodreads, write: \BookMetadataUpdatePayload.goodreadsId),
-        .init(id: "amazonId", provider: "amazon", maximum: 20, read: \BookDetail.providerIds.amazon, write: \BookMetadataUpdatePayload.amazonId),
-        .init(id: "hardcoverId", provider: "hardcover", maximum: 255, read: \BookDetail.providerIds.hardcover, write: \BookMetadataUpdatePayload.hardcoverId),
-        .init(id: "hardcoverEditionId", provider: "hardcover", maximum: 50, read: \BookDetail.hardcoverEditionId, write: \BookMetadataUpdatePayload.hardcoverEditionId),
-        .init(id: "openLibraryId", provider: "openLibrary", maximum: 50, read: \BookDetail.providerIds.openLibrary, write: \BookMetadataUpdatePayload.openLibraryId),
-        .init(id: "itunesId", provider: "itunes", maximum: 50, read: \BookDetail.providerIds.itunes, write: \BookMetadataUpdatePayload.itunesId),
-        .init(id: "audibleId", provider: "audible", maximum: 20, read: \BookDetail.providerIds.audible, write: \BookMetadataUpdatePayload.audibleId),
-        .init(id: "librofmId", provider: "librofm", maximum: 50, read: \BookDetail.providerIds.librofm, write: \BookMetadataUpdatePayload.librofmId),
-        .init(id: "koboId", provider: "kobo", maximum: 255, read: \BookDetail.providerIds.kobo, write: \BookMetadataUpdatePayload.koboId),
-        .init(id: "comicvineId", provider: "comicvine", maximum: 50, read: \BookDetail.providerIds.comicvine, write: \BookMetadataUpdatePayload.comicvineId),
-        .init(id: "ranobedbId", provider: "ranobedb", maximum: 50, read: \BookDetail.providerIds.ranobedb, write: \BookMetadataUpdatePayload.ranobedbId),
-        .init(id: "lubimyczytacId", provider: "lubimyczytac", maximum: 512, read: \BookDetail.providerIds.lubimyczytac, write: \BookMetadataUpdatePayload.lubimyczytacId),
-        .init(id: "aladinId", provider: "aladin", maximum: 20, read: \BookDetail.providerIds.aladin, write: \BookMetadataUpdatePayload.aladinId),
+        .init(id: "googleBooksId", provider: "google", maximum: 50, read: \BookDetail.providerIds.google, write: \BookMetadataUpdatePayload.googleBooksId, preview: \BookMetadataRefreshPreviewFields.googleBooksId, file: \BookFileMetadataResponse.googleBooksId),
+        .init(id: "goodreadsId", provider: "goodreads", maximum: 50, read: \BookDetail.providerIds.goodreads, write: \BookMetadataUpdatePayload.goodreadsId, preview: \BookMetadataRefreshPreviewFields.goodreadsId, file: \BookFileMetadataResponse.goodreadsId),
+        .init(id: "amazonId", provider: "amazon", maximum: 20, read: \BookDetail.providerIds.amazon, write: \BookMetadataUpdatePayload.amazonId, preview: \BookMetadataRefreshPreviewFields.amazonId, file: \BookFileMetadataResponse.amazonId),
+        .init(id: "hardcoverId", provider: "hardcover", maximum: 255, read: \BookDetail.providerIds.hardcover, write: \BookMetadataUpdatePayload.hardcoverId, preview: \BookMetadataRefreshPreviewFields.hardcoverId, file: \BookFileMetadataResponse.hardcoverId),
+        .init(id: "hardcoverEditionId", provider: "hardcover", maximum: 50, read: \BookDetail.hardcoverEditionId, write: \BookMetadataUpdatePayload.hardcoverEditionId, preview: \BookMetadataRefreshPreviewFields.hardcoverEditionId, file: \BookFileMetadataResponse.hardcoverEditionId),
+        .init(id: "openLibraryId", provider: "openLibrary", maximum: 50, read: \BookDetail.providerIds.openLibrary, write: \BookMetadataUpdatePayload.openLibraryId, preview: \BookMetadataRefreshPreviewFields.openLibraryId, file: \BookFileMetadataResponse.openLibraryId),
+        .init(id: "itunesId", provider: "itunes", maximum: 50, read: \BookDetail.providerIds.itunes, write: \BookMetadataUpdatePayload.itunesId, preview: \BookMetadataRefreshPreviewFields.itunesId, file: \BookFileMetadataResponse.itunesId),
+        .init(id: "audibleId", provider: "audible", maximum: 20, read: \BookDetail.providerIds.audible, write: \BookMetadataUpdatePayload.audibleId, preview: \BookMetadataRefreshPreviewFields.audibleId, file: \BookFileMetadataResponse.audibleId),
+        .init(id: "librofmId", provider: "librofm", maximum: 50, read: \BookDetail.providerIds.librofm, write: \BookMetadataUpdatePayload.librofmId, preview: \BookMetadataRefreshPreviewFields.librofmId, file: \BookFileMetadataResponse.librofmId),
+        .init(id: "koboId", provider: "kobo", maximum: 255, read: \BookDetail.providerIds.kobo, write: \BookMetadataUpdatePayload.koboId, preview: \BookMetadataRefreshPreviewFields.koboId, file: \BookFileMetadataResponse.koboId),
+        .init(id: "comicvineId", provider: "comicvine", maximum: 50, read: \BookDetail.providerIds.comicvine, write: \BookMetadataUpdatePayload.comicvineId, preview: \BookMetadataRefreshPreviewFields.comicvineId, file: \BookFileMetadataResponse.comicvineId),
+        .init(id: "ranobedbId", provider: "ranobedb", maximum: 50, read: \BookDetail.providerIds.ranobedb, write: \BookMetadataUpdatePayload.ranobedbId, preview: \BookMetadataRefreshPreviewFields.ranobedbId, file: \BookFileMetadataResponse.ranobedbId),
+        .init(id: "lubimyczytacId", provider: "lubimyczytac", maximum: 512, read: \BookDetail.providerIds.lubimyczytac, write: \BookMetadataUpdatePayload.lubimyczytacId, preview: \BookMetadataRefreshPreviewFields.lubimyczytacId, file: \BookFileMetadataResponse.lubimyczytacId),
+        .init(id: "aladinId", provider: "aladin", maximum: 20, read: \BookDetail.providerIds.aladin, write: \BookMetadataUpdatePayload.aladinId, preview: \BookMetadataRefreshPreviewFields.aladinId, file: \BookFileMetadataResponse.aladinId),
     ]
 }
 
