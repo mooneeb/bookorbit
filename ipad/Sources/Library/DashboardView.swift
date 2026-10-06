@@ -78,15 +78,31 @@ struct DashboardView: View {
       }
       .foregroundStyle(Color(uiColor: .label))
       .background(Color(uiColor: .systemBackground))
+      .safeAreaInset(edge: .bottom) {
+        HStack {
+          Spacer()
+          Button {
+            showingSettings = true
+          } label: {
+            Text("Shelves")
+              .font(.body)
+              .padding(.horizontal, 16)
+              .frame(minWidth: 44, minHeight: 44)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .foregroundStyle(Color(uiColor: .label))
+          .disabled(model.isBusy || model.isSaving)
+          .accessibilityIdentifier("dashboardSettings")
+        }
+        .padding(.horizontal)
+        .background(Color(uiColor: .systemBackground))
+      }
       .navigationTitle("Home")
       .toolbar {
         ToolbarItem(placement: .topBarLeading) { Button("Done", action: dismiss.callAsFunction) }
         ToolbarItem(placement: .topBarTrailing) {
           Button("Refresh") { Task { await model.load() } }.disabled(model.isBusy || model.isSaving)
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-          Button("Shelves") { showingSettings = true }.disabled(model.isBusy || model.isSaving)
-            .accessibilityIdentifier("dashboardSettings")
         }
       }
       .task { await model.load() }
