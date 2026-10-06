@@ -1294,8 +1294,9 @@ final class EntryJourneyTests: XCTestCase {
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
     let existing = field.value as? String ?? ""
     if !existing.isEmpty && existing != field.placeholderValue {
-      field.typeKey("a", modifierFlags: .command)
-      field.typeText(XCUIKeyboardKey.delete.rawValue)
+      field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+      field.typeText(
+        String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.utf16.count))
       let value = field.value as? String
       XCTAssertTrue(value == nil || value == "" || value == field.placeholderValue)
     }

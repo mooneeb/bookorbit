@@ -89,7 +89,7 @@ final class CoverJourneyTests: XCTestCase {
     hierarchy.name = "IPAD-E01-A02-photo-picker-public-hierarchy"
     hierarchy.lifetime = .keepAlways
     add(hierarchy)
-    photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    photo.tap()
     XCTAssertTrue(app.staticTexts["Selected image: 640 × 960"].waitForExistence(timeout: 10))
     capture("IPAD-E01-A02-cover-staged")
     let staged = try await request("books/6", token: token)
@@ -220,7 +220,7 @@ final class CoverJourneyTests: XCTestCase {
     hierarchy.name = "IPAD-E01-A02-original-picker-public-hierarchy"
     hierarchy.lifetime = .keepAlways
     add(hierarchy)
-    photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    photo.tap()
     XCTAssertTrue(app.staticTexts["Selected image: 2,400 × 3,600"].waitForExistence(timeout: 10))
     capture("IPAD-E01-A02-original-image-staged")
     let stagedData = try await request("books/8", token: token)
@@ -330,7 +330,7 @@ final class CoverJourneyTests: XCTestCase {
     app.buttons["chooseEbookCover"].tap()
     let photo = coverFixturePhoto(in: app, year: "2030")
     XCTAssertTrue(photo.waitForExistence(timeout: 10))
-    photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    photo.tap()
     XCTAssertTrue(app.staticTexts["Selected image: 640 × 960"].waitForExistence(timeout: 10))
     _ = try await request(
       "books/6/metadata-and-locks", method: "PATCH", token: token,
@@ -401,7 +401,7 @@ final class CoverJourneyTests: XCTestCase {
     app.buttons["chooseEbookCover"].tap()
     let photo = coverFixturePhoto(in: app, year: "2030")
     XCTAssertTrue(photo.waitForExistence(timeout: 10))
-    photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    photo.tap()
     XCTAssertTrue(app.staticTexts["Selected image: 640 × 960"].waitForExistence(timeout: 10))
     try await coverFault("held", method: "GET")
     app.buttons["saveEbookCover"].tap()
@@ -451,7 +451,7 @@ final class CoverJourneyTests: XCTestCase {
     app.buttons["chooseEbookCover"].tap()
     let photo = coverFixturePhoto(in: app, year: "2030")
     XCTAssertTrue(photo.waitForExistence(timeout: 10))
-    photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    photo.tap()
     XCTAssertTrue(app.staticTexts["Selected image: 640 × 960"].waitForExistence(timeout: 10))
     try await coverFault("upload-fail")
     app.buttons["saveEbookCover"].tap()
@@ -516,10 +516,16 @@ final class CoverJourneyTests: XCTestCase {
     let picker = app.scrollViews["photosView_content_scroll_view"]
     XCTAssertTrue(picker.waitForExistence(timeout: 10))
     for _ in 0..<20 {
-      if photo.exists && photo.isHittable { return photo }
+      if photo.exists {
+        if picker.frame.contains(photo.frame) && photo.isHittable { return photo }
+        if photo.frame.minY < picker.frame.minY {
+          picker.swipeDown(velocity: .slow)
+          continue
+        }
+      }
       picker.swipeUp(velocity: .slow)
     }
-    XCTAssertTrue(photo.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTFail("The cover fixture photo is not fully visible in the picker.")
     return photo
   }
 
@@ -599,7 +605,7 @@ final class CoverJourneyTests: XCTestCase {
     _ path: String, method: String = "GET", token: String? = nil, body: [String: Any]? = nil
   ) async throws -> Data {
     var request = URLRequest(
-      url: URL(string: "http://localhost:16482/api/v1/\(path)")!,
+      url: URL(string: "http://127.0.0.1:16482/api/v1/\(path)")!,
       cachePolicy: .reloadIgnoringLocalCacheData)
     request.httpMethod = method
     request.timeoutInterval = 15
