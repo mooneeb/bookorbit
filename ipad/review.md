@@ -279,3 +279,13 @@ The independent action review finds the borderless row behavior appropriate for 
 The independent review found no new diagnostic implementation defect or scope creep. It requested an evidence correction: the failed public localhost login records IPv6 loopback refusal and timeout, not demonstrated DNS delay. Verification now states those observations without claiming DNS as the cause. Native chapter feasibility advances the issue's renderer/accessibility proof requirement without claiming CFI, native anchor mapping, rich publication support, saved progress or production EPUB acceptance.
 
 `run-96987-1791310023641` passed the two repaired production journeys; `run-3387-1791310514486` passed native chapter and PDF proof regression. Their actual PNGs were opened and inspected. The earlier full production aggregate remains 18 passes and 3 failures; browser execution was gated. Two failures have focused repairs, while the relation contrast audit remains unresolved. Standards: 0 open material source findings in these reviewed changes. Spec: 0 new implementation findings after the evidence correction, with 4 whole-issue P1 gaps, original WebKit accessibility failures, the relation audit and complete regression acceptance still open. Issue #2 remains incomplete.
+
+## Metadata semantic contrast follow-up
+
+### Standards
+
+The independent approved-base review finds no new material documented-standard violation or heuristic smell. Adaptive label colors are scoped to relation headings and lock labels, leaving Clear button tint independent. The actual UITextViews pair system label text with opaque system backgrounds; editing, locks, sizing and accessibility semantics remain intact. The public first-line input tap retains exact blank/replacement, keyboard existence and Unicode assertions.
+
+### Spec
+
+The independent review finds no new material implementation or scope defect. The narrowed relation audit passed in `run-8919-1791310950184`; its Unicode keyboard failure remains recorded. Corrected Unicode execution passed in `run-14558-1791311579409`, including the unfiltered audit. Both runs' actual PNGs were opened and inspected. The latter combined run is still failed because it also contains the genuine preimplementation table RED. Clear tint remains visually distinct, and no audit or input oracle was waived. Standards: 0 new material findings. Spec: 0 new slice findings; complete aggregate, four whole-issue P1 gaps and original WebKit/EPUB accessibility failures remain open.

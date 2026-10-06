@@ -154,7 +154,7 @@ struct MetadataEditorView: View {
       }
       .interactiveDismissDisabled(model.isSaving)
     }
-    .background(.background)
+    .background(Color(uiColor: .systemBackground))
   }
 }
 
@@ -203,7 +203,7 @@ private struct MetadataNamesField: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
-        Text(label).font(.headline)
+        Text(label).font(.headline).foregroundStyle(Color(uiColor: .label))
         Spacer()
         MetadataClearButton(text: $text, label: label, identifier: identifier)
           .disabled(draft.lockedFields.contains(field))
@@ -262,6 +262,7 @@ private struct MetadataFieldLock: View {
           if locked { draft.lockedFields.insert(field) } else { draft.lockedFields.remove(field) }
         })
     )
+    .foregroundStyle(Color(uiColor: .label))
     .accessibilityIdentifier(identifier)
   }
 }

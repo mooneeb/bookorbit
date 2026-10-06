@@ -10,7 +10,7 @@ struct MetadataTextInput: UIViewRepresentable {
     let view = MetadataEditableTextView()
     view.font = .preferredFont(forTextStyle: .body)
     view.adjustsFontForContentSizeCategory = true
-    view.backgroundColor = .clear
+    view.backgroundColor = .systemBackground
     view.textColor = .label
     view.isScrollEnabled = true
     view.delegate = context.coordinator

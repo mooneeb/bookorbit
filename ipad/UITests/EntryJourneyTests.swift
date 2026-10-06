@@ -904,7 +904,7 @@ final class EntryJourneyTests: XCTestCase {
       XCTAssertTrue(value == nil || value == "" || value == field.placeholderValue)
     }
     revealMetadataElement(field, in: app)
-    field.tap()
+    field.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.15)).tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
     revealMetadataElement(field, in: app)
     field.tap()
