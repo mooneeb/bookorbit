@@ -111,7 +111,7 @@ struct BookFileRef: Codable, Sendable, Equatable, Identifiable {
 
 struct EpubMediaOverlayCapability: Codable, Sendable, Equatable {
     var `available`: Bool
-    var `durationSeconds`: Double?
+    var `durationSeconds`: Int?
 }
 
 struct BookDetail: Codable, Sendable, Equatable, Identifiable {
@@ -132,6 +132,15 @@ struct BookDetail: Codable, Sendable, Equatable, Identifiable {
     var `genres`: [String]
     var `tags`: [String]
     var `customMetadata`: [CustomMetadataBookValue]
+    var `seriesName`: String?
+    var `seriesIndex`: String?
+    var `seriesMemberships`: [BookSeriesMembership]?
+    var `rating`: Double?
+    var `communityRatings`: [BookCommunityRating]
+    var `providerIds`: BookDetailProviderIds
+    var `hardcoverEditionId`: String?
+    var `audioMetadata`: AudioMetadata?
+    var `comicMetadata`: ComicMetadataFields?
     var `files`: [BookDetailFile]
     var `lockedFields`: [String]
     var `coverMedia`: [CoverMedium]
@@ -150,7 +159,7 @@ struct CustomMetadataBookValue: Codable, Sendable, Equatable {
     var `key`: String
     var `label`: String
     var `type`: String
-    var `displayOrder`: Double
+    var `displayOrder`: Int
     var `value`: CustomMetadataPrimitiveValue
 }
 
@@ -176,13 +185,78 @@ enum CustomMetadataPrimitiveValue: Codable, Sendable, Equatable {
     }
 }
 
+struct BookSeriesMembership: Codable, Sendable, Equatable {
+    var `seriesId`: Int
+    var `seriesName`: String
+    var `seriesIndex`: String?
+    var `displayOrder`: Int
+    var `expectedBookCount`: Int?
+}
+
+struct BookCommunityRating: Codable, Sendable, Equatable {
+    var `provider`: String
+    var `rating`: Double
+    var `ratingCount`: Int?
+    var `updatedAt`: String?
+}
+
+struct BookDetailProviderIds: Codable, Sendable, Equatable {
+    var `google`: String?
+    var `goodreads`: String?
+    var `amazon`: String?
+    var `hardcover`: String?
+    var `openLibrary`: String?
+    var `itunes`: String?
+    var `audible`: String?
+    var `audnexus`: String?
+    var `librofm`: String?
+    var `comicvine`: String?
+    var `ranobedb`: String?
+    var `kobo`: String?
+    var `lubimyczytac`: String?
+    var `aladin`: String?
+}
+
+struct AudioMetadata: Codable, Sendable, Equatable {
+    var `narrators`: [AudioMetadataNarratorsItem]
+    var `durationSeconds`: Int?
+    var `abridged`: Bool
+    var `chapters`: [AudioMetadataChaptersItem]?
+}
+
+struct AudioMetadataNarratorsItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `sortName`: String?
+    var `displayOrder`: Int
+}
+
+struct AudioMetadataChaptersItem: Codable, Sendable, Equatable {
+    var `title`: String
+    var `startMs`: Int
+}
+
+struct ComicMetadataFields: Codable, Sendable, Equatable {
+    var `issueNumber`: String?
+    var `volumeName`: String?
+    var `pencillers`: [String]?
+    var `inkers`: [String]?
+    var `colorists`: [String]?
+    var `letterers`: [String]?
+    var `coverArtists`: [String]?
+    var `characters`: [String]?
+    var `teams`: [String]?
+    var `locations`: [String]?
+    var `storyArcs`: [String]?
+}
+
 struct BookDetailFile: Codable, Sendable, Equatable, Identifiable {
     var `id`: Int
     var `format`: String?
     var `role`: String
     var `filename`: String?
     var `sizeBytes`: Double?
-    var `durationSeconds`: Double?
+    var `durationSeconds`: Int?
 }
 
 struct BookDetailCovers: Codable, Sendable, Equatable {
@@ -346,18 +420,78 @@ struct BookMetadataUpdatePayload: Encodable, Sendable, Equatable {
     var `publishedYear`: FieldUpdate<Int>?
     var `language`: FieldUpdate<String>?
     var `pageCount`: FieldUpdate<Int>?
+    var `seriesName`: FieldUpdate<String>?
+    var `seriesIndex`: FieldUpdate<String>?
     var `isbn13`: FieldUpdate<String>?
     var `isbn10`: FieldUpdate<String>?
     var `genres`: [String]?
     var `tags`: [String]?
+    var `rating`: FieldUpdate<Double>?
     var `publishedDate`: FieldUpdate<String>?
+    var `googleBooksId`: FieldUpdate<String>?
+    var `goodreadsId`: FieldUpdate<String>?
+    var `amazonId`: FieldUpdate<String>?
+    var `hardcoverId`: FieldUpdate<String>?
+    var `hardcoverEditionId`: FieldUpdate<String>?
+    var `openLibraryId`: FieldUpdate<String>?
+    var `itunesId`: FieldUpdate<String>?
+    var `audibleId`: FieldUpdate<String>?
+    var `librofmId`: FieldUpdate<String>?
+    var `koboId`: FieldUpdate<String>?
+    var `comicvineId`: FieldUpdate<String>?
+    var `ranobedbId`: FieldUpdate<String>?
+    var `lubimyczytacId`: FieldUpdate<String>?
+    var `aladinId`: FieldUpdate<String>?
     var `authors`: [String]?
     var `customMetadata`: [CustomMetadataBookValueInput]?
+    var `seriesMemberships`: FieldUpdate<[BookSeriesMembershipUpdatePayload]>?
+    var `communityRatings`: FieldUpdate<[BookCommunityRatingUpdatePayload]>?
+    var `audioMetadata`: AudioMetadataUpdatePayload?
+    var `comicMetadata`: ComicMetadataUpdatePayload?
 }
 
 struct CustomMetadataBookValueInput: Codable, Sendable, Equatable {
     var `fieldId`: Int
     var `value`: CustomMetadataPrimitiveValue
+}
+
+struct BookSeriesMembershipUpdatePayload: Encodable, Sendable, Equatable {
+    var `seriesName`: String
+    var `seriesIndex`: FieldUpdate<String>?
+    var `expectedBookCount`: FieldUpdate<Int>?
+}
+
+struct BookCommunityRatingUpdatePayload: Codable, Sendable, Equatable {
+    var `provider`: String
+    var `rating`: Double
+    var `ratingCount`: Int?
+}
+
+struct AudioMetadataUpdatePayload: Encodable, Sendable, Equatable {
+    var `narrators`: [String]?
+    var `durationSeconds`: FieldUpdate<Int>?
+    var `abridged`: FieldUpdate<Bool>?
+    var `chapters`: FieldUpdate<[AudiobookChapterUpdatePayload]>?
+}
+
+struct AudiobookChapterUpdatePayload: Codable, Sendable, Equatable {
+    var `title`: String
+    var `startMs`: Int
+    var `durationMs`: Int?
+}
+
+struct ComicMetadataUpdatePayload: Encodable, Sendable, Equatable {
+    var `pencillers`: [String]?
+    var `inkers`: [String]?
+    var `colorists`: [String]?
+    var `letterers`: [String]?
+    var `coverArtists`: [String]?
+    var `characters`: [String]?
+    var `teams`: [String]?
+    var `locations`: [String]?
+    var `storyArcs`: [String]?
+    var `issueNumber`: FieldUpdate<String>?
+    var `volumeName`: FieldUpdate<String>?
 }
 
 struct BookMetadataAndLocksUpdatePayload: Encodable, Sendable, Equatable {
@@ -639,6 +773,99 @@ struct TableLayoutState: Codable, Sendable, Equatable {
     var `pinnedColumns`: [String: String?]?
 }
 
+struct MetadataCandidate: Codable, Sendable, Equatable {
+    var `provider`: String
+    var `providerId`: String
+    var `hardcoverEditionId`: String?
+    var `title`: String?
+    var `displayTitle`: String?
+    var `subtitle`: String?
+    var `authors`: [String]?
+    var `description`: String?
+    var `publisher`: String?
+    var `publishedDate`: String?
+    var `publishedYear`: Int?
+    var `language`: String?
+    var `pageCount`: Int?
+    var `isbn10`: String?
+    var `isbn13`: String?
+    var `seriesName`: String?
+    var `seriesIndex`: String?
+    var `seriesTotalBooks`: Double?
+    var `seriesMemberships`: [MetadataSeriesMembership]?
+    var `genres`: [String]?
+    var `coverUrl`: String?
+    var `coverShape`: String?
+    var `coverWidth`: Double?
+    var `coverHeight`: Double?
+    var `sourceUrl`: String?
+    var `narrators`: [String]?
+    var `durationSeconds`: Int?
+    var `abridged`: Bool?
+    var `audibleId`: String?
+    var `chapters`: [MetadataCandidateChaptersItem]?
+    var `comicMetadata`: ComicMetadataFields?
+    var `communityRating`: Double?
+    var `communityRatingCount`: Int?
+}
+
+struct MetadataSeriesMembership: Codable, Sendable, Equatable {
+    var `seriesName`: String
+    var `seriesIndex`: String?
+}
+
+struct MetadataCandidateChaptersItem: Codable, Sendable, Equatable {
+    var `title`: String
+    var `startMs`: Int
+}
+
+struct MetadataProviderInfo: Codable, Sendable, Equatable {
+    var `key`: String
+    var `label`: String
+    var `identifiable`: Bool
+    var `selectedByFieldRules`: Bool?
+    var `coverPriority`: Double?
+    var `audioCoverPriority`: Double?
+}
+
+struct MetadataProviderSearchStatus: Codable, Sendable, Equatable {
+    var `provider`: String
+    var `outcome`: String
+}
+
+struct UploadCoverFromUrlPayload: Codable, Sendable, Equatable {
+    var `url`: String
+}
+
+struct CoverSearchResult: Codable, Sendable, Equatable {
+    var `url`: CoverSearchResultUrl
+    var `previewUrl`: String
+    var `sourceUrl`: String
+    var `width`: Int
+    var `height`: Int
+    var `source`: String
+}
+
+enum CoverSearchResultUrl: Codable, Sendable, Equatable {
+    case string(String)
+    case number(Double)
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(String.self) { self = .string(value); return }
+        if let value = try? container.decode(Double.self) { self = .number(value); return }
+        throw DecodingError.typeMismatch(Self.self, .init(codingPath: decoder.codingPath, debugDescription: "Invalid filter value"))
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        }
+    }
+}
+
 struct UserDashboardSettingsResponse: Codable, Sendable, Equatable {
     var `settings`: UserSettings
 }
@@ -659,6 +886,40 @@ struct WidgetConfig: Codable, Sendable, Equatable, Identifiable {
     var `type`: String
     var `enabled`: Bool
     var `order`: Double
+}
+
+enum MetadataVocabulary {
+    static let coverProviders: [String] = ["duckduckgo", "itunes", "audiobookcovers", "all"]
+    static let lockFields: [String] = ["title", "subtitle", "authors", "description", "publisher", "publishedYear", "language", "pageCount", "seriesName", "seriesIndex", "isbn13", "isbn10", "genres", "tags", "rating", "communityRating", "narrators", "durationSeconds", "abridged", "googleBooksId", "goodreadsId", "amazonId", "hardcoverId", "hardcoverEditionId", "openLibraryId", "itunesId", "audibleId", "librofmId", "koboId", "comicvineId", "ranobedbId", "lubimyczytacId", "aladinId", "comicIssueNumber", "comicVolumeName", "comicStoryArcs", "comicPencillers", "comicInkers", "comicColorists", "comicLetterers", "comicCoverArtists", "comicCharacters", "comicTeams", "comicLocations", "cover", "audioCover"]
+    static let providers: [String] = ["google", "goodreads", "amazon", "hardcover", "openLibrary", "itunes", "audible", "audnexus", "librofm", "comicvine", "ranobedb", "kobo", "lubimyczytac", "aladin"]
+    static let statusEvent = "provider-status"
+}
+
+@MainActor struct MetadataProviderField: Identifiable {
+    let id: String
+    let provider: String
+    let maximum: Int
+    let read: KeyPath<BookDetail, String?>
+    let write: WritableKeyPath<BookMetadataUpdatePayload, FieldUpdate<String>?>
+
+    static let byProvider: [String: String] = ["google": "googleBooksId", "goodreads": "goodreadsId", "amazon": "amazonId", "hardcover": "hardcoverId", "openLibrary": "openLibraryId", "itunes": "itunesId", "audible": "audibleId", "audnexus": "audibleId", "librofm": "librofmId", "comicvine": "comicvineId", "ranobedb": "ranobedbId", "kobo": "koboId", "lubimyczytac": "lubimyczytacId", "aladin": "aladinId"]
+
+    static let fields: [MetadataProviderField] = [
+        .init(id: "googleBooksId", provider: "google", maximum: 50, read: \BookDetail.providerIds.google, write: \BookMetadataUpdatePayload.googleBooksId),
+        .init(id: "goodreadsId", provider: "goodreads", maximum: 50, read: \BookDetail.providerIds.goodreads, write: \BookMetadataUpdatePayload.goodreadsId),
+        .init(id: "amazonId", provider: "amazon", maximum: 20, read: \BookDetail.providerIds.amazon, write: \BookMetadataUpdatePayload.amazonId),
+        .init(id: "hardcoverId", provider: "hardcover", maximum: 255, read: \BookDetail.providerIds.hardcover, write: \BookMetadataUpdatePayload.hardcoverId),
+        .init(id: "hardcoverEditionId", provider: "hardcover", maximum: 50, read: \BookDetail.hardcoverEditionId, write: \BookMetadataUpdatePayload.hardcoverEditionId),
+        .init(id: "openLibraryId", provider: "openLibrary", maximum: 50, read: \BookDetail.providerIds.openLibrary, write: \BookMetadataUpdatePayload.openLibraryId),
+        .init(id: "itunesId", provider: "itunes", maximum: 50, read: \BookDetail.providerIds.itunes, write: \BookMetadataUpdatePayload.itunesId),
+        .init(id: "audibleId", provider: "audible", maximum: 20, read: \BookDetail.providerIds.audible, write: \BookMetadataUpdatePayload.audibleId),
+        .init(id: "librofmId", provider: "librofm", maximum: 50, read: \BookDetail.providerIds.librofm, write: \BookMetadataUpdatePayload.librofmId),
+        .init(id: "koboId", provider: "kobo", maximum: 255, read: \BookDetail.providerIds.kobo, write: \BookMetadataUpdatePayload.koboId),
+        .init(id: "comicvineId", provider: "comicvine", maximum: 50, read: \BookDetail.providerIds.comicvine, write: \BookMetadataUpdatePayload.comicvineId),
+        .init(id: "ranobedbId", provider: "ranobedb", maximum: 50, read: \BookDetail.providerIds.ranobedb, write: \BookMetadataUpdatePayload.ranobedbId),
+        .init(id: "lubimyczytacId", provider: "lubimyczytac", maximum: 512, read: \BookDetail.providerIds.lubimyczytac, write: \BookMetadataUpdatePayload.lubimyczytacId),
+        .init(id: "aladinId", provider: "aladin", maximum: 20, read: \BookDetail.providerIds.aladin, write: \BookMetadataUpdatePayload.aladinId),
+    ]
 }
 
 enum FilterVocabulary {

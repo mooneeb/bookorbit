@@ -5,26 +5,31 @@ import {
   SERIES_INDEX_MAX_LENGTH,
   SERIES_INDEX_PATTERN,
   type BookMetadataUpdatePayload,
+  type AudioMetadataUpdatePayload,
+  type AudiobookChapterUpdatePayload,
+  type ComicMetadataUpdatePayload,
+  type BookSeriesMembershipUpdatePayload,
+  type BookCommunityRatingUpdatePayload,
   type SeriesIndex,
 } from '@bookorbit/types';
 import { MAX_SERIES_TOTAL_BOOKS } from '../../../common/utils/series-total-books.utils';
 import { PROVIDER_ID_MAX_LENGTHS } from '../../../common/utils/provider-id.utils';
 import { CustomMetadataValueDto } from '../../custom-metadata/dto/custom-metadata-value.dto';
 
-export class AudiobookChapterDto {
+export class AudiobookChapterDto implements AudiobookChapterUpdatePayload {
   @IsString() title!: string;
   @IsInt() @Min(0) startMs!: number;
   @IsOptional() @IsInt() @Min(0) durationMs?: number | null;
 }
 
-export class AudioMetadataDto {
+export class AudioMetadataDto implements AudioMetadataUpdatePayload {
   @IsOptional() @IsArray() @IsString({ each: true }) narrators?: string[];
   @IsOptional() @IsInt() @Min(0) durationSeconds?: number | null;
   @IsOptional() @IsBoolean() abridged?: boolean | null;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => AudiobookChapterDto) chapters?: AudiobookChapterDto[] | null;
 }
 
-export class ComicMetadataDto {
+export class ComicMetadataDto implements ComicMetadataUpdatePayload {
   @IsOptional() @IsString() @MaxLength(50) issueNumber?: string | null;
   @IsOptional() @IsString() @MaxLength(500) volumeName?: string | null;
   @IsOptional() @IsArray() @IsString({ each: true }) pencillers?: string[];
@@ -38,7 +43,7 @@ export class ComicMetadataDto {
   @IsOptional() @IsArray() @IsString({ each: true }) storyArcs?: string[];
 }
 
-export class BookSeriesMembershipDto {
+export class BookSeriesMembershipDto implements BookSeriesMembershipUpdatePayload {
   @IsString() @MaxLength(500) seriesName!: string;
   @IsOptional() @IsString() @MaxLength(SERIES_INDEX_MAX_LENGTH) @Matches(SERIES_INDEX_PATTERN) seriesIndex?: SeriesIndex | null;
   // Series-level rather than book-level: writing it changes the total for every book in the
@@ -46,7 +51,7 @@ export class BookSeriesMembershipDto {
   @IsOptional() @IsInt() @Min(1) @Max(MAX_SERIES_TOTAL_BOOKS) expectedBookCount?: number | null;
 }
 
-export class CommunityRatingDto {
+export class CommunityRatingDto implements BookCommunityRatingUpdatePayload {
   @IsIn(Object.values(MetadataProviderKey)) provider!: MetadataProviderKey;
   @IsNumber() @Min(0) @Max(5) rating!: number;
   @IsOptional() @IsInt() @Min(0) ratingCount?: number | null;

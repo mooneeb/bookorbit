@@ -12,11 +12,12 @@ extension CoverMedium {
 
 @MainActor @Observable
 final class CoverEditorModel {
-  private let api: BookOrbitAPI
+  let api: BookOrbitAPI
   private let bookID: Int
   private(set) var book: BookDetail
   private(set) var images: [CoverMedium: UIImage] = [:]
   private(set) var pending: [CoverMedium: StagedCoverImage] = [:]
+  private(set) var pendingURLs: [CoverMedium: String] = [:]
   private(set) var importing: Set<CoverMedium> = []
   private(set) var isSaving = false
   private(set) var isReloading = false
@@ -43,6 +44,18 @@ final class CoverEditorModel {
   func isLocked(_ medium: CoverMedium) -> Bool { book.lockedFields.contains(medium.lockField) }
 
   func canEdit(_ medium: CoverMedium) -> Bool { !requiresReload && !isLocked(medium) }
+
+  func hasSelection(_ medium: CoverMedium) -> Bool {
+    pending[medium] != nil || pendingURLs[medium] != nil
+  }
+
+  func chooseURL(_ url: String, medium: CoverMedium) {
+    guard !isBusy, !isClosed, canEdit(medium) else { return }
+    discard(medium)
+    pendingURLs[medium] = url
+    errors[medium] = nil
+    message = nil
+  }
 
   func loadImages() async {
     let operation = UUID()
@@ -111,20 +124,28 @@ final class CoverEditorModel {
   }
 
   func discard(_ medium: CoverMedium) {
+    pendingURLs[medium] = nil
     if let image = pending.removeValue(forKey: medium) {
       try? FileManager.default.removeItem(at: image.file)
     }
   }
 
   func save(_ medium: CoverMedium) async {
-    guard let selection = pending[medium], !isBusy, canEdit(medium), !isClosed else { return }
+    guard hasSelection(medium), !isBusy, canEdit(medium), !isClosed else { return }
     imageLoadID = UUID()
     isSaving = true
     errors[medium] = nil
     message = nil
     defer { isSaving = false }
     do {
-      try await api.uploadCover(bookID: bookID, medium: medium, selection: selection)
+      if let selection = pending[medium] {
+        try await api.uploadCover(bookID: bookID, medium: medium, selection: selection)
+      } else if let url = pendingURLs[medium] {
+        try await api.sendEmpty(
+          "books/\(bookID)/cover/from-url",
+          body: JSONEncoder().encode(UploadCoverFromUrlPayload(url: url)),
+          query: [URLQueryItem(name: "medium", value: medium.rawValue)])
+      }
       book = try await api.send("books/\(bookID)")
       discard(medium)
       await loadImages()
@@ -155,11 +176,11 @@ final class CoverEditorModel {
     if case .http(409)? = error as? ConnectionError {
       requiresReload = true
       let recovery =
-        pending[medium] != nil
+        hasSelection(medium)
         ? "Your selection is kept. Reload before saving."
         : "Reload to check the current cover."
       let lockRecovery =
-        pending[medium] != nil
+        hasSelection(medium)
         ? "Your selection is kept. Unlock it, then reload before saving."
         : "Unlock it, then reload before editing."
       do {
@@ -184,6 +205,6 @@ final class CoverEditorModel {
     isClosed = true
     imageLoadID = UUID()
     for task in importTasks.values { task.cancel() }
-    for medium in Array(pending.keys) { discard(medium) }
+    for medium in Set(pending.keys).union(pendingURLs.keys) { discard(medium) }
   }
 }

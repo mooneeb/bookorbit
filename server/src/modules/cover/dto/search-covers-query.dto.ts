@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import type { CoverSearchQuery } from '@bookorbit/types';
 
 import { COVER_PROVIDER_ALL_KEY, COVER_PROVIDER_KEYS, type CoverSearchProvider } from '../providers/cover-provider';
 
@@ -20,7 +21,7 @@ function parseBooleanQueryValue(value: unknown): unknown {
   return value;
 }
 
-export class SearchCoversQueryDto {
+export class SearchCoversQueryDto implements CoverSearchQuery {
   @Transform(({ value }) => trimQueryString(value))
   @IsString()
   @IsNotEmpty()

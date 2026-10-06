@@ -374,8 +374,62 @@ export type BookMetadataUpdatePayload = Partial<
     | "isbn13"
     | "genres"
     | "tags"
+    | "seriesName"
+    | "seriesIndex"
+    | "rating"
   >
-> & { authors?: string[]; customMetadata?: CustomMetadataBookValueInput[] };
+> &
+  BookProviderIdsUpdatePayload & {
+    authors?: string[];
+    customMetadata?: CustomMetadataBookValueInput[];
+    seriesMemberships?: BookSeriesMembershipUpdatePayload[] | null;
+    communityRatings?: BookCommunityRatingUpdatePayload[] | null;
+    audioMetadata?: AudioMetadataUpdatePayload;
+    comicMetadata?: ComicMetadataUpdatePayload;
+  };
+
+export type BookProviderIdsUpdatePayload = {
+  googleBooksId?: string | null;
+  goodreadsId?: string | null;
+  amazonId?: string | null;
+  hardcoverId?: string | null;
+  hardcoverEditionId?: string | null;
+  openLibraryId?: string | null;
+  itunesId?: string | null;
+  audibleId?: string | null;
+  librofmId?: string | null;
+  koboId?: string | null;
+  comicvineId?: string | null;
+  ranobedbId?: string | null;
+  lubimyczytacId?: string | null;
+  aladinId?: string | null;
+};
+
+export type BookSeriesMembershipUpdatePayload = {
+  seriesName: string;
+  seriesIndex?: SeriesIndex | null;
+  expectedBookCount?: number | null;
+};
+
+export type BookCommunityRatingUpdatePayload = {
+  provider: MetadataProviderKey;
+  rating: number;
+  ratingCount?: number | null;
+};
+
+export type AudiobookChapterUpdatePayload = AudiobookChapter & { durationMs?: number | null };
+
+export type AudioMetadataUpdatePayload = {
+  narrators?: string[];
+  durationSeconds?: number | null;
+  abridged?: boolean | null;
+  chapters?: AudiobookChapterUpdatePayload[] | null;
+};
+
+export type ComicMetadataUpdatePayload = Omit<ComicMetadataFields, "issueNumber" | "volumeName"> & {
+  issueNumber?: string | null;
+  volumeName?: string | null;
+};
 
 export type BookMetadataAndLocksUpdatePayload = {
   metadata?: BookMetadataUpdatePayload;
@@ -504,4 +558,15 @@ export type CoverSearchResult = {
 export type CoverSearchResponse = {
   results: CoverSearchResult[];
   total: number;
+};
+
+export type UploadCoverFromUrlPayload = { url: string };
+
+export const COVER_SEARCH_PROVIDERS = ["duckduckgo", "itunes", "audiobookcovers", "all"] as const;
+export type CoverSearchProvider = (typeof COVER_SEARCH_PROVIDERS)[number];
+export type CoverSearchQuery = {
+  title: string;
+  author?: string;
+  isAudiobook?: boolean;
+  provider?: CoverSearchProvider;
 };

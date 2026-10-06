@@ -161,7 +161,7 @@ private struct DashboardBookCard: View {
       image = nil
       guard book.hasCover else { return }
       do {
-        let result = try await DashboardCoverLoader.shared.image(
+        let result = try await CoverPreviewLoader.shared.image(
           api: api, book: book, medium: medium, namespace: namespace)
         try Task.checkCancellation()
         image = result

@@ -4,6 +4,7 @@ struct MetadataEditorView: View {
   @Bindable var model: BookDetailModel
   @Bindable var draft: MetadataDraft
   @Environment(\.dismiss) private var dismiss
+  @State private var isFindingMetadata = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -15,6 +16,19 @@ struct MetadataEditorView: View {
         .accessibilityIdentifier("metadataHeading")
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
+          Button("Find and compare metadata") { isFindingMetadata = true }
+            .frame(minHeight: 44).accessibilityIdentifier("findMetadata")
+          if !draft.coverURLs.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+              ForEach(draft.coverURLs.keys.sorted(by: { $0.rawValue < $1.rawValue })) { medium in
+                Text("\(medium.label) selected from provider.")
+                Button("Discard \(medium.rawValue) cover selection") {
+                  draft.coverURLs[medium] = nil
+                }
+                .frame(minHeight: 44)
+              }
+            }
+          }
           VStack(alignment: .leading, spacing: 12) {
             HStack {
               Text("Title").font(.headline)
@@ -109,6 +123,7 @@ struct MetadataEditorView: View {
                 identifier: "metadata\(medium == .ebook ? "" : "Audio")CoverLock")
             }
           }
+          MetadataExtraFieldsView(draft: draft, extra: draft.extra)
           if !draft.customFields.isEmpty { CustomMetadataFieldsView(fields: $draft.customFields) }
         }
         .padding()
@@ -156,6 +171,11 @@ struct MetadataEditorView: View {
       .interactiveDismissDisabled(model.isSaving)
     }
     .background(Color(uiColor: .systemBackground))
+    .fullScreenCover(isPresented: $isFindingMetadata) {
+      if let book = model.book {
+        MetadataSearchView(api: model.api, book: book, draft: draft) { isFindingMetadata = false }
+      }
+    }
   }
 }
 
@@ -248,7 +268,7 @@ private struct MetadataActionButtonStyle: ButtonStyle {
   }
 }
 
-private struct MetadataFieldLock: View {
+struct MetadataFieldLock: View {
   @Bindable var draft: MetadataDraft
   let field: String
   let label: String

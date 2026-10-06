@@ -34,7 +34,7 @@ final class BookDetailModel {
     error = nil
     defer { isSaving = false }
     do {
-      let metadata = BookMetadataUpdatePayload(
+      var metadata = BookMetadataUpdatePayload(
         title: update(draft.title, original: book.title),
         subtitle: update(draft.subtitle, original: book.subtitle),
         description: update(draft.description, original: book.description),
@@ -49,10 +49,37 @@ final class BookDetailModel {
         publishedDate: update(draft.publishedDate, original: book.publishedDate),
         authors: updateNames(draft.authors, original: book.authors.map(\.name)),
         customMetadata: draft.customUpdates.isEmpty ? nil : draft.customUpdates)
+      draft.extra.write(to: &metadata)
       let payload = BookMetadataAndLocksUpdatePayload(
         metadata: metadata, lockedFields: draft.lockedFields.sorted())
       self.book = try await api.send(
         "books/\(bookID)/metadata-and-locks", method: "PATCH", body: JSONEncoder().encode(payload))
+      if let saved = self.book {
+        draft.extra.acknowledge(saved)
+        draft.customFields = saved.customMetadata.map(CustomMetadataDraft.init)
+      }
+      for medium in [CoverMedium.ebook, .audio] {
+        if let url = draft.coverURLs[medium] {
+          do {
+            try await api.sendEmpty(
+              "books/\(bookID)/cover/from-url",
+              body: JSONEncoder().encode(UploadCoverFromUrlPayload(url: url)),
+              query: [URLQueryItem(name: "medium", value: medium.rawValue)])
+            draft.coverURLs[medium] = nil
+          } catch {
+            self.error =
+              "Metadata saved. \(medium.label) could not be saved. Your selection is kept. \(error.localizedDescription)"
+            return
+          }
+          do {
+            self.book = try await api.send("books/\(bookID)")
+          } catch {
+            self.error =
+              "Metadata and \(medium.label.lowercased()) saved. Book details could not be refreshed. Retry to reload them. \(error.localizedDescription)"
+            return
+          }
+        }
+      }
       self.draft = nil
     } catch { self.error = error.localizedDescription }
   }
@@ -93,6 +120,8 @@ final class MetadataDraft: Identifiable {
   var genres: String
   var tags: String
   var customFields: [CustomMetadataDraft]
+  var extra: MetadataExtraDraft
+  var coverURLs: [CoverMedium: String] = [:]
   var lockedFields: Set<String>
 
   init(book: BookDetail) {
@@ -110,6 +139,7 @@ final class MetadataDraft: Identifiable {
     genres = book.genres.joined(separator: "\n")
     tags = book.tags.joined(separator: "\n")
     customFields = book.customMetadata.map(CustomMetadataDraft.init)
+    extra = MetadataExtraDraft(book: book)
     lockedFields = Set(book.lockedFields)
   }
 
@@ -132,6 +162,7 @@ final class MetadataDraft: Identifiable {
 
   var validationMessage: String? {
     if let message = customFields.compactMap(\.validationMessage).first { return message }
+    if let message = extra.validationMessage { return message }
     if title.unicodeScalars.count > 1000 || subtitle.unicodeScalars.count > 1000 {
       return "Title and subtitle must be no longer than 1,000 characters."
     }

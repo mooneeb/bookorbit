@@ -17,6 +17,8 @@ const entries = [
   "dashboard",
   "epub",
   "library",
+  "metadata-fetch",
+  "metadata-lock",
   "permissions",
   "query",
   "series",
@@ -72,6 +74,15 @@ const projections = {
     "genres",
     "tags",
     "customMetadata",
+    "seriesName",
+    "seriesIndex",
+    "seriesMemberships",
+    "rating",
+    "communityRatings",
+    "providerIds",
+    "hardcoverEditionId",
+    "audioMetadata",
+    "comicMetadata",
     "files",
     "lockedFields",
     "coverMedia",
@@ -96,6 +107,13 @@ const integerFields = new Set([
   "smartScopeId",
   "fileId",
   "fieldId",
+  "seriesId",
+  "displayOrder",
+  "ratingCount",
+  "communityRatingCount",
+  "durationSeconds",
+  "startMs",
+  "durationMs",
   "page",
   "size",
   "total",
@@ -125,7 +143,12 @@ const integerFields = new Set([
   "randomSeed",
 ]);
 const declarations = new Map();
-const patchRequests = new Set(["BookMetadataUpdatePayload"]);
+const patchRequests = new Set([
+  "BookMetadataUpdatePayload",
+  "AudioMetadataUpdatePayload",
+  "ComicMetadataUpdatePayload",
+  "BookSeriesMembershipUpdatePayload",
+]);
 const requestModels = new Set([...patchRequests, "BookMetadataAndLocksUpdatePayload", "SaveFileProgressPayload"]);
 
 function generateValueUnion(type, name) {
@@ -228,7 +251,7 @@ function swiftType(type, name, field) {
     else if (values.every((part) => part.flags & ts.TypeFlags.BooleanLike)) value = "Bool";
     else if (values.length === 1) value = swiftType(values[0], name, field);
     else if (name === "GroupRuleRulesItem") value = generateRuleNode();
-    else if (type.aliasSymbol?.name === "RuleValue" || name === "RuleValue" || name === "RuleValueTo") {
+    else if (type.aliasSymbol?.name === "RuleValue" || name === "RuleValue" || name === "RuleValueTo" || name === "CoverSearchResultUrl") {
       value = generateValueUnion({ types: values }, name);
     } else throw new Error(`Unsupported union in ${name}: ${checker.typeToString(type)}`);
     return value + (optional ? "?" : "");
@@ -324,6 +347,11 @@ for (const name of [
   "UpdateSmartScopePayload",
   "SetSmartScopeKoboSyncPayload",
   "SavedView",
+  "MetadataCandidate",
+  "MetadataProviderInfo",
+  "MetadataProviderSearchStatus",
+  "UploadCoverFromUrlPayload",
+  "CoverSearchResult",
 ]) {
   const symbol = symbols.get(name);
   if (!symbol) throw new Error(`Missing shared contract: ${name}`);
@@ -331,6 +359,61 @@ for (const name of [
 }
 
 generateModel("UserDashboardSettingsResponse", checker.getDeclaredTypeOfSymbol(symbols.get("AuthUser")));
+
+const metadataLocks = symbols.get("BOOK_METADATA_LOCK_FIELDS").valueDeclaration.initializer;
+const coverProviders = symbols.get("COVER_SEARCH_PROVIDERS").valueDeclaration.initializer;
+if (!ts.isAsExpression(coverProviders) || !ts.isArrayLiteralExpression(coverProviders.expression)) throw new Error("Cover providers changed");
+if (!ts.isAsExpression(metadataLocks) || !ts.isArrayLiteralExpression(metadataLocks.expression)) throw new Error("Metadata lock vocabulary changed");
+const metadataProviders = checker.getDeclaredTypeOfSymbol(symbols.get("MetadataProviderKey"));
+if (!metadataProviders.isUnion() || !metadataProviders.types.every((part) => part.flags & ts.TypeFlags.StringLiteral))
+  throw new Error("Metadata provider vocabulary changed");
+const statusEvent = symbols.get("METADATA_PROVIDER_STATUS_EVENT").valueDeclaration.initializer;
+if (!ts.isStringLiteral(statusEvent)) throw new Error("Metadata status event changed");
+declarations.set(
+  "MetadataVocabulary",
+  `enum MetadataVocabulary {
+    static let coverProviders: [String] = [${coverProviders.expression.elements.map((element) => JSON.stringify(element.text)).join(", ")}]
+    static let lockFields: [String] = [${metadataLocks.expression.elements.map((element) => JSON.stringify(element.text)).join(", ")}]
+    static let providers: [String] = [${metadataProviders.types.map((part) => JSON.stringify(part.value)).join(", ")}]
+    static let statusEvent = ${JSON.stringify(statusEvent.text)}
+}`,
+);
+
+const idFieldType = checker.getTypeOfSymbolAtLocation(
+  symbols.get("METADATA_PROVIDER_ID_FIELDS"),
+  symbols.get("METADATA_PROVIDER_ID_FIELDS").valueDeclaration,
+);
+const idFields = checker
+  .getPropertiesOfType(idFieldType)
+  .map((property) => [property.name, checker.getTypeOfSymbolAtLocation(property, property.valueDeclaration).value]);
+const limitType = checker.getTypeOfSymbolAtLocation(symbols.get("PROVIDER_ID_MAX_LENGTHS"), symbols.get("PROVIDER_ID_MAX_LENGTHS").valueDeclaration);
+const limitFields = checker
+  .getPropertiesOfType(limitType)
+  .map((property) => [property.name, checker.getTypeOfSymbolAtLocation(property, property.valueDeclaration).value]);
+if (idFields.some(([, value]) => typeof value !== "string") || limitFields.some(([, value]) => !Number.isInteger(value)))
+  throw new Error("Provider ID mapping changed");
+declarations.set(
+  "MetadataProviderField",
+  `@MainActor struct MetadataProviderField: Identifiable {
+    let id: String
+    let provider: String
+    let maximum: Int
+    let read: KeyPath<BookDetail, String?>
+    let write: WritableKeyPath<BookMetadataUpdatePayload, FieldUpdate<String>?>
+
+    static let byProvider: [String: String] = [${idFields.map(([provider, field]) => `${JSON.stringify(provider)}: ${JSON.stringify(field)}`).join(", ")}]
+
+    static let fields: [MetadataProviderField] = [
+${limitFields
+  .map(([field, limit]) => {
+    const provider = idFields.find(([, value]) => value === field)?.[0];
+    if (!provider && field !== "hardcoverEditionId") throw new Error(`Unmapped provider field ${field}`);
+    return `        .init(id: ${JSON.stringify(field)}, provider: ${JSON.stringify(provider ?? "hardcover")}, maximum: ${limit}, read: \\BookDetail.${field === "hardcoverEditionId" ? field : `providerIds.${provider}`}, write: \\BookMetadataUpdatePayload.${field}),`;
+  })
+  .join("\n")}
+    ]
+}`,
+);
 
 const operatorsDeclaration = symbols.get("FIELD_OPERATORS").valueDeclaration.initializer;
 if (!ts.isObjectLiteralExpression(operatorsDeclaration)) throw new Error("Filter vocabulary must remain a literal map");

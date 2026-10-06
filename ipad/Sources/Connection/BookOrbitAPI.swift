@@ -225,15 +225,28 @@ actor BookOrbitAPI {
   }
 
   func coverImage(bookID: Int, medium: CoverMedium, version: String) async throws -> Data {
+    try await authenticatedImage(
+      path: "books/\(bookID)/cover",
+      query: [
+        URLQueryItem(name: "medium", value: medium.rawValue),
+        URLQueryItem(name: "strict", value: "true"),
+        URLQueryItem(name: "t", value: version),
+      ])
+  }
+
+  func remoteCoverPreview(url: String) async throws -> Data {
+    try await authenticatedImage(
+      path: "books/cover/proxy", query: [URLQueryItem(name: "url", value: url)])
+  }
+
+  func imageNamespace() throws -> String {
+    guard let saved else { throw ConnectionError.expiredSession }
+    return "\(profile.url.absoluteString).user.\(saved.user.id).session.\(sessionGeneration)"
+  }
+
+  private func authenticatedImage(path: String, query: [URLQueryItem]) async throws -> Data {
     let generation = sessionGeneration
-    var request = URLRequest(
-      url: profile.endpoint(
-        "books/\(bookID)/cover",
-        query: [
-          URLQueryItem(name: "medium", value: medium.rawValue),
-          URLQueryItem(name: "strict", value: "true"),
-          URLQueryItem(name: "t", value: version),
-        ]))
+    var request = URLRequest(url: profile.endpoint(path, query: query))
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(generation)
     var delivery = try await transport.bytes(for: request)
@@ -309,6 +322,79 @@ actor BookOrbitAPI {
       throw ConnectionError.fileChanged
     }
     return data
+  }
+
+  func streamMetadata(
+    query: [URLQueryItem],
+    receive: @MainActor @Sendable (MetadataSearchEvent) -> Void
+  ) async throws {
+    let generation = sessionGeneration
+    var request = URLRequest(url: profile.endpoint("metadata-fetch/stream", query: query))
+    request.timeoutInterval = 120
+    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(generation)
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(generation)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    guard response.mimeType == "text/event-stream" else { throw ConnectionError.invalidResponse }
+    var line = Data()
+    var event = ""
+    var data = Data()
+    var total = 0
+    var candidateCount = 0
+    for try await byte in bytes {
+      total += 1
+      guard total <= 4 * 1024 * 1024, line.count <= 512 * 1024,
+        data.count <= 512 * 1024
+      else { throw MetadataSearchError.limit }
+      if byte != 10 {
+        line.append(byte)
+        continue
+      }
+      try Task.checkCancellation()
+      try ensureSession(generation)
+      guard var text = String(data: line, encoding: .utf8) else {
+        throw ConnectionError.invalidResponse
+      }
+      line.removeAll(keepingCapacity: true)
+      if text.hasSuffix("\r") { text.removeLast() }
+      if text.isEmpty {
+        if !data.isEmpty {
+          if data.last == 10 { data.removeLast() }
+          if event == MetadataVocabulary.statusEvent {
+            await receive(
+              .status(try JSONDecoder().decode(MetadataProviderSearchStatus.self, from: data)))
+          } else if event.isEmpty || event == "message" {
+            candidateCount += 1
+            guard candidateCount <= 100 else { throw MetadataSearchError.limit }
+            await receive(.candidate(try JSONDecoder().decode(MetadataCandidate.self, from: data)))
+          }
+        }
+        event = ""
+        data.removeAll(keepingCapacity: true)
+      } else if text.hasPrefix("event:") {
+        event = String(text.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+      } else if text.hasPrefix("data:") {
+        var value = String(text.dropFirst(5))
+        if value.hasPrefix(" ") { value.removeFirst() }
+        data.append(contentsOf: value.utf8)
+        data.append(10)
+      }
+    }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    guard line.isEmpty, data.isEmpty else { throw MetadataSearchError.interrupted }
   }
 
   func deliveredFile(fileID: Int, expectedSize: Double, mimeType: String) async throws -> URL {

@@ -57,6 +57,7 @@ private struct CoverEditorTile: View {
   let medium: CoverMedium
   @State private var selection: PhotosPickerItem?
   @State private var isConfirmingRevert = false
+  @State private var isFindingCover = false
 
   private var preview: UIImage? {
     model.pending[medium].flatMap { UIImage(data: $0.preview) } ?? model.images[medium]
@@ -65,7 +66,9 @@ private struct CoverEditorTile: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       Text(medium.label).font(.title2).accessibilityAddTraits(.isHeader)
-      if let preview {
+      if let url = model.pendingURLs[medium] {
+        RemoteCoverPreview(api: model.api, url: url)
+      } else if let preview {
         Image(uiImage: preview)
           .resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: 240)
           .accessibilityLabel(medium.label)
@@ -75,7 +78,10 @@ private struct CoverEditorTile: View {
       } else {
         Label("No cover", systemImage: "book.closed").frame(maxWidth: .infinity, minHeight: 160)
       }
-      if let pending = model.pending[medium] {
+      if model.pendingURLs[medium] != nil {
+        Text("Selected provider image. Choose Save to keep this image.")
+          .fixedSize(horizontal: false, vertical: true)
+      } else if let pending = model.pending[medium] {
         Text("Selected image: \(pending.width) × \(pending.height)")
         Text("Choose Save to keep this image.").font(.footnote)
       } else if let slot = model.slot(medium) {
@@ -104,7 +110,10 @@ private struct CoverEditorTile: View {
       .accessibilityIdentifier("choose\(medium.identifier)Cover")
       .disabled(model.isBusy || !model.canEdit(medium))
       .onChange(of: selection) { model.choose(selection, medium: medium) }
-      if model.pending[medium] != nil {
+      Button("Find \(medium.rawValue) cover") { isFindingCover = true }
+        .frame(minHeight: 44).accessibilityIdentifier("find\(medium.identifier)Cover")
+        .disabled(model.isBusy || !model.canEdit(medium))
+      if model.hasSelection(medium) {
         Button("Save \(medium.rawValue) cover") { Task { await model.save(medium) } }
           .frame(minHeight: 44)
           .accessibilityIdentifier("save\(medium.identifier)Cover")
@@ -129,6 +138,12 @@ private struct CoverEditorTile: View {
       Button("Cancel", role: .cancel) {}
     } message: {
       Text("Remove the custom image and restore the extracted cover, if available.")
+    }
+    .sheet(isPresented: $isFindingCover) {
+      CoverSearchView(api: model.api, book: model.book, medium: medium) { url in
+        selection = nil
+        model.chooseURL(url, medium: medium)
+      }
     }
   }
 }
