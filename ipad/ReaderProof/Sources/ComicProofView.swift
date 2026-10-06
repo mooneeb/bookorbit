@@ -16,7 +16,7 @@ struct ComicProofView: View {
         if model.pageCount > 0 {
           ComicCurlView(
             pageCount: model.pageCount, pageIndex: model.pageIndex,
-            images: model.images, onTurn: model.didTurn
+            images: model.images, pageErrors: model.pageErrors, onTurn: model.didTurn
           )
           .allowsHitTesting(!model.isClosing)
         } else if model.error == nil {
@@ -75,10 +75,13 @@ private struct ComicCurlView: UIViewControllerRepresentable {
   let pageCount: Int
   let pageIndex: Int
   let images: [Int: UIImage]
+  let pageErrors: [Int: String]
   let onTurn: (Int) -> Void
 
   func makeCoordinator() -> Coordinator {
-    Coordinator(pageCount: pageCount, pageIndex: pageIndex, images: images, onTurn: onTurn)
+    Coordinator(
+      pageCount: pageCount, pageIndex: pageIndex, images: images,
+      pageErrors: pageErrors, onTurn: onTurn)
   }
 
   func makeUIViewController(context: Context) -> UIPageViewController {
@@ -98,7 +101,7 @@ private struct ComicCurlView: UIViewControllerRepresentable {
 
   func updateUIViewController(_ controller: UIPageViewController, context: Context) {
     context.coordinator.onTurn = onTurn
-    context.coordinator.update(images: images)
+    context.coordinator.update(images: images, pageErrors: pageErrors)
   }
 
   @MainActor
@@ -106,13 +109,18 @@ private struct ComicCurlView: UIViewControllerRepresentable {
     let pageCount: Int
     private var currentIndex: Int
     private var images: [Int: UIImage]
+    private var pageErrors: [Int: String]
     private var pages: [Int: ComicPageController] = [:]
     var onTurn: (Int) -> Void
 
-    init(pageCount: Int, pageIndex: Int, images: [Int: UIImage], onTurn: @escaping (Int) -> Void) {
+    init(
+      pageCount: Int, pageIndex: Int, images: [Int: UIImage],
+      pageErrors: [Int: String], onTurn: @escaping (Int) -> Void
+    ) {
       self.pageCount = pageCount
       currentIndex = pageIndex
       self.images = images
+      self.pageErrors = pageErrors
       self.onTurn = onTurn
     }
 
@@ -120,14 +128,15 @@ private struct ComicCurlView: UIViewControllerRepresentable {
       guard (0..<pageCount).contains(index), abs(index - currentIndex) <= 1 else { return nil }
       if let cached = pages[index] { return cached }
       let page = ComicPageController(index: index, pageCount: pageCount)
-      page.update(images[index])
+      page.update(images[index], error: pageErrors[index])
       pages[index] = page
       return page
     }
 
-    func update(images: [Int: UIImage]) {
+    func update(images: [Int: UIImage], pageErrors: [Int: String]) {
       self.images = images
-      for (index, page) in pages { page.update(images[index]) }
+      self.pageErrors = pageErrors
+      for (index, page) in pages { page.update(images[index], error: pageErrors[index]) }
     }
 
     func pageViewController(
@@ -182,7 +191,6 @@ private final class ComicPageController: UIViewController {
     imageView.isAccessibilityElement = true
     imageView.accessibilityLabel = "Comic page \(index + 1) of \(pageCount)"
     imageView.accessibilityIdentifier = "comicPage\(index + 1)"
-    loading.text = "Loading comic page…"
     loading.font = .preferredFont(forTextStyle: .body)
     loading.adjustsFontForContentSizeCategory = true
     loading.textColor = .label
@@ -201,10 +209,11 @@ private final class ComicPageController: UIViewController {
     }
   }
 
-  func update(_ image: UIImage?) {
+  func update(_ image: UIImage?, error: String?) {
     loadViewIfNeeded()
     imageView.image = image
     imageView.isHidden = image == nil
+    loading.text = error == nil ? "Loading comic page…" : "Comic page could not be loaded."
     loading.isHidden = image != nil
   }
 }

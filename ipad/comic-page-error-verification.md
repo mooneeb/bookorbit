@@ -1,0 +1,7 @@
+# Comic page error label
+
+The comic tester reported a completed page-image request failure in native batch `run-16714-1791320223463`. The actual screen contains the HTTP 503 error and a visible Retry page action, but its empty page canvas still says `Loading comic page…`. The repair agent independently opened `native-attachments/F9084C6F-238D-45CB-ABA8-B4353097058F.png` in the isolated QA worktree and confirmed that contradiction. The original image-failure retry journey passed its recovery assertions in 48.443 seconds; that result did not verify an accurate failed-state label.
+
+Pass the existing per-page error state through the native curl coordinator to each cached page controller. A failed empty page now says `Comic page could not be loaded.`. Clearing the error for a retry restores the loading label until pixels arrive, and successful delivery hides the placeholder. Keep the existing HTTP error, Retry page action, bounded page window, curl behavior and progress writes.
+
+The source repair is based on root commit `51b3c2d4` and changes only `ipad/ReaderProof/Sources/ComicProofView.swift`. The comic tester owns the additional actual-screen assertion and the next native execution, including the existing complete accessibility audits. Runtime verification remains pending until the corrected failed-state screen and recovered page pixels are inspected. No simulator build, SDK download or physical iPad was used by this repair agent.
