@@ -6,6 +6,7 @@ struct DashboardView: View {
   @State private var model: DashboardModel
   @State private var selectedBook: OrganizationSelection?
   @State private var showingSettings = false
+  @State private var viewport: CGRect = .null
 
   init(api: BookOrbitAPI, serverURL: String, user: AuthUser) {
     canEditMetadata = user.hasPermission(.libraryEditMetadata)
@@ -44,28 +45,13 @@ struct DashboardView: View {
               } else if shelf.books.isEmpty {
                 Text("No matching books")
               } else {
-                let rows = bookRows(in: shelf)
-                ScrollView(.horizontal) {
-                  VStack(alignment: .leading, spacing: 20) {
-                    ForEach(rows.indices, id: \.self) { row in
-                      LazyHStack(alignment: .top, spacing: 16) {
-                        ForEach(rows[row]) { book in
-                          Button {
-                            selectedBook = OrganizationSelection(
-                              id: book.id, name: book.title ?? "Untitled book")
-                          } label: {
-                            DashboardBookCard(
-                              api: model.api, book: book,
-                              medium: shelf.configuration.type == "continue-listening"
-                                ? .audio : .ebook,
-                              namespace: model.coverNamespace)
-                          }
-                          .buttonStyle(.plain)
-                          .accessibilityIdentifier("dashboardBook\(book.id)")
-                        }
-                      }
-                    }
-                  }
+                DashboardBookRows(
+                  api: model.api, rows: bookRows(in: shelf),
+                  medium: shelf.configuration.type == "continue-listening" ? .audio : .ebook,
+                  namespace: model.coverNamespace, dashboardViewport: viewport
+                ) { book in
+                  selectedBook = OrganizationSelection(
+                    id: book.id, name: book.title ?? "Untitled book")
                 }
               }
             }
@@ -83,6 +69,7 @@ struct DashboardView: View {
             description: Text("Choose Shelves to customize your dashboard."))
         }
       }
+      .onGeometryChange(for: CGRect.self, of: DashboardViewport.frame) { viewport = $0 }
       .foregroundStyle(Color(uiColor: .label))
       .background(Color(uiColor: .systemBackground))
       .safeAreaInset(edge: .bottom) {
@@ -146,6 +133,112 @@ struct DashboardView: View {
     return stride(from: 0, to: shelf.books.count, by: booksPerRow).map { start in
       Array(shelf.books[start..<min(start + booksPerRow, shelf.books.count)])
     }
+  }
+}
+
+private enum DashboardViewport {
+  static func frame(_ geometry: GeometryProxy) -> CGRect {
+    let frame = geometry.frame(in: .global)
+    let insets = geometry.safeAreaInsets
+    return CGRect(
+      x: frame.minX + insets.leading, y: frame.minY + insets.top,
+      width: max(0, frame.width - insets.leading - insets.trailing),
+      height: max(0, frame.height - insets.top - insets.bottom))
+  }
+}
+
+private struct DashboardBookRows: View {
+  let api: BookOrbitAPI
+  let rows: [[BookCard]]
+  let medium: CoverMedium
+  let namespace: String
+  let dashboardViewport: CGRect
+  let openBook: (BookCard) -> Void
+  @State private var shelfViewport: CGRect = .null
+
+  var body: some View {
+    ScrollView(.horizontal) {
+      VStack(alignment: .leading, spacing: 20) {
+        ForEach(rows.indices, id: \.self) { row in
+          LazyHStack(alignment: .top, spacing: 16) {
+            ForEach(rows[row]) { book in
+              Button {
+                openBook(book)
+              } label: {
+                DashboardBookCard(api: api, book: book, medium: medium, namespace: namespace)
+              }
+              .buttonStyle(.plain)
+              .accessibilityHidden(true)
+              .background {
+                DashboardBookAccessibility(
+                  book: book, viewport: dashboardViewport.intersection(shelfViewport)
+                ) { openBook(book) }
+                .allowsHitTesting(false)
+              }
+            }
+          }
+        }
+      }
+    }
+    .onGeometryChange(for: CGRect.self, of: DashboardViewport.frame) { shelfViewport = $0 }
+  }
+}
+
+private struct DashboardBookAccessibility: UIViewRepresentable {
+  let book: BookCard
+  let viewport: CGRect
+  let openBook: () -> Void
+
+  func makeUIView(context: Context) -> DashboardBookAccessibilityView {
+    let view = DashboardBookAccessibilityView()
+    view.isUserInteractionEnabled = false
+    view.accessibilityTraits = .button
+    view.accessibilityHint = "Open book"
+    return view
+  }
+
+  func updateUIView(_ view: DashboardBookAccessibilityView, context: Context) {
+    view.viewport = viewport
+    view.openBook = openBook
+    view.accessibilityIdentifier = "dashboardBook\(book.id)"
+    view.accessibilityLabel = ([book.title ?? "Untitled book"] + book.authors).joined(
+      separator: ", ")
+    if let progress = book.readingProgress, progress > 0 {
+      let percentage = (min(100, max(0, progress)) / 100).formatted(
+        .percent.precision(.fractionLength(0)))
+      view.accessibilityValue = "Reading progress, \(percentage)"
+    } else {
+      view.accessibilityValue = nil
+    }
+  }
+}
+
+private final class DashboardBookAccessibilityView: UIView {
+  var viewport: CGRect = .null
+  var openBook: (() -> Void)?
+
+  private var visibleFrame: CGRect {
+    guard let window else { return .null }
+    return convert(bounds, to: window).intersection(viewport)
+  }
+
+  override var isAccessibilityElement: Bool {
+    get { !visibleFrame.isNull && !visibleFrame.isEmpty }
+    set {}
+  }
+
+  override var accessibilityFrame: CGRect {
+    get {
+      guard let window, !visibleFrame.isNull else { return .zero }
+      return UIAccessibility.convertToScreenCoordinates(visibleFrame, in: window)
+    }
+    set {}
+  }
+
+  override func accessibilityActivate() -> Bool {
+    guard isAccessibilityElement, let openBook else { return false }
+    openBook()
+    return true
   }
 }
 
