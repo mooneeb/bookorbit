@@ -19,8 +19,13 @@ struct ComicProofView: View {
             images: model.images, onTurn: model.didTurn
           )
           .allowsHitTesting(!model.isClosing)
-        } else {
+        } else if model.error == nil {
           ProgressView("Opening comic…")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+          Button("Retry opening", action: retryOpening)
+            .buttonStyle(.plain)
+            .frame(minHeight: 44)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         VStack {
@@ -59,6 +64,10 @@ struct ComicProofView: View {
 
   private func closeReader() {
     Task { if await model.prepareToClose() { dismiss() } }
+  }
+
+  private func retryOpening() {
+    Task { await model.load() }
   }
 }
 

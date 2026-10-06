@@ -30,6 +30,7 @@ final class ComicProofModel {
   func load() async {
     guard pageCount == 0, !isLoading, !isClosed else { return }
     isLoading = true
+    error = nil
     defer { isLoading = false }
     do {
       let count: ComicPageCountResponse = try await api.send("cbz/files/\(file.id)/pages")
