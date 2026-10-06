@@ -125,4 +125,13 @@ enum BookLocation {
     case .scope(let id, _, _): "smart-scopes/\(id)/books/query"
     }
   }
+
+  var storageKey: String {
+    switch self {
+    case .all: "all"
+    case .library(let id, _): "library:\(id)"
+    case .collection(let id, _): "collection:\(id)"
+    case .scope(let id, _, _): "scope:\(id)"
+    }
+  }
 }

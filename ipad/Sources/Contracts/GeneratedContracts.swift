@@ -585,6 +585,22 @@ struct SetSmartScopeKoboSyncPayload: Codable, Sendable, Equatable {
     var `enabled`: Bool
 }
 
+struct SavedView: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `name`: String
+    var `layout`: TableLayoutState
+    var `sort`: [SortSpec]
+    var `filter`: GroupRule?
+    var `favorite`: Bool?
+}
+
+struct TableLayoutState: Codable, Sendable, Equatable {
+    var `columnOrder`: [String]
+    var `hiddenColumns`: [String]
+    var `columnWidths`: [String: Double]
+    var `pinnedColumns`: [String: String?]?
+}
+
 struct UserDashboardSettingsResponse: Codable, Sendable, Equatable {
     var `settings`: UserSettings
 }

@@ -1,4 +1,15 @@
+import type { GroupRule, SortSpec } from "./query";
+
 export type TableViewType = "library" | "smartScope" | "collection" | "series";
+
+export type SavedView = {
+  id: string;
+  name: string;
+  layout: TableLayoutState;
+  sort: SortSpec[];
+  filter?: GroupRule;
+  favorite?: boolean;
+};
 
 export type TableLayoutState = {
   columnOrder: string[];

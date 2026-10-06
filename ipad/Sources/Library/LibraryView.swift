@@ -11,10 +11,16 @@ struct LibraryView: View {
   @State private var showingDashboard = false
   @State private var showingScopes = false
   @State private var showingQuery = false
+  @State private var showingSavedViews = false
+  @State private var showingTableLayout = false
+  @State private var tableLayout = BookTableLayout.defaults
+  @State private var savedViews: SavedViewModel
 
   init(session: SessionModel, api: BookOrbitAPI) {
     self.session = session
     _library = State(initialValue: LibraryModel(api: api))
+    _savedViews = State(
+      initialValue: SavedViewModel(serverURL: session.serverURL, userID: session.user?.id ?? 0))
   }
 
   var body: some View {
@@ -94,7 +100,12 @@ struct LibraryView: View {
           } else if presentation == "grid" {
             BookGrid(books: library.books) { selectedBook = $0 }
           } else if presentation == "table" {
-            BookTableView(books: library.books) { selectedBook = $0 }
+            GeometryReader { geometry in
+              ScrollView(.horizontal) {
+                BookTableView(books: library.books, layout: tableLayout) { selectedBook = $0 }
+                  .frame(width: tableWidth(geometry.size.width), height: geometry.size.height)
+              }
+            }
           } else {
             List(library.books) { book in
               Button {
@@ -112,6 +123,19 @@ struct LibraryView: View {
             }
           }
           if library.isBusy { ProgressView("Loading books…").padding() }
+          HStack {
+            Button("Saved views") { showingSavedViews = true }.frame(minHeight: 44)
+              .accessibilityIdentifier(
+                "openSavedViews")
+            if presentation == "table" {
+              Button("Table columns") { showingTableLayout = true }.frame(minHeight: 44)
+                .accessibilityIdentifier(
+                  "openTableColumns")
+            }
+            Spacer()
+          }.font(.body).buttonStyle(.plain).foregroundStyle(Color(uiColor: .label)).frame(
+            minHeight: 44
+          ).padding(.horizontal)
           HStack {
             if library.canGoBack {
               Button("Previous") { Task { await library.previousPage() } }
@@ -165,6 +189,11 @@ struct LibraryView: View {
       }
     }
     .sheet(isPresented: $showingQuery) { LibraryQueryView(library: library) }
+    .sheet(isPresented: $showingSavedViews) {
+      SavedViewsView(
+        model: savedViews, library: library, presentation: $presentation, layout: $tableLayout)
+    }
+    .sheet(isPresented: $showingTableLayout) { TableLayoutView(layout: $tableLayout) }
     .sheet(item: $organization) { kind in
       OrganizationDirectoryView(
         api: library.api, kind: kind, libraries: library.libraries,
@@ -183,6 +212,15 @@ struct LibraryView: View {
     } message: {
       Text(session.error ?? "")
     }
+  }
+
+  private func tableWidth(_ available: CGFloat) -> CGFloat {
+    let columns = BookTableLayout.visible(tableLayout)
+    guard columns.contains(where: { tableLayout.columnWidths[$0] != nil }) else { return available }
+    return max(
+      available,
+      CGFloat(columns.reduce(0) { $0 + (tableLayout.columnWidths[$1] ?? 180) }) + 32 + CGFloat(
+        max(0, columns.count - 1)) * 12)
   }
 }
 

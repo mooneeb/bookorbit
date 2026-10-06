@@ -12,6 +12,8 @@ The current workflow completes feature implementation, then hands autonomous loc
 
 The author/series handoff now has a focused autonomous QA command and public/native/web test mapping in [organization-verification.md](organization-verification.md). Its initial eleven HTTP checks pass, while four full native accessibility audits expose concrete font-scaling and contrast defects that remain gates. The focused reader handoff and browser journeys execute after those native gates pass.
 
+Native saved views and table-column controls are implemented and awaiting independent acceptance. Snapshots preserve the active query, search, presentation and column visibility/order/width, scoped to the server, user and library location. The bounded catalog supports rename, duplicate, favorites and confirmed deletion. Native table rows remain paged and virtualized while wide configured columns scroll horizontally. The web saved-view type now comes from the same canonical shared contract. [saved-view-implementation.md](saved-view-implementation.md) records checks and limitations.
+
 ## Build
 
 Use Xcode 27, XcodeGen 2.46, Node 24 or later, and the pnpm version declared in the root package.json. The deployment target is iPadOS 26. The private bundle identity is `com.mooneeb.bookorbit.private`; retain it for future upgrades and signing renewal.

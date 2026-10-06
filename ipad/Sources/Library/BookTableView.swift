@@ -3,10 +3,11 @@ import UIKit
 
 struct BookTableView: UIViewRepresentable {
   let books: [BookCard]
+  var layout = BookTableLayout.defaults
   let select: (Int) -> Void
 
   func makeCoordinator() -> Coordinator {
-    Coordinator(books: books, select: select)
+    Coordinator(books: books, layout: layout, select: select)
   }
 
   func makeUIView(context: Context) -> UITableView {
@@ -26,9 +27,13 @@ struct BookTableView: UIViewRepresentable {
 
   func updateUIView(_ table: UITableView, context: Context) {
     context.coordinator.select = select
-    guard context.coordinator.books != books else { return }
+    let normalized = BookTableLayout.normalized(layout)
+    guard context.coordinator.books != books || context.coordinator.layout != normalized else {
+      return
+    }
     let changesPage = context.coordinator.books.map(\.id) != books.map(\.id)
     context.coordinator.books = books
+    context.coordinator.layout = normalized
     table.reloadData()
     if changesPage {
       table.setContentOffset(CGPoint(x: 0, y: -table.adjustedContentInset.top), animated: false)
@@ -38,10 +43,12 @@ struct BookTableView: UIViewRepresentable {
   @MainActor
   final class Coordinator: NSObject, UITableViewDataSource, UITableViewDelegate {
     var books: [BookCard]
+    var layout: TableLayoutState
     var select: (Int) -> Void
 
-    init(books: [BookCard], select: @escaping (Int) -> Void) {
+    init(books: [BookCard], layout: TableLayoutState, select: @escaping (Int) -> Void) {
       self.books = books
+      self.layout = BookTableLayout.normalized(layout)
       self.select = select
     }
 
@@ -52,12 +59,15 @@ struct BookTableView: UIViewRepresentable {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
       let cell =
         tableView.dequeueReusableCell(withIdentifier: "book", for: indexPath) as! BookTableCell
-      cell.configure(books[indexPath.row])
+      cell.configure(books[indexPath.row], layout: layout)
       return cell
     }
 
     func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-      tableView.dequeueReusableHeaderFooterView(withIdentifier: "columns")
+      let header =
+        tableView.dequeueReusableHeaderFooterView(withIdentifier: "columns") as! BookTableHeader
+      header.configure(layout)
+      return header
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -82,40 +92,45 @@ private final class BookTableCell: UITableViewCell {
 
   required init?(coder: NSCoder) { return nil }
 
-  func configure(_ book: BookCard) {
+  func configure(_ book: BookCard, layout: TableLayoutState) {
     let title = book.title ?? "Untitled book"
-    let authors = book.authors.isEmpty ? "Unknown author" : book.authors.joined(separator: ", ")
-    let formats =
-      book.files.isEmpty
-      ? "No files"
-      : Set(book.files.map { $0.format?.uppercased() ?? "Unknown format" }).sorted().joined(
-        separator: ", ")
-    columns.set([title, authors, formats])
+    let visible = BookTableLayout.visible(layout)
+    columns.configure(
+      visible.map { BookTableLayout.text(book, column: $0) },
+      widths: visible.map { layout.columnWidths[$0] }, headers: false)
     accessibilityLabel = title
-    accessibilityValue = "\(authors); \(formats)"
+    accessibilityValue = visible.filter { $0 != "title" }.map {
+      BookTableLayout.text(book, column: $0)
+    }.joined(separator: "; ")
     accessibilityIdentifier = "tableBook\(book.id)"
   }
 }
 
 private final class BookTableHeader: UITableViewHeaderFooterView {
+  private let columns = BookTableColumns(textStyle: .headline, verticalPadding: 12)
   override init(reuseIdentifier: String?) {
     super.init(reuseIdentifier: reuseIdentifier)
     let background = UIView()
     background.backgroundColor = .systemBackground
     backgroundView = background
-    let columns = BookTableColumns(textStyle: .headline, verticalPadding: 12)
-    columns.set(["Title", "Authors", "Formats"])
-    for label in columns.labels { label.accessibilityTraits = .header }
     columns.pin(to: contentView)
   }
 
   required init?(coder: NSCoder) { return nil }
+
+  func configure(_ layout: TableLayoutState) {
+    let visible = BookTableLayout.visible(layout)
+    columns.configure(
+      visible.map(queryFieldLabel), widths: visible.map { layout.columnWidths[$0] }, headers: true)
+  }
 }
 
 private final class BookTableColumns: UIStackView {
-  let labels = (0..<3).map { _ in UILabel() }
+  private let textStyle: UIFont.TextStyle
+  private var widthConstraints: [NSLayoutConstraint] = []
 
   init(textStyle: UIFont.TextStyle, verticalPadding: CGFloat) {
+    self.textStyle = textStyle
     super.init(frame: .zero)
     axis = .horizontal
     alignment = .center
@@ -123,20 +138,39 @@ private final class BookTableColumns: UIStackView {
     spacing = 12
     isLayoutMarginsRelativeArrangement = true
     layoutMargins = UIEdgeInsets(top: verticalPadding, left: 16, bottom: verticalPadding, right: 16)
-    for label in labels {
+  }
+
+  required init(coder: NSCoder) {
+    textStyle = .body
+    super.init(coder: coder)
+  }
+
+  func configure(_ values: [String], widths: [Double?], headers: Bool) {
+    NSLayoutConstraint.deactivate(widthConstraints)
+    widthConstraints = []
+    for view in arrangedSubviews {
+      removeArrangedSubview(view)
+      view.removeFromSuperview()
+    }
+    distribution = widths.contains { $0 != nil } ? .fill : .fillEqually
+    for (index, value) in values.enumerated() {
+      let label = UILabel()
       label.font = .preferredFont(forTextStyle: textStyle)
       label.adjustsFontForContentSizeCategory = true
       label.textColor = .label
       label.backgroundColor = .systemBackground
-      label.numberOfLines = 2
+      label.numberOfLines = 0
+      label.text = value
+      if headers { label.accessibilityTraits = .header }
       addArrangedSubview(label)
+      if distribution == .fill {
+        let width = CGFloat(widths[index] ?? 180)
+        let constraint = label.widthAnchor.constraint(equalToConstant: width)
+        constraint.priority = .defaultHigh
+        widthConstraints.append(constraint)
+      }
     }
-  }
-
-  required init(coder: NSCoder) { super.init(coder: coder) }
-
-  func set(_ values: [String]) {
-    for (label, value) in zip(labels, values) { label.text = value }
+    NSLayoutConstraint.activate(widthConstraints)
   }
 
   func pin(to view: UIView) {

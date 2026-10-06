@@ -20,6 +20,7 @@ const entries = [
   "query",
   "series",
   "smart-scope",
+  "table-layout",
 ].map((name) => path.join(root, `packages/types/src/${name}.ts`));
 const program = ts.createProgram(entries, {
   strict: true,
@@ -204,6 +205,8 @@ function swiftType(type, name, field) {
   if (type.flags & ts.TypeFlags.NumberLike) return integerFields.has(field) ? "Int" : "Double";
   if (type.flags & ts.TypeFlags.BooleanLike) return "Bool";
   if (checker.isArrayType(type)) return `[${swiftType(checker.getTypeArguments(type)[0], `${name}Item`, field)}]`;
+  const indexed = checker.getIndexTypeOfType(type, ts.IndexKind.String);
+  if (indexed) return `[String: ${swiftType(indexed, `${name}Value`, field)}]`;
   if (type.flags & ts.TypeFlags.Object || type.isIntersection()) {
     const symbolName = type.aliasSymbol?.name ?? type.symbol?.name;
     const modelName = symbols.has(symbolName) ? symbolName : name;
@@ -288,6 +291,7 @@ for (const name of [
   "CreateSmartScopePayload",
   "UpdateSmartScopePayload",
   "SetSmartScopeKoboSyncPayload",
+  "SavedView",
 ]) {
   const symbol = symbols.get(name);
   if (!symbol) throw new Error(`Missing shared contract: ${name}`);
