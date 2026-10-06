@@ -77,7 +77,7 @@ struct OrganizationDirectoryView: View {
           }
           .overlay {
             if model.total == 0 && !model.isBusy {
-              ContentUnavailableView.search(text: model.search)
+              emptyDirectory
             }
           }
         }
@@ -127,6 +127,25 @@ struct OrganizationDirectoryView: View {
       .task { await model.load() }
       .sheet(isPresented: $showingFilters) { filters }
     }
+  }
+
+  private var emptyDirectory: some View {
+    VStack(spacing: 12) {
+      Image(systemName: "magnifyingglass")
+        .font(.largeTitle)
+        .accessibilityHidden(true)
+      Text("No \(model.kind.title.lowercased()) found")
+        .font(.title2.bold())
+      Text(
+        "Try another search or adjust the filters. Only items in your accessible libraries are shown."
+      )
+      .font(.body)
+    }
+    .foregroundStyle(Color(uiColor: .label))
+    .multilineTextAlignment(.center)
+    .padding()
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color(uiColor: .systemBackground))
   }
 
   private var filters: some View {
