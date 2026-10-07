@@ -12,6 +12,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   Res,
 } from '@nestjs/common';
 import { createReadStream } from 'node:fs';
@@ -26,6 +27,7 @@ import type { RequestUser } from '../../common/types/request-user';
 import { contentDispositionHeader } from '../../common/utils/content-disposition.utils';
 import { AudiobookService } from './audiobook.service';
 import { parseAudioByteRange } from './audio-byte-range';
+import { AudiobookBookmarksPageQueryDto } from './dto/audiobook-bookmarks-page-query.dto';
 import { CreateAudiobookBookmarkDto } from './dto/create-audiobook-bookmark.dto';
 import { PutAudiobookPlaybackStateDto } from './dto/put-audiobook-playback-state.dto';
 import { UpdateAudiobookBookmarkDto } from './dto/update-audiobook-bookmark.dto';
@@ -102,6 +104,11 @@ export class AudiobookController {
   @Get(':bookId/bookmarks')
   listBookmarks(@Param('bookId', ParseIntPipe) bookId: number, @CurrentUser() user: RequestUser) {
     return this.service.listBookmarks(bookId, user);
+  }
+
+  @Get(':bookId/bookmarks/page')
+  listBookmarksPage(@Param('bookId', ParseIntPipe) bookId: number, @Query() query: AudiobookBookmarksPageQueryDto, @CurrentUser() user: RequestUser) {
+    return this.service.listBookmarksPage(bookId, query, user);
   }
 
   @Post(':bookId/bookmarks')

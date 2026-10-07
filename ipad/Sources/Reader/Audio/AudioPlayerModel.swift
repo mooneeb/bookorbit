@@ -136,6 +136,34 @@ final class AudioPlayerModel {
     engine.retryPlayback()
   }
 
+  var bookmarkPosition: AudioBookmarkPosition? {
+    guard engine.isReady, let manifest = engine.manifest, let current = engine.currentAsset,
+      manifest.assets.allSatisfy({ ($0.durationMs ?? 0) > 0 }),
+      engine.positionSeconds.isFinite, engine.positionSeconds >= 0
+    else { return nil }
+    let before = manifest.assets.prefix(current.sequence).reduce(0) { $0 + ($1.durationMs ?? 0) }
+    let local = Int(min(Double(current.durationMs ?? 0), engine.positionSeconds * 1000).rounded())
+    let milliseconds = before + local
+    let chapter = manifest.chapters.last { $0.startMs <= milliseconds }
+    return .init(milliseconds: milliseconds, chapterID: chapter?.id)
+  }
+
+  func jumpToBookmark(positionMs: Int) async -> Bool {
+    guard canInteract, let manifest = engine.manifest,
+      manifest.assets.allSatisfy({ ($0.durationMs ?? 0) > 0 }),
+      positionMs >= 0, positionMs <= manifest.totalDurationMs
+    else { return false }
+    var before = 0
+    for asset in manifest.assets {
+      let duration = asset.durationMs ?? 0
+      if positionMs < before + duration || asset.sequence == manifest.assets.count - 1 {
+        return await activate(asset, positionMs: positionMs - before, autoplay: engine.isPlaying)
+      }
+      before += duration
+    }
+    return false
+  }
+
   func saveProgress() async {
     guard canSave else { return }
     await persistPosition()
@@ -258,23 +286,25 @@ final class AudioPlayerModel {
     await activate(manifest.assets[index], positionMs: 0, autoplay: autoplay)
   }
 
+  @discardableResult
   private func activate(
     _ asset: AudiobookManifestAsset, positionMs: Int, autoplay: Bool
-  ) async {
-    guard canInteract else { return }
+  ) async -> Bool {
+    guard canInteract else { return false }
     isChangingTrack = true
     wantsPlay = false
     engine.pause()
     guard await persistPosition() else {
       isChangingTrack = false
       refreshMedia()
-      return
+      return false
     }
     let opened = await engine.activate(asset, positionMs: positionMs)
-    guard !isClosed else { return }
+    guard !isClosed else { return false }
     wantsPlay = opened && autoplay
     isChangingTrack = false
     engineUpdated()
+    return opened
   }
 
   private func trackEnded() async {

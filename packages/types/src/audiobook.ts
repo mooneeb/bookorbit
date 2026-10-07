@@ -73,6 +73,16 @@ export interface AudiobookBookmark {
   updatedAt: string;
 }
 
+export interface AudiobookBookmarksPage {
+  items: AudiobookBookmark[];
+  nextCursor: string | null;
+}
+
+export interface AudiobookBookmarksPageQuery {
+  limit?: number;
+  afterId?: string;
+}
+
 export interface CreateAudiobookBookmark {
   clientId: string;
   positionMs: number;

@@ -5,6 +5,7 @@ struct AudiobookReaderView: View {
   @Environment(\.scenePhase) private var scenePhase
   @State private var model: AudioPlayerModel
   @State private var showingSettings = false
+  @State private var showingBookmarks = false
   @State private var showingCloseWarning = false
   @State private var scrubPosition = 0.0
   @State private var isScrubbing = false
@@ -98,24 +99,11 @@ struct AudiobookReaderView: View {
       .foregroundStyle(Color(uiColor: .label))
       .background(Color(uiColor: .systemBackground))
       .safeAreaInset(edge: .bottom) {
-        HStack {
-          Button(action: finish) {
-            Text("Done").font(.body).fixedSize(horizontal: false, vertical: true)
-              .padding(.horizontal, 16).frame(minWidth: 44, minHeight: 44)
-              .contentShape(Rectangle())
-          }
-          .disabled(!model.canClose).accessibilityIdentifier("audiobookDone")
-          Spacer()
-          Button {
-            showingSettings = true
-          } label: {
-            Text("Settings").font(.body).fixedSize(horizontal: false, vertical: true)
-              .padding(.horizontal, 16).frame(minWidth: 44, minHeight: 44)
-              .contentShape(Rectangle())
-          }
-          .disabled(!model.preferences.hasLoaded || !model.canClose)
-          .accessibilityIdentifier("audiobookSettings")
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 16) { footerButtons }
+          VStack(alignment: .leading, spacing: 8) { footerButtons }
         }
+        .frame(maxWidth: .infinity)
         .buttonStyle(.plain)
         .padding(.horizontal)
         .background(Color(uiColor: .systemBackground))
@@ -133,6 +121,7 @@ struct AudiobookReaderView: View {
       if scenePhase == .active { Task { await model.foreground() } }
     }
     .sheet(isPresented: $showingSettings) { AudioSettingsView(model: model) }
+    .sheet(isPresented: $showingBookmarks) { AudioBookmarksView(player: model) }
     .alert("Listening position not confirmed", isPresented: $showingCloseWarning) {
       Button("Keep reader open", role: .cancel) {}
       Button("Close without saving", role: .destructive) {
@@ -142,6 +131,33 @@ struct AudiobookReaderView: View {
     } message: {
       Text(model.closeWarning ?? "Retry Save progress to confirm your listening position.")
     }
+  }
+
+  @ViewBuilder
+  private var footerButtons: some View {
+    Button(action: finish) {
+      Text("Done").font(.body).fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 16).frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+    }
+    .disabled(!model.canClose).accessibilityIdentifier("audiobookDone")
+    Button {
+      showingBookmarks = true
+    } label: {
+      Text("Bookmarks").font(.body).fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+    }
+    .disabled(!model.canClose || model.engine.manifest == nil)
+    .accessibilityIdentifier("audiobookBookmarks")
+    Button {
+      showingSettings = true
+    } label: {
+      Text("Settings").font(.body).fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 16).frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+    }
+    .disabled(!model.preferences.hasLoaded || !model.canClose)
+    .accessibilityIdentifier("audiobookSettings")
   }
 
   private var playbackControls: some View {

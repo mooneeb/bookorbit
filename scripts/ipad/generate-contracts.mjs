@@ -178,6 +178,7 @@ const patchRequests = new Set([
   "BookSeriesMembershipUpdatePayload",
   "SetBookReadingStatusPayload",
   "UpdateBookPersonalNotePayload",
+  "UpdateAudiobookBookmark",
 ]);
 const requestModels = new Set([
   ...patchRequests,
@@ -365,6 +366,10 @@ for (const name of [
   "AnnotationListResponse",
   "AudiobookManifest",
   "AudiobookPlaybackState",
+  "AudiobookBookmark",
+  "AudiobookBookmarksPage",
+  "CreateAudiobookBookmark",
+  "UpdateAudiobookBookmark",
   "PutAudiobookPlaybackState",
   "NativeAuthResponse",
   "NativeCredentials",

@@ -7,6 +7,8 @@ import {
   AUDIOBOOK_MANIFEST_VERSION,
   isAudioFormat,
   type AudiobookBookmark,
+  type AudiobookBookmarksPage,
+  type AudiobookBookmarksPageQuery,
   type AudiobookManifest,
   type AudiobookManifestAsset,
   type AudiobookManifestChapter,
@@ -15,7 +17,6 @@ import {
 
 import type { RequestUser } from '../../common/types/request-user';
 import { compareAudioTracks } from '../../common/utils/book-media.utils';
-import type { BookmarkRow } from '../../db/schema';
 import { BookService } from '../book/book.service';
 import type { CreateAudiobookBookmarkDto } from './dto/create-audiobook-bookmark.dto';
 import type { PutAudiobookPlaybackStateDto } from './dto/put-audiobook-playback-state.dto';
@@ -159,6 +160,22 @@ export class AudiobookService {
     return rows.map((row) => this.mapBookmark(row));
   }
 
+  async listBookmarksPage(bookId: number, query: AudiobookBookmarksPageQuery, user: RequestUser): Promise<AudiobookBookmarksPage> {
+    await this.bookService.verifyBookAccess(bookId, user);
+    const limit = query.limit ?? 40;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('Bookmark page limit must be between 1 and 100');
+    const after = query.afterId ? await this.repo.findAudioBookmark(user.id, bookId, query.afterId) : undefined;
+    if (query.afterId && (!after || after.positionSeconds === null || !Number.isFinite(after.positionSeconds))) {
+      throw new BadRequestException('Bookmark cursor is no longer available. Reload the first page.');
+    }
+    const rows = await this.repo.findAudioBookmarksPage(user.id, bookId, limit, after ?? undefined);
+    const visible = rows.slice(0, limit);
+    return {
+      items: visible.map((row) => this.mapBookmark(row)),
+      nextCursor: rows.length > limit ? (visible.at(-1)?.clientId ?? null) : null,
+    };
+  }
+
   async createBookmark(bookId: number, dto: CreateAudiobookBookmarkDto, user: RequestUser): Promise<AudiobookBookmark> {
     const context = await this.loadManifestContext(bookId, user);
     const totalDurationMs = context.manifest.totalDurationMs;
@@ -285,7 +302,7 @@ export class AudiobookService {
       });
   }
 
-  private mapBookmark(row: BookmarkRow): AudiobookBookmark {
+  private mapBookmark(row: Awaited<ReturnType<AudiobookRepository['findAudioBookmarksPage']>>[number]): AudiobookBookmark {
     return {
       id: row.clientId,
       bookId: row.bookId,

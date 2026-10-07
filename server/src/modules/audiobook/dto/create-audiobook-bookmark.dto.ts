@@ -1,6 +1,7 @@
+import type { CreateAudiobookBookmark } from '@bookorbit/types';
 import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 
-export class CreateAudiobookBookmarkDto {
+export class CreateAudiobookBookmarkDto implements CreateAudiobookBookmark {
   @IsUUID()
   clientId!: string;
 

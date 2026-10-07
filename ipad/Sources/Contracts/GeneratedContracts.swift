@@ -80,6 +80,35 @@ struct AudiobookPlaybackState: Codable, Sendable, Equatable {
     var `manifestRevision`: String
 }
 
+struct AudiobookBookmark: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `bookId`: Int
+    var `positionMs`: Int
+    var `chapterId`: String?
+    var `title`: String
+    var `note`: String?
+    var `createdAt`: String
+    var `updatedAt`: String
+}
+
+struct AudiobookBookmarksPage: Codable, Sendable, Equatable {
+    var `items`: [AudiobookBookmark]
+    var `nextCursor`: String?
+}
+
+struct CreateAudiobookBookmark: Codable, Sendable, Equatable {
+    var `clientId`: String
+    var `positionMs`: Int
+    var `chapterId`: String?
+    var `title`: String
+    var `note`: String?
+}
+
+struct UpdateAudiobookBookmark: Encodable, Sendable, Equatable {
+    var `title`: String?
+    var `note`: FieldUpdate<String>?
+}
+
 struct PutAudiobookPlaybackState: Encodable, Sendable, Equatable {
     var `assetId`: String
     var `positionMs`: Int

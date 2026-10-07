@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
@@ -92,6 +92,39 @@ export class AudiobookRepository {
         ),
       )
       .orderBy(asc(bookmarks.positionSeconds), asc(bookmarks.id));
+  }
+
+  findAudioBookmarksPage(userId: number, bookId: number, limit: number, after?: Pick<typeof bookmarks.$inferSelect, 'id' | 'positionSeconds'>) {
+    return this.db
+      .select({
+        id: bookmarks.id,
+        clientId: bookmarks.clientId,
+        bookId: bookmarks.bookId,
+        positionSeconds: bookmarks.positionSeconds,
+        chapterId: bookmarks.chapterId,
+        title: bookmarks.title,
+        note: bookmarks.note,
+        createdAt: bookmarks.createdAt,
+        updatedAt: bookmarks.updatedAt,
+      })
+      .from(bookmarks)
+      .where(
+        and(
+          eq(bookmarks.userId, userId),
+          eq(bookmarks.bookId, bookId),
+          isNull(bookmarks.cfi),
+          isNotNull(bookmarks.positionSeconds),
+          isNull(bookmarks.deletedAt),
+          after?.positionSeconds !== null && after?.positionSeconds !== undefined
+            ? or(
+                gt(bookmarks.positionSeconds, after.positionSeconds),
+                and(eq(bookmarks.positionSeconds, after.positionSeconds), gt(bookmarks.id, after.id)),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(asc(bookmarks.positionSeconds), asc(bookmarks.id))
+      .limit(limit + 1);
   }
 
   async findAudioBookmark(userId: number, bookId: number, clientId: string) {
