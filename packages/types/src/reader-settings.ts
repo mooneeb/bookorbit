@@ -14,6 +14,7 @@ export const EPUB_TEXT_INDENT_MIN = 0;
 export const EPUB_TEXT_INDENT_MAX = 4;
 export const CBX_SPREAD_GAP_MIN = 0;
 export const CBX_SPREAD_GAP_MAX = 64;
+export const CBX_WIDE_PAGE_RATIO_THRESHOLD = 1.2;
 
 // Formats the reader can actually open. Used to show/hide Read/Open buttons.
 export const READER_OPENABLE_FORMATS = new Set([

@@ -85,6 +85,10 @@ struct ReaderPreferencesView: View {
             Text("Facing pages apply in paged mode. The cover remains a single page.")
             Toggle("Use two pages in portrait", isOn: $draft.comic.forceTwoPage)
               .accessibilityIdentifier("readerForceFacingPages")
+            Picker("Wide comic pages", selection: $draft.comic.widePageSingletonMode) {
+              Text("Show wide pages alone").tag("auto")
+              Text("Keep wide pages in pairs").tag("disable")
+            }.accessibilityIdentifier("readerWidePages")
             Picker("Reading direction", selection: $draft.comic.direction) {
               Text("Left to right").tag("ltr")
               Text("Right to left").tag("rtl")

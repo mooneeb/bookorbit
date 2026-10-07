@@ -1302,6 +1302,7 @@ enum BookReadingVocabulary {
 enum ReaderLayoutBounds {
     static let spreadGapMinimum = 0
     static let spreadGapMaximum = 64
+    static let widePageRatio = 1.2
 }
 
 enum MetadataVocabulary {

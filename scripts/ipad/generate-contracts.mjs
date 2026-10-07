@@ -449,6 +449,9 @@ const readerLayoutLimits = ["CBX_SPREAD_GAP_MIN", "CBX_SPREAD_GAP_MAX"].map((nam
   if (!Number.isInteger(value)) throw new Error(`${name} must remain an integer literal`);
   return value;
 });
+const widePageRatio = checker.getTypeAtLocation(symbols.get("CBX_WIDE_PAGE_RATIO_THRESHOLD").valueDeclaration.initializer).value;
+if (typeof widePageRatio !== "number" || !Number.isFinite(widePageRatio) || widePageRatio <= 1)
+  throw new Error("Wide page threshold must remain a finite literal greater than one");
 
 const readingStatuses = checker.getDeclaredTypeOfSymbol(symbols.get("ReadStatus"));
 const audioSchema = checker.getTypeAtLocation(symbols.get("AUDIOBOOK_MANIFEST_SCHEMA").valueDeclaration.initializer).value;
@@ -468,7 +471,7 @@ declarations.set(
 );
 declarations.set(
   "ReaderLayoutBounds",
-  `enum ReaderLayoutBounds {\n    static let spreadGapMinimum = ${readerLayoutLimits[0]}\n    static let spreadGapMaximum = ${readerLayoutLimits[1]}\n}`,
+  `enum ReaderLayoutBounds {\n    static let spreadGapMinimum = ${readerLayoutLimits[0]}\n    static let spreadGapMaximum = ${readerLayoutLimits[1]}\n    static let widePageRatio = ${widePageRatio}\n}`,
 );
 
 const metadataLocks = symbols.get("BOOK_METADATA_LOCK_FIELDS").valueDeclaration.initializer;

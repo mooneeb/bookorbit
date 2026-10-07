@@ -45,9 +45,10 @@ struct ComicReaderView: View {
           ComicCurlView(
             pageCount: model.pageCount, pageIndex: model.pageIndex,
             images: model.images, pageErrors: model.pageErrors, onTurn: model.didTurn,
-            onTransition: { isTurning = $0 }, settings: preferences.value.comic,
+            onTransition: updateTransition, settings: preferences.value.comic,
             animation: preferences.value.pageAnimation, onLayout: updateLayout,
-            onVisible: model.showContinuousPages, onBeyondLast: beyondLast
+            onVisible: model.showContinuousPages, onBeyondLast: beyondLast,
+            facingLayout: preferredFacingLayout
           )
           .allowsHitTesting(!model.isClosing && !isOpeningNext)
         } else if model.error == nil {
@@ -222,6 +223,17 @@ struct ComicReaderView: View {
     model.configureLayout(layout)
   }
 
+  private func updateTransition(_ active: Bool) {
+    isTurning = active
+    model.noteTransition(active)
+  }
+
+  private var preferredFacingLayout: FixedPageLayout? {
+    guard preferences.value.comic.widePageSingletonMode == "auto" else { return nil }
+    return preferences.value.comic.spreadAlignment == "shifted"
+      ? model.shiftedFacingLayout : model.normalFacingLayout
+  }
+
   private func previousPage() {
     if let page = pageLayout.adjacentPage(to: model.pageIndex, delta: -1) {
       model.didTurn(to: page)
@@ -286,6 +298,7 @@ private struct ComicCurlView: View {
   var onLayout: (FixedPageLayout) -> Void = { _ in }
   var onVisible: (Set<Int>) -> Void = { _ in }
   var onBeyondLast: (() -> Void)?
+  var facingLayout: FixedPageLayout?
 
   var body: some View {
     let continuous = settings.scrollMode != "paginated"
@@ -308,7 +321,7 @@ private struct ComicCurlView: View {
         (controller as? ComicPageController)?.update(
           images[index], error: pageErrors[index], settings: settings)
       }, onTurn: onTurn, onLayout: onLayout, onTransition: onTransition, onVisible: onVisible,
-      onBeyondLast: onBeyondLast
+      onBeyondLast: onBeyondLast, facingLayout: facingLayout, usesVirtualBlanks: true
     )
   }
 }

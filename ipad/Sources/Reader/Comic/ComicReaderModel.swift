@@ -22,6 +22,12 @@ final class ComicReaderModel {
   private var isClosed = false
   private var pageLayout = FixedPageLayout(pageCount: 0, facing: false, singlePrefix: 0)
   private var continuousVisible: Set<Int>?
+  private var widePages: Set<Int> = []
+  private var pendingWidePages: Set<Int> = []
+  private var isTurning = false
+  private(set) var normalFacingLayout = FixedPageLayout(pageCount: 0, facing: true, singlePrefix: 1)
+  private(set) var shiftedFacingLayout = FixedPageLayout(
+    pageCount: 0, facing: true, singlePrefix: 2)
 
   init(api: BookOrbitAPI, file: BookDetailFile) {
     self.api = api
@@ -41,6 +47,7 @@ final class ComicReaderModel {
       guard !isClosed else { return }
       guard (1...100_000).contains(count.pageCount) else { throw ConnectionError.invalidResponse }
       pageCount = count.pageCount
+      updateFacingLayouts()
       if let page = progress.pageNumber, page.isFinite, page >= 1, page <= Double(pageCount) {
         pageIndex = Int(page.rounded(.down)) - 1
       }
@@ -62,6 +69,29 @@ final class ComicReaderModel {
   }
 
   func retryPages() { loadVisiblePages() }
+
+  func noteTransition(_ active: Bool) {
+    isTurning = active
+    if !active { commitWidePages() }
+  }
+
+  private func commitWidePages() {
+    let added = pendingWidePages.subtracting(widePages)
+    pendingWidePages = []
+    guard !added.isEmpty else { return }
+    widePages.formUnion(added)
+    updateFacingLayouts()
+  }
+
+  private func updateFacingLayouts() {
+    let ordered = widePages.sorted()
+    normalFacingLayout = FixedPageLayout(
+      pageCount: pageCount, facing: true, singlePrefix: 1, widePages: ordered,
+      revision: widePages.count)
+    shiftedFacingLayout = FixedPageLayout(
+      pageCount: pageCount, facing: true, singlePrefix: 2, widePages: ordered,
+      revision: widePages.count)
+  }
 
   func configureLayout(_ layout: FixedPageLayout) {
     guard !isClosed, layout.pageCount == pageCount, layout != pageLayout else { return }
@@ -118,6 +148,12 @@ final class ComicReaderModel {
           try Task.checkCancellation()
           guard !isClosed, loadedWindow.contains(index) else { return }
           images[index] = image
+          if image.size.height > 0,
+            image.size.width / image.size.height >= CGFloat(ReaderLayoutBounds.widePageRatio)
+          {
+            pendingWidePages.insert(index)
+            if !isTurning { commitWidePages() }
+          }
         } catch is CancellationError {
           return
         } catch {
@@ -177,5 +213,9 @@ final class ComicReaderModel {
     saveTask?.cancel()
     images = [:]
     pageErrors = [:]
+    widePages = []
+    pendingWidePages = []
+    normalFacingLayout = FixedPageLayout(pageCount: 0, facing: true, singlePrefix: 1)
+    shiftedFacingLayout = FixedPageLayout(pageCount: 0, facing: true, singlePrefix: 2)
   }
 }
