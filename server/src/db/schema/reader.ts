@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   check,
   date,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -352,7 +353,7 @@ export const audiobookProgress = pgTable(
     currentFileId: integer('current_file_id')
       .notNull()
       .references(() => bookFiles.id, { onDelete: 'cascade' }),
-    positionSeconds: real('position_seconds').notNull().default(0),
+    positionSeconds: doublePrecision('position_seconds').notNull().default(0),
     revision: integer('revision').notNull().default(1),
     capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
     operationId: uuid('operation_id'),
