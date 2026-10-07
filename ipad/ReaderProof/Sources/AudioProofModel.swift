@@ -36,7 +36,7 @@ final class AudioProofModel {
   }
 
   var timeLabel: String {
-    "\(Self.clock(positionSeconds)) / \(Self.clock(durationSeconds))"
+    "\(Self.clock(positionSeconds)) / \(Self.clock(durationSeconds, rounding: .toNearestOrAwayFromZero))"
   }
 
   var deliveryLabel: String {
@@ -335,8 +335,13 @@ final class AudioProofModel {
     }
   }
 
-  private static func clock(_ seconds: Double) -> String {
-    let total = Int(max(0, seconds))
-    return String(format: "%d:%02d", total / 60, total % 60)
+  private static func clock(
+    _ seconds: Double, rounding: FloatingPointRoundingRule = .down
+  ) -> String {
+    guard seconds.isFinite, seconds >= 0, seconds <= Double(Int.max / 1000) else {
+      return "0:00"
+    }
+    let total = Int(seconds.rounded(rounding))
+    return "\(total / 60):\(String(format: "%02d", total % 60))"
   }
 }
