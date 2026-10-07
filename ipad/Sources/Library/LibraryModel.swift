@@ -47,6 +47,14 @@ final class LibraryModel {
     await query(page: 0)
   }
   func refreshBooks() async { await query(page: page) }
+  func collectionUpdated(_ collection: BookCollection) {
+    if case .collection(let id, _) = location, id == collection.id {
+      location = .collection(id: collection.id, name: collection.name)
+    }
+  }
+  func collectionDeleted(_ collectionID: Int) async {
+    if case .collection(let id, _) = location, id == collectionID { await select(.all) }
+  }
   func select(_ location: BookLocation) async {
     self.location = location
     search = ""

@@ -96,7 +96,30 @@ export class CollectionRepository {
             )
             .groupBy(collections.id, collections.userId)
             .orderBy(collections.displayOrder, collections.name, collections.id);
-    return { items, total: Number(summary?.total ?? 0), page, size };
+    if (query.bookId === undefined) return { items, total: Number(summary?.total ?? 0), page, size };
+    const members =
+      ids.length === 0
+        ? []
+        : await this.db
+            .select({ collectionId: collectionBooks.collectionId })
+            .from(collectionBooks)
+            .innerJoin(books, and(eq(books.id, collectionBooks.bookId), ne(books.status, 'processing'), visibleBooksWhere))
+            .where(
+              and(
+                eq(collectionBooks.bookId, query.bookId),
+                inArray(
+                  collectionBooks.collectionId,
+                  ids.map((item) => item.id),
+                ),
+              ),
+            );
+    const memberIds = new Set(members.map((member) => member.collectionId));
+    return {
+      items: items.map((item) => ({ ...item, memberCount: memberIds.has(item.id) ? 1 : 0 })),
+      total: Number(summary?.total ?? 0),
+      page,
+      size,
+    };
   }
 
   findAllOwnedForUserWithMembership(userId: number, bookIds: number[], visibleBooksWhere: SQL | undefined) {

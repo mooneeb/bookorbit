@@ -1,19 +1,25 @@
 import { MOBI, isMOBI } from "../foliate/mobi.js";
 import { makeFB2 } from "../foliate/fb2.js";
-import { Unzlib } from "../foliate/vendor/fflate.js";
 
 const maximumTextBytes = 32 * 1024 * 1024;
 const maximumResourceBytes = 8 * 1024 * 1024;
-const boundedUnzlib = (bytes) => {
+const boundedUnzlib = async (bytes) => {
   if (!bytes.length) throw new Error("The compressed font is unavailable.");
   const chunks = [];
   let length = 0;
-  const decoder = new Unzlib((chunk) => {
-    length += chunk.length;
-    if (length > maximumResourceBytes) throw new Error("The decoded font exceeds the resource limit.");
-    chunks.push(chunk);
-  });
-  for (let index = 0; index < bytes.length; index += 1024) decoder.push(bytes.subarray(index, index + 1024), index + 1024 >= bytes.length);
+  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate")).getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.length;
+      if (length > maximumResourceBytes) throw new Error("The decoded font exceeds the resource limit.");
+      chunks.push(value);
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
   const result = new Uint8Array(length);
   let offset = 0;
   for (const chunk of chunks) {

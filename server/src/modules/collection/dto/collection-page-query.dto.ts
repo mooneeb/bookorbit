@@ -30,4 +30,10 @@ export class CollectionPageQueryDto implements CollectionPageQuery {
   @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value))
   @IsBoolean()
   owned?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  bookId?: number;
 }

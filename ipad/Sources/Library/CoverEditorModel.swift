@@ -21,12 +21,17 @@ final class CoverEditorModel {
   private(set) var importing: Set<CoverMedium> = []
   private(set) var isSaving = false
   private(set) var isReloading = false
+  private(set) var reExtracting: CoverMedium?
+  private(set) var canReExtractCovers = false
+  private(set) var failedReExtractions: Set<CoverMedium> = []
   private(set) var requiresReload = false
   private(set) var errors: [CoverMedium: String] = [:]
   private(set) var message: String?
   @ObservationIgnored private var importTasks: [CoverMedium: Task<Void, Never>] = [:]
   @ObservationIgnored private var isClosed = false
   @ObservationIgnored private var imageLoadID = UUID()
+  @ObservationIgnored private var extractionTask: Task<Void, Never>?
+  @ObservationIgnored private var extractionOperation = UUID()
 
   init(api: BookOrbitAPI, book: BookDetail) {
     self.api = api
@@ -35,7 +40,7 @@ final class CoverEditorModel {
   }
 
   var media: [CoverMedium] { book.coverMedia.isEmpty ? [.ebook] : book.coverMedia }
-  var isBusy: Bool { isSaving || isReloading || !importing.isEmpty }
+  var isBusy: Bool { isSaving || isReloading || reExtracting != nil || !importing.isEmpty }
 
   func slot(_ medium: CoverMedium) -> BookCoverSlot? {
     medium == .ebook ? book.covers.ebook : book.covers.audio
@@ -55,6 +60,13 @@ final class CoverEditorModel {
     pendingURLs[medium] = url
     errors[medium] = nil
     message = nil
+  }
+
+  func load() async {
+    let allowed = await api.canReExtractCovers()
+    guard !isClosed, !Task.isCancelled else { return }
+    canReExtractCovers = allowed
+    await loadImages()
   }
 
   func loadImages() async {
@@ -171,6 +183,82 @@ final class CoverEditorModel {
     } catch { await handleWriteFailure(error, medium: medium) }
   }
 
+  func reExtract(_ medium: CoverMedium) {
+    guard canReExtractCovers, media.contains(medium), !isBusy, canEdit(medium), !isClosed else {
+      return
+    }
+    imageLoadID = UUID()
+    extractionOperation = UUID()
+    let operation = extractionOperation
+    reExtracting = medium
+    failedReExtractions.remove(medium)
+    errors[medium] = nil
+    message = nil
+    extractionTask = Task { [weak self] in
+      await self?.performReExtraction(medium, operation: operation)
+    }
+  }
+
+  private func performReExtraction(_ medium: CoverMedium, operation: UUID) async {
+    defer {
+      if extractionOperation == operation {
+        reExtracting = nil
+        extractionTask = nil
+      }
+    }
+    var result: CoverReExtractionResult?
+    do {
+      let session = try await api.authenticatedSessionGeneration()
+      result = try await api.reExtractCover(bookID: bookID, medium: medium, session: session)
+      guard isCurrentExtraction(operation) else { return }
+      requiresReload = true
+      if result?.updated == 1 { images[medium] = nil }
+      let current: BookDetail = try await api.boundedJSON("books/\(bookID)", session: session)
+      guard isCurrentExtraction(operation) else { return }
+      if book.coverVersion != current.coverVersion { images = [:] }
+      book = current
+      requiresReload = false
+      await loadImages()
+      guard isCurrentExtraction(operation), let result else { return }
+      message = extractionMessage(result, medium: medium)
+    } catch {
+      guard isCurrentExtraction(operation) else { return }
+      if let result {
+        message =
+          result.updated == 0
+          ? noExtractionMessage(medium) : "\(medium.label) re-extracted on the server."
+        errors[medium] =
+          "Current cover information could not be refreshed. Reload cover to check the result."
+      } else {
+        failedReExtractions.insert(medium)
+        if case .http(403)? = error as? ConnectionError { canReExtractCovers = false }
+        await handleWriteFailure(error, medium: medium)
+      }
+    }
+  }
+
+  private func isCurrentExtraction(_ operation: UUID) -> Bool {
+    !isClosed && !Task.isCancelled && extractionOperation == operation
+  }
+
+  private func noExtractionMessage(_ medium: CoverMedium) -> String {
+    "No \(medium.rawValue) cover was re-extracted. The server did not update this cover."
+  }
+
+  private func extractionMessage(_ result: CoverReExtractionResult, medium: CoverMedium) -> String {
+    guard result.updated > 0 else {
+      return isLocked(medium)
+        ? "\(medium.label) is locked. No cover was re-extracted."
+        : noExtractionMessage(medium)
+    }
+    var message = "\(medium.label) re-extracted."
+    if slot(medium)?.source == "custom" {
+      message += " Your custom cover remains selected."
+    }
+    if hasSelection(medium) { message += " Your unsaved selection is kept." }
+    return message
+  }
+
   private func handleWriteFailure(_ error: Error, medium: CoverMedium) async {
     guard !isClosed else { return }
     if case .http(409)? = error as? ConnectionError {
@@ -204,6 +292,10 @@ final class CoverEditorModel {
   func close() {
     isClosed = true
     imageLoadID = UUID()
+    extractionOperation = UUID()
+    extractionTask?.cancel()
+    extractionTask = nil
+    reExtracting = nil
     for task in importTasks.values { task.cancel() }
     for medium in Set(pending.keys).union(pendingURLs.keys) { discard(medium) }
   }

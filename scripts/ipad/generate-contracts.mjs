@@ -17,6 +17,7 @@ const entries = [
   "collection",
   "comic",
   "custom-metadata",
+  "custom-icon",
   "dashboard",
   "epub",
   "file-delivery",
@@ -107,7 +108,7 @@ const projections = {
   BookDetailFile: ["id", "format", "role", "filename", "sizeBytes", "durationSeconds"],
   BookQuery: ["filter", "sort", "pagination", "q", "collapseSeries", "randomSeed"],
   SmartScope: ["id", "userId", "mediaType", "name", "icon", "filter", "defaultSort", "isPublic", "syncToKobo", "koboSyncEnabled", "isOwner"],
-  Collection: ["id", "userId", "mediaType", "name", "isPublic", "isOwner", "bookCount"],
+  Collection: ["id", "userId", "mediaType", "name", "icon", "isPublic", "isOwner", "bookCount", "memberCount"],
   BookIdsSelection: ["bookIds"],
   EpubBookInfo: ["containerPath", "rootPath", "spine", "manifest", "optionalFiles", "toc"],
 };
@@ -141,6 +142,7 @@ const integerFields = new Set([
   "size",
   "total",
   "bookCount",
+  "memberCount",
   "bookTotal",
   "bookId",
   "coverBookId",
@@ -413,6 +415,7 @@ for (const name of [
   "CollectionsPage",
   "CollectionPageQuery",
   "CreateCollectionPayload",
+  "UpdateCollectionPayload",
   "BookIdsSelection",
   "BookMetadataUpdatePayload",
   "BookMetadataAndLocksUpdatePayload",
@@ -675,6 +678,9 @@ declarations.set(
 );
 
 const permission = symbols.get("Permission");
+const iconMaximum = checker.getTypeOfSymbolAtLocation(symbols.get("ICON_VALUE_MAX_LENGTH"), symbols.get("ICON_VALUE_MAX_LENGTH").valueDeclaration);
+if (!(iconMaximum.flags & ts.TypeFlags.NumberLiteral)) throw new Error("Icon maximum must remain a literal number");
+declarations.set("CollectionVocabulary", `enum CollectionVocabulary {\n    static let iconMaximum = ${iconMaximum.value}\n}`);
 const coverMedium = checker.getDeclaredTypeOfSymbol(symbols.get("CoverMedium"));
 declarations.set(
   "CoverMedium",

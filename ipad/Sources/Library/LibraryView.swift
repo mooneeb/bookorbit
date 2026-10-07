@@ -7,6 +7,7 @@ struct LibraryView: View {
   @State private var selectedBook: Int?
   @State private var presentation = "list"
   @State private var isCreatingCollection = false
+  @State private var editingCollection: BookCollection?
   @State private var organization: OrganizationKind?
   @State private var showingDashboard = false
   @State private var showingScopes = false
@@ -43,8 +44,10 @@ struct LibraryView: View {
           }
           .listRowBackground(Color(uiColor: .systemBackground))
         }
-        CollectionSidebar(collections: library.collections, create: { isCreatingCollection = true })
-        { collection in
+        CollectionSidebar(
+          collections: library.collections, create: { isCreatingCollection = true },
+          edit: { editingCollection = $0 }
+        ) { collection in
           Task { await library.select(.collection(id: collection.id, name: collection.name)) }
         }
       }
@@ -68,6 +71,7 @@ struct LibraryView: View {
     } detail: {
       NavigationStack {
         VStack(spacing: 0) {
+          LibrarySearchField(text: $library.search) { Task { await library.searchBooks() } }
           HStack {
             LibraryBookCountView(total: library.total)
             Spacer()
@@ -107,7 +111,8 @@ struct LibraryView: View {
               Button("Try again") { Task { await library.searchBooks() } }
             }
           } else if presentation == "grid" {
-            BookGrid(books: library.books) { selectedBook = $0 }
+            BookGrid(api: library.api, books: library.books) { selectedBook = $0 }
+              .id("\(session.serverURL).user.\(session.user?.id ?? 0)")
           } else if presentation == "table" {
             GeometryReader { geometry in
               ScrollView(.horizontal) {
@@ -133,7 +138,9 @@ struct LibraryView: View {
           }
           if library.isBusy { ProgressView("Loading books…").padding() }
           HStack {
-            SavedViewsButton { showingSavedViews = true }
+            LibraryActionButton(
+              title: String(localized: "Saved views"), identifier: "openSavedViews"
+            ) { showingSavedViews = true }
             if presentation == "table" {
               Button("Table columns") { showingTableLayout = true }.frame(minHeight: 44)
                 .accessibilityIdentifier(
@@ -158,8 +165,6 @@ struct LibraryView: View {
           }.padding()
         }
         .navigationTitle(library.location.title)
-        .searchable(text: $library.search, prompt: "Search books")
-        .onSubmit(of: .search) { Task { await library.searchBooks() } }
         .toolbar {
           ToolbarItem(placement: .topBarTrailing) {
             Picker("Book presentation", selection: $presentation) {
@@ -172,7 +177,12 @@ struct LibraryView: View {
         .sheet(
           item: Binding(
             get: { selectedBook.map(BookSelection.init) }, set: { selectedBook = $0?.id }),
-          onDismiss: { Task { await library.refreshBooks() } }
+          onDismiss: {
+            Task {
+              await library.refreshBooks()
+              await library.collections.refresh()
+            }
+          }
         ) { selection in
           BookDetailView(
             api: library.api, bookID: selection.id,
@@ -213,6 +223,12 @@ struct LibraryView: View {
         Task { await library.select(.collection(id: collection.id, name: collection.name)) }
       }
     }
+    .sheet(item: $editingCollection) { collection in
+      CollectionEditorView(
+        collections: library.collections, collection: collection,
+        onSaved: library.collectionUpdated,
+        onDeleted: { id in Task { await library.collectionDeleted(id) } })
+    }
     .alert(
       "Could not sign out",
       isPresented: Binding(get: { session.error != nil }, set: { if !$0 { session.error = nil } })
@@ -233,18 +249,117 @@ struct LibraryView: View {
   }
 }
 
+private struct LibrarySearchField: View {
+  @Binding var text: String
+  let submit: () -> Void
+
+  var body: some View {
+    HStack(spacing: 8) {
+      HStack(spacing: 8) {
+        Image(systemName: "magnifyingglass")
+          .foregroundStyle(.secondary)
+          .accessibilityHidden(true)
+        ZStack(alignment: .topLeading) {
+          if text.isEmpty {
+            Text("Search books")
+              .font(.body)
+              .foregroundStyle(Color(uiColor: .label))
+              .padding(.vertical, 8)
+              .accessibilityHidden(true)
+          }
+          LibraryQueryInput(text: $text, submit: submit)
+        }
+      }
+      .padding(.horizontal, 12)
+      .background(
+        Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+      if !text.isEmpty {
+        Button(action: clear) {
+          Label("Clear text", systemImage: "xmark.circle.fill")
+            .labelStyle(.iconOnly)
+            .font(.body)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+          .foregroundStyle(Color(uiColor: .label))
+          .background(
+            Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8)
+          )
+          .accessibilityIdentifier("clearLibrarySearch")
+      }
+    }.padding(.horizontal).padding(.vertical, 8)
+  }
+
+  private func clear() { text = "" }
+}
+
+private struct LibraryQueryInput: UIViewRepresentable {
+  @Binding var text: String
+  let submit: () -> Void
+
+  func makeUIView(context: Context) -> UITextView {
+    let field = UITextView()
+    field.adjustsFontForContentSizeCategory = true
+    field.textColor = .label
+    field.backgroundColor = .clear
+    field.returnKeyType = .search
+    field.isScrollEnabled = false
+    field.textContainer.lineFragmentPadding = 0
+    field.textContainerInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
+    field.delegate = context.coordinator
+    field.accessibilityLabel = "Search books"
+    field.accessibilityIdentifier = "librarySearch"
+    return field
+  }
+
+  func updateUIView(_ field: UITextView, context: Context) {
+    context.coordinator.parent = self
+    if field.text != text { field.text = text }
+    field.font = UIFont.preferredFont(forTextStyle: .body, compatibleWith: field.traitCollection)
+  }
+
+  func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+    let width = proposal.width ?? 320
+    let size = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+    return CGSize(width: width, height: max(44, size.height))
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+  @MainActor final class Coordinator: NSObject, UITextViewDelegate {
+    var parent: LibraryQueryInput
+
+    init(parent: LibraryQueryInput) { self.parent = parent }
+
+    func textViewDidChange(_ textView: UITextView) { parent.text = textView.text }
+
+    func textView(
+      _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
+    ) -> Bool {
+      guard text == "\n" else { return true }
+      parent.text = textView.text
+      textView.resignFirstResponder()
+      parent.submit()
+      return false
+    }
+  }
+}
+
 private struct CollectionSidebar: View {
   @Bindable var collections: CollectionModel
   let create: () -> Void
+  let edit: (BookCollection) -> Void
   let select: (BookCollection) -> Void
 
   var body: some View {
     Section {
-      Button("New collection", action: create)
-        .padding(.vertical, 4)
-        .foregroundStyle(Color(uiColor: .label))
-        .listRowBackground(Color(uiColor: .systemBackground))
-        .accessibilityIdentifier("newCollection")
+      LibraryActionButton(
+        title: String(localized: "New collection"), identifier: "newCollection", action: create
+      )
+      .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+      .padding(.vertical, 4)
+      .foregroundStyle(Color(uiColor: .label))
+      .listRowBackground(Color(uiColor: .systemBackground))
       if collections.total > 0 || !collections.search.isEmpty {
         HStack {
           Image(systemName: "magnifyingglass").accessibilityHidden(true)
@@ -255,8 +370,30 @@ private struct CollectionSidebar: View {
         }
       }
       ForEach(collections.items) { collection in
-        Button(collection.name) { select(collection) }
-          .listRowBackground(Color(uiColor: .systemBackground))
+        VStack(alignment: .leading, spacing: 8) {
+          Button {
+            select(collection)
+          } label: {
+            HStack {
+              CollectionIcon(value: collection.icon)
+              Text(collection.name).fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+              .contentShape(Rectangle())
+          }
+          .accessibilityLabel(collection.name)
+          .accessibilityIdentifier("collectionSidebar\(collection.id)")
+          Text(collection.isPublic ? "Shared collection" : "Private collection")
+            .font(.body).fixedSize(horizontal: false, vertical: true)
+          if collection.isOwner {
+            Button("Edit collection") { edit(collection) }
+              .font(.body).frame(minHeight: 44)
+              .accessibilityLabel("Edit \(collection.name)")
+              .accessibilityIdentifier("editCollection\(collection.id)")
+          }
+        }
+        .foregroundStyle(Color(uiColor: .label))
+        .disabled(collections.isMutating)
+        .listRowBackground(Color(uiColor: .systemBackground))
       }
       if collections.isBusy { ProgressView("Loading collections…") }
       if let error = collections.error {
@@ -304,39 +441,32 @@ private struct LibraryBookCountView: UIViewRepresentable {
 }
 
 private struct BookGrid: View {
+  let api: BookOrbitAPI
   let books: [BookCard]
   let select: (Int) -> Void
 
   var body: some View {
     ScrollView {
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 180))]) {
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .top)], spacing: 16) {
         ForEach(books) { book in
-          Button {
-            select(book.id)
-          } label: {
-            VStack(alignment: .leading, spacing: 8) {
-              Image(systemName: "book.closed").font(.largeTitle)
-                .frame(maxWidth: .infinity, minHeight: 120)
-              Text(book.title ?? "Untitled book").font(.headline)
-              Text(book.authors.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
-            }.padding().frame(maxWidth: .infinity, alignment: .leading)
-              .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-          }.buttonStyle(.plain)
+          LibraryBookCoverView(api: api, book: book, select: select)
         }
       }.padding()
     }
   }
 }
 
-private struct SavedViewsButton: UIViewRepresentable {
+private struct LibraryActionButton: UIViewRepresentable {
   @Environment(\.isEnabled) private var isEnabled
+  let title: String
+  let identifier: String
   let action: () -> Void
 
   func makeCoordinator() -> Coordinator { Coordinator(action: action) }
 
   func makeUIView(context: Context) -> UIButton {
     let button = UIButton(type: .system)
-    button.setTitle(String(localized: "Saved views"), for: .normal)
+    button.setTitle(title, for: .normal)
     button.setTitleColor(.label, for: .normal)
     button.backgroundColor = .systemBackground
     button.titleLabel?.font = .preferredFont(forTextStyle: .body)
@@ -344,7 +474,7 @@ private struct SavedViewsButton: UIViewRepresentable {
     button.titleLabel?.numberOfLines = 0
     button.titleLabel?.lineBreakMode = .byWordWrapping
     button.contentHorizontalAlignment = .leading
-    button.accessibilityIdentifier = "openSavedViews"
+    button.accessibilityIdentifier = identifier
     button.addTarget(
       context.coordinator, action: #selector(Coordinator.activate), for: .touchUpInside)
     return button

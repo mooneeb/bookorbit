@@ -5,7 +5,7 @@ struct BookDetailView: View {
   let canRead: Bool
   @Environment(\.dismiss) private var dismiss
   @State private var model: BookDetailModel
-  @State private var isAddingToCollection = false
+  @State private var isManagingCollections = false
   @State private var collectionResult: String?
   @State private var isEditingCovers = false
   @State private var selectedFile: BookDetailFile?
@@ -58,9 +58,12 @@ struct BookDetailView: View {
               }
             }
             Section("Collections") {
-              Button("Add to collection") { isAddingToCollection = true }
+              Button("Manage collections") { isManagingCollections = true }
                 .accessibilityIdentifier("addToCollection")
-              if let collectionResult { Text(collectionResult) }
+              if let collectionResult {
+                Text(collectionResult).fixedSize(horizontal: false, vertical: true)
+                  .accessibilityIdentifier("collectionMembershipResult")
+              }
             }
             Section("Your reading") {
               LabeledContent(
@@ -122,9 +125,10 @@ struct BookDetailView: View {
     .fullScreenCover(isPresented: $isEditingCovers, onDismiss: { Task { await model.load() } }) {
       if let book = model.book { CoverEditorView(api: model.api, book: book) }
     }
-    .sheet(isPresented: $isAddingToCollection) {
-      CollectionPickerView(api: model.api, bookID: model.bookID) { collection in
-        collectionResult = "Added to \(collection.name)"
+    .sheet(isPresented: $isManagingCollections) {
+      CollectionPickerView(api: model.api, bookID: model.bookID) { collection, included in
+        collectionResult =
+          included ? "Added to \(collection.name)" : "Removed from \(collection.name)"
       }
     }
   }

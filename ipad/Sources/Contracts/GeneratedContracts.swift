@@ -543,9 +543,11 @@ struct BookCollection: Codable, Sendable, Equatable, Identifiable {
     var `userId`: Int
     var `mediaType`: String
     var `name`: String
+    var `icon`: String?
     var `isPublic`: Bool
     var `isOwner`: Bool
     var `bookCount`: Int
+    var `memberCount`: Int?
 }
 
 struct CollectionPageQuery: Codable, Sendable, Equatable {
@@ -554,6 +556,7 @@ struct CollectionPageQuery: Codable, Sendable, Equatable {
     var `q`: String?
     var `mediaType`: String?
     var `owned`: Bool?
+    var `bookId`: Int?
 }
 
 struct CreateCollectionPayload: Codable, Sendable, Equatable {
@@ -561,6 +564,14 @@ struct CreateCollectionPayload: Codable, Sendable, Equatable {
     var `icon`: String
     var `description`: String?
     var `mediaType`: String?
+    var `isPublic`: Bool?
+    var `syncToKobo`: Bool?
+}
+
+struct UpdateCollectionPayload: Codable, Sendable, Equatable {
+    var `name`: String?
+    var `description`: String?
+    var `icon`: String?
     var `isPublic`: Bool?
     var `syncToKobo`: Bool?
 }
@@ -1806,6 +1817,10 @@ enum FilterVocabulary {
 
 enum SortVocabulary {
     static let fields: [String] = ["relevance", "author", "title", "series", "seriesIndex", "addedAt", "updatedAt", "publishedDate", "publishedYear", "pageCount", "rating", "publisher", "fileSize", "readProgress", "readStatus", "format", "lastReadAt", "startedAt", "finishedAt", "random", "language", "metadataScore", "collectionOrder"]
+}
+
+enum CollectionVocabulary {
+    static let iconMaximum = 100
 }
 
 enum CoverMedium: String, Codable, Sendable, CaseIterable, Identifiable {

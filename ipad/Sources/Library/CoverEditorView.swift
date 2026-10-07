@@ -30,15 +30,20 @@ struct CoverEditorView: View {
       .clipped()
       if model.isSaving { ProgressView("Saving cover…").padding() }
       if model.isReloading { ProgressView("Reloading covers…").padding() }
+      if let medium = model.reExtracting {
+        ProgressView("Re-extracting \(medium.rawValue) cover…").padding()
+          .accessibilityIdentifier("reExtractingCover")
+      }
       if let message = model.message {
-        Text(message).padding().accessibilityIdentifier("coverResult")
+        Text(message).fixedSize(horizontal: false, vertical: true).padding()
+          .accessibilityIdentifier("coverResult")
       }
     }
     .buttonStyle(CoverActionButtonStyle())
     .foregroundStyle(.primary)
     .background(.background)
     .interactiveDismissDisabled(model.isBusy)
-    .task { await model.loadImages() }
+    .task { await model.load() }
     .onDisappear(perform: model.close)
   }
 }
@@ -63,6 +68,11 @@ private struct CoverEditorTile: View {
     model.pending[medium].flatMap { UIImage(data: $0.preview) } ?? model.images[medium]
   }
 
+  private var extractionLabel: String {
+    model.failedReExtractions.contains(medium)
+      ? "Retry \(medium.rawValue) cover extraction" : "Re-extract \(medium.rawValue) cover"
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       Text(medium.label).font(.title2).accessibilityAddTraits(.isHeader)
@@ -73,6 +83,9 @@ private struct CoverEditorTile: View {
           .resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: 240)
           .accessibilityLabel(medium.label)
           .accessibilityIdentifier("\(medium.rawValue)CoverImage")
+      } else if model.errors[medium] != nil {
+        Label("Cover preview unavailable", systemImage: "photo.badge.exclamationmark")
+          .frame(maxWidth: .infinity, minHeight: 160)
       } else if model.slot(medium) != nil {
         ProgressView("Loading cover…").frame(maxWidth: .infinity, minHeight: 160)
       } else {
@@ -129,6 +142,21 @@ private struct CoverEditorTile: View {
           .accessibilityIdentifier("revert\(medium.identifier)Cover")
           .disabled(model.isBusy || !model.canEdit(medium))
       }
+      if model.canReExtractCovers {
+        Button(action: reExtractCover) {
+          Text(extractionLabel)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .accessibilityIdentifier("reExtract\(medium.identifier)Cover")
+        .disabled(model.isBusy || !model.canEdit(medium))
+        if model.slot(medium)?.source == "custom" {
+          Text("Re-extraction refreshes the embedded cover and keeps your custom cover selected.")
+            .font(.footnote)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
     }
     .padding()
     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -146,4 +174,6 @@ private struct CoverEditorTile: View {
       }
     }
   }
+
+  private func reExtractCover() { model.reExtract(medium) }
 }

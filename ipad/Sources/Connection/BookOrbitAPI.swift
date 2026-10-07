@@ -1,5 +1,10 @@
 import Foundation
 
+struct CoverReExtractionResult: Decodable, Sendable {
+  let processed: Int
+  let updated: Int
+}
+
 private final class SameOriginRedirects: NSObject, URLSessionTaskDelegate, Sendable {
   func urlSession(
     _ session: URLSession, task: URLSessionTask,
@@ -315,6 +320,25 @@ actor BookOrbitAPI {
     return (file, boundary, Int64(header.count + received + footer.count))
   }
 
+  func canReExtractCovers() -> Bool {
+    saved?.user.hasPermission(.libraryEditMetadata) == true
+  }
+
+  func reExtractCover(bookID: Int, medium: CoverMedium, session: UUID) async throws
+    -> CoverReExtractionResult
+  {
+    try ensureSession(session)
+    guard canReExtractCovers() else { throw ConnectionError.http(403) }
+    let result: CoverReExtractionResult = try await boundedJSON(
+      "books/\(bookID)/re-extract-cover", method: "POST",
+      query: [URLQueryItem(name: "medium", value: medium.rawValue)],
+      byteLimit: 16 * 1024, session: session)
+    guard (0...1).contains(result.processed), (0...result.processed).contains(result.updated) else {
+      throw ConnectionError.invalidResponse
+    }
+    return result
+  }
+
   func coverImage(bookID: Int, medium: CoverMedium, version: String) async throws -> Data {
     try await authenticatedImage(
       path: "books/\(bookID)/cover",
@@ -323,6 +347,13 @@ actor BookOrbitAPI {
         URLQueryItem(name: "strict", value: "true"),
         URLQueryItem(name: "t", value: version),
       ])
+  }
+
+  func thumbnailImage(bookID: Int, version: String, namespace: String) async throws -> Data {
+    return try await authenticatedImage(
+      path: "books/\(bookID)/thumbnail",
+      query: [URLQueryItem(name: "t", value: version)],
+      cachePolicy: .reloadIgnoringLocalCacheData, namespace: namespace)
   }
 
   func remoteCoverPreview(url: String) async throws -> Data {
@@ -340,9 +371,14 @@ actor BookOrbitAPI {
     return "\(profile.url.absoluteString).user.\(saved.user.id)"
   }
 
-  private func authenticatedImage(path: String, query: [URLQueryItem]) async throws -> Data {
+  private func authenticatedImage(
+    path: String, query: [URLQueryItem],
+    cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy, namespace: String? = nil
+  ) async throws -> Data {
+    if let namespace, try imageNamespace() != namespace { throw ConnectionError.expiredSession }
     let generation = sessionGeneration
     var request = URLRequest(url: profile.endpoint(path, query: query))
+    request.cachePolicy = cachePolicy
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(generation)
     var delivery = try await transport.bytes(for: request)

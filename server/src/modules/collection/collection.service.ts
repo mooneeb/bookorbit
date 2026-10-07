@@ -145,7 +145,7 @@ export class CollectionService {
     assertOffsetWithinLimit(query.page ?? 0, query.size ?? 40);
     const event = 'collection.list_page';
     const startedAt = Date.now();
-    const context = `userId=${user.id} page=${query.page ?? 0} size=${query.size ?? 40} mediaType=${query.mediaType ?? 'all'} owned=${query.owned ?? false} qPresent=${Boolean(query.q)}`;
+    const context = `userId=${user.id} bookId=${query.bookId ?? 'none'} page=${query.page ?? 0} size=${query.size ?? 40} mediaType=${query.mediaType ?? 'all'} owned=${query.owned ?? false} qPresent=${Boolean(query.q)}`;
     this.logger.log(`[${event}] [start] ${context} - collection page started`);
     try {
       const visibleBooksWhere = await this.buildViewerBookWhere(user);
