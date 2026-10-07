@@ -423,7 +423,7 @@ export const bookmarks = pgTable(
     note: text('note'),
     chapterId: varchar('chapter_id', { length: 80 }),
     // Audio: absolute book position in seconds (sum of preceding file durations + offset).
-    positionSeconds: real('position_seconds'),
+    positionSeconds: doublePrecision('position_seconds'),
     origin: varchar('origin', { length: 10 }).$type<BookmarkOrigin>().notNull().default('web'),
     // Canonical KOReader xpointer for a device-created bookmark, kept so it returns
     // to devices at its original position instead of surviving a double conversion.

@@ -1,0 +1,1 @@
+ALTER TABLE "bookmarks" ALTER COLUMN "position_seconds" SET DATA TYPE double precision;

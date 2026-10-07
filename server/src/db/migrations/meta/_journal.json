@@ -729,6 +729,13 @@
       "when": 1791363145518,
       "tag": "0103_audiobook_playback_precision",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1791363845169,
+      "tag": "0104_audiobook_bookmark_precision",
+      "breakpoints": true
     }
   ]
 }
