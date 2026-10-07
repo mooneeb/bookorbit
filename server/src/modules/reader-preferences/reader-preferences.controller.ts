@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Put } from '@nestjs/common';
+import { Permission } from '@bookorbit/types';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ForbidPermission } from '../../common/decorators/forbid-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { PatchDefaultDto } from './dto/patch-default.dto';
 import { PatchPreferenceDto } from './dto/patch-preference.dto';
@@ -43,18 +45,21 @@ export class ReaderPreferencesController {
 
   @Put('defaults/:formatGroup')
   @HttpCode(204)
+  @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot edit synchronized reader defaults')
   async upsertDefault(@Param('formatGroup') formatGroup: string, @Body() dto: UpsertPreferenceDto, @CurrentUser() user: RequestUser) {
     await this.readerPreferencesService.upsertDefault(user.id, formatGroup, dto.settings);
   }
 
   @Patch('defaults/:formatGroup')
   @HttpCode(204)
+  @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot edit synchronized reader defaults')
   async patchDefault(@Param('formatGroup') formatGroup: string, @Body() dto: PatchDefaultDto, @CurrentUser() user: RequestUser) {
     await this.readerPreferencesService.patchDefault(user.id, formatGroup, dto.set);
   }
 
   @Delete('defaults/:formatGroup')
   @HttpCode(204)
+  @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot edit synchronized reader defaults')
   async deleteDefault(@Param('formatGroup') formatGroup: string, @CurrentUser() user: RequestUser) {
     await this.readerPreferencesService.deleteDefault(user.id, formatGroup);
   }
