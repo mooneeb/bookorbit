@@ -184,9 +184,11 @@ actor BookOrbitAPI {
   }
 
   func sendEmpty(
-    _ path: String, method: String = "POST", body: Data? = nil, query: [URLQueryItem] = []
+    _ path: String, method: String = "POST", body: Data? = nil, query: [URLQueryItem] = [],
+    session: UUID? = nil
   ) async throws {
-    let generation = sessionGeneration
+    let generation = session ?? sessionGeneration
+    try ensureSession(generation)
     let token = try await accessToken()
     try ensureSession(generation)
     var (_, response) = try await raw(path, method: method, body: body, query: query, token: token)
@@ -585,13 +587,19 @@ actor BookOrbitAPI {
     }
   }
 
-  func epubResource(bookID: Int, fileID: Int, path: String, expectedSize: Int?) async throws -> Data
-  {
-    let limit = 8 * 1024 * 1024
+  func epubResource(
+    bookID: Int, fileID: Int, path: String, expectedSize: Int?, byteLimit: Int = 8 * 1024 * 1024,
+    session: UUID? = nil
+  ) async throws -> Data {
+    guard (1...(8 * 1024 * 1024)).contains(byteLimit) else {
+      throw ConnectionError.resourceTooLarge
+    }
+    let limit = byteLimit
     if let expectedSize, !(0...limit).contains(expectedSize) {
       throw ConnectionError.resourceTooLarge
     }
-    let generation = sessionGeneration
+    let generation = session ?? sessionGeneration
+    try ensureSession(generation)
     var request = URLRequest(
       url: profile.endpoint(
         "epub/\(bookID)/file/\(path)", query: [URLQueryItem(name: "fileId", value: String(fileID))])

@@ -82,6 +82,19 @@ export interface AnnotationPdfPosition {
   rects: AnnotationRect[];
 }
 
+export const ANNOTATION_CFI_MAX_LENGTH = 2000;
+
+export interface CreateAnnotationPayload {
+  cfi?: string;
+  pdf?: AnnotationPdfPosition;
+  bookFileId?: number;
+  text: string;
+  color?: string;
+  style?: string;
+  note?: string | null;
+  chapterTitle?: string | null;
+}
+
 export interface AnnotationItem {
   id: number;
   bookId: number;

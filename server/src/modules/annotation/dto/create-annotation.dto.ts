@@ -18,10 +18,11 @@ import {
   type ValidatorConstraintInterface,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ANNOTATION_CFI_MAX_LENGTH, type AnnotationPdfPosition, type AnnotationRect, type CreateAnnotationPayload } from '@bookorbit/types';
 
 import { ANNOTATION_STYLES } from '../annotation.constants';
 
-export class CreateAnnotationRectDto {
+export class CreateAnnotationRectDto implements AnnotationRect {
   @IsNumber()
   x!: number;
 
@@ -37,7 +38,7 @@ export class CreateAnnotationRectDto {
   height!: number;
 }
 
-export class CreateAnnotationPdfDto {
+export class CreateAnnotationPdfDto implements AnnotationPdfPosition {
   @IsInt()
   @Min(0)
   page!: number;
@@ -80,11 +81,11 @@ class PdfRequiresBookFileConstraint implements ValidatorConstraintInterface {
   }
 }
 
-export class CreateAnnotationDto {
+export class CreateAnnotationDto implements CreateAnnotationPayload {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
-  @MaxLength(2000)
+  @MaxLength(ANNOTATION_CFI_MAX_LENGTH)
   cfi?: string;
 
   @IsOptional()

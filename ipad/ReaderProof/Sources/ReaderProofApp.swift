@@ -67,6 +67,7 @@ private struct ReaderProofBookView: View {
   @State private var model: BookDetailModel
   @State private var selectedFile: BookDetailFile?
   @State private var nativeChapterFile: BookDetailFile?
+  @State private var nativeAnchorFile: BookDetailFile?
   @Environment(\.dismiss) private var dismiss
 
   init(api: BookOrbitAPI, bookID: Int, canRead: Bool) {
@@ -92,6 +93,8 @@ private struct ReaderProofBookView: View {
               if canRead, file.format?.lowercased() == "epub" {
                 Button("Inspect native chapter") { nativeChapterFile = file }
                   .accessibilityIdentifier("inspectNativeFile\(file.id)")
+                Button("Inspect native anchors") { nativeAnchorFile = file }
+                  .accessibilityIdentifier("inspectNativeAnchors\(file.id)")
               }
             }
             .buttonStyle(.borderless)
@@ -119,6 +122,9 @@ private struct ReaderProofBookView: View {
     }
     .fullScreenCover(item: $nativeChapterFile) { file in
       NativeChapterView(api: model.api, bookID: model.bookID, file: file)
+    }
+    .fullScreenCover(item: $nativeAnchorFile) { file in
+      NativeEPUBAnchorView(api: model.api, bookID: model.bookID, file: file)
     }
   }
 }

@@ -47,7 +47,7 @@ enum ConnectionError: LocalizedError {
     case .denied: "Your account does not have access to this action."
     case .fileChanged: "The book file changed. Close the reader and reopen the book."
     case .insufficientStorage: "There is not enough free space to open this book file."
-    case .resourceTooLarge: "This EPUB resource exceeds the renderer proof's 8 MB limit."
+    case .resourceTooLarge: "This EPUB resource is too large to open safely."
     case .responseTooLarge:
       "The server response is too large to open safely."
     case .comicPageTooLarge: "This comic page exceeds the reader's 20 MB image limit."

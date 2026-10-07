@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(path.join(root, "server/package.json"));
 const ts = require("typescript");
 const entries = [
+  "annotation",
   "audiobook",
   "auth",
   "author",
@@ -54,6 +55,9 @@ const symbols = new Map(
 
 // These audited projections decode existing responses without generating unused server data.
 const projections = {
+  CreateAnnotationPayload: ["cfi", "bookFileId", "text", "color", "style", "note", "chapterTitle"],
+  AnnotationItem: ["id", "bookId", "cfi", "jumpFileId", "text", "color", "style", "note", "chapterTitle", "positionStatus"],
+  AnnotationListResponse: ["items", "total", "page", "pageSize"],
   AuthUser: ["id", "username", "name", "active", "isSuperuser", "isDefaultPassword", "permissions"],
   UserDashboardSettingsResponse: ["settings"],
   UserReaderSettingsResponse: ["settings", "permissions"],
@@ -114,6 +118,9 @@ const integerFields = new Set([
   "libraryIds",
   "smartScopeId",
   "fileId",
+  "bookFileId",
+  "jumpFileId",
+  "pageSize",
   "fieldId",
   "seriesId",
   "displayOrder",
@@ -172,7 +179,13 @@ const patchRequests = new Set([
   "SetBookReadingStatusPayload",
   "UpdateBookPersonalNotePayload",
 ]);
-const requestModels = new Set([...patchRequests, "BookMetadataAndLocksUpdatePayload", "SaveFileProgressPayload", "PutAudiobookPlaybackState"]);
+const requestModels = new Set([
+  ...patchRequests,
+  "BookMetadataAndLocksUpdatePayload",
+  "SaveFileProgressPayload",
+  "PutAudiobookPlaybackState",
+  "CreateAnnotationPayload",
+]);
 const nullableResponses = new Set([
   "BookFileMetadataResponse",
   "BookFileComicMetadata",
@@ -348,6 +361,8 @@ function generateModel(name, type) {
 }
 
 for (const name of [
+  "CreateAnnotationPayload",
+  "AnnotationListResponse",
   "AudiobookManifest",
   "AudiobookPlaybackState",
   "PutAudiobookPlaybackState",
@@ -469,6 +484,9 @@ declarations.set(
   "BookReadingVocabulary",
   `enum BookReadingVocabulary {\n    static let statuses: [String] = [${readingStatuses.types.map((part) => JSON.stringify(part.value)).join(", ")}]\n    static let noteMaximum = ${personalNoteLimit}\n}`,
 );
+const annotationCFILimit = checker.getTypeAtLocation(symbols.get("ANNOTATION_CFI_MAX_LENGTH").valueDeclaration.initializer).value;
+if (!Number.isInteger(annotationCFILimit)) throw new Error("Annotation CFI limit must remain an integer literal");
+declarations.set("AnnotationVocabulary", `enum AnnotationVocabulary {\n    static let cfiMaximum = ${annotationCFILimit}\n}`);
 declarations.set(
   "ReaderLayoutBounds",
   `enum ReaderLayoutBounds {\n    static let spreadGapMinimum = ${readerLayoutLimits[0]}\n    static let spreadGapMaximum = ${readerLayoutLimits[1]}\n    static let widePageRatio = ${widePageRatio}\n}`,

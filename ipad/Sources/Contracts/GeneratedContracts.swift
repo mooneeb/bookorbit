@@ -2,6 +2,36 @@
 // Regenerate after shared contract changes.
 import Foundation
 
+struct CreateAnnotationPayload: Encodable, Sendable, Equatable {
+    var `cfi`: String?
+    var `bookFileId`: Int?
+    var `text`: String
+    var `color`: String?
+    var `style`: String?
+    var `note`: String?
+    var `chapterTitle`: String?
+}
+
+struct AnnotationListResponse: Codable, Sendable, Equatable {
+    var `items`: [AnnotationItem]
+    var `total`: Int
+    var `page`: Int
+    var `pageSize`: Int
+}
+
+struct AnnotationItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `bookId`: Int
+    var `cfi`: String?
+    var `jumpFileId`: Int?
+    var `text`: String
+    var `color`: String
+    var `style`: String
+    var `note`: String?
+    var `chapterTitle`: String?
+    var `positionStatus`: String?
+}
+
 struct AudiobookManifest: Codable, Sendable, Equatable {
     var `schema`: String
     var `schemaVersion`: Int
@@ -270,6 +300,7 @@ struct BookCommunityRating: Codable, Sendable, Equatable {
 }
 
 struct BookDetailProviderIds: Codable, Sendable, Equatable {
+    var `kobo`: String?
     var `google`: String?
     var `goodreads`: String?
     var `amazon`: String?
@@ -281,7 +312,6 @@ struct BookDetailProviderIds: Codable, Sendable, Equatable {
     var `librofm`: String?
     var `comicvine`: String?
     var `ranobedb`: String?
-    var `kobo`: String?
     var `lubimyczytac`: String?
     var `aladin`: String?
 }
@@ -1299,6 +1329,10 @@ enum BookReadingVocabulary {
     static let noteMaximum = 10000
 }
 
+enum AnnotationVocabulary {
+    static let cfiMaximum = 2000
+}
+
 enum ReaderLayoutBounds {
     static let spreadGapMinimum = 0
     static let spreadGapMaximum = 64
@@ -1308,7 +1342,7 @@ enum ReaderLayoutBounds {
 enum MetadataVocabulary {
     static let coverProviders: [String] = ["duckduckgo", "itunes", "audiobookcovers", "all"]
     static let lockFields: [String] = ["title", "subtitle", "authors", "description", "publisher", "publishedYear", "language", "pageCount", "seriesName", "seriesIndex", "isbn13", "isbn10", "genres", "tags", "rating", "communityRating", "narrators", "durationSeconds", "abridged", "googleBooksId", "goodreadsId", "amazonId", "hardcoverId", "hardcoverEditionId", "openLibraryId", "itunesId", "audibleId", "librofmId", "koboId", "comicvineId", "ranobedbId", "lubimyczytacId", "aladinId", "comicIssueNumber", "comicVolumeName", "comicStoryArcs", "comicPencillers", "comicInkers", "comicColorists", "comicLetterers", "comicCoverArtists", "comicCharacters", "comicTeams", "comicLocations", "cover", "audioCover"]
-    static let providers: [String] = ["google", "goodreads", "amazon", "hardcover", "openLibrary", "itunes", "audible", "audnexus", "librofm", "comicvine", "ranobedb", "kobo", "lubimyczytac", "aladin"]
+    static let providers: [String] = ["kobo", "google", "goodreads", "amazon", "hardcover", "openLibrary", "itunes", "audible", "audnexus", "librofm", "comicvine", "ranobedb", "lubimyczytac", "aladin"]
     static let statusEvent = "provider-status"
 }
 
@@ -1377,7 +1411,7 @@ enum FilterVocabulary {
     ]
     static let ratingProviders: [String] = ["google", "goodreads", "amazon", "hardcover", "openLibrary", "itunes", "audible", "ranobedb", "any"]
     static let readStatuses: [String] = ["unread", "want_to_read", "reading", "on_hold", "rereading", "read", "skimmed", "abandoned"]
-    static let formats: [String] = ["epub", "fb2", "pdf", "cbz", "cb7", "mobi", "azw3", "azw", "m4b", "m4a", "mp3", "flac", "kepub", "cbr", "opus", "ogg"]
+    static let formats: [String] = ["pdf", "epub", "fb2", "cbz", "cb7", "mobi", "azw3", "azw", "m4b", "m4a", "mp3", "flac", "kepub", "cbr", "opus", "ogg"]
 }
 
 enum SortVocabulary {
