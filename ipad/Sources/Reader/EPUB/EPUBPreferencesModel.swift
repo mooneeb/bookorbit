@@ -34,6 +34,8 @@ struct EPUBPreferencesValue: Codable, Equatable {
 final class EPUBPreferencesModel {
   let api: BookOrbitAPI
   let fileID: Int
+  let fonts: EPUBCustomFontsModel
+  @ObservationIgnored var validateFont: (@MainActor (EPUBPreferencesValue) async throws -> Void)?
   private(set) var value = EPUBPreferencesValue()
   private(set) var defaults = EPUBPreferencesValue()
   private(set) var isCustomized = false
@@ -55,6 +57,7 @@ final class EPUBPreferencesModel {
   init(api: BookOrbitAPI, fileID: Int) {
     self.api = api
     self.fileID = fileID
+    fonts = EPUBCustomFontsModel(api: api)
   }
   var canSave: Bool {
     hasLoaded && !isLoading && !isSaving && !isClosed
@@ -101,6 +104,7 @@ final class EPUBPreferencesModel {
         throw ConnectionError.invalidResponse
       }
       hasLoaded = true
+      await fonts.load()
     } catch { if !isClosed { self.error = error.localizedDescription } }
   }
 
@@ -108,6 +112,21 @@ final class EPUBPreferencesModel {
     guard canSave, requested.isValid, !hasPendingSave, !asDefault || !syncSettings || canSync else {
       return false
     }
+    isSaving = true
+    error = nil
+    do {
+      if let validateFont {
+        try await validateFont(requested)
+      } else if EPUBCustomFontsModel.isCustom(requested.settings.fontFamily) {
+        throw EPUBFontError.loadFailed
+      }
+      guard !isClosed else { throw CancellationError() }
+    } catch {
+      isSaving = false
+      if !isClosed { self.error = error.localizedDescription }
+      return false
+    }
+    isSaving = false
     pending = requested
     pendingAsDefault = asDefault
     defaultConfirmed = false
@@ -216,7 +235,11 @@ final class EPUBPreferencesModel {
     }
   }
 
-  func close() { isClosed = true }
+  func close() {
+    isClosed = true
+    fonts.close()
+    validateFont = nil
+  }
 
   private func merged<Value: Encodable>(_ partial: Value?, over base: EpubReaderSettings) throws
     -> EpubReaderSettings

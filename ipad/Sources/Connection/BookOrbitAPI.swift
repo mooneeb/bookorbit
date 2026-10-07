@@ -44,6 +44,16 @@ actor BookOrbitAPI {
     try await send("auth/login-options", authenticated: false)
   }
 
+  func sendPublicEmpty(_ path: String, body: Data, expectedStatus: Int) async throws {
+    try Task.checkCancellation()
+    let (data, response) = try await raw(path, method: "POST", body: body)
+    try Task.checkCancellation()
+    try validate(response)
+    guard response.statusCode == expectedStatus, data.isEmpty else {
+      throw ConnectionError.invalidResponse
+    }
+  }
+
   func login(username: String, password: String) async throws -> AuthUser {
     let body = LoginRequest(
       username: username, password: password, clientKind: "native",
@@ -617,6 +627,89 @@ actor BookOrbitAPI {
   func authenticatedSessionGeneration() throws -> UUID {
     try ensureSession(sessionGeneration)
     return sessionGeneration
+  }
+
+  func readerFontFile(
+    scope: String, font: UserFont, cached: ReaderFontFile?, directory: URL, session: UUID
+  )
+    async throws -> ReaderFontFile
+  {
+    guard ["user", "server"].contains(scope), font.id > 0,
+      let mimeType = ReaderFontVocabulary.mimeTypes[font.format],
+      (1...ReaderFontVocabulary.fileMaximum).contains(font.fileSize)
+    else { throw EPUBFontError.invalidFile }
+    try ensureSession(session)
+    let path = "\(scope == "server" ? "server-fonts" : "fonts")/\(font.id)/file"
+    var request = URLRequest(url: profile.endpoint(path))
+    request.cachePolicy = .reloadIgnoringLocalCacheData
+    request.timeoutInterval = 120
+    request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+    request.setValue(mimeType, forHTTPHeaderField: "Accept")
+    if let cached { request.setValue(cached.etag, forHTTPHeaderField: "If-None-Match") }
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(session)
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(session)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    try ensureSession(session)
+    guard let response = response as? HTTPURLResponse else { throw EPUBFontError.invalidFile }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    if response.statusCode == 304 {
+      guard let cached, cached.size == font.fileSize, cached.mimeType == mimeType,
+        (try cached.url.resourceValues(forKeys: [.fileSizeKey])).fileSize == cached.size
+      else { throw EPUBFontError.invalidFile }
+      try Task.checkCancellation()
+      return cached
+    }
+    try validate(response)
+    guard response.statusCode == 200, response.mimeType == mimeType,
+      let etag = response.value(forHTTPHeaderField: "ETag"), etag.utf8.count <= 200,
+      etag.hasPrefix("\""), etag.hasSuffix("\""), !etag.contains("\r"), !etag.contains("\n"),
+      response.expectedContentLength < 0 || response.expectedContentLength == font.fileSize
+    else { throw EPUBFontError.invalidFile }
+    let folder = directory
+    let capacity = try FileManager.default.attributesOfFileSystem(forPath: folder.path)
+    if let free = capacity[.systemFreeSize] as? NSNumber,
+      Int64(font.fileSize) > free.int64Value - 128 * 1024 * 1024
+    {
+      throw ConnectionError.insufficientStorage
+    }
+    let destination = folder.appendingPathComponent(
+      "bookorbit-font-\(UUID().uuidString).\(font.format)")
+    guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
+      throw ConnectionError.insufficientStorage
+    }
+    var completed = false
+    defer { if !completed { try? FileManager.default.removeItem(at: destination) } }
+    let handle = try FileHandle(forWritingTo: destination)
+    defer { try? handle.close() }
+    var buffer = Data()
+    buffer.reserveCapacity(64 * 1024)
+    var received = 0
+    for try await byte in bytes {
+      guard received < font.fileSize else { throw EPUBFontError.invalidFile }
+      buffer.append(byte)
+      received += 1
+      if buffer.count == 64 * 1024 {
+        try Task.checkCancellation()
+        try ensureSession(session)
+        try handle.write(contentsOf: buffer)
+        buffer.removeAll(keepingCapacity: true)
+      }
+    }
+    try Task.checkCancellation()
+    try ensureSession(session)
+    guard received == font.fileSize else { throw EPUBFontError.invalidFile }
+    if !buffer.isEmpty { try handle.write(contentsOf: buffer) }
+    completed = true
+    return ReaderFontFile(url: destination, size: received, etag: etag, mimeType: mimeType)
   }
 
   func audioChunk(

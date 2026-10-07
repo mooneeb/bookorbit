@@ -37,6 +37,46 @@ final class SavedViewModel {
     }
   }
 
+  func exportedViews(at location: String) -> [SavedView] { views(at: location).map(\.view) }
+
+  func prepareImport(_ views: [SavedView], at location: String) throws -> [NativeSavedView] {
+    guard !location.isEmpty, location.count <= 255 else { throw SavedViewError.layout }
+    guard views.count <= maximumViews, items.count + views.count <= maximumViews else {
+      throw SavedViewError.limit
+    }
+    var imported: [NativeSavedView] = []
+    var importedBytes = 0
+    for view in views {
+      try Self.validate(view)
+      var copy = view
+      copy.id = "saved_view_\(UUID().uuidString)"
+      copy.name = try validName(copy.name)
+      copy.layout = BookTableLayout.normalized(copy.layout)
+      try Self.validate(copy)
+      let entry = NativeSavedView(
+        view: copy, location: location, presentation: "table", search: "")
+      importedBytes += try JSONEncoder().encode(entry).count
+      guard importedBytes <= byteLimit else { throw SavedViewError.storage }
+      imported.append(entry)
+    }
+    let next = items + imported
+    _ = try encoded(next)
+    return next
+  }
+
+  func persistPrepared(_ views: [NativeSavedView]) throws { try persist(views) }
+
+  static func validate(_ view: SavedView) throws {
+    let name = view.name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !name.isEmpty, name.count <= 255 else { throw SavedViewError.name }
+    guard !view.id.isEmpty, view.id.count <= 255 else { throw SavedViewError.layout }
+    do { try NativeViewBackupValidation.validate(layout: view.layout) } catch {
+      throw SavedViewError.layout
+    }
+    try NativeViewBackupValidation.validate(sort: view.sort)
+    if let filter = view.filter { try NativeViewBackupValidation.validate(filter: filter) }
+  }
+
   func save(name: String, library: LibraryModel, presentation: String, layout: TableLayoutState)
     throws
   {
@@ -85,21 +125,28 @@ final class SavedViewModel {
     return trimmed
   }
 
-  private func persist(_ views: [NativeSavedView]) throws {
+  private func encoded(_ views: [NativeSavedView]) throws -> Data {
+    guard views.count <= maximumViews else { throw SavedViewError.limit }
     let data = try JSONEncoder().encode(views)
     guard data.count <= byteLimit else { throw SavedViewError.storage }
+    return data
+  }
+
+  private func persist(_ views: [NativeSavedView]) throws {
+    let data = try encoded(views)
     UserDefaults.standard.set(data, forKey: key)
     items = views
   }
 }
 
 enum SavedViewError: LocalizedError {
-  case name, limit, storage
+  case name, limit, storage, layout
   var errorDescription: String? {
     switch self {
     case .name: "Enter a view name with at most 255 characters."
     case .limit: "You can save up to 100 views. Remove a view before saving another."
     case .storage: "The saved views are too large. Use fewer filter conditions."
+    case .layout: "The saved view contains an invalid or oversized column layout."
     }
   }
 }

@@ -4,6 +4,7 @@ struct ConnectionView: View {
   @Bindable var session: SessionModel
   @State private var username = ""
   @State private var password = ""
+  @State private var showingPasswordRecovery = false
 
   var body: some View {
     NavigationStack {
@@ -31,6 +32,11 @@ struct ConnectionView: View {
               }
               .disabled(username.isEmpty || password.isEmpty || session.isBusy)
               .accessibilityIdentifier("signIn")
+              if session.api != nil {
+                Button("Forgot password?", action: showPasswordRecovery)
+                  .disabled(session.isBusy)
+                  .accessibilityIdentifier("forgotPassword")
+              }
             }
           }
           if !options.oidcProviders.isEmpty {
@@ -69,7 +75,20 @@ struct ConnectionView: View {
       }
       .navigationTitle("BookOrbit")
       .formStyle(.grouped)
+      .sheet(isPresented: $showingPasswordRecovery) {
+        if let api = session.api, session.canRecoverPassword(using: api),
+          let profile = try? ServerProfile(session.serverURL)
+        {
+          PasswordRecoveryView(session: session, api: api, profile: profile)
+        }
+      }
     }
+  }
+
+  private func showPasswordRecovery() {
+    password = ""
+    session.error = nil
+    showingPasswordRecovery = true
   }
 }
 

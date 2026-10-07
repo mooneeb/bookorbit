@@ -117,6 +117,14 @@ export interface ServerFontPreferences {
   hiddenFamilies: string[];
 }
 
+export interface ServerFontPreferencesResponse {
+  settings: ServerFontPreferences | null;
+}
+
+export interface ServerFontPreferencesBody {
+  settings: ServerFontPreferences;
+}
+
 export const SERVER_FONT_PREFERENCES_DEFAULTS: ServerFontPreferences = { hiddenFamilies: [] };
 
 /**

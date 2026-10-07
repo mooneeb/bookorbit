@@ -14,7 +14,12 @@ struct LibraryView: View {
   @State private var showingQuery = false
   @State private var showingSavedViews = false
   @State private var showingTableLayout = false
+  @State private var showingTablePresets = false
   @State private var tableLayout = BookTableLayout.defaults
+  @State private var tableDensity = BookTableDensity.comfortable
+  @State private var tablePreferences: TablePresentationModel
+  @State private var tablePresets: TablePresetModel
+  @State private var tablePreferencesError: String?
   @State private var savedViews: SavedViewModel
 
   init(session: SessionModel, api: BookOrbitAPI) {
@@ -22,6 +27,13 @@ struct LibraryView: View {
     _library = State(initialValue: LibraryModel(api: api))
     _savedViews = State(
       initialValue: SavedViewModel(serverURL: session.serverURL, userID: session.user?.id ?? 0))
+    let preferences = TablePresentationModel(
+      serverURL: session.serverURL, userID: session.user?.id ?? 0)
+    _tablePreferences = State(initialValue: preferences)
+    _tableLayout = State(initialValue: preferences.layout(at: BookLocation.all.storageKey))
+    _tableDensity = State(initialValue: preferences.density)
+    _tablePresets = State(
+      initialValue: TablePresetModel(serverURL: session.serverURL, userID: session.user?.id ?? 0))
   }
 
   var body: some View {
@@ -114,11 +126,21 @@ struct LibraryView: View {
             BookGrid(api: library.api, books: library.books) { selectedBook = $0 }
               .id("\(session.serverURL).user.\(session.user?.id ?? 0)")
           } else if presentation == "table" {
-            GeometryReader { geometry in
-              ScrollView(.horizontal) {
-                BookTableView(books: library.books, layout: tableLayout) { selectedBook = $0 }
-                  .frame(width: tableWidth(geometry.size.width), height: geometry.size.height)
-              }
+            if !BookTableLayout.unavailable(tableLayout, customFields: library.tableCustomFields)
+              .isEmpty
+            {
+              Text(
+                "Some saved columns are unavailable at this library location. Their settings are preserved."
+              )
+              .font(.body).fixedSize(horizontal: false, vertical: true).padding(.horizontal)
+              .accessibilityIdentifier("tableUnavailableColumns")
+            }
+            BookTableInteractionHost(
+              library: library, user: session.user, select: { selectedBook = $0 }
+            ) { renderer in
+              BookTableView(
+                books: library.books, layout: tableLayout, renderer: renderer, density: tableDensity
+              ) { selectedBook = $0 }
             }
           } else {
             List(library.books) { book in
@@ -137,16 +159,13 @@ struct LibraryView: View {
             }
           }
           if library.isBusy { ProgressView("Loading books…").padding() }
-          HStack {
-            LibraryActionButton(
-              title: String(localized: "Saved views"), identifier: "openSavedViews"
-            ) { showingSavedViews = true }
-            if presentation == "table" {
-              Button("Table columns") { showingTableLayout = true }.frame(minHeight: 44)
-                .accessibilityIdentifier(
-                  "openTableColumns")
+          ViewThatFits(in: .horizontal) {
+            HStack {
+              presentationActions
+              Spacer()
             }
-            Spacer()
+            VStack(alignment: .leading) { presentationActions }
+              .frame(maxWidth: .infinity, alignment: .leading)
           }.font(.body).buttonStyle(.plain).foregroundStyle(Color(uiColor: .label)).frame(
             minHeight: 44
           ).padding(.horizontal)
@@ -174,6 +193,16 @@ struct LibraryView: View {
             }.pickerStyle(.segmented)
           }
         }
+        .alert(
+          "Could not remember table settings",
+          isPresented: Binding(
+            get: { tablePreferencesError != nil },
+            set: { if !$0 { tablePreferencesError = nil } })
+        ) {
+          Button("OK") { tablePreferencesError = nil }
+        } message: {
+          Text(tablePreferencesError ?? "")
+        }
         .sheet(
           item: Binding(
             get: { selectedBook.map(BookSelection.init) }, set: { selectedBook = $0?.id }),
@@ -192,6 +221,19 @@ struct LibraryView: View {
       }
     }
     .task { await library.load() }
+    .onChange(of: library.location.storageKey) { _, location in
+      tableLayout = tablePreferences.layout(at: location)
+    }
+    .onChange(of: tableLayout) { _, layout in
+      do { try tablePreferences.save(layout: layout, at: library.location.storageKey) } catch {
+        tablePreferencesError = error.localizedDescription
+      }
+    }
+    .onChange(of: tableDensity) { _, density in
+      do { try tablePreferences.save(density: density) } catch {
+        tablePreferencesError = error.localizedDescription
+      }
+    }
     .sheet(isPresented: $showingDashboard) {
       if let user = session.user {
         DashboardView(api: library.api, serverURL: session.serverURL, user: user)
@@ -209,9 +251,17 @@ struct LibraryView: View {
     .sheet(isPresented: $showingQuery) { LibraryQueryView(library: library) }
     .sheet(isPresented: $showingSavedViews) {
       SavedViewsView(
-        model: savedViews, library: library, presentation: $presentation, layout: $tableLayout)
+        model: savedViews, tablePresets: tablePresets, library: library,
+        presentation: $presentation, layout: $tableLayout)
     }
-    .sheet(isPresented: $showingTableLayout) { TableLayoutView(layout: $tableLayout) }
+    .sheet(isPresented: $showingTableLayout) {
+      TableLayoutView(
+        layout: $tableLayout, density: $tableDensity, customFields: library.tableCustomFields,
+        fitWidth: fitTableColumn)
+    }
+    .sheet(isPresented: $showingTablePresets) {
+      TablePresetsView(model: tablePresets, library: library, layout: $tableLayout)
+    }
     .sheet(item: $organization) { kind in
       OrganizationDirectoryView(
         api: library.api, kind: kind, libraries: library.libraries,
@@ -239,13 +289,29 @@ struct LibraryView: View {
     }
   }
 
-  private func tableWidth(_ available: CGFloat) -> CGFloat {
-    let columns = BookTableLayout.visible(tableLayout)
-    guard columns.contains(where: { tableLayout.columnWidths[$0] != nil }) else { return available }
+  private func fitTableColumn(_ column: String) -> Double {
+    let renderer = BookTableColumnRenderer(
+      api: library.api, customFields: library.tableCustomFields,
+      canEditMetadata: session.user?.hasPermission(.libraryEditMetadata) == true,
+      canRead: session.user?.hasPermission(.libraryDownload) == true, action: { _ in })
     return max(
-      available,
-      CGFloat(columns.reduce(0) { $0 + (tableLayout.columnWidths[$1] ?? 180) }) + 32 + CGFloat(
-        max(0, columns.count - 1)) * 12)
+      BookTableLayout.minimumWidth(column),
+      library.books.prefix(library.pageSize).map {
+        Double(renderer.fittingWidth(book: $0, column: column))
+      }.max()
+        ?? BookTableLayout.width(column, layout: tableLayout))
+  }
+
+  @ViewBuilder private var presentationActions: some View {
+    LibraryActionButton(
+      title: String(localized: "Saved views"), identifier: "openSavedViews"
+    ) { showingSavedViews = true }
+    if presentation == "table" {
+      Button("Table columns") { showingTableLayout = true }.frame(minHeight: 44)
+        .accessibilityIdentifier("openTableColumns")
+      Button("Column presets") { showingTablePresets = true }.frame(minHeight: 44)
+        .accessibilityIdentifier("openTablePresets")
+    }
   }
 }
 

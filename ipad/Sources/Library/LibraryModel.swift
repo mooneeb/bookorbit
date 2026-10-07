@@ -6,6 +6,9 @@ final class LibraryModel {
   let api: BookOrbitAPI
   let collections: CollectionModel
   private(set) var libraries: [Library] = []
+  private(set) var customFields: [CustomMetadataFieldSummary] = []
+  private(set) var isLoadingCustomFields = false
+  private(set) var customFieldsError: String?
   private(set) var books: [BookCard] = []
   private(set) var total = 0
   private(set) var page = 0
@@ -29,10 +32,37 @@ final class LibraryModel {
   var canGoNext: Bool { (page + 1) * pageSize < total && !isBusy }
   var canGoBack: Bool { page > 0 && !isBusy }
 
+  var tableCustomFields: [CustomMetadataFieldSummary] {
+    if case .library(let id, _) = location {
+      return customFields.filter { $0.enabledLibraryIds.contains(id) }
+    }
+    return customFields
+  }
+
+  func loadCustomFields() async {
+    guard !isLoadingCustomFields else { return }
+    isLoadingCustomFields = true
+    customFieldsError = nil
+    defer { isLoadingCustomFields = false }
+    do {
+      let fields: [CustomMetadataFieldSummary] = try await api.boundedJSON(
+        "custom-metadata/fields/active")
+      guard fields.count <= 1000 else { throw ConnectionError.responseTooLarge }
+      let accessibleLibraries = Set(libraries.map(\.id))
+      customFields = fields.filter {
+        $0.archivedAt == nil
+          && !$0.enabledLibraryIds.allSatisfy { !accessibleLibraries.contains($0) }
+      }.sorted {
+        $0.displayOrder == $1.displayOrder ? $0.id < $1.id : $0.displayOrder < $1.displayOrder
+      }
+    } catch { customFieldsError = error.localizedDescription }
+  }
+
   func load() async {
     do {
       let result: [Library] = try await api.send("libraries")
       libraries = result.filter { $0.type == "books" }
+      await loadCustomFields()
       await collections.load()
       await query(page: 0)
     } catch { self.error = error.localizedDescription }
@@ -47,6 +77,13 @@ final class LibraryModel {
     await query(page: 0)
   }
   func refreshBooks() async { await query(page: page) }
+  func refreshAfterTableMutation() async {
+    await query(page: page)
+    if error == nil, books.isEmpty, page > 0 {
+      let lastPage = max(0, (total - 1) / pageSize)
+      if page > lastPage { await query(page: lastPage) }
+    }
+  }
   func collectionUpdated(_ collection: BookCollection) {
     if case .collection(let id, _) = location, id == collection.id {
       location = .collection(id: collection.id, name: collection.name)
@@ -80,6 +117,13 @@ final class LibraryModel {
     secondarySort = Array(sort.dropFirst().prefix(4))
     randomSeed = Int.random(in: 0...Int(Int32.max))
     await query(page: 0)
+  }
+  func applyPresetSort(_ sorts: [SortSpec]?) async throws {
+    guard let sorts, !sorts.isEmpty else { return }
+    if sorts.contains(where: { $0.field == "collectionOrder" }) {
+      guard case .collection = location else { throw TablePresetError.collectionSort }
+    }
+    await apply(filter: filter, sort: sorts)
   }
   func nextPage() async { if canGoNext { await query(page: page + 1) } }
   func previousPage() async { if canGoBack { await query(page: page - 1) } }

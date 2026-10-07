@@ -5,6 +5,7 @@ import { textWalker } from "../foliate/text-walker.js";
 import { themes } from "./themes.js";
 import { getBlocks } from "../foliate/tts.js";
 import { makeDeliveredBook } from "./delivered-book.js";
+import { prepareCustomFonts, configureCustomFont, customFontCSS, settleCustomFonts, clearCustomFonts } from "./custom-fonts.js";
 
 const view = document.querySelector("foliate-view");
 let closed = false;
@@ -36,6 +37,7 @@ const drain = () => {
 };
 const settle = async () => {
   for (const { doc } of view.renderer.getContents()) {
+    await settleCustomFonts(doc);
     await doc.fonts.ready;
     await Promise.all(
       Array.from(doc.images, async (image) => {
@@ -70,6 +72,8 @@ const go = async (target) => {
   const resolved = await view.resolveNavigation(target);
   if (!resolved || !Number.isInteger(resolved.index) || !publication.sections[resolved.index])
     throw new Error("This passage is unavailable in the publication.");
+  await view.renderer.goTo(resolved);
+  await settle();
   await view.renderer.goTo(resolved);
   await settle();
   if (!view.renderer.getContents().some((item) => item.index === resolved.index)) throw new Error("The requested passage could not be opened.");
@@ -150,7 +154,7 @@ window.epubOpen = async (info, cfi, settings, formatting) => {
       policy.setAttribute("http-equiv", "Content-Security-Policy");
       policy.setAttribute(
         "content",
-        "default-src 'none'; script-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; media-src 'none'; style-src 'unsafe-inline' blob:; img-src blob: data:; font-src blob: data:",
+        "default-src 'none'; script-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; media-src 'none'; style-src 'unsafe-inline' blob:; img-src blob: data:; font-src blob: data: bookorbit-font:",
       );
       doc.querySelector("head")?.prepend(policy);
       return new XMLSerializer().serializeToString(doc);
@@ -200,6 +204,12 @@ window.epubOpenDelivered = async (format, size, cfi, settings, formatting) => {
     return { failure: String(error?.message ?? "This ebook could not be decoded.").slice(0, 500) };
   }
 };
+window.epubPrepareFonts = (faces, settings) =>
+  prepareCustomFonts(
+    faces,
+    settings,
+    view.renderer.getContents().map(({ doc }) => doc),
+  );
 window.epubConfigure = async (settings, formatting, cfi) => {
   if (view.isFixedLayout) {
     const spread = settings.fixedLayoutSpread === "none" ? "none" : publisherSpread;
@@ -210,6 +220,7 @@ window.epubConfigure = async (settings, formatting, cfi) => {
     }
   }
   const renderer = view.renderer;
+  configureCustomFont(settings, formatting && !view.isFixedLayout);
   renderer.setAttribute("flow", settings.flow);
   renderer.setAttribute("max-column-count", String(settings.maxColumnCount));
   renderer.setAttribute("gap", `${settings.gap * 100}%`);
@@ -222,7 +233,8 @@ window.epubConfigure = async (settings, formatting, cfi) => {
   const body =
     formatting && !view.isFixedLayout
       ? `
-    font-family: ${settings.fontFamily ? JSON.stringify(settings.fontFamily) : "inherit"} !important;
+    ${settings.fontFamily ? `font-family: ${JSON.stringify(settings.fontFamily)} !important;` : ""}
+    ${settings.fontFamily?.startsWith("__") ? "font-synthesis: none !important;" : ""}
     font-weight: ${settings.fontWeight} !important; font-style: ${settings.fontStyle} !important;
     font-size: ${settings.fontSize}px !important; line-height: ${settings.lineHeight} !important;
     text-align: ${settings.justify ? "justify" : "start"} !important;
@@ -237,8 +249,10 @@ window.epubConfigure = async (settings, formatting, cfi) => {
     ${settings.textIndent == null ? "" : `text-indent: ${settings.textIndent}em !important;`}`
       : "";
   currentStyles = `
+    ${customFontCSS()}
     :root { color-scheme: ${settings.isDark ? "dark" : "light"}; }
     body { color: ${palette.fg}; background: ${palette.bg}; ${body} }
+    ${formatting && !view.isFixedLayout && settings.fontFamily ? "body * { font-family: inherit !important; }" : ""}
     a { color: ${palette.link}; }
     p { ${paragraph} }
     ::highlight(bookorbit-recorded), ::highlight(bookorbit-speech) { background-color: Highlight; color: HighlightText; }
@@ -294,6 +308,7 @@ window.epubSearchCancel = () => {
 window.epubClose = () => {
   closed = true;
   window.epubSearchCancel();
+  clearCustomFonts();
   for (const item of pending.splice(0)) item.reject(new Error("The reader closed."));
   view.close();
   publication = null;
@@ -512,6 +527,7 @@ window.epubClearSpeechHighlight = () => {
 };
 window.addEventListener("pagehide", () => {
   closed = true;
+  clearCustomFonts();
   window.epubClearSpeechHighlight();
   window.epubClearRecordedHighlight();
   searchState?.iterator?.return?.();

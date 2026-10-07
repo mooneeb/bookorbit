@@ -56,6 +56,35 @@ final class SessionModel {
     await perform { self.user = try await api.login(username: username, password: password) }
   }
 
+  func canRecoverPassword(using api: BookOrbitAPI) -> Bool {
+    self.api === api && user == nil && options?.passwordLoginEnabled == true && !isBusy
+  }
+
+  func requestPasswordReset(_ request: ForgotPasswordRequest, using api: BookOrbitAPI) async throws
+  {
+    guard canRecoverPassword(using: api) else { throw ConnectionError.denied }
+    let operationID = sessionOperationID
+    try Task.checkCancellation()
+    try await api.sendPublicEmpty(
+      "auth/forgot-password", body: JSONEncoder().encode(request), expectedStatus: 200)
+    try Task.checkCancellation()
+    guard operationID == sessionOperationID, canRecoverPassword(using: api) else {
+      throw CancellationError()
+    }
+  }
+
+  func resetPassword(_ request: ResetPasswordRequest, using api: BookOrbitAPI) async throws {
+    guard canRecoverPassword(using: api) else { throw ConnectionError.denied }
+    let operationID = sessionOperationID
+    try Task.checkCancellation()
+    try await api.sendPublicEmpty(
+      "auth/reset-password", body: JSONEncoder().encode(request), expectedStatus: 204)
+    try Task.checkCancellation()
+    guard operationID == sessionOperationID, canRecoverPassword(using: api) else {
+      throw CancellationError()
+    }
+  }
+
   func signOut() async {
     guard let api else { return }
     await perform {

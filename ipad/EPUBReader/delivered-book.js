@@ -29,7 +29,7 @@ const boundedUnzlib = async (bytes) => {
   return result;
 };
 const publicationPolicy =
-  "default-src 'none'; script-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; media-src 'none'; style-src 'unsafe-inline' blob:; img-src blob: data:; font-src blob: data:";
+  "default-src 'none'; script-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; media-src 'none'; style-src 'unsafe-inline' blob:; img-src blob: data:; font-src blob: data: bookorbit-font:";
 const protectDocument = (doc) => {
   for (const element of doc.querySelectorAll("script")) element.setAttribute("type", "application/x-bookorbit-disabled");
   for (const element of doc.querySelectorAll("*")) {

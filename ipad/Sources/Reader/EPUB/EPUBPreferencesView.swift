@@ -39,10 +39,14 @@ struct EPUBPreferencesView: View {
               ForEach(["Georgia", "Helvetica", "Palatino", "Times New Roman"], id: \.self) {
                 Text($0).tag($0)
               }
+              ForEach(model.fonts.selectableFamilies) { family in
+                Text(family.label).tag(family.cssFamily)
+              }
               if let family = draft.settings.fontFamily,
-                !["Georgia", "Helvetica", "Palatino", "Times New Roman"].contains(family)
+                !["Georgia", "Helvetica", "Palatino", "Times New Roman"].contains(family),
+                !model.fonts.selectableFamilies.contains(where: { $0.cssFamily == family })
               {
-                Text(family).tag(family)
+                Text("Saved font: \(family) (unavailable)").tag(family)
               }
             }.accessibilityIdentifier("epubFontFamily")
             Stepper(
@@ -50,14 +54,28 @@ struct EPUBPreferencesView: View {
               in: 6...32
             )
             .accessibilityIdentifier("epubFontSize")
-            Stepper(
-              "Font weight: \(Int(draft.settings.fontWeight))", value: $draft.settings.fontWeight,
-              in: 100...900, step: 100
-            )
-            .accessibilityIdentifier("epubFontWeight")
-            Picker("Font style", selection: $draft.settings.fontStyle) {
-              Text("Normal").tag("normal")
-              Text("Italic").tag("italic")
+            if let family = customFamily {
+              Picker("Font variant", selection: fontVariant) {
+                ForEach(family.variants, id: \.variantID) { variant in
+                  Text(variant.readerLabel).tag(variant.variantID)
+                }
+                if !family.variants.contains(where: {
+                  $0.weight == draft.settings.fontWeight && $0.style == draft.settings.fontStyle
+                }) {
+                  Text("Saved: \(Int(draft.settings.fontWeight)) \(draft.settings.fontStyle)")
+                    .tag("\(draft.settings.fontWeight):\(draft.settings.fontStyle)")
+                }
+              }.accessibilityIdentifier("epubFontVariant")
+            } else {
+              Stepper(
+                "Font weight: \(Int(draft.settings.fontWeight))", value: $draft.settings.fontWeight,
+                in: 100...900, step: 100
+              )
+              .accessibilityIdentifier("epubFontWeight")
+              Picker("Font style", selection: $draft.settings.fontStyle) {
+                Text("Normal").tag("normal")
+                Text("Italic").tag("italic")
+              }
             }
             Toggle(
               "Apply defaults instead of publisher formatting",
@@ -111,6 +129,33 @@ struct EPUBPreferencesView: View {
             }
           }
         }.disabled(model.isSaving || model.hasPendingSave)
+        Section("Custom fonts") {
+          if model.fonts.isLoading { ProgressView("Loading font catalog…") }
+          if model.fonts.isSaving { ProgressView("Saving font visibility…") }
+          if let error = model.fonts.error {
+            Text(error).fixedSize(horizontal: false, vertical: true)
+              .accessibilityIdentifier("epubFontCatalogError")
+          }
+          Button("Reload font catalog", action: reloadFonts).frame(minHeight: 44)
+            .disabled(
+              model.fonts.isLoading || model.fonts.isSaving || model.fonts.hasPendingSave
+                || model.isSaving || model.hasPendingSave
+            )
+            .accessibilityIdentifier("epubReloadFonts")
+          if model.fonts.hasPendingSave {
+            Button("Retry font visibility change", action: retryFontVisibility).frame(minHeight: 44)
+              .disabled(model.fonts.isSaving).accessibilityIdentifier("epubRetryFontVisibility")
+          }
+          ForEach(model.fonts.serverFamilies) { family in
+            Toggle("Show \(family.name)", isOn: visibility(family))
+              .disabled(
+                model.fonts.isSaving || model.fonts.hasPendingSave || model.isSaving
+                  || model.hasPendingSave)
+          }
+          Text(
+            "Font visibility belongs to your account. Custom typography applies to reflowable books."
+          )
+        }
         Section("Remember settings") {
           Text(
             model.syncSettings
@@ -143,22 +188,62 @@ struct EPUBPreferencesView: View {
       .safeAreaInset(edge: .bottom) {
         HStack {
           Button("Cancel", action: dismiss.callAsFunction).frame(minHeight: 44)
-            .disabled(model.isSaving || model.hasPendingSave)
+            .disabled(
+              model.isSaving || model.hasPendingSave || model.fonts.isSaving
+                || model.fonts.hasPendingSave)
           Spacer()
           Button("Save for this book", action: saveBook).frame(minHeight: 44)
             .disabled(!canSave).accessibilityIdentifier("epubSaveSettings")
         }.buttonStyle(.plain).padding().background(.background)
       }
     }
-    .interactiveDismissDisabled(model.isSaving || model.hasPendingSave)
+    .interactiveDismissDisabled(
+      model.isSaving || model.hasPendingSave || model.fonts.isSaving || model.fonts.hasPendingSave
+    )
+    .task { await model.fonts.load() }
   }
 
-  private var canSave: Bool { draft.isValid && model.canSave && !model.hasPendingSave }
+  private var canSave: Bool {
+    draft.isValid && model.canSave && !model.hasPendingSave && !model.fonts.isLoading
+      && !model.fonts.isSaving && !model.fonts.hasPendingSave
+  }
+  private var customFamily: EPUBFontFamily? { try? model.fonts.resolve(draft.settings.fontFamily) }
   private var fontFamily: Binding<String> {
     Binding(
       get: { draft.settings.fontFamily ?? "" },
-      set: { draft.settings.fontFamily = $0.isEmpty ? nil : $0 })
+      set: { selected in
+        draft.settings.fontFamily = selected.isEmpty ? nil : selected
+        if let family = customFamily {
+          let sameStyle = family.variants.filter { $0.style == draft.settings.fontStyle }
+          let candidates = sameStyle.isEmpty ? family.variants : sameStyle
+          if let closest = candidates.min(by: {
+            abs($0.weight - draft.settings.fontWeight) < abs($1.weight - draft.settings.fontWeight)
+          }) {
+            draft.settings.fontWeight = closest.weight
+            draft.settings.fontStyle = closest.style
+          }
+        }
+      })
   }
+  private var fontVariant: Binding<String> {
+    Binding(
+      get: { "\(draft.settings.fontWeight):\(draft.settings.fontStyle)" },
+      set: { selected in
+        if let variant = customFamily?.variants.first(where: { $0.variantID == selected }) {
+          draft.settings.fontWeight = variant.weight
+          draft.settings.fontStyle = variant.style
+        }
+      })
+  }
+  private func visibility(_ family: EPUBFontFamily) -> Binding<Bool> {
+    Binding(
+      get: { !model.fonts.hiddenFamilies.contains(family.name) },
+      set: { visible in
+        Task { await model.fonts.setHidden(family, hidden: !visible) }
+      })
+  }
+  private func reloadFonts() { Task { await model.fonts.load() } }
+  private func retryFontVisibility() { Task { await model.fonts.retryVisibility() } }
   private func optionalSpacing(
     _ title: String, value: Binding<Double?>, range: ClosedRange<Double>, step: Double
   ) -> some View {
@@ -188,5 +273,12 @@ struct EPUBPreferencesView: View {
       await model.reloadSavedSettings()
       if model.hasLoaded { draft = model.value }
     }
+  }
+}
+
+extension FontNamedInstance {
+  fileprivate var variantID: String { "\(weight):\(style)" }
+  fileprivate var readerLabel: String {
+    name ?? "\(Int(weight)) \(style == "italic" ? "Italic" : "Normal")"
   }
 }

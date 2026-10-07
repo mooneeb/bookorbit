@@ -13,6 +13,7 @@ const entries = [
   "author",
   "book",
   "book-selection",
+  "catalog",
   "bookmark",
   "collection",
   "comic",
@@ -21,6 +22,7 @@ const entries = [
   "dashboard",
   "epub",
   "file-delivery",
+  "font",
   "library",
   "metadata-fetch",
   "metadata-lock",
@@ -31,6 +33,7 @@ const entries = [
   "series",
   "smart-scope",
   "table-layout",
+  "table-view-backup",
   "tts",
 ].map((name) => path.join(root, `packages/types/src/${name}.ts`));
 const program = ts.createProgram(entries, {
@@ -59,6 +62,7 @@ const symbols = new Map(
 
 // These audited projections decode existing responses without generating unused server data.
 const projections = {
+  FontNamedInstance: ["weight", "style", "name"],
   CreateAnnotationPayload: ["cfi", "bookFileId", "text", "color", "style", "note", "chapterTitle"],
   AnnotationItem: ["id", "bookId", "cfi", "jumpFileId", "text", "color", "style", "note", "chapterTitle", "positionStatus"],
   AnnotationListResponse: ["items", "total", "page", "pageSize"],
@@ -67,7 +71,35 @@ const projections = {
   UserReaderSettingsResponse: ["settings", "permissions"],
   UserSettings: ["dashboardConfig", "dashboardShelfConfig", "syncReaderPreferences", "timezone"],
   Library: ["id", "type", "accessLevel", "name", "bookCount"],
-  BookCard: ["id", "title", "authors", "files", "hasCover", "coverVersion", "readingProgress", "seriesName"],
+  BookCard: [
+    "id",
+    "title",
+    "authors",
+    "files",
+    "hasCover",
+    "coverVersion",
+    "readingProgress",
+    "seriesName",
+    "seriesId",
+    "seriesIndex",
+    "publishedDate",
+    "publishedYear",
+    "language",
+    "rating",
+    "metadataScore",
+    "genres",
+    "tags",
+    "subtitle",
+    "publisher",
+    "pageCount",
+    "isbn13",
+    "narrators",
+    "readStatus",
+    "updatedAt",
+    "addedAt",
+    "lockedFields",
+    "customMetadata",
+  ],
   BookDetail: [
     "id",
     "libraryId",
@@ -120,6 +152,7 @@ const integerFields = new Set([
   "sessionId",
   "libraryId",
   "libraryIds",
+  "enabledLibraryIds",
   "smartScopeId",
   "fileId",
   "bookFileId",
@@ -188,6 +221,8 @@ const integerFields = new Set([
   "BookmarkResponsePageNumber",
   "CreateFixedPageBookmarkPayloadPageNumber",
   "BookmarksPageNextCursor",
+  "UserFontFileSize",
+  "TableViewBackupVersion",
 ]);
 const declarations = new Map();
 const patchRequests = new Set([
@@ -403,11 +438,15 @@ for (const name of [
   "LoginRequest",
   "RefreshRequest",
   "ChangePasswordRequest",
+  "ForgotPasswordRequest",
+  "ResetPasswordRequest",
   "OidcStateResponse",
   "OidcCallbackRequest",
   "LoginOptionsResponse",
   "Library",
   "BooksPage",
+  "CustomMetadataFieldSummary",
+  "CatalogSearchResult",
   "BookDetail",
   "BookContinuationQuery",
   "BookContinuationResponse",
@@ -439,6 +478,8 @@ for (const name of [
   "UpdateSmartScopePayload",
   "SetSmartScopeKoboSyncPayload",
   "SavedView",
+  "TablePreset",
+  "TableViewBackup",
   "MetadataCandidate",
   "BookFileMetadataResponse",
   "BookMetadataRefreshPreviewResponse",
@@ -460,6 +501,10 @@ for (const name of [
   "EpubReaderPreferenceResponse",
   "EpubReaderSettingsBody",
   "EpubReaderPreferencePatchBody",
+  "UserFont",
+  "FontNamedInstance",
+  "ServerFontPreferencesResponse",
+  "ServerFontPreferencesBody",
   "AudioReaderSettings",
   "AudioReaderDefaultsResponse",
   "AudioReaderDefaultsPatchBody",
@@ -534,6 +579,34 @@ const literalJSON = (node) => {
   throw new Error("Reader themes must remain literal strings");
 };
 const readerThemes = literalJSON(themeSource);
+const fontNumber = (node) => {
+  if (ts.isNumericLiteral(node)) return Number(node.text);
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AsteriskToken) return fontNumber(node.left) * fontNumber(node.right);
+  throw new Error("Font limits must remain literal numbers or products");
+};
+const fontLimits = ["MAX_FONT_FILE_SIZE", "MAX_FONTS_PER_USER", "MAX_SERVER_FONTS", "FONT_FAMILY_NAME_MAX_LENGTH"].map((name) =>
+  fontNumber(symbols.get(name).valueDeclaration.initializer),
+);
+const fontPrefixes = literalJSON(symbols.get("FONT_CSS_FAMILY_PREFIXES").valueDeclaration.initializer);
+const fontMimeTypes = literalJSON(symbols.get("FONT_FORMAT_MIME_TYPES").valueDeclaration.initializer);
+const fontCSSFormats = literalJSON(symbols.get("FONT_FORMAT_CSS_FORMAT").valueDeclaration.initializer);
+const fontNaming = symbols.get("fontCssFamilyGroupName").valueDeclaration.getText().replace(/\s+/g, "");
+if (!fontNaming.includes('.toLowerCase().replace(/[^a-z0-9]+/g,"_")') || !fontNaming.includes('.replace(/^_+|_+$/g,"")||"font"'))
+  throw new Error("Canonical font family naming changed. Update the native naming projection.");
+declarations.set(
+  "ReaderFontVocabulary",
+  `enum ReaderFontVocabulary {\n    static let fileMaximum = ${fontLimits[0]}\n    static let userMaximum = ${fontLimits[1]}\n    static let serverMaximum = ${fontLimits[2]}\n    static let familyNameMaximum = ${fontLimits[3]}\n    static let prefixes: [String: String] = [${Object.entries(
+    fontPrefixes,
+  )
+    .map(([scope, prefix]) => `${JSON.stringify(scope)}: ${JSON.stringify(prefix)}`)
+    .join(", ")}]\n    static let mimeTypes: [String: String] = [${Object.entries(fontMimeTypes)
+    .map(([format, value]) => `${JSON.stringify(format)}: ${JSON.stringify(value)}`)
+    .join(", ")}]\n    static let cssFormats: [String: String] = [${Object.entries(fontCSSFormats)
+    .map(([format, value]) => `${JSON.stringify(format)}: ${JSON.stringify(value)}`)
+    .join(
+      ", ",
+    )}]\n    static func familyGroupName(_ name: String, scope: String) -> String {\n        let safe = name.lowercased().replacingOccurrences(of: "[^a-z0-9]+", with: "_", options: .regularExpression).trimmingCharacters(in: CharacterSet(charactersIn: "_"))\n        return (prefixes[scope] ?? "") + (safe.isEmpty ? "font" : safe)\n    }\n}`,
+);
 const bookMimeTypes = literalJSON(symbols.get("BOOK_FILE_MIME_TYPES").valueDeclaration.initializer);
 const readerFormats = symbols.get("READER_OPENABLE_FORMATS").valueDeclaration.initializer.arguments[0].elements.map((item) => item.text);
 const formatGroups = literalJSON(symbols.get("FORMAT_TO_GROUP").valueDeclaration.initializer);
@@ -552,6 +625,16 @@ const themeOutput = await prettier.format(`// Generated from @bookorbit/types.\n
   ...(await prettier.resolveConfig(themeDestination)),
   filepath: themeDestination,
 });
+const fontDestination = path.join(root, "ipad/EPUBReader/font-vocabulary.js");
+const fontOutput = await prettier.format(
+  `// Generated from @bookorbit/types.\nexport const fontPrefixes = ${JSON.stringify(fontPrefixes)};\nexport const fontCSSFormats = ${JSON.stringify(fontCSSFormats)};\n`,
+  { ...(await prettier.resolveConfig(fontDestination)), filepath: fontDestination },
+);
+if (process.argv.includes("--check")) {
+  if ((await readFile(fontDestination, "utf8")) !== fontOutput) throw new Error("Native font vocabulary is stale");
+} else {
+  await writeFile(fontDestination, fontOutput);
+}
 if (process.argv.includes("--check")) {
   if ((await readFile(themeDestination, "utf8")) !== themeOutput) throw new Error("Native reader themes are stale");
 } else {
@@ -569,6 +652,13 @@ if (typeof widePageRatio !== "number" || !Number.isFinite(widePageRatio) || wide
   throw new Error("Wide page threshold must remain a finite literal greater than one");
 
 const readingStatuses = checker.getDeclaredTypeOfSymbol(symbols.get("ReadStatus"));
+const bookFormats = checker.getDeclaredTypeOfSymbol(symbols.get("BookFormat"));
+if (!bookFormats.isUnion() || !bookFormats.types.every((part) => part.flags & ts.TypeFlags.StringLiteral))
+  throw new Error("Book format vocabulary changed");
+declarations.set(
+  "BookFileVocabulary",
+  `enum BookFileVocabulary {\n    static let formats: [String] = [${bookFormats.types.map((part) => JSON.stringify(part.value)).join(", ")}]\n}`,
+);
 const audioSchema = checker.getTypeAtLocation(symbols.get("AUDIOBOOK_MANIFEST_SCHEMA").valueDeclaration.initializer).value;
 const audioVersion = checker.getTypeAtLocation(symbols.get("AUDIOBOOK_MANIFEST_VERSION").valueDeclaration.initializer).value;
 if (typeof audioSchema !== "string" || !Number.isInteger(audioVersion)) throw new Error("Audiobook manifest vocabulary changed");
@@ -668,6 +758,22 @@ const filterChoices = ["CommunityRatingProvider", "ReadStatus", "BookFormat"].ma
 declarations.set(
   "FilterVocabulary",
   `enum FilterVocabulary {\n    static let operators: [String: [String]] = [\n${operatorMap.join("\n")}\n    ]\n${filterChoices.join("\n")}\n}`,
+);
+
+const customOperatorsDeclaration = symbols.get("CUSTOM_FIELD_TYPE_OPERATORS").valueDeclaration.initializer;
+if (!ts.isObjectLiteralExpression(customOperatorsDeclaration)) throw new Error("Custom filter vocabulary must remain a literal map");
+const customOperators = new Set(
+  customOperatorsDeclaration.properties.flatMap((property) => {
+    if (!ts.isPropertyAssignment(property) || !ts.isArrayLiteralExpression(property.initializer)) throw new Error("Custom filter vocabulary changed");
+    return property.initializer.elements.map((value) => {
+      if (!ts.isStringLiteral(value)) throw new Error("Custom filter operators must remain literal strings");
+      return value.text;
+    });
+  }),
+);
+declarations.set(
+  "NativeViewBackupVocabulary",
+  `enum NativeViewBackupVocabulary {\n    static let customOperators: [String] = [${[...customOperators].map((value) => JSON.stringify(value)).join(", ")}]\n}`,
 );
 
 const sortDeclaration = symbols.get("SORT_FIELDS").valueDeclaration.initializer;

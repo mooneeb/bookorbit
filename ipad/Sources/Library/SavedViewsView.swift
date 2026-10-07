@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SavedViewsView: View {
   let model: SavedViewModel
+  let tablePresets: TablePresetModel
   let library: LibraryModel
   @Binding var presentation: String
   @Binding var layout: TableLayoutState
@@ -12,6 +13,7 @@ struct SavedViewsView: View {
   @State private var rename = ""
   @State private var error: String?
   @State private var isApplying = false
+  @State private var showingBackup = false
 
   var body: some View {
     NavigationStack {
@@ -56,6 +58,10 @@ struct SavedViewsView: View {
               Text("No saved views for this library location.").font(.body)
             }
           }
+          Section("Backup") {
+            Button("Import or export view backup") { showingBackup = true }
+              .frame(minHeight: 44).accessibilityIdentifier("openViewBackup")
+          }
           if let error { Text(error).font(.body) }
           if isApplying { ProgressView("Applying view…") }
         }.buttonStyle(.plain).foregroundStyle(Color(uiColor: .label)).disabled(isApplying)
@@ -64,6 +70,10 @@ struct SavedViewsView: View {
           .disabled(isApplying)
       }.navigationTitle("Saved views")
         .interactiveDismissDisabled(isApplying)
+        .sheet(isPresented: $showingBackup) {
+          NativeViewBackupView(
+            presets: tablePresets, savedViews: model, location: library.location)
+        }
         .alert(
           "Rename view",
           isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })

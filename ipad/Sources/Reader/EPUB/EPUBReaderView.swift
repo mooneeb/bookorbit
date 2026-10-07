@@ -327,6 +327,10 @@ struct EPUBReaderView: View {
   private var readerFeedback: some View {
     ScrollView {
       VStack(spacing: 8) {
+        if let failure = model.fontFailure {
+          Text(failure).font(.caption).fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("epubFontFailure")
+        }
         if let error = model.error, model.isReady {
           Text(error).font(.caption).fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("epubReaderError")

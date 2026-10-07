@@ -161,6 +161,15 @@ struct ChangePasswordRequest: Codable, Sendable, Equatable {
     var `newPassword`: String
 }
 
+struct ForgotPasswordRequest: Codable, Sendable, Equatable {
+    var `email`: String
+}
+
+struct ResetPasswordRequest: Codable, Sendable, Equatable {
+    var `token`: String
+    var `newPassword`: String
+}
+
 struct OidcStateResponse: Codable, Sendable, Equatable {
     var `state`: String
     var `authorizationEndpoint`: String
@@ -215,6 +224,25 @@ struct BookCard: Codable, Sendable, Equatable, Identifiable {
     var `coverVersion`: String
     var `readingProgress`: Double?
     var `seriesName`: String?
+    var `seriesId`: Int?
+    var `seriesIndex`: String?
+    var `publishedDate`: String?
+    var `publishedYear`: Int?
+    var `language`: String?
+    var `rating`: Double?
+    var `metadataScore`: Double?
+    var `genres`: [String]
+    var `tags`: [String]
+    var `subtitle`: String?
+    var `publisher`: String?
+    var `pageCount`: Int?
+    var `isbn13`: String?
+    var `narrators`: [String]
+    var `readStatus`: UserBookStatus?
+    var `updatedAt`: String?
+    var `addedAt`: String
+    var `lockedFields`: [String]
+    var `customMetadata`: [CustomMetadataBookValue]
 }
 
 struct BookFileRef: Codable, Sendable, Equatable, Identifiable {
@@ -228,6 +256,59 @@ struct BookFileRef: Codable, Sendable, Equatable, Identifiable {
 struct EpubMediaOverlayCapability: Codable, Sendable, Equatable {
     var `available`: Bool
     var `durationSeconds`: Double?
+}
+
+struct UserBookStatus: Codable, Sendable, Equatable {
+    var `status`: String
+    var `source`: String
+    var `startedAt`: String?
+    var `finishedAt`: String?
+    var `updatedAt`: String
+}
+
+struct CustomMetadataBookValue: Codable, Sendable, Equatable {
+    var `fieldId`: Int
+    var `key`: String
+    var `label`: String
+    var `type`: String
+    var `displayOrder`: Int
+    var `value`: CustomMetadataPrimitiveValue
+}
+
+enum CustomMetadataPrimitiveValue: Codable, Sendable, Equatable {
+    case string(String), number(Double), boolean(Bool), null
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null }
+        else if let value = try? container.decode(Bool.self) { self = .boolean(value) }
+        else if let value = try? container.decode(Double.self) { self = .number(value) }
+        else { self = .string(try container.decode(String.self)) }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .boolean(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        }
+    }
+}
+
+struct CustomMetadataFieldSummary: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `label`: String
+    var `type`: String
+    var `displayOrder`: Int
+    var `archivedAt`: String?
+    var `enabledLibraryIds`: [Int]
+}
+
+struct CatalogSearchResult: Codable, Sendable, Equatable, Identifiable {
+    var `name`: String
+    var `id`: Int?
 }
 
 struct BookDetail: Codable, Sendable, Equatable, Identifiable {
@@ -274,51 +355,12 @@ struct BookDetailAuthorsItem: Codable, Sendable, Equatable, Identifiable {
     var `sortName`: String?
 }
 
-struct CustomMetadataBookValue: Codable, Sendable, Equatable {
-    var `fieldId`: Int
-    var `key`: String
-    var `label`: String
-    var `type`: String
-    var `displayOrder`: Int
-    var `value`: CustomMetadataPrimitiveValue
-}
-
-enum CustomMetadataPrimitiveValue: Codable, Sendable, Equatable {
-    case string(String), number(Double), boolean(Bool), null
-
-    init(from decoder: any Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if container.decodeNil() { self = .null }
-        else if let value = try? container.decode(Bool.self) { self = .boolean(value) }
-        else if let value = try? container.decode(Double.self) { self = .number(value) }
-        else { self = .string(try container.decode(String.self)) }
-    }
-
-    func encode(to encoder: any Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .string(let value): try container.encode(value)
-        case .number(let value): try container.encode(value)
-        case .boolean(let value): try container.encode(value)
-        case .null: try container.encodeNil()
-        }
-    }
-}
-
 struct BookSeriesMembership: Codable, Sendable, Equatable {
     var `seriesId`: Int
     var `seriesName`: String
     var `seriesIndex`: String?
     var `displayOrder`: Int
     var `expectedBookCount`: Int?
-}
-
-struct UserBookStatus: Codable, Sendable, Equatable {
-    var `status`: String
-    var `source`: String
-    var `startedAt`: String?
-    var `finishedAt`: String?
-    var `updatedAt`: String
 }
 
 struct BookCommunityRating: Codable, Sendable, Equatable {
@@ -988,6 +1030,21 @@ struct TableLayoutState: Codable, Sendable, Equatable {
     var `pinnedColumns`: [String: String?]?
 }
 
+struct TablePreset: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `name`: String
+    var `layout`: TableLayoutState
+    var `sort`: [SortSpec]?
+    var `isBuiltIn`: Bool?
+    var `favorite`: Bool?
+}
+
+struct TableViewBackup: Codable, Sendable, Equatable {
+    var `version`: Int
+    var `presets`: [TablePreset]
+    var `savedViews`: [SavedView]
+}
+
 struct MetadataCandidate: Codable, Sendable, Equatable {
     var `provider`: String
     var `providerId`: String
@@ -1460,6 +1517,38 @@ struct EpubReaderPreferencePatchBodySet: Codable, Sendable, Equatable {
     var `fixedLayoutSpread`: String?
 }
 
+struct UserFont: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `familyName`: String
+    var `originalFileName`: String
+    var `format`: String
+    var `weight`: Double
+    var `style`: String
+    var `weightMin`: Double?
+    var `weightMax`: Double?
+    var `instances`: [FontNamedInstance]?
+    var `fileSize`: Int
+    var `createdAt`: String
+}
+
+struct FontNamedInstance: Codable, Sendable, Equatable {
+    var `weight`: Double
+    var `style`: String
+    var `name`: String?
+}
+
+struct ServerFontPreferencesResponse: Codable, Sendable, Equatable {
+    var `settings`: ServerFontPreferences?
+}
+
+struct ServerFontPreferences: Codable, Sendable, Equatable {
+    var `hiddenFamilies`: [String]
+}
+
+struct ServerFontPreferencesBody: Codable, Sendable, Equatable {
+    var `settings`: ServerFontPreferences
+}
+
 struct AudioReaderSettings: Codable, Sendable, Equatable {
     var `playbackSpeed`: Double
     var `volume`: Double
@@ -1706,6 +1795,20 @@ extension CbxReaderSettings {
     static var readerDefault: Self { Self(fitMode: "fit-page", viewMode: "single", scrollMode: "paginated", direction: "ltr", spreadAlignment: "normal", spreadGap: 0, forceTwoPage: false, widePageSingletonMode: "auto", bgColor: "black", autoAdvance: false) }
 }
 
+enum ReaderFontVocabulary {
+    static let fileMaximum = 52428800
+    static let userMaximum = 50
+    static let serverMaximum = 200
+    static let familyNameMaximum = 200
+    static let prefixes: [String: String] = ["user": "__userfont_", "server": "__serverfont_"]
+    static let mimeTypes: [String: String] = ["ttf": "font/ttf", "otf": "font/otf", "woff": "font/woff", "woff2": "font/woff2"]
+    static let cssFormats: [String: String] = ["ttf": "truetype", "otf": "opentype", "woff": "woff", "woff2": "woff2"]
+    static func familyGroupName(_ name: String, scope: String) -> String {
+        let safe = name.lowercased().replacingOccurrences(of: "[^a-z0-9]+", with: "_", options: .regularExpression).trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        return (prefixes[scope] ?? "") + (safe.isEmpty ? "font" : safe)
+    }
+}
+
 enum NativeEbookVocabulary {
   static let mimeTypes: [String: String] = [
     "epub": "application/epub+zip",
@@ -1718,6 +1821,10 @@ enum NativeEbookVocabulary {
 
 enum EPUBThemeVocabulary {
     static let names: [String] = ["default", "gray", "sepia", "crimson", "meadow", "rosewood", "azure", "dawnlight", "ember", "aurora", "ocean", "mist", "amoled"]
+}
+
+enum BookFileVocabulary {
+    static let formats: [String] = ["pdf", "epub", "fb2", "cbz", "cb7", "mobi", "azw3", "azw", "m4b", "m4a", "mp3", "flac", "kepub", "cbr", "opus", "ogg"]
 }
 
 enum AudiobookVocabulary {
@@ -1813,6 +1920,10 @@ enum FilterVocabulary {
     static let ratingProviders: [String] = ["google", "goodreads", "amazon", "hardcover", "openLibrary", "itunes", "audible", "ranobedb", "any"]
     static let readStatuses: [String] = ["unread", "want_to_read", "reading", "on_hold", "rereading", "read", "skimmed", "abandoned"]
     static let formats: [String] = ["pdf", "epub", "fb2", "cbz", "cb7", "mobi", "azw3", "azw", "m4b", "m4a", "mp3", "flac", "kepub", "cbr", "opus", "ogg"]
+}
+
+enum NativeViewBackupVocabulary {
+    static let customOperators: [String] = ["contains", "notContains", "startsWith", "endsWith", "eq", "notEq", "isEmpty", "isNotEmpty", "gt", "gte", "lt", "lte", "between", "before", "after", "withinLast", "isTrue", "isFalse"]
 }
 
 enum SortVocabulary {

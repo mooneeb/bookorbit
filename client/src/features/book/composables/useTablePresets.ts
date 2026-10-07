@@ -1,30 +1,9 @@
 import { computed, ref } from 'vue'
 import { watchDebounced } from '@vueuse/core'
 import { storage } from '@/services/storage'
-import { cloneTableLayout, validateTableLayout, type SortSpec, type TableLayoutState, type TableViewType } from '@bookorbit/types'
+import { cloneTableLayout, validateTableLayout, type SortSpec, type TableLayoutState, type TablePreset, type TableViewType } from '@bookorbit/types'
 
-/**
- * Column presets: reusable column layouts only.
- *
- * A preset captures column visibility, order, and widths — nothing more.
- * It may optionally include a default sort that is applied when the preset
- * is activated, but it deliberately excludes filter state. Filters belong
- * in SavedViews (see useSavedViews) or SmartScopes (server-side rule sets).
- *
- * Concept boundaries:
- *   - Column preset  → column layout (visibility / order / widths) + optional default sort
- *   - Saved view     → full presentation snapshot (layout + sort + filter), local-first
- *   - SmartScope     → server-backed, rule-based dynamic data set (data filtering only)
- */
-export type TablePreset = {
-  id: string
-  name: string
-  layout: TableLayoutState
-  /** Optional default sort applied when activating the preset. Presets must NOT store filter state. */
-  sort?: SortSpec[]
-  isBuiltIn?: boolean
-  favorite?: boolean
-}
+export type { TablePreset } from '@bookorbit/types'
 
 function presetsStorageKey(viewType: TableViewType): string {
   return `bookorbit:tablePresets:${viewType}`

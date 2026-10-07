@@ -39,6 +39,8 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   let webView: WKWebView
   let preferences: EPUBPreferencesModel
   private let resources: EPUBPublicationResources
+  private let fontResources: EPUBFontResources
+  private(set) var fontFailure: String?
   private(set) var info: EpubBookInfo?
   private var deliveredOutline: DeliveredEbookOutline?
   private(set) var location: EPUBReadingLocation?
@@ -81,9 +83,12 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     preferences = EPUBPreferencesModel(api: api, fileID: file.id)
     let resources = EPUBPublicationResources(api: api, bookID: bookID, fileID: file.id)
     self.resources = resources
+    let fontResources = EPUBFontResources(api: api)
+    self.fontResources = fontResources
     let configuration = WKWebViewConfiguration()
     configuration.websiteDataStore = .nonPersistent()
     configuration.setURLSchemeHandler(resources, forURLScheme: "bookorbit-publication")
+    configuration.setURLSchemeHandler(fontResources, forURLScheme: "bookorbit-font")
     webView = WKWebView(frame: .zero, configuration: configuration)
     super.init()
     webView.isOpaque = false
@@ -94,6 +99,10 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       resources, contentWorld: .page, name: "resource")
     configuration.userContentController.add(self, name: "location")
     configuration.userContentController.add(self, name: "selection")
+    preferences.validateFont = { [weak self] requested in
+      guard let self, self.isReady, !self.isClosed else { throw EPUBFontError.loadFailed }
+      try await self.prepareFontSelection(requested)
+    }
   }
 
   var positionText: String {
@@ -139,6 +148,8 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     do {
       webView.stopLoading()
       resources.reset()
+      fontResources.reset()
+      fontFailure = nil
       let session = try await api.authenticatedSessionGeneration()
       generation = session
       let namespace = try await api.storageNamespace()
@@ -220,7 +231,8 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       try Task.checkCancellation()
       guard !isClosed else { return }
       var arguments: [String: Any] = [
-        "cfi": progress.cfi as Any? ?? NSNull(), "settings": try renderSettings(),
+        "cfi": progress.cfi as Any? ?? NSNull(),
+        "settings": try renderSettings(hideCustomFont: true),
         "formatting": preferences.useFormatting,
       ]
       switch source {
@@ -252,6 +264,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         deliveredOutline = decoded
         location = try decodedLocation(value["location"])
       }
+      try await restoreCustomTypography()
       guard !isClosed, try await api.authenticatedSessionGeneration() == session else {
         throw ConnectionError.expiredSession
       }
@@ -263,6 +276,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         self.error = error.localizedDescription
         clearContent()
         resources.reset()
+        fontResources.reset()
       }
     }
   }
@@ -317,13 +331,24 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         guard isReady, !isClosed else { return }
       }
       guard let location else { return }
-      let settings = try renderSettings()
-      await navigate(
+      isNavigating = true
+      defer { isNavigating = false }
+      if !isSaving { saveTask?.cancel() }
+      try await restoreCustomTypography()
+      guard !isClosed, let generation,
+        try await api.authenticatedSessionGeneration() == generation
+      else { return }
+      let raw = try await webView.callAsyncJavaScript(
         "return await window.epubConfigure(settings, formatting, cfi)",
         arguments: [
-          "settings": settings, "formatting": preferences.useFormatting, "cfi": location.cfi,
-        ],
-        forward: true, animate: false, allowPendingSave: true)
+          "settings": try renderSettings(hideCustomFont: fontFailure != nil),
+          "formatting": preferences.useFormatting, "cfi": location.cfi,
+        ], in: nil, contentWorld: .page)
+      guard !isClosed else { return }
+      self.location = try decodedLocation(raw)
+      selectionCFI = nil
+      selectionText = ""
+      scheduleSave()
     } catch { self.error = error.localizedDescription }
   }
 
@@ -448,6 +473,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     webView.configuration.userContentController.removeAllScriptMessageHandlers()
     clearContent()
     resources.close()
+    fontResources.close()
     preferences.close()
     prepareTurn = nil
     commitTurn = nil
@@ -593,6 +619,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
           self.webView.stopLoading()
           self.clearContent()
           self.resources.close()
+          self.fontResources.close()
           return
         }
       }
@@ -651,11 +678,85 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     isReady = false
   }
 
-  private func renderSettings() throws -> Any {
-    var settings = preferences.value.settings
+  private func renderSettings(_ value: EPUBPreferencesValue? = nil, hideCustomFont: Bool = false)
+    throws -> Any
+  {
+    var settings = (value ?? preferences.value).settings
+    if hideCustomFont && EPUBCustomFontsModel.isCustom(settings.fontFamily) {
+      settings.fontFamily = nil
+    }
     settings.fontSize = Double(
       UIFontMetrics(forTextStyle: .body).scaledValue(for: CGFloat(settings.fontSize)))
     return try json(settings)
+  }
+
+  private func prepareFontSelection(_ requested: EPUBPreferencesValue) async throws {
+    guard !isClosed, let generation,
+      try await api.authenticatedSessionGeneration() == generation
+    else { throw ConnectionError.expiredSession }
+    let family = try preferences.fonts.resolve(requested.settings.fontFamily)
+    let faces = try fontResources.prepare(
+      family, weight: requested.settings.fontWeight,
+      style: requested.settings.fontStyle, session: generation)
+    do {
+      let raw = try await webView.callAsyncJavaScript(
+        "return await window.epubPrepareFonts(faces, settings)",
+        arguments: ["faces": try json(faces), "settings": try renderSettings(requested)],
+        in: nil, contentWorld: .page)
+      guard raw as? Bool == true, !isClosed,
+        try await api.authenticatedSessionGeneration() == generation
+      else { throw EPUBFontError.loadFailed }
+    } catch {
+      if let message = fontResources.failure { throw DeliveredEbookFailure(message: message) }
+      if error is CancellationError || error is ConnectionError { throw error }
+      throw EPUBFontError.loadFailed
+    }
+  }
+
+  private func restoreCustomTypography() async throws {
+    fontFailure = nil
+    let cfi = location?.cfi
+    do {
+      let supports =
+        try await webView.callAsyncJavaScript(
+          "return !document.querySelector('foliate-view').isFixedLayout", arguments: [:],
+          in: nil, contentWorld: .page) as? Bool == true
+      if supports && preferences.useFormatting {
+        try await prepareFontSelection(preferences.value)
+      } else if let generation {
+        _ = try fontResources.prepare(nil, weight: 400, style: "normal", session: generation)
+        _ = try await webView.callAsyncJavaScript(
+          "return await window.epubPrepareFonts([], settings)",
+          arguments: ["settings": try renderSettings(hideCustomFont: true)],
+          in: nil, contentWorld: .page)
+      }
+      if isLoading, supports, preferences.useFormatting, let cfi {
+        let raw = try await webView.callAsyncJavaScript(
+          "return await window.epubConfigure(settings, formatting, cfi)",
+          arguments: ["settings": try renderSettings(), "formatting": true, "cfi": cfi],
+          in: nil, contentWorld: .page)
+        self.location = try decodedLocation(raw)
+      }
+    } catch {
+      guard !isClosed, EPUBCustomFontsModel.isCustom(preferences.value.settings.fontFamily),
+        let generation, let cfi
+      else { throw error }
+      let message = error.localizedDescription
+      _ = try fontResources.prepare(nil, weight: 400, style: "normal", session: generation)
+      _ = try await webView.callAsyncJavaScript(
+        "return await window.epubPrepareFonts([], settings)",
+        arguments: ["settings": try renderSettings(hideCustomFont: true)],
+        in: nil, contentWorld: .page)
+      let raw = try await webView.callAsyncJavaScript(
+        "return await window.epubConfigure(settings, formatting, cfi)",
+        arguments: [
+          "settings": try renderSettings(hideCustomFont: true),
+          "formatting": preferences.useFormatting, "cfi": cfi,
+        ], in: nil, contentWorld: .page)
+      location = try decodedLocation(raw)
+      fontFailure =
+        "Saved custom typography is unavailable. The publisher font is shown. \(message)"
+    }
   }
 
   private func json<Value: Encodable>(_ value: Value) throws -> Any {
