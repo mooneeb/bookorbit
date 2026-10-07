@@ -47,7 +47,12 @@ struct ReaderBookmarksView: View {
         }
         if model.isLoading { ProgressView("Loading bookmarks…") }
         Section("Saved bookmarks") {
-          if model.hasLoaded, model.items.isEmpty { Text("No bookmarks for this file.") }
+          if model.hasAcknowledgedBookmark {
+            Text("Only your confirmed bookmark is shown. Retry loading to see the full list.")
+          }
+          if model.hasLoaded, model.error == nil, model.items.isEmpty {
+            Text("No bookmarks for this file.")
+          }
           ForEach(model.items) { bookmark in
             VStack(alignment: .leading) {
               Button {
@@ -87,24 +92,25 @@ struct ReaderBookmarksView: View {
             actionLabel("Older bookmarks")
           }
           .disabled(model.isBusy || model.nextCursor == nil)
+        }
+      }
+      .font(.body)
+      .foregroundStyle(.primary)
+      .buttonStyle(BookmarkActionButtonStyle())
+      .navigationTitle("Bookmarks")
+      .safeAreaInset(edge: .bottom) {
+        VStack {
           Button {
             Task { await model.firstPage() }
           } label: {
             actionLabel("First page of bookmarks")
           }
-          .disabled(model.isBusy)
+          Button(action: dismiss.callAsFunction) {
+            Text("Done").font(.body)
+              .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+          }
         }
-      }
-      .font(.body)
-      .foregroundStyle(.primary)
-      .buttonStyle(.plain)
-      .navigationTitle("Bookmarks")
-      .safeAreaInset(edge: .bottom) {
-        Button(action: dismiss.callAsFunction) {
-          Text("Done").font(.body).foregroundStyle(.primary)
-            .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        .buttonStyle(BookmarkActionButtonStyle())
         .padding().background(.background).disabled(model.isBusy)
       }
     }
@@ -127,8 +133,17 @@ struct ReaderBookmarksView: View {
   }
 
   private func actionLabel(_ title: String) -> some View {
-    Text(title).font(.body).foregroundStyle(.primary)
+    Text(title).font(.body)
+      .fixedSize(horizontal: false, vertical: true)
       .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
       .contentShape(Rectangle())
+  }
+}
+
+private struct BookmarkActionButtonStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .foregroundStyle(Color(uiColor: .label))
+      .opacity(configuration.isPressed ? 0.7 : 1)
   }
 }

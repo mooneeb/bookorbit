@@ -10000,6 +10000,7 @@
       "saved": "Bookmark saved.",
       "removed": "Bookmark removed.",
       "empty": "No bookmarks for this file.",
+      "confirmedOnly": "Only your confirmed bookmark is shown. Retry loading to see the full list.",
       "requestFailed": "The bookmark request failed. Your draft and confirmed changes are retained. Retry when connected.",
       "remove": "Remove bookmark",
       "removeNamed": "Remove bookmark: {title}",

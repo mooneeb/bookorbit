@@ -31,6 +31,7 @@ final class ReaderBookmarksModel {
 
   var isBusy: Bool { isLoading || isSaving }
   var hasPrevious: Bool { !previousCursors.isEmpty }
+  var hasAcknowledgedBookmark: Bool { !hasLoaded && !items.isEmpty }
   var canSave: Bool {
     !isBusy && hasLoaded && pageCount > 0 && (1...max(1, pageCount)).contains(currentPage)
       && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -73,9 +74,16 @@ final class ReaderBookmarksModel {
         isSaving = false
         return
       }
-      guard saved.bookId == bookID, saved.fileId == fileID, saved.pageNumber == currentPage else {
+      guard saved.bookId == bookID, saved.fileId == fileID, saved.pageNumber == currentPage,
+        saved.id > 0, saved.cfi == nil, saved.positionSeconds == nil
+      else {
         throw ConnectionError.invalidResponse
       }
+      items = [saved]
+      cursor = nil
+      nextCursor = nil
+      previousCursors.removeAll()
+      hasLoaded = false
       title = saved.title
       status = "Bookmarked page \(currentPage)."
       isSaving = false

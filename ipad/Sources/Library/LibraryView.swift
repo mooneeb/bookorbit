@@ -83,9 +83,18 @@ struct LibraryView: View {
                 Text(queryFieldLabel(library.sort)).tag(library.sort)
               }
             }
-            Button("Filter and sort") { showingQuery = true }
-              .font(.body).frame(minHeight: 44)
-              .accessibilityIdentifier("libraryFilters")
+            Button {
+              showingQuery = true
+            } label: {
+              Text("Filter and sort")
+                .font(.body)
+                .foregroundStyle(Color(uiColor: .label))
+                .frame(minWidth: 44, minHeight: 44)
+                .background(Color(uiColor: .systemBackground))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("libraryFilters")
           }
           .padding()
           .background(Color(uiColor: .systemBackground))
@@ -124,9 +133,7 @@ struct LibraryView: View {
           }
           if library.isBusy { ProgressView("Loading books…").padding() }
           HStack {
-            Button("Saved views") { showingSavedViews = true }.frame(minHeight: 44)
-              .accessibilityIdentifier(
-                "openSavedViews")
+            SavedViewsButton { showingSavedViews = true }
             if presentation == "table" {
               Button("Table columns") { showingTableLayout = true }.frame(minHeight: 44)
                 .accessibilityIdentifier(
@@ -318,5 +325,49 @@ private struct BookGrid: View {
         }
       }.padding()
     }
+  }
+}
+
+private struct SavedViewsButton: UIViewRepresentable {
+  @Environment(\.isEnabled) private var isEnabled
+  let action: () -> Void
+
+  func makeCoordinator() -> Coordinator { Coordinator(action: action) }
+
+  func makeUIView(context: Context) -> UIButton {
+    let button = UIButton(type: .system)
+    button.setTitle(String(localized: "Saved views"), for: .normal)
+    button.setTitleColor(.label, for: .normal)
+    button.backgroundColor = .systemBackground
+    button.titleLabel?.font = .preferredFont(forTextStyle: .body)
+    button.titleLabel?.adjustsFontForContentSizeCategory = true
+    button.titleLabel?.numberOfLines = 0
+    button.titleLabel?.lineBreakMode = .byWordWrapping
+    button.contentHorizontalAlignment = .leading
+    button.accessibilityIdentifier = "openSavedViews"
+    button.addTarget(
+      context.coordinator, action: #selector(Coordinator.activate), for: .touchUpInside)
+    return button
+  }
+
+  func updateUIView(_ button: UIButton, context: Context) {
+    context.coordinator.action = action
+    button.isEnabled = isEnabled
+  }
+
+  func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIButton, context: Context) -> CGSize? {
+    let titleSize =
+      uiView.titleLabel?.sizeThatFits(
+        CGSize(width: proposal.width ?? .greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+      ) ?? .zero
+    return CGSize(width: max(44, titleSize.width), height: max(44, titleSize.height))
+  }
+
+  @MainActor final class Coordinator: NSObject {
+    var action: () -> Void
+
+    init(action: @escaping () -> Void) { self.action = action }
+
+    @objc func activate() { action() }
   }
 }

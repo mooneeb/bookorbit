@@ -16,7 +16,7 @@ const model = useFixedPageBookmarks(
   () => props.bookId,
   () => props.fileId,
 )
-const { items, loading, saving, loaded, error, outcome, nextCursor, hasPrevious } = model
+const { items, loading, saving, loaded, error, outcome, nextCursor, hasPrevious, hasAcknowledgedBookmark } = model
 const open = ref(false)
 const title = ref('')
 const removing = ref<BookmarkResponse | null>(null)
@@ -117,7 +117,8 @@ onUnmounted(model.reset)
       {{ t('common.retry') }}
     </button>
     <p v-if="loading" role="status">{{ t('common.loading') }}</p>
-    <p v-if="loaded && !items.length">{{ t('reader.fixedBookmarks.empty') }}</p>
+    <p v-if="hasAcknowledgedBookmark">{{ t('reader.fixedBookmarks.confirmedOnly') }}</p>
+    <p v-if="loaded && !error && !items.length">{{ t('reader.fixedBookmarks.empty') }}</p>
     <ul class="space-y-3">
       <li v-for="bookmark in items" :key="bookmark.id" class="rounded-md border border-border p-2">
         <button

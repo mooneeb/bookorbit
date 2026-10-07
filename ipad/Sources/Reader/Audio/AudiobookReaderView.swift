@@ -3,6 +3,8 @@ import SwiftUI
 struct AudiobookReaderView: View {
   @Environment(\.dismiss) private var dismiss
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+  @Environment(\.horizontalSizeClass) private var horizontalSizeClass
   @State private var model: AudioPlayerModel
   @State private var bridge: NativeContinuationModel
   private let offersContinuation: Bool
@@ -119,18 +121,15 @@ struct AudiobookReaderView: View {
           }
         }.padding()
       }
-      .buttonStyle(.plain)
+      .buttonStyle(AudiobookButtonStyle())
       .foregroundStyle(Color(uiColor: .label))
       .background(Color(uiColor: .systemBackground))
       .safeAreaInset(edge: .bottom) {
-        ViewThatFits(in: .horizontal) {
-          HStack(spacing: 16) { footerButtons }
-          VStack(alignment: .leading, spacing: 8) { footerButtons }
-        }
-        .frame(maxWidth: .infinity)
-        .buttonStyle(.plain)
-        .padding(.horizontal)
-        .background(Color(uiColor: .systemBackground))
+        buttonLayout(horizontalSpacing: 16) { footerButtons }
+          .frame(maxWidth: .infinity)
+          .buttonStyle(AudiobookButtonStyle())
+          .padding(.horizontal)
+          .background(Color(uiColor: .systemBackground))
       }
       .navigationTitle("Audiobook")
     }
@@ -166,12 +165,25 @@ struct AudiobookReaderView: View {
     }
   }
 
+  private func buttonLayout<Content: View>(
+    horizontalSpacing: CGFloat, @ViewBuilder content: () -> Content
+  ) -> some View {
+    let layout =
+      dynamicTypeSize > .large || horizontalSizeClass == .compact
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+      : AnyLayout(HStackLayout(spacing: horizontalSpacing))
+    return layout { content() }
+  }
+
   @ViewBuilder
   private var footerButtons: some View {
     if offersContinuation {
-      Button("Continue reading", action: openContinuation).frame(minHeight: 44)
-        .disabled(!model.canClose || !model.engine.isReady || bridge.isPresented)
-        .accessibilityIdentifier("audiobookContinueReading")
+      Button(action: openContinuation) {
+        Text("Continue reading").font(.body).fixedSize(horizontal: false, vertical: true)
+          .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+      }
+      .disabled(!model.canClose || !model.engine.isReady || bridge.isPresented)
+      .accessibilityIdentifier("audiobookContinueReading")
     }
     Button(action: finish) {
       Text("Done").font(.body).fixedSize(horizontal: false, vertical: true)
@@ -214,11 +226,8 @@ struct AudiobookReaderView: View {
       .accessibilityLabel("Track position in seconds")
       .accessibilityValue("\(Int(scrubPosition)) seconds")
       .accessibilityIdentifier("audiobookSeek")
-      ViewThatFits(in: .horizontal) {
-        HStack { transportButtons }
-        VStack(alignment: .leading) { transportButtons }
-      }
-      .font(.body)
+      buttonLayout(horizontalSpacing: 8) { transportButtons }
+        .font(.body)
       Button {
         Task { await model.saveProgress() }
       } label: {
@@ -251,14 +260,18 @@ struct AudiobookReaderView: View {
     Button {
       Task { await model.previousTrack() }
     } label: {
-      Label("Previous track", systemImage: "backward.end").frame(minHeight: 44)
+      Label("Previous track", systemImage: "backward.end")
+        .font(.body).fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
     }
     .disabled(!model.canInteract || !model.hasPreviousTrack)
     .accessibilityIdentifier("audiobookPreviousTrack")
     Button {
       Task { await model.skip(-model.preferences.value.skipBackSeconds) }
     } label: {
-      Text("Back \(Int(model.preferences.value.skipBackSeconds)) seconds").frame(minHeight: 44)
+      Text("Back \(Int(model.preferences.value.skipBackSeconds)) seconds")
+        .font(.body).fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
     }
     .disabled(!model.canInteract || model.preferences.value.skipBackSeconds == 0)
     .accessibilityIdentifier("audiobookSkipBack")
@@ -269,21 +282,25 @@ struct AudiobookReaderView: View {
         model.engine.isPlaying ? "Pause" : "Play",
         systemImage: model.engine.isPlaying ? "pause" : "play"
       )
-      .frame(minWidth: 44, minHeight: 44)
+      .font(.body).fixedSize(horizontal: false, vertical: true)
+      .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
     }
     .disabled(!model.canTogglePlayback).accessibilityIdentifier("audiobookPlayPause")
     Button {
       Task { await model.skip(model.preferences.value.skipForwardSeconds) }
     } label: {
-      Text("Forward \(Int(model.preferences.value.skipForwardSeconds)) seconds").frame(
-        minHeight: 44)
+      Text("Forward \(Int(model.preferences.value.skipForwardSeconds)) seconds")
+        .font(.body).fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
     }
     .disabled(!model.canInteract || model.preferences.value.skipForwardSeconds == 0)
     .accessibilityIdentifier("audiobookSkipForward")
     Button {
       Task { await model.nextTrack() }
     } label: {
-      Label("Next track", systemImage: "forward.end").frame(minHeight: 44)
+      Label("Next track", systemImage: "forward.end")
+        .font(.body).fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
     }
     .disabled(!model.canInteract || !model.hasNextTrack)
     .accessibilityIdentifier("audiobookNextTrack")
@@ -307,5 +324,21 @@ struct AudiobookReaderView: View {
         showingCloseWarning = true
       }
     }
+  }
+}
+
+private struct AudiobookButtonStyle: ButtonStyle {
+  @Environment(\.isEnabled) private var isEnabled
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .foregroundStyle(Color(uiColor: .label))
+      .background {
+        if !isEnabled {
+          RoundedRectangle(cornerRadius: 4).fill(Color(uiColor: .tertiarySystemFill))
+        } else if configuration.isPressed {
+          RoundedRectangle(cornerRadius: 4).fill(Color(uiColor: .secondarySystemFill))
+        }
+      }
   }
 }

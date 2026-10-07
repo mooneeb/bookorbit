@@ -1,7 +1,9 @@
 import { BadRequestException, Controller, Get, Param, ParseIntPipe, Query, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { Permission } from '@bookorbit/types';
 
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
+import { RequirePermission } from '../../../common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../../common/types/request-user';
 import { EpubService } from './epub.service';
 import { MediaOverlayClipsQueryDto } from './dto/media-overlay-clips-query.dto';
@@ -16,16 +18,19 @@ export class EpubController {
   }
 
   @Get(':bookId/media-overlay')
+  @RequirePermission(Permission.LibraryDownload)
   getMediaOverlay(@Param('bookId', ParseIntPipe) bookId: number, @Query('fileId') fileId: string | undefined, @CurrentUser() user: RequestUser) {
     return this.epubService.getMediaOverlayPlaylist(bookId, this.parseFileId(fileId), user);
   }
 
   @Get(':bookId/media-overlay/clips')
+  @RequirePermission(Permission.LibraryDownload)
   getMediaOverlayClips(@Param('bookId', ParseIntPipe) bookId: number, @Query() query: MediaOverlayClipsQueryDto, @CurrentUser() user: RequestUser) {
     return this.epubService.getMediaOverlayClips(bookId, query, user);
   }
 
   @Get(':bookId/media-overlay/file/*')
+  @RequirePermission(Permission.LibraryDownload)
   async getMediaOverlayFile(
     @Param('bookId', ParseIntPipe) bookId: number,
     @Param('*') encodedPath: string,

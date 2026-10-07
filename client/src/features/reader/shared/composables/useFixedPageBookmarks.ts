@@ -12,6 +12,7 @@ export function useFixedPageBookmarks(bookId: () => number, fileId: () => number
   const nextCursor = ref<number | null>(null)
   const history = ref<Array<number | null>>([])
   const hasPrevious = computed(() => history.value.length > 0)
+  const hasAcknowledgedBookmark = computed(() => !loaded.value && items.value.length > 0)
   let cursor: number | null = null
   let generation = 0
   let controller: AbortController | null = null
@@ -77,8 +78,21 @@ export function useFixedPageBookmarks(bookId: () => number, fileId: () => number
       if (!response.ok) throw new Error('Bookmark request failed')
       const bookmark: BookmarkResponse = await response.json()
       if (turn !== generation) return
-      if (bookmark.bookId !== bookId() || bookmark.fileId !== fileId() || bookmark.pageNumber !== pageNumber)
+      if (
+        bookmark.bookId !== bookId() ||
+        bookmark.fileId !== fileId() ||
+        bookmark.pageNumber !== pageNumber ||
+        !Number.isSafeInteger(bookmark.id) ||
+        bookmark.id <= 0 ||
+        bookmark.cfi !== null ||
+        bookmark.positionSeconds !== null
+      )
         throw new Error('Invalid bookmark response')
+      items.value = [bookmark]
+      cursor = null
+      nextCursor.value = null
+      history.value = []
+      loaded.value = false
       outcome.value = 'saved'
       saving.value = false
       await first()
@@ -125,5 +139,22 @@ export function useFixedPageBookmarks(bookId: () => number, fileId: () => number
     error.value = false
     outcome.value = null
   }
-  return { items, loading, saving, loaded, error, outcome, nextCursor, hasPrevious, load, first, older, newer, save, remove, reset }
+  return {
+    items,
+    loading,
+    saving,
+    loaded,
+    error,
+    outcome,
+    nextCursor,
+    hasPrevious,
+    hasAcknowledgedBookmark,
+    load,
+    first,
+    older,
+    newer,
+    save,
+    remove,
+    reset,
+  }
 }

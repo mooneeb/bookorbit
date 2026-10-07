@@ -409,6 +409,18 @@ export class EpubService {
     const size = entry.uncompressedSize;
     const range = this.parseRange(rangeHeader, size);
     const sourceStat = await stat(resolved.absolutePath);
+    const etag = `"${sourceStat.mtimeMs}-${sourceStat.size}-${entry.crc32}-${size}"`;
+    if (range === 'unsatisfiable') {
+      return {
+        data: Buffer.alloc(0),
+        contentType,
+        size,
+        status: 416,
+        contentRange: `bytes */${size}`,
+        contentLength: 0,
+        etag,
+      };
+    }
     const source = entry.stream();
     const streamed = range ? this.mediaRangeStream(source, range) : source;
     let data: Buffer | Readable = streamed;
@@ -424,7 +436,7 @@ export class EpubService {
       status: range ? 206 : 200,
       contentRange: range ? `bytes ${range.start}-${range.end}/${size}` : null,
       contentLength: range ? range.end - range.start + 1 : size,
-      etag: `"${sourceStat.mtimeMs}-${sourceStat.size}-${entry.crc32}-${size}"`,
+      etag,
     };
   }
 
@@ -498,7 +510,7 @@ export class EpubService {
     return { fileId: null, absolutePath: file.absolutePath, readerPath: file.absolutePath, sizeBytes: file.sizeBytes };
   }
 
-  private parseRange(rangeHeader: string | undefined, size: number): ByteRange | null {
+  private parseRange(rangeHeader: string | undefined, size: number): ByteRange | null | 'unsatisfiable' {
     if (!rangeHeader) return null;
     const match = rangeHeader.match(/^bytes=(\d*)-(\d*)$/);
     if (!match) throw new BadRequestException('Invalid Range header');
@@ -516,9 +528,10 @@ export class EpubService {
       start = Number(startRaw);
       end = endRaw ? Number(endRaw) : size - 1;
     }
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= size) {
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || (startRaw && endRaw && end < start)) {
       throw new BadRequestException('Invalid Range header');
     }
+    if (start >= size) return 'unsatisfiable';
     return { start, end: Math.min(end, size - 1) };
   }
 

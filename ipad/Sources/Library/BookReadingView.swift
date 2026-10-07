@@ -1,9 +1,11 @@
 import SwiftUI
+import UIKit
 
 struct BookReadingView: View {
   let acknowledged: (BookDetail) -> Void
   let saved: (BookDetail) -> Void
   @State private var model: BookReadingModel
+  @FocusState private var noteIsFocused: Bool
   @Environment(\.dismiss) private var dismiss
 
   init(
@@ -19,26 +21,34 @@ struct BookReadingView: View {
     VStack(spacing: 0) {
       Text("Your reading").font(.title2).fixedSize(horizontal: false, vertical: true)
         .accessibilityAddTraits(.isHeader).padding()
-      ScrollView {
-        VStack(alignment: .leading, spacing: 24) {
-          if let draft = model.draft {
-            BookReadingFields(draft: draft)
-          } else if model.isLoading {
-            ProgressView("Loading your reading details…")
-          }
-          if let error = model.error {
-            Text(error).fixedSize(horizontal: false, vertical: true)
-              .accessibilityIdentifier("bookReadingError")
-            if model.draft == nil {
-              Button {
-                Task { await model.load() }
-              } label: {
-                Text("Try again").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-              }.accessibilityIdentifier("bookReadingRetry")
+      ScrollViewReader { scroll in
+        ScrollView {
+          VStack(alignment: .leading, spacing: 24) {
+            if let draft = model.draft {
+              BookReadingFields(draft: draft, noteFocus: $noteIsFocused)
+            } else if model.isLoading {
+              ProgressView("Loading your reading details…")
             }
+            if let error = model.error {
+              Text(error).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("bookReadingError")
+              if model.draft == nil {
+                Button {
+                  Task { await model.load() }
+                } label: {
+                  Text("Try again").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                }.accessibilityIdentifier("bookReadingRetry")
+              }
+            }
+          }.padding().frame(maxWidth: .infinity, alignment: .leading).disabled(model.isSaving)
+        }.scrollEdgeEffectHidden().clipped()
+          .onChange(of: noteIsFocused) { revealNote(using: scroll) }
+          .onReceive(
+            NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)
+          ) {
+            _ in revealNote(using: scroll)
           }
-        }.padding().frame(maxWidth: .infinity, alignment: .leading).disabled(model.isSaving)
-      }.scrollEdgeEffectHidden().clipped()
+      }
       HStack {
         Button(action: dismiss.callAsFunction) {
           Text("Cancel").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
@@ -64,6 +74,15 @@ struct BookReadingView: View {
     .background(Color(uiColor: .systemBackground)).interactiveDismissDisabled(model.isSaving)
     .task { await model.load() }
   }
+
+  private func revealNote(using scroll: ScrollViewProxy) {
+    guard noteIsFocused else { return }
+    scroll.scrollTo(BookReadingScrollTarget.personalNote, anchor: .bottom)
+  }
+}
+
+private enum BookReadingScrollTarget: Hashable {
+  case personalNote
 }
 
 private struct BookReadingActionButtonStyle: ButtonStyle {
@@ -75,6 +94,7 @@ private struct BookReadingActionButtonStyle: ButtonStyle {
 
 private struct BookReadingFields: View {
   @Bindable var draft: BookReadingDraft
+  let noteFocus: FocusState<Bool>.Binding
 
   var body: some View {
     VStack(alignment: .leading, spacing: 24) {
@@ -90,8 +110,9 @@ private struct BookReadingFields: View {
       Text("Use YYYY-MM-DD. Dates use your account's time zone: \(draft.timeZone.identifier).")
         .fixedSize(horizontal: false, vertical: true)
       VStack(alignment: .leading, spacing: 12) {
-        Text("Personal note").font(.headline)
+        BookReadingHeading(text: "Personal note")
         TextEditor(text: $draft.note).frame(minHeight: 200)
+          .focused(noteFocus)
           .accessibilityLabel("Personal note").accessibilityIdentifier("bookReadingNote")
           .overlay(Rectangle().stroke(Color(uiColor: .separator)))
         Text("\(draft.note.utf16.count) / \(BookReadingVocabulary.noteMaximum) characters")
@@ -100,7 +121,7 @@ private struct BookReadingFields: View {
         } label: {
           Text("Clear note").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
         }.disabled(draft.note.isEmpty).accessibilityIdentifier("bookReadingClearNote")
-      }
+      }.id(BookReadingScrollTarget.personalNote)
       if let error = draft.validationError {
         Text(error).fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("bookReadingValidation")
@@ -110,7 +131,7 @@ private struct BookReadingFields: View {
 
   private func date(_ label: String, text: Binding<String>, identifier: String) -> some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text(label).font(.headline)
+      BookReadingHeading(text: label)
       TextField("YYYY-MM-DD", text: text).textFieldStyle(.roundedBorder)
         .textInputAutocapitalization(.never).autocorrectionDisabled()
         .accessibilityLabel(label).accessibilityIdentifier(identifier)
@@ -121,5 +142,30 @@ private struct BookReadingFields: View {
           Rectangle())
       }.disabled(text.wrappedValue.isEmpty).accessibilityIdentifier("\(identifier)Clear")
     }
+  }
+}
+
+private struct BookReadingHeading: UIViewRepresentable {
+  let text: String
+
+  func makeUIView(context: Context) -> UILabel {
+    let label = UILabel()
+    label.adjustsFontForContentSizeCategory = true
+    label.textColor = .label
+    label.backgroundColor = .systemBackground
+    label.numberOfLines = 0
+    label.isAccessibilityElement = true
+    label.accessibilityTraits = [.staticText, .header]
+    return label
+  }
+
+  func updateUIView(_ label: UILabel, context: Context) {
+    label.text = text
+    label.font = .preferredFont(forTextStyle: .headline, compatibleWith: label.traitCollection)
+  }
+
+  func sizeThatFits(_ proposal: ProposedViewSize, uiView: UILabel, context: Context) -> CGSize? {
+    uiView.sizeThatFits(
+      CGSize(width: proposal.width ?? .greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
   }
 }

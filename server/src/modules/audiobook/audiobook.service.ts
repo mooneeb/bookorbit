@@ -85,7 +85,7 @@ export class AudiobookService {
     if (fileIndex < 0) throw new BadRequestException('assetId does not belong to this audiobook');
 
     const previous = await this.repo.findPlaybackState(user.id, bookId);
-    if (previous?.operationId === dto.operationId) {
+    if (previous?.operationId?.toLowerCase() === dto.operationId.toLowerCase()) {
       const existing = (await this.getPlaybackState(bookId, user))!;
       await this.bookService.syncEbookProgressForAudiobookPlayback(
         user,
