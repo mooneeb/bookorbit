@@ -9,7 +9,7 @@ struct AudioAssetDescriptor: Sendable {
   let sizeBytes: Int64?
 }
 
-enum AudioProofError: LocalizedError {
+enum AudioPlaybackError: LocalizedError {
   case unsupported
   case tooManyRequests
   case invalidManifest
@@ -84,7 +84,7 @@ final class AudioResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
       return true
     }
     guard requests.count < 8 else {
-      request.finishLoading(with: AudioProofError.tooManyRequests)
+      request.finishLoading(with: AudioPlaybackError.tooManyRequests)
       return true
     }
     let id = ObjectIdentifier(request)
@@ -136,7 +136,7 @@ final class AudioResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         let contentType = UTType(mimeType: mime)?.identifier,
         info.allowedContentTypes?.isEmpty != false
           || info.allowedContentTypes?.contains(contentType) == true
-      else { throw AudioProofError.unsupported }
+      else { throw AudioPlaybackError.unsupported }
       info.contentType = contentType
       info.contentLength = totalBytes
       info.isByteRangeAccessSupported = true

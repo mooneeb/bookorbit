@@ -169,7 +169,8 @@ struct LibraryView: View {
         ) { selection in
           BookDetailView(
             api: library.api, bookID: selection.id,
-            canEditMetadata: session.user?.hasPermission(.libraryEditMetadata) == true)
+            canEditMetadata: session.user?.hasPermission(.libraryEditMetadata) == true,
+            canRead: session.user?.hasPermission(.libraryDownload) == true)
         }
       }
     }
@@ -197,7 +198,8 @@ struct LibraryView: View {
     .sheet(item: $organization) { kind in
       OrganizationDirectoryView(
         api: library.api, kind: kind, libraries: library.libraries,
-        canEditMetadata: session.user?.hasPermission(.libraryEditMetadata) == true)
+        canEditMetadata: session.user?.hasPermission(.libraryEditMetadata) == true,
+        canRead: session.user?.hasPermission(.libraryDownload) == true)
     }
     .sheet(isPresented: $isCreatingCollection) {
       CreateCollectionView(collections: library.collections) { collection in

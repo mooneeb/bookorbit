@@ -2,14 +2,16 @@ import SwiftUI
 
 struct OrganizationDetailView: View {
   let canEditMetadata: Bool
+  let canRead: Bool
   @State private var model: OrganizationDetailModel
   @State private var selectedBook: OrganizationSelection?
 
   init(
     api: BookOrbitAPI, kind: OrganizationKind, selection: OrganizationSelection,
-    libraryID: Int?, canEditMetadata: Bool
+    libraryID: Int?, canEditMetadata: Bool, canRead: Bool
   ) {
     self.canEditMetadata = canEditMetadata
+    self.canRead = canRead
     _model = State(
       initialValue: OrganizationDetailModel(
         api: api, kind: kind, selection: selection, libraryID: libraryID))
@@ -121,7 +123,8 @@ struct OrganizationDetailView: View {
     .sheet(
       item: $selectedBook, onDismiss: { Task { await model.load() } },
       content: { book in
-        BookDetailView(api: model.api, bookID: book.id, canEditMetadata: canEditMetadata)
+        BookDetailView(
+          api: model.api, bookID: book.id, canEditMetadata: canEditMetadata, canRead: canRead)
       })
   }
 }

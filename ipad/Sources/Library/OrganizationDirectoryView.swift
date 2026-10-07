@@ -3,15 +3,20 @@ import SwiftUI
 struct OrganizationDirectoryView: View {
   let libraries: [Library]
   let canEditMetadata: Bool
+  let canRead: Bool
   @Environment(\.dismiss) private var dismiss
   @State private var model: OrganizationDirectoryModel
   @State private var selection: OrganizationSelection?
   @State private var showingFilters = false
   @State private var draftFilters = OrganizationFilters()
 
-  init(api: BookOrbitAPI, kind: OrganizationKind, libraries: [Library], canEditMetadata: Bool) {
+  init(
+    api: BookOrbitAPI, kind: OrganizationKind, libraries: [Library], canEditMetadata: Bool,
+    canRead: Bool
+  ) {
     self.libraries = libraries
     self.canEditMetadata = canEditMetadata
+    self.canRead = canRead
     _model = State(initialValue: OrganizationDirectoryModel(api: api, kind: kind))
   }
 
@@ -122,7 +127,7 @@ struct OrganizationDirectoryView: View {
       .navigationDestination(item: $selection) { selected in
         OrganizationDetailView(
           api: model.api, kind: model.kind, selection: selected,
-          libraryID: model.filters.libraryID, canEditMetadata: canEditMetadata)
+          libraryID: model.filters.libraryID, canEditMetadata: canEditMetadata, canRead: canRead)
       }
       .onChange(of: model.sort) { Task { await model.load() } }
       .onChange(of: model.descending) { Task { await model.load() } }

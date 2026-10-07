@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DashboardView: View {
   let canEditMetadata: Bool
+  let canRead: Bool
   @Environment(\.dismiss) private var dismiss
   @State private var model: DashboardModel
   @State private var selectedBook: OrganizationSelection?
@@ -10,6 +11,7 @@ struct DashboardView: View {
 
   init(api: BookOrbitAPI, serverURL: String, user: AuthUser) {
     canEditMetadata = user.hasPermission(.libraryEditMetadata)
+    canRead = user.hasPermission(.libraryDownload)
     _model = State(initialValue: DashboardModel(api: api, serverURL: serverURL, user: user))
   }
 
@@ -121,7 +123,8 @@ struct DashboardView: View {
       .sheet(
         item: $selectedBook, onDismiss: { Task { await model.load() } },
         content: { book in
-          BookDetailView(api: model.api, bookID: book.id, canEditMetadata: canEditMetadata)
+          BookDetailView(
+            api: model.api, bookID: book.id, canEditMetadata: canEditMetadata, canRead: canRead)
         })
     }
   }

@@ -1190,6 +1190,35 @@ struct FixedReaderDefaultsResponseCbx: Codable, Sendable, Equatable {
     var `autoAdvance`: Bool?
 }
 
+struct AudioReaderSettings: Codable, Sendable, Equatable {
+    var `playbackSpeed`: Double
+    var `volume`: Double
+    var `skipBackSeconds`: Double
+    var `skipForwardSeconds`: Double
+}
+
+struct AudioReaderDefaultsResponse: Codable, Sendable, Equatable {
+    var `audio`: AudioReaderDefaultsResponseAudio?
+}
+
+struct AudioReaderDefaultsResponseAudio: Codable, Sendable, Equatable {
+    var `playbackSpeed`: Double?
+    var `volume`: Double?
+    var `skipBackSeconds`: Double?
+    var `skipForwardSeconds`: Double?
+}
+
+struct AudioReaderDefaultsPatchBody: Codable, Sendable, Equatable {
+    var `set`: AudioReaderDefaultsPatchBodySet
+}
+
+struct AudioReaderDefaultsPatchBodySet: Codable, Sendable, Equatable {
+    var `playbackSpeed`: Double?
+    var `volume`: Double?
+    var `skipBackSeconds`: Double?
+    var `skipForwardSeconds`: Double?
+}
+
 struct PdfReaderPreferencePatchBody: Codable, Sendable, Equatable {
     var `set`: PdfReaderPreferencePatchBodySet?
     var `unset`: [String]?
@@ -1309,6 +1338,10 @@ struct WidgetConfig: Codable, Sendable, Equatable, Identifiable {
 struct UserReaderSettingsResponse: Codable, Sendable, Equatable {
     var `settings`: UserSettings
     var `permissions`: [String]
+}
+
+extension AudioReaderSettings {
+    static var readerDefault: Self { Self(playbackSpeed: 1, volume: 1, skipBackSeconds: 10, skipForwardSeconds: 30) }
 }
 
 extension PdfReaderSettings {

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct BookDetailView: View {
   let canEditMetadata: Bool
+  let canRead: Bool
   @Environment(\.dismiss) private var dismiss
   @State private var model: BookDetailModel
   @State private var isAddingToCollection = false
@@ -10,9 +11,16 @@ struct BookDetailView: View {
   @State private var selectedFile: BookDetailFile?
   @State private var isEditingReading = false
 
-  init(api: BookOrbitAPI, bookID: Int, canEditMetadata: Bool) {
+  init(api: BookOrbitAPI, bookID: Int, canEditMetadata: Bool, canRead: Bool) {
     self.canEditMetadata = canEditMetadata
+    self.canRead = canRead
     _model = State(initialValue: BookDetailModel(api: api, bookID: bookID))
+  }
+
+  private func isReadable(_ file: BookDetailFile) -> Bool {
+    let format = file.format?.lowercased() ?? ""
+    return ["pdf", "cbz", "cbr", "cb7"].contains(format)
+      || AudioStreamFormat.mimeTypes[format] != nil
   }
 
   var body: some View {
@@ -41,7 +49,7 @@ struct BookDetailView: View {
                   Text(file.filename ?? "Book file")
                   Text(file.format?.uppercased() ?? "Unknown format").font(.caption)
                     .foregroundStyle(.secondary)
-                  if ["pdf", "cbz", "cbr", "cb7"].contains(file.format?.lowercased() ?? "") {
+                  if canRead, isReadable(file) {
                     Button("Read") { selectedFile = file }
                       .accessibilityIdentifier("readFile\(file.id)")
                   }
@@ -97,6 +105,8 @@ struct BookDetailView: View {
     .fullScreenCover(item: $selectedFile, onDismiss: { Task { await model.load() } }) { file in
       if ["cbz", "cbr", "cb7"].contains(file.format?.lowercased() ?? "") {
         ComicReaderHost(api: model.api, bookID: model.bookID, file: file)
+      } else if AudioStreamFormat.mimeTypes[file.format?.lowercased() ?? ""] != nil {
+        AudiobookReaderView(api: model.api, bookID: model.bookID, file: file)
       } else {
         PDFReaderView(api: model.api, bookID: model.bookID, file: file)
       }

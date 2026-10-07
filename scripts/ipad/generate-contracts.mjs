@@ -417,6 +417,9 @@ for (const name of [
   "PdfReaderPreferenceResponse",
   "CbxReaderPreferenceResponse",
   "FixedReaderDefaultsResponse",
+  "AudioReaderSettings",
+  "AudioReaderDefaultsResponse",
+  "AudioReaderDefaultsPatchBody",
   "PdfReaderPreferencePatchBody",
   "CbxReaderPreferencePatchBody",
   "PdfReaderDefaultsPatchBody",
@@ -436,6 +439,7 @@ generateModel("UserDashboardSettingsResponse", checker.getDeclaredTypeOfSymbol(s
 generateModel("UserReaderSettingsResponse", checker.getDeclaredTypeOfSymbol(symbols.get("AuthUser")));
 
 for (const [model, constant] of [
+  ["AudioReaderSettings", "AUDIO_READER_DEFAULTS"],
   ["PdfReaderSettings", "PDF_READER_DEFAULTS"],
   ["CbxReaderSettings", "CBX_READER_DEFAULTS"],
 ]) {

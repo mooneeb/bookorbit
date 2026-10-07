@@ -233,6 +233,10 @@ export type CbxReaderPreferencePatchBody = ReaderPreferencePatchBody<"cbx">;
 export type PdfReaderDefaultsPatchBody = ReaderDefaultsPatchBody<"pdf">;
 export type CbxReaderDefaultsPatchBody = ReaderDefaultsPatchBody<"cbx">;
 
+export type AudioReaderSettingsPatch = Partial<AudioReaderSettings>;
+export type AudioReaderDefaultsResponse = { audio?: AudioReaderSettingsPatch };
+export type AudioReaderDefaultsPatchBody = ReaderDefaultsPatchBody<"audio">;
+
 export const READER_GROUP_DEFAULTS: ReaderSettingsMap = {
   epub: EPUB_READER_DEFAULTS,
   pdf: PDF_READER_DEFAULTS,

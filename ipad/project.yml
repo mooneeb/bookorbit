@@ -26,6 +26,7 @@ targets:
     info:
       path: Info.plist
       properties:
+        UIBackgroundModes: [audio]
         NSLocalNetworkUsageDescription: Connect to your BookOrbit server on your private network.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -68,6 +69,7 @@ targets:
     info:
       path: ReaderProof/Info.plist
       properties:
+        UIBackgroundModes: [audio]
         NSLocalNetworkUsageDescription: Connect to your BookOrbit server on your private network.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
