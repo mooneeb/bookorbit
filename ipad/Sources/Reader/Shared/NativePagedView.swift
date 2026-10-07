@@ -11,6 +11,7 @@ struct NativePagedView: UIViewControllerRepresentable {
   let onTurn: (Int) -> Void
   var onTransition: (Bool) -> Void = { _ in }
   var rightToLeft = false
+  var onBeyondLast: (() -> Void)?
 
   func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -48,13 +49,15 @@ struct NativePagedView: UIViewControllerRepresentable {
 
   @MainActor
   final class Coordinator: NSObject,
-    UIPageViewControllerDataSource, UIPageViewControllerDelegate
+    UIPageViewControllerDataSource, UIPageViewControllerDelegate, UIGestureRecognizerDelegate
   {
     var configuration: NativePagedView
     private var currentIndex: Int
     private var requestedIndex: Int
     private var pages: [Int: UIViewController] = [:]
     private var isTransitioning = false
+    private var boundaryPan: UIPanGestureRecognizer?
+    private var boundaryEligible = false
 
     init(_ configuration: NativePagedView) {
       self.configuration = configuration
@@ -76,6 +79,14 @@ struct NativePagedView: UIViewControllerRepresentable {
       guard let page = page(at: currentIndex) else { return }
       if let pager = controller as? UIPageViewController {
         pager.setViewControllers([page], direction: .forward, animated: false)
+        if configuration.onBeyondLast != nil {
+          let gesture = UIPanGestureRecognizer(target: self, action: #selector(attemptBoundary(_:)))
+          gesture.delegate = self
+          gesture.cancelsTouchesInView = false
+          gesture.maximumNumberOfTouches = 1
+          controller.view.addGestureRecognizer(gesture)
+          boundaryPan = gesture
+        }
       } else if let discrete = controller as? DiscretePageController {
         discrete.show(page)
       }
@@ -103,8 +114,58 @@ struct NativePagedView: UIViewControllerRepresentable {
 
     func navigate(_ delta: Int) {
       let next = currentIndex + delta
-      guard !isTransitioning, (0..<configuration.pageCount).contains(next) else { return }
+      guard !isTransitioning else { return }
+      if next == configuration.pageCount, delta == 1 {
+        configuration.onBeyondLast?()
+        return
+      }
+      guard (0..<configuration.pageCount).contains(next) else { return }
       configuration.onTurn(next)
+    }
+
+    func gestureRecognizer(
+      _ gestureRecognizer: UIGestureRecognizer,
+      shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+      gestureRecognizer === boundaryPan || otherGestureRecognizer === boundaryPan
+    }
+
+    @objc private func attemptBoundary(_ gesture: UIPanGestureRecognizer) {
+      if gesture.state == .began {
+        boundaryEligible =
+          !isTransitioning && currentIndex == configuration.pageCount - 1
+          && !hasMovableContent(pages[currentIndex]?.view)
+        return
+      }
+      guard gesture.state == .ended else {
+        if gesture.state == .cancelled || gesture.state == .failed { boundaryEligible = false }
+        return
+      }
+      defer { boundaryEligible = false }
+      guard boundaryEligible, !isTransitioning,
+        currentIndex == configuration.pageCount - 1,
+        let view = gesture.view
+      else { return }
+      let translation = gesture.translation(in: view)
+      let vertical = configuration.animation == .verticalSlide
+      let movement = vertical ? translation.y : translation.x
+      let crossAxis = vertical ? translation.x : translation.y
+      guard abs(movement) >= 80, abs(movement) > abs(crossAxis) * 1.2,
+        configuration.rightToLeft ? movement > 0 : movement < 0
+      else { return }
+      configuration.onBeyondLast?()
+    }
+
+    private func hasMovableContent(_ view: UIView?) -> Bool {
+      guard let view else { return false }
+      if let scroll = view as? UIScrollView {
+        let extent =
+          configuration.animation == .verticalSlide
+          ? scroll.contentSize.height - scroll.bounds.height
+          : scroll.contentSize.width - scroll.bounds.width
+        if scroll.zoomScale > scroll.minimumZoomScale + 0.01 || extent > 1 { return true }
+      }
+      return view.subviews.contains { hasMovableContent($0) }
     }
 
     func pageViewController(

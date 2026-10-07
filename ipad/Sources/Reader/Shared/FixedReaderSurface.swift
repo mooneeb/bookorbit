@@ -21,6 +21,7 @@ struct FixedReaderSurface: View {
   let onLayout: (FixedPageLayout) -> Void
   let onTransition: (Bool) -> Void
   var onVisible: (Set<Int>) -> Void = { _ in }
+  var onBeyondLast: (() -> Void)?
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
@@ -56,7 +57,7 @@ struct FixedReaderSurface: View {
             animation: effectiveAnimation, identifier: identifier,
             makePage: { unit in makeUnit(layout.pages(in: unit)) }, refreshPage: refreshUnit,
             onTurn: { unit in if let page = layout.pages(in: unit).first { onTurn(page) } },
-            onTransition: onTransition, rightToLeft: rightToLeft)
+            onTransition: onTransition, rightToLeft: rightToLeft, onBeyondLast: onBeyondLast)
         }
       }
       .id(

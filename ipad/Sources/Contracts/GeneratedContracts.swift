@@ -190,6 +190,7 @@ struct BookDetail: Codable, Sendable, Equatable, Identifiable {
     var `tags`: [String]
     var `customMetadata`: [CustomMetadataBookValue]
     var `seriesName`: String?
+    var `seriesId`: Int?
     var `seriesIndex`: String?
     var `seriesMemberships`: [BookSeriesMembership]?
     var `rating`: Double?
@@ -732,6 +733,18 @@ struct SeriesDetail: Codable, Sendable, Equatable, Identifiable {
     var `authors`: [String]
     var `possibleGaps`: [Int]
     var `expectedBookCount`: Int?
+}
+
+struct SeriesNextBookResponse: Codable, Sendable, Equatable {
+    var `next`: SeriesNextBook?
+}
+
+struct SeriesNextBook: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `fileId`: Int
+    var `format`: String
+    var `title`: String?
+    var `seriesIndex`: String?
 }
 
 struct DashboardScrollerBatchRequest: Codable, Sendable, Equatable {

@@ -110,6 +110,7 @@ final class ReaderPreferencesModel {
             resolved.comic.spreadAlignment = patch.spreadAlignment ?? resolved.comic.spreadAlignment
             resolved.comic.spreadGap = patch.spreadGap ?? resolved.comic.spreadGap
             resolved.comic.forceTwoPage = patch.forceTwoPage ?? resolved.comic.forceTwoPage
+            resolved.comic.autoAdvance = patch.autoAdvance ?? resolved.comic.autoAdvance
           }
           isCustomized = isCustomized || response.isCustomized
         }
@@ -182,7 +183,7 @@ final class ReaderPreferencesModel {
           : try JSONEncoder().encode(
             CbxReaderPreferencePatchBody(unset: [
               "fitMode", "bgColor", "viewMode", "scrollMode", "direction", "spreadAlignment",
-              "spreadGap", "forceTwoPage",
+              "spreadGap", "forceTwoPage", "autoAdvance",
             ]))
         try await api.sendEmpty("reader/preferences/\(fileID)", method: "PATCH", body: body)
       }
@@ -233,6 +234,7 @@ final class ReaderPreferencesModel {
       resolved.comic.spreadAlignment = comic.spreadAlignment ?? resolved.comic.spreadAlignment
       resolved.comic.spreadGap = comic.spreadGap ?? resolved.comic.spreadGap
       resolved.comic.forceTwoPage = comic.forceTwoPage ?? resolved.comic.forceTwoPage
+      resolved.comic.autoAdvance = comic.autoAdvance ?? resolved.comic.autoAdvance
     }
     guard resolved.isValid else { throw ConnectionError.invalidResponse }
     defaults = resolved
@@ -278,9 +280,11 @@ final class ReaderPreferencesModel {
       let gap = draft.comic.spreadGap == original.comic.spreadGap ? nil : draft.comic.spreadGap
       let force =
         draft.comic.forceTwoPage == original.comic.forceTwoPage ? nil : draft.comic.forceTwoPage
+      let advance =
+        draft.comic.autoAdvance == original.comic.autoAdvance ? nil : draft.comic.autoAdvance
       guard
         fit != nil || background != nil || view != nil || scroll != nil || direction != nil
-          || alignment != nil || gap != nil || force != nil
+          || alignment != nil || gap != nil || force != nil || advance != nil
       else { return }
       let body =
         asDefault
@@ -288,13 +292,15 @@ final class ReaderPreferencesModel {
           CbxReaderDefaultsPatchBody(
             set: .init(
               fitMode: fit, viewMode: view, scrollMode: scroll, direction: direction,
-              spreadAlignment: alignment, spreadGap: gap, forceTwoPage: force, bgColor: background))
+              spreadAlignment: alignment, spreadGap: gap, forceTwoPage: force, bgColor: background,
+              autoAdvance: advance))
         )
         : try JSONEncoder().encode(
           CbxReaderPreferencePatchBody(
             set: .init(
               fitMode: fit, viewMode: view, scrollMode: scroll, direction: direction,
-              spreadAlignment: alignment, spreadGap: gap, forceTwoPage: force, bgColor: background))
+              spreadAlignment: alignment, spreadGap: gap, forceTwoPage: force, bgColor: background,
+              autoAdvance: advance))
         )
       try await api.sendEmpty(
         asDefault ? "reader/defaults/cbx" : "reader/preferences/\(fileID)",

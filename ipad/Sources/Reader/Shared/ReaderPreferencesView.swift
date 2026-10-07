@@ -98,6 +98,9 @@ struct ReaderPreferencesView: View {
               in: ReaderLayoutBounds.spreadGapMinimum...ReaderLayoutBounds.spreadGapMaximum
             )
             .accessibilityIdentifier("readerSpreadGap")
+            Toggle("Turn past the last page to open the next comic", isOn: $draft.comic.autoAdvance)
+              .accessibilityIdentifier("readerAutoAdvance")
+            Text("Applies in paged mode. The final position must save before the next comic opens.")
           }
         }
         Section("Remember settings") {

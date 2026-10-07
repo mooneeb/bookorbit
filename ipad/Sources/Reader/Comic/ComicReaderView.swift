@@ -7,8 +7,12 @@ struct ComicReaderView: View {
   let fileID: Int
   let title: String
   let showsPageControls: Bool
+  let onOpenNext: ((ComicReaderTarget) -> Void)?
   @State private var model: ComicReaderModel
   @State private var preferences: ReaderPreferencesModel
+  @State private var series: ComicSeriesModel
+  @State private var isOpeningNext = false
+  @State private var endArmed = false
   @State private var confirmsDiscard = false
   @State private var isNavigating = false
   @State private var isTurning = false
@@ -20,16 +24,18 @@ struct ComicReaderView: View {
 
   init(
     api: BookOrbitAPI, bookID: Int, file: BookDetailFile, title: String = "Comic reader",
-    showsPageControls: Bool = true
+    showsPageControls: Bool = true, onOpenNext: ((ComicReaderTarget) -> Void)? = nil
   ) {
     self.api = api
     self.bookID = bookID
     fileID = file.id
     self.title = title
     self.showsPageControls = showsPageControls
+    self.onOpenNext = onOpenNext
     _model = State(initialValue: ComicReaderModel(api: api, file: file))
     _preferences = State(
       initialValue: ReaderPreferencesModel(api: api, fileID: file.id, group: "cbx"))
+    _series = State(initialValue: ComicSeriesModel(api: api, bookID: bookID))
   }
 
   var body: some View {
@@ -41,9 +47,9 @@ struct ComicReaderView: View {
             images: model.images, pageErrors: model.pageErrors, onTurn: model.didTurn,
             onTransition: { isTurning = $0 }, settings: preferences.value.comic,
             animation: preferences.value.pageAnimation, onLayout: updateLayout,
-            onVisible: model.showContinuousPages
+            onVisible: model.showContinuousPages, onBeyondLast: beyondLast
           )
-          .allowsHitTesting(!model.isClosing)
+          .allowsHitTesting(!model.isClosing && !isOpeningNext)
         } else if model.error == nil {
           ProgressView("Opening comic…")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -54,6 +60,7 @@ struct ComicReaderView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         VStack {
+          nextComicActions
           if model.pageCount > 0 { Text("Page \(model.pageIndex + 1) of \(model.pageCount)") }
           if let pageError = displayedPageError {
             Text(pageError)
@@ -89,8 +96,8 @@ struct ComicReaderView: View {
                 )
                 .accessibilityIdentifier("comicNextPage")
                 .disabled(
-                  pageLayout.adjacentPage(to: model.pageIndex, delta: 1) == nil || model.isClosing
-                    || isTurning)
+                  pageLayout.adjacentPage(to: model.pageIndex, delta: 1) == nil && !canAdvanceOnNext
+                    || model.isClosing || isOpeningNext || isTurning)
               Button("Reader settings") { isEditingPreferences = true }
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("readerSettings")
@@ -119,15 +126,19 @@ struct ComicReaderView: View {
     }
     .task { await model.load() }
     .task { if showsPageControls { await preferences.load() } }
-    .onChange(of: preferences.value.comic.scrollMode, initial: true) { _, mode in
+    .task { if onOpenNext != nil { await series.load() } }
+    .task(id: endArmKey) { await armNext() }
+    .onChange(of: preferences.value.comic.scrollMode, initial: true) { (_: String, mode: String) in
       model.configureContinuous(mode != "paginated")
     }
     .onDisappear {
       if !isNavigating && !isEditingPreferences && !isBrowsingBookmarks {
         model.close()
         preferences.close()
+        series.close()
       }
     }
+    .disabled(isOpeningNext)
     .fullScreenCover(isPresented: $isBrowsingBookmarks) {
       ReaderBookmarksView(
         api: api, bookID: bookID, fileID: fileID, currentPage: model.pageIndex + 1,
@@ -147,6 +158,50 @@ struct ComicReaderView: View {
     } message: {
       Text("The next session will resume at the last saved position.")
     }
+  }
+
+  @ViewBuilder private var nextComicActions: some View {
+    if isOpeningNext { ProgressView("Opening next comic…") }
+    if atLastUnit, onOpenNext != nil {
+      if let next = series.next {
+        Button(action: openNext) {
+          Text("Open next comic: \(next.title ?? "Untitled book")")
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+        }.accessibilityIdentifier("comicOpenNextBook")
+          .disabled(isOpeningNext || model.isClosing || isTurning)
+        if canAdvanceOnNext { Text("Turn past the last page to open the next comic.") }
+      }
+      if let error = series.error {
+        Text(error).fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("comicNextBookError")
+        if !series.hasLoaded {
+          Button {
+            Task { await series.load() }
+          } label: {
+            Text("Retry next comic").frame(minHeight: 44).contentShape(Rectangle())
+          }.accessibilityIdentifier("comicRetryNextBook")
+            .disabled(series.isLoading || isOpeningNext)
+        }
+      }
+    }
+  }
+
+  private var beyondLast: (() -> Void)? {
+    guard onOpenNext != nil else { return nil }
+    return nextPage
+  }
+
+  private func armNext() async {
+    endArmed = false
+    guard atLastUnit, preferences.value.comic.autoAdvance,
+      preferences.value.comic.scrollMode == "paginated", series.next != nil, onOpenNext != nil
+    else { return }
+    do {
+      try await Task.sleep(for: .milliseconds(1500))
+      try Task.checkCancellation()
+      endArmed = true
+    } catch {}
   }
 
   private func closeReader() {
@@ -173,8 +228,50 @@ struct ComicReaderView: View {
     }
   }
   private func nextPage() {
-    if let page = pageLayout.adjacentPage(to: model.pageIndex, delta: 1) { model.didTurn(to: page) }
+    guard !isOpeningNext, !model.isClosing, !isTurning else { return }
+    if let page = pageLayout.adjacentPage(to: model.pageIndex, delta: 1) {
+      model.didTurn(to: page)
+    } else if canAdvanceOnNext {
+      openNext()
+    }
   }
+
+  private var atLastUnit: Bool {
+    model.pageCount > 0 && pageLayout.adjacentPage(to: model.pageIndex, delta: 1) == nil
+  }
+
+  private var canAdvanceOnNext: Bool {
+    endArmed && atLastUnit && preferences.value.comic.autoAdvance
+      && preferences.value.comic.scrollMode == "paginated" && series.next != nil
+      && onOpenNext != nil
+  }
+
+  private var endArmKey: ComicEndArmKey {
+    ComicEndArmKey(
+      page: model.pageIndex, total: model.pageCount, scroll: preferences.value.comic.scrollMode,
+      enabled: preferences.value.comic.autoAdvance, nextBookID: series.next?.bookId,
+      last: atLastUnit)
+  }
+
+  private func openNext() {
+    guard !isOpeningNext, !isTurning, series.next != nil, let onOpenNext else { return }
+    isOpeningNext = true
+    Task {
+      defer { isOpeningNext = false }
+      model.didTurn(to: model.pageCount - 1)
+      guard await model.prepareToClose(), let target = await series.target() else { return }
+      onOpenNext(target)
+    }
+  }
+}
+
+private struct ComicEndArmKey: Equatable {
+  let page: Int
+  let total: Int
+  let scroll: String
+  let enabled: Bool
+  let nextBookID: Int?
+  let last: Bool
 }
 
 private struct ComicCurlView: View {
@@ -188,6 +285,7 @@ private struct ComicCurlView: View {
   var animation = ReaderTurnAnimation.curl
   var onLayout: (FixedPageLayout) -> Void = { _ in }
   var onVisible: (Set<Int>) -> Void = { _ in }
+  var onBeyondLast: (() -> Void)?
 
   var body: some View {
     let continuous = settings.scrollMode != "paginated"
@@ -209,7 +307,8 @@ private struct ComicCurlView: View {
       refreshPage: { controller, index in
         (controller as? ComicPageController)?.update(
           images[index], error: pageErrors[index], settings: settings)
-      }, onTurn: onTurn, onLayout: onLayout, onTransition: onTransition, onVisible: onVisible
+      }, onTurn: onTurn, onLayout: onLayout, onTransition: onTransition, onVisible: onVisible,
+      onBeyondLast: onBeyondLast
     )
   }
 }

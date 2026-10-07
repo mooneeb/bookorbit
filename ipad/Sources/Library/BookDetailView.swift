@@ -96,7 +96,7 @@ struct BookDetailView: View {
     .task { await model.load() }
     .fullScreenCover(item: $selectedFile, onDismiss: { Task { await model.load() } }) { file in
       if ["cbz", "cbr", "cb7"].contains(file.format?.lowercased() ?? "") {
-        ComicReaderView(api: model.api, bookID: model.bookID, file: file)
+        ComicReaderHost(api: model.api, bookID: model.bookID, file: file)
       } else {
         PDFReaderView(api: model.api, bookID: model.bookID, file: file)
       }
