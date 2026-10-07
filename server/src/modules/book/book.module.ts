@@ -23,6 +23,8 @@ import { BookSortBuilder } from './book-sort-builder.service';
 import { BookController } from './book.controller';
 import { BookRepository } from './book.repository';
 import { BookService } from './book.service';
+import { BookContinuationController } from './book-continuation.controller';
+import { BookContinuationService } from './book-continuation.service';
 import { BookAuthorSortKeyBackfillService } from './book-author-sort-key-backfill.service';
 import { ReadingAttemptController } from './reading-attempt.controller';
 
@@ -44,9 +46,10 @@ import { ReadingAttemptController } from './reading-attempt.controller';
     AchievementModule,
     PositionConverterModule,
   ],
-  controllers: [BookController, ReadingAttemptController],
+  controllers: [BookController, ReadingAttemptController, BookContinuationController],
   providers: [
     BookService,
+    BookContinuationService,
     BookRepository,
     BookReadService,
     BookSortBuilder,

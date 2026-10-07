@@ -20,6 +20,11 @@ export interface BookmarkPageQuery {
   beforeId?: number;
 }
 
+export interface EpubBookmarkPageQuery {
+  limit?: number;
+  beforeId?: number;
+}
+
 export interface CreateFixedPageBookmarkPayload {
   fileId: number;
   pageNumber: number;

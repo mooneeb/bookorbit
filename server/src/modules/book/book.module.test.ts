@@ -18,6 +18,8 @@ import { BookController } from './book.controller';
 import { BookModule } from './book.module';
 import { BookRepository } from './book.repository';
 import { BookService } from './book.service';
+import { BookContinuationController } from './book-continuation.controller';
+import { BookContinuationService } from './book-continuation.service';
 import { BookAuthorSortKeyBackfillService } from './book-author-sort-key-backfill.service';
 import { ReadingAttemptController } from './reading-attempt.controller';
 import { AudiobookEbookProgressSyncService } from './audiobook-ebook-progress-sync.service';
@@ -25,9 +27,10 @@ import { AudiolessEpubService } from './audioless-epub.service';
 
 describe('BookModule', () => {
   it('registers expected controller/providers/exports', () => {
-    expect(Reflect.getMetadata('controllers', BookModule)).toEqual([BookController, ReadingAttemptController]);
+    expect(Reflect.getMetadata('controllers', BookModule)).toEqual([BookController, ReadingAttemptController, BookContinuationController]);
     expect(Reflect.getMetadata('providers', BookModule)).toEqual([
       BookService,
+      BookContinuationService,
       BookRepository,
       BookReadService,
       BookSortBuilder,

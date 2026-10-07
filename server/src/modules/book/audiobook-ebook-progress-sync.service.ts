@@ -1,9 +1,17 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { stat } from 'fs/promises';
+import { basename } from 'node:path';
 
-import type { EpubMediaOverlayPlaylist, EpubMediaOverlayPlaylistItem } from '@bookorbit/types';
+import type {
+  BookContinuationDirection,
+  BookContinuationResponse,
+  BookContinuationUnavailableReason,
+  EpubMediaOverlayPlaylist,
+  EpubMediaOverlayPlaylistItem,
+} from '@bookorbit/types';
 import { isAudioFormat } from '@bookorbit/types';
 
+import { compareAudioTracks } from '../../common/utils/book-media.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { PositionConverterService } from '../position-converter/position-converter.service';
 import { buildEpubMediaOverlayPlaylistFromFile } from '../reader/epub/epub-media-overlay';
@@ -66,6 +74,110 @@ export class AudiobookEbookProgressSyncService {
     private readonly bookRepo: BookRepository,
     private readonly positionConverter: PositionConverterService,
   ) {}
+
+  async resolveContinuation(params: {
+    userId: number;
+    bookId: number;
+    direction: BookContinuationDirection;
+    sourceFileId: number;
+    percentage: number;
+    cfi?: string | null;
+    positionSeconds?: number;
+    audioRevision?: number;
+  }): Promise<BookContinuationResponse> {
+    const files = await this.bookRepo.findAudioEbookProgressSyncFiles(params.bookId);
+    let overlayFileId: number | null = null;
+    const provenance = {
+      sourceFileId: params.sourceFileId,
+      sourceTextCfi: params.cfi ?? null,
+      sourceAudioRevision: params.audioRevision ?? null,
+      sourcePositionMs: params.positionSeconds === undefined ? null : Math.round(params.positionSeconds * 1000),
+    };
+    const unavailable = (reason: BookContinuationUnavailableReason): BookContinuationResponse => ({
+      ...provenance,
+      accuracy: null,
+      state: 'unavailable',
+      reason,
+      overlayFileId,
+      targets: [],
+    });
+    if ((await this.bookRepo.findReadAloudSyncMode(params.userId, params.bookId)) === 'disabled') return unavailable('disabled');
+    if (!files || files.files.length > 4096 || files.files.filter((file) => file.format?.toLowerCase() === 'epub').length > 32) {
+      return unavailable('too_many_files');
+    }
+    const overlays = files.files.filter((file) => file.format?.toLowerCase() === 'epub' && file.mediaOverlayAvailable);
+    if (!overlays.length) return unavailable('no_media_overlay_epub');
+    if (overlays.length > 1 && !overlays.some((file) => file.id === files.primaryFileId)) return unavailable('ambiguous_media_overlay');
+    const overlay = this.selectOverlaySourceFile(files.files, files.primaryFileId)!;
+    overlayFileId = overlay.id;
+    const audioFiles = files.files.filter((file) => file.format && isAudioFormat(file.format));
+    if (!audioFiles.length) return unavailable('no_audio_files');
+    audioFiles.sort(compareAudioTracks);
+    if (audioFiles.some((file, index) => index > 0 && compareAudioTracks(audioFiles[index - 1], file) === 0)) {
+      return unavailable('ambiguous_audio_order');
+    }
+    const duration = this.computeAudioTotalSeconds(audioFiles);
+    if (duration === null) return unavailable('missing_duration');
+    let playlist: EpubMediaOverlayPlaylist;
+    try {
+      playlist = await this.getPlaylist(overlay, params.bookId);
+    } catch (error: unknown) {
+      if (error instanceof BadRequestException) return unavailable('overlay_exceeds_limit');
+      throw error;
+    }
+    if (!this.isPositiveFinite(playlist.durationSeconds)) return unavailable('missing_duration');
+    const tolerance = Math.min(MAX_DURATION_DIFF_SECONDS, playlist.durationSeconds * MAX_DURATION_DIFF_RATIO);
+    if (Math.abs(duration - playlist.durationSeconds) > tolerance) return unavailable('duration_mismatch');
+    const accuracy = Math.abs(duration - playlist.durationSeconds) <= 0.001 ? 'narrated_segment' : 'duration_adjusted';
+    if (params.direction === 'text_to_audio') {
+      const position = await this.resolveEbookOverlayPosition({ bookId: params.bookId, bookFileId: params.sourceFileId, cfi: params.cfi }, false);
+      const audio = position ? this.mapOverlayPositionToAudio(position) : null;
+      const target = audio && files.files.find((file) => file.id === audio.currentFileId);
+      if (!audio || !target?.format) return unavailable('position_not_mapped');
+      const ordered = audioFiles.sort(compareAudioTracks);
+      return {
+        ...provenance,
+        accuracy,
+        state: 'ready',
+        reason: null,
+        overlayFileId,
+        targets: [
+          {
+            fileId: target.id,
+            format: target.format,
+            filename: basename(target.absolutePath),
+            cfi: null,
+            assetId: `aud_${target.publicId}`,
+            positionMs: Math.round(audio.positionSeconds * 1000),
+            sequence: ordered.findIndex((file) => file.id === target.id),
+          },
+        ],
+      };
+    }
+    const resolution = await this.resolveProgress({
+      bookId: params.bookId,
+      currentFileId: params.sourceFileId,
+      positionSeconds: params.positionSeconds ?? 0,
+      percentage: params.percentage,
+    });
+    if (!resolution) return unavailable('position_not_mapped');
+    return {
+      ...provenance,
+      accuracy,
+      state: 'ready',
+      reason: null,
+      overlayFileId,
+      targets: resolution.targets.map((target) => ({
+        fileId: target.targetFile.id,
+        format: 'epub',
+        filename: basename(target.targetFile.absolutePath),
+        cfi: target.cfi,
+        assetId: null,
+        positionMs: null,
+        sequence: null,
+      })),
+    };
+  }
 
   async syncFromAudioProgress(params: {
     userId: number;
@@ -195,9 +307,10 @@ export class AudiobookEbookProgressSyncService {
     percentage: number;
   }): Promise<SyncResolution | null> {
     const syncFiles = await this.bookRepo.findAudioEbookProgressSyncFiles(params.bookId);
-    if (!syncFiles) return null;
+    if (!syncFiles || syncFiles.files.length > 4096 || syncFiles.files.filter((file) => file.format?.toLowerCase() === 'epub').length > 32)
+      return null;
 
-    const audioFiles = syncFiles.files.filter((file) => typeof file.format === 'string' && isAudioFormat(file.format));
+    const audioFiles = syncFiles.files.filter((file) => typeof file.format === 'string' && isAudioFormat(file.format)).sort(compareAudioTracks);
     const currentAudioIndex = audioFiles.findIndex((file) => file.id === params.currentFileId);
     if (currentAudioIndex < 0) return null;
 
@@ -251,7 +364,8 @@ export class AudiobookEbookProgressSyncService {
     syncSiblingEpubs: boolean,
   ): Promise<EbookOverlayPosition | null> {
     const syncFiles = await this.bookRepo.findAudioEbookProgressSyncFiles(params.bookId);
-    if (!syncFiles) return null;
+    if (!syncFiles || syncFiles.files.length > 4096 || syncFiles.files.filter((file) => file.format?.toLowerCase() === 'epub').length > 32)
+      return null;
 
     const ebookFile = syncFiles.files.find((file) => file.id === params.bookFileId && file.format?.toLowerCase() === 'epub');
     if (!ebookFile) return null;
@@ -259,7 +373,7 @@ export class AudiobookEbookProgressSyncService {
     const overlaySourceFile = this.selectOverlaySourceFile(syncFiles.files, syncFiles.primaryFileId);
     if (!overlaySourceFile) return null;
 
-    const audioFiles = syncFiles.files.filter((file) => typeof file.format === 'string' && isAudioFormat(file.format));
+    const audioFiles = syncFiles.files.filter((file) => typeof file.format === 'string' && isAudioFormat(file.format)).sort(compareAudioTracks);
     const audioTotalSeconds = this.computeAudioTotalSeconds(audioFiles);
     const siblingEpubFiles = syncSiblingEpubs
       ? syncFiles.files.filter((file) => file.id !== ebookFile.id && file.format?.toLowerCase() === 'epub')
@@ -537,9 +651,13 @@ export class AudiobookEbookProgressSyncService {
   }
 
   private evictPlaylistCache(): void {
-    if (this.playlistCache.size <= PLAYLIST_CACHE_MAX) return;
+    const itemCount = [...this.playlistCache.values()].reduce((total, entry) => total + entry.playlist.items.length, 0);
+    if (this.playlistCache.size <= PLAYLIST_CACHE_MAX && itemCount <= 200000) return;
     const oldest = [...this.playlistCache.entries()].sort((a, b) => a[1].lastAccessed - b[1].lastAccessed)[0];
-    if (oldest) this.playlistCache.delete(oldest[0]);
+    if (oldest) {
+      this.playlistCache.delete(oldest[0]);
+      this.evictPlaylistCache();
+    }
   }
 
   private itemFragment(item: EpubMediaOverlayPlaylistItem): string {

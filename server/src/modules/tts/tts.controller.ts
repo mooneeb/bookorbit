@@ -1,7 +1,9 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Put, Query, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
+import { Permission } from '@bookorbit/types';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ForbidPermission } from '../../common/decorators/forbid-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { PreviewVoiceDto, SynthesizeDto } from './dto/synthesize.dto';
 import { UpdateTtsPreferencesDto } from './dto/tts-preferences.dto';
@@ -53,6 +55,7 @@ export class TtsController {
 
   @Put('preferences')
   @HttpCode(200)
+  @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot change speech settings')
   saveUserPreferences(@Body() dto: UpdateTtsPreferencesDto, @CurrentUser() user: RequestUser) {
     return this.ttsService.saveUserPreferences(user.id, dto);
   }
@@ -64,12 +67,14 @@ export class TtsController {
 
   @Put('preferences/book/:bookId')
   @HttpCode(200)
+  @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot change speech settings')
   saveBookPreferences(@Param('bookId', ParseIntPipe) bookId: number, @Body() dto: UpdateTtsPreferencesDto, @CurrentUser() user: RequestUser) {
     return this.ttsService.saveBookPreferences(user.id, bookId, dto, user);
   }
 
   @Delete('preferences/book/:bookId')
   @HttpCode(204)
+  @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot change speech settings')
   async deleteBookPreferences(@Param('bookId', ParseIntPipe) bookId: number, @CurrentUser() user: RequestUser) {
     await this.ttsService.deleteBookPreferences(user.id, bookId, user);
   }

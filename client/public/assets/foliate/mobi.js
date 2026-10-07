@@ -326,7 +326,7 @@ const countUnsetEnd = (x) => {
   return count
 }
 
-const decompressPalmDOC = (array) => {
+const decompressPalmDOC = (array, maximumBytes) => {
   let output = []
   for (let i = 0; i < array.length; i++) {
     const byte = array[i]
@@ -349,6 +349,7 @@ const decompressPalmDOC = (array) => {
     }
     // compressed from space plus char
     else output.push(32, byte ^ 0b1000_0000)
+    if (maximumBytes != null && output.length > maximumBytes) throw new Error('The decoded record exceeds the resource limit')
   }
   return Uint8Array.from(output)
 }
@@ -362,7 +363,7 @@ const read32Bits = (byteArray, from) => {
   return (bits >> (8n - BigInt(end & 7))) & 0xffffffffn
 }
 
-const huffcdic = async (mobi, loadRecord) => {
+const huffcdic = async (mobi, loadRecord, maximumBytes, maximumDictionaryBytes) => {
   const huffRecord = await loadRecord(mobi.huffcdic)
   const { magic, offset1, offset2 } = getStruct(HUFF_HEADER, huffRecord)
   if (magic !== 'HUFF') throw new Error('Invalid HUFF record')
@@ -381,6 +382,7 @@ const huffcdic = async (mobi, loadRecord) => {
   )
 
   const dictionary = []
+  let dictionaryBytes = 0
   for (let i = 1; i < mobi.numHuffcdic; i++) {
     const record = await loadRecord(mobi.huffcdic + i)
     const cdic = getStruct(CDIC_HEADER, record)
@@ -395,18 +397,28 @@ const huffcdic = async (mobi, loadRecord) => {
       const length = x & 0x7fff
       const decompressed = x & 0x8000
       const value = new Uint8Array(buffer.slice(offset + 2, offset + 2 + length))
+      dictionaryBytes += value.byteLength
+      if (maximumDictionaryBytes != null && (dictionaryBytes > maximumDictionaryBytes || dictionary.length >= 65536))
+        throw new Error('The book exceeds the compression dictionary limit')
       dictionary.push([value, decompressed])
     }
   }
 
-  const decompress = (byteArray) => {
+  const decompress = (byteArray, depth = 0) => {
+    if (maximumBytes != null && depth > 64) throw new Error('Invalid recursive compression dictionary')
     let output = new Uint8Array()
+    const chunks = maximumBytes != null ? [] : null
+    let outputBytes = 0
     const bitLength = byteArray.byteLength * 8
-    for (let i = 0; i < bitLength; ) {
+    for (let i = 0; i < bitLength;) {
       const bits = Number(read32Bits(byteArray, i))
       let [found, codeLength, value] = table1[bits >>> 24]
+      if (maximumBytes != null && (codeLength < 1 || codeLength > 32)) throw new Error('Invalid compressed code length')
       if (!found) {
-        while (bits >>> (32 - codeLength) < table2[codeLength][0]) codeLength += 1
+        while (bits >>> (32 - codeLength) < table2[codeLength][0]) {
+          codeLength += 1
+          if (maximumBytes != null && codeLength > 32) throw new Error('Invalid compressed code length')
+        }
         value = table2[codeLength][1]
       }
       if ((i += codeLength) > bitLength) break
@@ -415,11 +427,27 @@ const huffcdic = async (mobi, loadRecord) => {
       let [result, decompressed] = dictionary[code]
       if (!decompressed) {
         // the result is itself compressed
-        result = decompress(result)
+        const previousLength = result.byteLength
+        result = decompress(result, depth + 1)
+        dictionaryBytes += result.byteLength - previousLength
+        if (maximumDictionaryBytes != null && dictionaryBytes > maximumDictionaryBytes)
+          throw new Error('The book exceeds the compression dictionary limit')
         // cache the result for next time
         dictionary[code] = [result, true]
       }
-      output = concatTypedArray(output, result)
+      if (chunks) {
+        outputBytes += result.byteLength
+        if (outputBytes > maximumBytes || chunks.length >= 65536) throw new Error('The decoded record exceeds the resource limit')
+        chunks.push(result)
+      } else output = concatTypedArray(output, result)
+    }
+    if (chunks) {
+      output = new Uint8Array(outputBytes)
+      let offset = 0
+      for (const chunk of chunks) {
+        output.set(chunk, offset)
+        offset += chunk.byteLength
+      }
     }
     return output
   }
@@ -443,7 +471,7 @@ const getIndexData = async (indxIndex, loadRecord) => {
   for (let i = 0; i < indx.numCncx; i++) {
     const record = await loadRecord(indxIndex + indx.numRecords + i + 1)
     const array = new Uint8Array(record)
-    for (let pos = 0; pos < array.byteLength; ) {
+    for (let pos = 0; pos < array.byteLength;) {
       const index = pos
       const { value, length } = getVarLen(array, pos)
       pos += length
@@ -557,7 +585,7 @@ const getEXTH = (buf, encoding) => {
   return results
 }
 
-const getFont = async (buf, unzlib) => {
+const getFont = async (buf, unzlib, maximumBytes) => {
   const { flags, dataStart, keyLength, keyStart } = getStruct(FONT_HEADER, buf)
   const array = new Uint8Array(buf.slice(dataStart))
   // deobfuscate font
@@ -572,6 +600,7 @@ const getFont = async (buf, unzlib) => {
     try {
       return await unzlib(array)
     } catch (e) {
+      if (maximumBytes != null) throw e
       console.warn(e)
       console.warn('Failed to decompress font')
     }
@@ -613,9 +642,11 @@ export class MOBI extends PDB {
   #encoder
   #decompress
   #removeTrailingEntries
-  constructor({ unzlib }) {
+  constructor({ unzlib, maximumTextBytes, maximumRecordBytes }) {
     super()
     this.unzlib = unzlib
+    this.maximumTextBytes = maximumTextBytes
+    this.maximumRecordBytes = maximumRecordBytes
   }
   async open(file) {
     await super.open(file)
@@ -641,6 +672,12 @@ export class MOBI extends PDB {
   }
   #getHeaders(buf) {
     const palmdoc = getStruct(PALMDOC_HEADER, buf)
+    if (this.maximumTextBytes != null) {
+      if (palmdoc.encryption) throw new Error('Protected MOBI books cannot be opened by this reader')
+      const declaredLength = getUint(buf.slice(4, 8))
+      if (declaredLength > this.maximumTextBytes || palmdoc.numTextRecords * palmdoc.recordSize > this.maximumTextBytes)
+        throw new Error('The decoded book exceeds the text limit')
+    }
     const mobi = getStruct(MOBI_HEADER, buf)
     if (mobi.magic !== 'MOBI') throw new Error('Missing MOBI header')
 
@@ -666,9 +703,9 @@ export class MOBI extends PDB {
       compression === 1
         ? (f) => f
         : compression === 2
-          ? decompressPalmDOC
+          ? (array) => decompressPalmDOC(array, this.maximumRecordBytes)
           : compression === 17480
-            ? await huffcdic(mobi, this.loadRecord.bind(this))
+            ? await huffcdic(mobi, this.loadRecord.bind(this), this.maximumRecordBytes, this.maximumTextBytes)
             : null
     if (!this.#decompress) throw new Error('Unknown compression type')
 
@@ -709,7 +746,7 @@ export class MOBI extends PDB {
   async loadResource(index) {
     const buf = await super.loadRecord(this.#resourceStart + index)
     const magic = getString(buf.slice(0, 4))
-    if (magic === 'FONT') return getFont(buf, this.unzlib)
+    if (magic === 'FONT') return getFont(buf, this.unzlib, this.maximumRecordBytes)
     if (magic === 'VIDE' || magic === 'AUDI') return buf.slice(12)
     return buf
   }

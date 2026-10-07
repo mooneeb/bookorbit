@@ -4,6 +4,7 @@ struct AudioByteChunk: Sendable {
   let data: Data
   let totalBytes: Int64
   let mimeType: String
+  var sourceValidator: String? = nil
 }
 
 enum AudioStreamFormat {

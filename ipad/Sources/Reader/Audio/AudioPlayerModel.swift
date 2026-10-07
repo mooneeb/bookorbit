@@ -9,6 +9,7 @@ final class AudioPlayerModel {
   private(set) var isChangingTrack = false
   private(set) var isWriting = false
   private(set) var isClosing = false
+  private(set) var isContinuing = false
   private(set) var activeSleepMinutes: Int?
   private(set) var closeWarning: String?
   @ObservationIgnored private var media: AudioMediaController?
@@ -26,13 +27,15 @@ final class AudioPlayerModel {
   private var saveAfterWrite = false
   private var advanceAfterWrite = false
 
-  init(api: BookOrbitAPI, bookID: Int, fileID: Int) {
-    engine = AudioPlaybackModel(api: api, bookID: bookID, fileID: fileID)
+  init(api: BookOrbitAPI, bookID: Int, fileID: Int, continuation: BookContinuationTarget? = nil) {
+    engine = AudioPlaybackModel(
+      api: api, bookID: bookID, fileID: fileID, continuation: continuation)
     preferences = AudioPreferencesModel(api: api)
   }
 
   var canInteract: Bool {
-    !isClosed && !isChangingTrack && !isWriting && !isClosing && !preferences.isSaving
+    !isClosed && !isChangingTrack && !isWriting && !isClosing && !isContinuing
+      && !preferences.isSaving
       && engine.isReady && engine.canSelectTrack && !engine.progressBlocked
   }
 
@@ -41,12 +44,13 @@ final class AudioPlayerModel {
   }
 
   var canClose: Bool {
-    !isClosed && !isChangingTrack && !isWriting && !isClosing && !preferences.isSaving
+    !isClosed && !isChangingTrack && !isWriting && !isClosing && !isContinuing
+      && !preferences.isSaving
       && !engine.isSaving && !engine.isSeeking
   }
 
   var canSave: Bool {
-    !isClosed && !isChangingTrack && !isWriting && !isClosing && engine.canSave
+    !isClosed && !isChangingTrack && !isWriting && !isClosing && !isContinuing && engine.canSave
   }
 
   var hasPreviousTrack: Bool { (engine.currentAsset?.sequence ?? 0) > 0 }
@@ -221,6 +225,25 @@ final class AudioPlayerModel {
       if identifier != .invalid { UIApplication.shared.endBackgroundTask(identifier) }
       self?.backgroundWrite = nil
     }
+  }
+
+  func beginContinuation() async -> Bool {
+    guard canClose, engine.isReady else { return false }
+    isContinuing = true
+    wantsPlay = false
+    resumeAfterInterruption = false
+    engine.pause()
+    refreshMedia()
+    let saved: Bool
+    if await engine.checkSession() { saved = await persistPosition() } else { saved = false }
+    if !saved { isContinuing = false }
+    refreshMedia()
+    return saved && !isClosed
+  }
+
+  func endContinuation() {
+    isContinuing = false
+    refreshMedia()
   }
 
   func finish() async -> Bool {

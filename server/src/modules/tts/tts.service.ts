@@ -177,7 +177,7 @@ export class TtsService {
 
   async getPosition(userId: number, bookFileId: number, user: RequestUser) {
     await this.bookService.verifyFileAccess(bookFileId, user);
-    return this.ttsRepo.findPosition(userId, bookFileId);
+    return (await this.ttsRepo.findPosition(userId, bookFileId)) ?? null;
   }
 
   async savePosition(userId: number, bookFileId: number, dto: SaveTtsPositionDto, user: RequestUser) {

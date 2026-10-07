@@ -19,15 +19,18 @@ const entries = [
   "custom-metadata",
   "dashboard",
   "epub",
+  "file-delivery",
   "library",
   "metadata-fetch",
   "metadata-lock",
   "permissions",
   "query",
   "reader-settings",
+  "reader-themes",
   "series",
   "smart-scope",
   "table-layout",
+  "tts",
 ].map((name) => path.join(root, `packages/types/src/${name}.ts`));
 const program = ts.createProgram(entries, {
   strict: true,
@@ -106,7 +109,7 @@ const projections = {
   SmartScope: ["id", "userId", "mediaType", "name", "icon", "filter", "defaultSort", "isPublic", "syncToKobo", "koboSyncEnabled", "isOwner"],
   Collection: ["id", "userId", "mediaType", "name", "isPublic", "isOwner", "bookCount"],
   BookIdsSelection: ["bookIds"],
-  EpubBookInfo: ["containerPath", "rootPath", "spine", "manifest", "optionalFiles"],
+  EpubBookInfo: ["containerPath", "rootPath", "spine", "manifest", "optionalFiles", "toc"],
 };
 const aliases = { Collection: "BookCollection", SmartScope: "BookSmartScope" };
 const integerFields = new Set([
@@ -119,6 +122,11 @@ const integerFields = new Set([
   "smartScopeId",
   "fileId",
   "bookFileId",
+  "sourceFileId",
+  "overlayFileId",
+  "audioRevision",
+  "sourceAudioRevision",
+  "sourcePositionMs",
   "jumpFileId",
   "pageSize",
   "fieldId",
@@ -163,6 +171,15 @@ const integerFields = new Set([
   "positionMs",
   "endMs",
   "assetOffsetMs",
+  "chapterIndex",
+  "sectionIndex",
+  "mediaOverlaySectionIndex",
+  "sectionClipIndex",
+  "nextSectionIndex",
+  "previousSectionIndex",
+  "totalClips",
+  "nextCursor",
+  "index",
   "totalDurationMs",
   "baseRevision",
   "revision",
@@ -190,6 +207,9 @@ const requestModels = new Set([
 const nullableResponses = new Set([
   "BookFileMetadataResponse",
   "BookFileComicMetadata",
+  "EpubReaderSettingsPatch",
+  "EpubReaderDefaultsResponseEpub",
+  "EpubReaderPreferenceResponseSettings",
   "BookMetadataRefreshPreviewFields",
   "BookMetadataRefreshPreviewFieldsAudioMetadata",
 ]);
@@ -294,7 +314,12 @@ function swiftType(type, name, field) {
     let value;
     if (values.every((part) => part.flags & ts.TypeFlags.StringLike)) value = "String";
     else if (values.every((part) => part.flags & ts.TypeFlags.NumberLike))
-      value = integerFields.has(field) || integerFields.has(name) ? "Int" : "Double";
+      value =
+        name.startsWith("EpubMediaOverlay") && field === "durationSeconds"
+          ? "Double"
+          : integerFields.has(field) || integerFields.has(name)
+            ? "Int"
+            : "Double";
     else if (values.every((part) => part.flags & ts.TypeFlags.BooleanLike)) value = "Bool";
     else if (values.length === 1) value = swiftType(values[0], name, field);
     else if (name === "GroupRuleRulesItem") value = generateRuleNode();
@@ -382,6 +407,8 @@ for (const name of [
   "Library",
   "BooksPage",
   "BookDetail",
+  "BookContinuationQuery",
+  "BookContinuationResponse",
   "BookQuery",
   "CollectionsPage",
   "CollectionPageQuery",
@@ -392,6 +419,7 @@ for (const name of [
   "FileReadingProgress",
   "SaveFileProgressPayload",
   "EpubBookInfo",
+  "EpubMediaOverlayClipsPage",
   "ComicPageCountResponse",
   "AuthorsPage",
   "AuthorDetail",
@@ -422,6 +450,13 @@ for (const name of [
   "PdfReaderPreferenceResponse",
   "CbxReaderPreferenceResponse",
   "FixedReaderDefaultsResponse",
+  "EpubReaderSettings",
+  "EpubReaderSettingsPatch",
+  "EpubReaderDefaultsResponse",
+  "EpubReaderDefaultsPatchBody",
+  "EpubReaderPreferenceResponse",
+  "EpubReaderSettingsBody",
+  "EpubReaderPreferencePatchBody",
   "AudioReaderSettings",
   "AudioReaderDefaultsResponse",
   "AudioReaderDefaultsPatchBody",
@@ -432,8 +467,20 @@ for (const name of [
   "BookmarkResponse",
   "BookmarksPage",
   "CreateFixedPageBookmarkPayload",
+  "CreateEpubBookmarkPayload",
   "SetBookReadingStatusPayload",
   "UpdateBookPersonalNotePayload",
+  "TtsPosition",
+  "TtsUserPreferences",
+  "TtsEffectivePreferences",
+  "TtsSpeedPreferencesPatch",
+  "TtsPreferencesPatch",
+  "TtsVoicePreviewRequest",
+  "TtsProviderInfo",
+  "TtsVoice",
+  "TtsSynthesisRequest",
+  "TtsCaptionedSpeech",
+  "NativeTtsVoiceSettings",
 ]) {
   const symbol = symbols.get(name);
   if (!symbol) throw new Error(`Missing shared contract: ${name}`);
@@ -444,6 +491,7 @@ generateModel("UserDashboardSettingsResponse", checker.getDeclaredTypeOfSymbol(s
 generateModel("UserReaderSettingsResponse", checker.getDeclaredTypeOfSymbol(symbols.get("AuthUser")));
 
 for (const [model, constant] of [
+  ["EpubReaderSettings", "EPUB_READER_DEFAULTS"],
   ["AudioReaderSettings", "AUDIO_READER_DEFAULTS"],
   ["PdfReaderSettings", "PDF_READER_DEFAULTS"],
   ["CbxReaderSettings", "CBX_READER_DEFAULTS"],
@@ -458,6 +506,7 @@ for (const [model, constant] of [
     else if (ts.isNumericLiteral(expression)) value = expression.text;
     else if (expression.kind === ts.SyntaxKind.TrueKeyword) value = "true";
     else if (expression.kind === ts.SyntaxKind.FalseKeyword) value = "false";
+    else if (expression.kind === ts.SyntaxKind.NullKeyword) value = "nil";
     else {
       const literal = checker.getTypeAtLocation(expression).value;
       if (typeof literal !== "number" || !Number.isFinite(literal)) throw new Error(`${constant} value is not a literal`);
@@ -466,6 +515,45 @@ for (const [model, constant] of [
     return `${property.name.getText()}: ${value}`;
   });
   declarations.set(`${model}Defaults`, `extension ${model} {\n    static var readerDefault: Self { Self(${values.join(", ")}) }\n}`);
+}
+
+const themeSource = symbols.get("EPUB_READER_THEMES").valueDeclaration.initializer;
+const literalJSON = (node) => {
+  if (ts.isStringLiteral(node)) return node.text;
+  if (ts.isArrayLiteralExpression(node)) return node.elements.map(literalJSON);
+  if (ts.isObjectLiteralExpression(node))
+    return Object.fromEntries(
+      node.properties.map((property) => {
+        if (!ts.isPropertyAssignment(property)) throw new Error("Reader themes must remain literal objects");
+        return [property.name.getText(), literalJSON(property.initializer)];
+      }),
+    );
+  throw new Error("Reader themes must remain literal strings");
+};
+const readerThemes = literalJSON(themeSource);
+const bookMimeTypes = literalJSON(symbols.get("BOOK_FILE_MIME_TYPES").valueDeclaration.initializer);
+const readerFormats = symbols.get("READER_OPENABLE_FORMATS").valueDeclaration.initializer.arguments[0].elements.map((item) => item.text);
+const formatGroups = literalJSON(symbols.get("FORMAT_TO_GROUP").valueDeclaration.initializer);
+const ebookFormats = readerFormats.filter((format) => formatGroups[format] === "epub");
+declarations.set(
+  "NativeEbookVocabulary",
+  `enum NativeEbookVocabulary {\n  static let mimeTypes: [String: String] = [\n${ebookFormats.map((format) => `    ${JSON.stringify(format)}: ${JSON.stringify(bookMimeTypes[format])},`).join("\n")}\n  ]\n}`,
+);
+declarations.set(
+  "EPUBThemeVocabulary",
+  `enum EPUBThemeVocabulary {\n    static let names: [String] = [${readerThemes.map((theme) => JSON.stringify(theme.name)).join(", ")}]\n}`,
+);
+const themeDestination = path.join(root, "ipad/EPUBReader/themes.js");
+const prettier = require("prettier");
+const themeOutput = await prettier.format(`// Generated from @bookorbit/types.\nexport const themes = ${JSON.stringify(readerThemes, null, 2)};\n`, {
+  ...(await prettier.resolveConfig(themeDestination)),
+  filepath: themeDestination,
+});
+if (process.argv.includes("--check")) {
+  if ((await readFile(themeDestination, "utf8")) !== themeOutput) throw new Error("Native reader themes are stale");
+} else {
+  await mkdir(path.dirname(themeDestination), { recursive: true });
+  await writeFile(themeDestination, themeOutput);
 }
 
 const readerLayoutLimits = ["CBX_SPREAD_GAP_MIN", "CBX_SPREAD_GAP_MAX"].map((name) => {

@@ -1,4 +1,5 @@
 import { IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import type { TtsVoicePreviewRequest } from '@bookorbit/types';
 
 import { TTS_AUDIO_FORMATS } from '../tts-audio-format';
 
@@ -27,7 +28,7 @@ export class SynthesizeDto {
   format?: string;
 }
 
-export class PreviewVoiceDto {
+export class PreviewVoiceDto implements TtsVoicePreviewRequest {
   @IsString()
   @IsNotEmpty()
   voiceId!: string;

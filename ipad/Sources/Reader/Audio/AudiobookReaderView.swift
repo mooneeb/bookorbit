@@ -4,6 +4,8 @@ struct AudiobookReaderView: View {
   @Environment(\.dismiss) private var dismiss
   @Environment(\.scenePhase) private var scenePhase
   @State private var model: AudioPlayerModel
+  @State private var bridge: NativeContinuationModel
+  private let offersContinuation: Bool
   @State private var showingSettings = false
   @State private var showingBookmarks = false
   @State private var showingCloseWarning = false
@@ -11,8 +13,30 @@ struct AudiobookReaderView: View {
   @State private var isScrubbing = false
   @State private var sleepMinutes = 0
 
-  init(api: BookOrbitAPI, bookID: Int, file: BookDetailFile) {
-    _model = State(initialValue: AudioPlayerModel(api: api, bookID: bookID, fileID: file.id))
+  init(
+    api: BookOrbitAPI, bookID: Int, file: BookDetailFile,
+    files: [BookDetailFile] = [], continuation: BookContinuationTarget? = nil,
+    onContinue: (@MainActor (NativeContinuationDestination) -> Void)? = nil
+  ) {
+    let model = AudioPlayerModel(
+      api: api, bookID: bookID, fileID: file.id, continuation: continuation)
+    let bridge = NativeContinuationModel(
+      api: api, bookID: bookID, direction: "audio_to_text", files: files)
+    bridge.beforeResolve = { [weak model] in
+      guard let model, await model.beginContinuation(),
+        let asset = model.engine.currentAsset, let saved = model.engine.state
+      else { return nil }
+      return BookContinuationQuery(
+        direction: "audio_to_text", sourceFileId: asset.fileId, audioRevision: saved.revision)
+    }
+    bridge.cancelled = { [weak model] in model?.endContinuation() }
+    bridge.chosen = { [weak model] destination in
+      model?.close()
+      onContinue?(destination)
+    }
+    offersContinuation = onContinue != nil
+    _model = State(initialValue: model)
+    _bridge = State(initialValue: bridge)
   }
 
   var body: some View {
@@ -112,13 +136,22 @@ struct AudiobookReaderView: View {
     }
     .interactiveDismissDisabled()
     .task { await model.open() }
-    .onDisappear(perform: model.close)
+    .onDisappear {
+      bridge.cancel()
+      model.close()
+    }
     .onChange(of: model.engine.positionSeconds) {
       if !isScrubbing { scrubPosition = model.engine.positionSeconds }
     }
     .onChange(of: scenePhase) {
-      if scenePhase == .background { model.background() }
+      if scenePhase == .background {
+        bridge.cancel()
+        model.background()
+      }
       if scenePhase == .active { Task { await model.foreground() } }
+    }
+    .sheet(isPresented: $bridge.isPresented, onDismiss: bridge.cancel) {
+      NativeContinuationView(model: bridge)
     }
     .sheet(isPresented: $showingSettings) { AudioSettingsView(model: model) }
     .sheet(isPresented: $showingBookmarks) { AudioBookmarksView(player: model) }
@@ -135,6 +168,11 @@ struct AudiobookReaderView: View {
 
   @ViewBuilder
   private var footerButtons: some View {
+    if offersContinuation {
+      Button("Continue reading", action: openContinuation).frame(minHeight: 44)
+        .disabled(!model.canClose || !model.engine.isReady || bridge.isPresented)
+        .accessibilityIdentifier("audiobookContinueReading")
+    }
     Button(action: finish) {
       Text("Done").font(.body).fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 16).frame(minWidth: 44, minHeight: 44)
@@ -258,6 +296,8 @@ struct AudiobookReaderView: View {
       Task { await model.seek(to: position) }
     }
   }
+
+  private func openContinuation() { Task { await bridge.open() } }
 
   private func finish() {
     Task {

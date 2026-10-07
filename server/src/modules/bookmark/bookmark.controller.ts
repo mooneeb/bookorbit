@@ -7,6 +7,7 @@ import type { RequestUser } from '../../common/types/request-user';
 import { BookmarkService } from './bookmark.service';
 import { CreateBookmarkDto } from './dto/create-bookmark.dto';
 import { BookmarkPageDto } from './dto/bookmark-page.dto';
+import { EpubBookmarkPageDto } from './dto/epub-bookmark-page.dto';
 import { CreateFixedPageBookmarkDto } from './dto/create-fixed-page-bookmark.dto';
 
 @Controller('books/:bookId/bookmarks')
@@ -28,6 +29,12 @@ export class BookmarkController {
   @RequirePermission(Permission.LibraryDownload)
   getPage(@Param('bookId', ParseIntPipe) bookId: number, @Query() dto: BookmarkPageDto, @CurrentUser() user: RequestUser) {
     return this.bookmarkService.getPage(bookId, user, dto);
+  }
+
+  @Get('epub-page')
+  @RequirePermission(Permission.LibraryDownload)
+  getEpubPage(@Param('bookId', ParseIntPipe) bookId: number, @Query() dto: EpubBookmarkPageDto, @CurrentUser() user: RequestUser) {
+    return this.bookmarkService.getEpubPage(bookId, user, dto);
   }
 
   @Post('fixed-page')

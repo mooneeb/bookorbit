@@ -73,3 +73,20 @@ export interface EpubMediaOverlayPlaylist {
   sections: EpubMediaOverlayPlaylistSection[];
   resources: EpubMediaOverlayPlaylistResource[];
 }
+
+export interface EpubMediaOverlayClip extends EpubMediaOverlayPlaylistItem {
+  sectionClipIndex: number;
+  startSeconds: number | null;
+  audioSizeBytes: number;
+}
+
+export interface EpubMediaOverlayClipsPage {
+  bookId: number;
+  fileId: number | null;
+  sectionIndex: number;
+  nextSectionIndex: number | null;
+  previousSectionIndex: number | null;
+  totalClips: number;
+  items: EpubMediaOverlayClip[];
+  nextCursor: number | null;
+}

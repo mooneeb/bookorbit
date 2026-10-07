@@ -1,6 +1,7 @@
 import { IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import type { TtsPreferencesPatch } from '@bookorbit/types';
 
-export class UpdateTtsPreferencesDto {
+export class UpdateTtsPreferencesDto implements TtsPreferencesPatch {
   @IsOptional()
   @IsString()
   providerId?: string;

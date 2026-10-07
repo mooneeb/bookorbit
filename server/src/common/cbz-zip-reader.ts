@@ -32,6 +32,7 @@ export interface CbzZipIndex {
 interface EocdInfo {
   cdOffset: number;
   cdSize: number;
+  entryCount: number | null;
   comment: string | null;
 }
 
@@ -69,7 +70,7 @@ async function readExactly(fh: FileHandle, position: number, length: number): Pr
   return buf;
 }
 
-async function readZip64Eocd(fh: FileHandle, eocdOffset: number): Promise<Pick<EocdInfo, 'cdOffset' | 'cdSize'> | null> {
+async function readZip64Eocd(fh: FileHandle, eocdOffset: number): Promise<Pick<EocdInfo, 'cdOffset' | 'cdSize' | 'entryCount'> | null> {
   if (eocdOffset < 20) return null;
 
   const locator = await readExactly(fh, eocdOffset - 20, 20);
@@ -81,11 +82,12 @@ async function readZip64Eocd(fh: FileHandle, eocdOffset: number): Promise<Pick<E
   const record = await readExactly(fh, zip64EocdOffset, 56);
   if (!record || record.readUInt32LE(0) !== ZIP64_EOCD_SIG) return null;
 
+  const entryCount = readUInt64AsSafeNumber(record, 32);
   const cdSize = readUInt64AsSafeNumber(record, 40);
   const cdOffset = readUInt64AsSafeNumber(record, 48);
   if (cdSize == null || cdOffset == null) return null;
 
-  return { cdOffset, cdSize };
+  return { cdOffset, cdSize, entryCount };
 }
 
 async function readEocd(fh: FileHandle, fileSize: number): Promise<EocdInfo | null> {
@@ -113,7 +115,7 @@ async function readEocd(fh: FileHandle, fileSize: number): Promise<EocdInfo | nu
       return zip64 ? { ...zip64, comment } : null;
     }
 
-    return { cdOffset: rawCdOffset, cdSize: rawCdSize, comment };
+    return { cdOffset: rawCdOffset, cdSize: rawCdSize, entryCount: totalEntries, comment };
   }
 
   return null;
@@ -186,7 +188,12 @@ async function readDataStart(fh: FileHandle, fileSize: number, localHeaderOffset
   return dataStart;
 }
 
-export async function readCbzZipIndex(filePath: string): Promise<CbzZipIndex | null> {
+export interface ZipIndexBounds {
+  maxEntries: number;
+  maxDirectoryBytes: number;
+}
+
+export async function readCbzZipIndex(filePath: string, bounds?: ZipIndexBounds): Promise<CbzZipIndex | null> {
   let fh: FileHandle | undefined;
 
   try {
@@ -197,15 +204,19 @@ export async function readCbzZipIndex(filePath: string): Promise<CbzZipIndex | n
 
     const eocd = await readEocd(fh, fileSize);
     if (!eocd || !isRangeInside(eocd.cdOffset, eocd.cdSize, fileSize)) return null;
+    if (bounds && (eocd.entryCount == null || eocd.entryCount > bounds.maxEntries || eocd.cdSize > bounds.maxDirectoryBytes)) return null;
 
     const entries: CbzZipEntry[] = [];
     const cdEnd = eocd.cdOffset + eocd.cdSize;
     let pos = eocd.cdOffset;
+    let recordCount = 0;
 
     while (pos + 46 <= cdEnd) {
+      if (bounds && recordCount >= bounds.maxEntries) return null;
       const fixed = await readExactly(fh, pos, 46);
       if (!fixed) return null;
       if (fixed.readUInt32LE(0) !== CDFH_SIG) break;
+      recordCount += 1;
 
       const compression = fixed.readUInt16LE(10);
       const rawCompressedSize = fixed.readUInt32LE(20);
@@ -242,6 +253,7 @@ export async function readCbzZipIndex(filePath: string): Promise<CbzZipIndex | n
       pos = nextPos;
     }
 
+    if (bounds && (recordCount !== eocd.entryCount || entries.length !== recordCount)) return null;
     return { entries, comment: eocd.comment };
   } catch {
     return null;

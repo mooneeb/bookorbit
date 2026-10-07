@@ -233,6 +233,13 @@ export type CbxReaderPreferencePatchBody = ReaderPreferencePatchBody<"cbx">;
 export type PdfReaderDefaultsPatchBody = ReaderDefaultsPatchBody<"pdf">;
 export type CbxReaderDefaultsPatchBody = ReaderDefaultsPatchBody<"cbx">;
 
+export type EpubReaderSettingsPatch = Partial<EpubReaderSettings>;
+export type EpubReaderDefaultsResponse = { epub?: EpubReaderSettingsPatch };
+export type EpubReaderDefaultsPatchBody = ReaderDefaultsPatchBody<"epub">;
+export type EpubReaderPreferenceResponse = { settings: EpubReaderSettingsPatch | null; isCustomized: boolean };
+export type EpubReaderSettingsBody = { settings: EpubReaderSettings };
+export type EpubReaderPreferencePatchBody = ReaderPreferencePatchBody<"epub">;
+
 export type AudioReaderSettingsPatch = Partial<AudioReaderSettings>;
 export type AudioReaderDefaultsResponse = { audio?: AudioReaderSettingsPatch };
 export type AudioReaderDefaultsPatchBody = ReaderDefaultsPatchBody<"audio">;

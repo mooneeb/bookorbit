@@ -204,6 +204,50 @@ actor BookOrbitAPI {
     try validate(response)
   }
 
+  func speechAudio(_ path: String, body: Data, session: UUID) async throws -> Data {
+    guard path == "tts/preview" || path == "tts/synthesize", body.count <= 32 * 1024 else {
+      throw ConnectionError.invalidResponse
+    }
+    try ensureSession(session)
+    var request = URLRequest(url: profile.endpoint(path))
+    request.httpMethod = "POST"
+    request.httpBody = body
+    request.timeoutInterval = 120
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(session)
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(session)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    let limit = 8 * 1024 * 1024
+    guard response.mimeType == "audio/mpeg" else { throw ConnectionError.invalidResponse }
+    guard response.expectedContentLength <= limit else { throw ConnectionError.responseTooLarge }
+    var data = Data()
+    for try await byte in bytes {
+      guard data.count < limit else { throw ConnectionError.responseTooLarge }
+      data.append(byte)
+      if data.count % (16 * 1024) == 0 {
+        try Task.checkCancellation()
+        try ensureSession(session)
+      }
+    }
+    try Task.checkCancellation()
+    try ensureSession(session)
+    guard !data.isEmpty else { throw ConnectionError.invalidResponse }
+    return data
+  }
+
   func uploadCover(bookID: Int, medium: CoverMedium, selection: StagedCoverImage) async throws {
     let generation = sessionGeneration
     let token = try await accessToken()
@@ -449,20 +493,23 @@ actor BookOrbitAPI {
     guard line.isEmpty, data.isEmpty else { throw MetadataSearchError.interrupted }
   }
 
-  func deliveredFile(fileID: Int, expectedSize: Double, mimeType: String) async throws -> URL {
-    guard expectedSize.isFinite, expectedSize > 0, expectedSize.rounded() == expectedSize,
-      expectedSize < Double(Int64.max)
-    else { throw ConnectionError.invalidResponse }
-    let byteLimit = Int64(expectedSize)
-    let folder = FileManager.default.temporaryDirectory
-    let capacity = try FileManager.default.attributesOfFileSystem(forPath: folder.path)
-    if let freeBytes = capacity[.systemFreeSize] as? NSNumber,
-      byteLimit > freeBytes.int64Value - 128 * 1024 * 1024
-    {
-      throw ConnectionError.insufficientStorage
+  func deliveredFile(
+    fileID: Int, expectedSize: Double?, mimeType: String, maximumSize: Int64? = nil,
+    session: UUID? = nil
+  ) async throws -> URL {
+    var expectedBytes: Int64?
+    if let expectedSize {
+      guard expectedSize.isFinite, expectedSize > 0, expectedSize.rounded() == expectedSize,
+        expectedSize < Double(Int64.max)
+      else { throw ConnectionError.invalidResponse }
+      expectedBytes = Int64(expectedSize)
+    }
+    guard maximumSize.map({ $0 > 0 }) ?? true else { throw ConnectionError.invalidResponse }
+    if let expectedBytes, let maximumSize, expectedBytes > maximumSize {
+      throw ConnectionError.resourceTooLarge
     }
 
-    let generation = sessionGeneration
+    let generation = session ?? sessionGeneration
     var request = URLRequest(url: profile.endpoint("books/files/\(fileID)/serve"))
     request.setValue(mimeType, forHTTPHeaderField: "Accept")
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
@@ -482,9 +529,23 @@ actor BookOrbitAPI {
     guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
     if response.statusCode == 401 { throw ConnectionError.expiredSession }
     try validate(response)
-    guard response.mimeType == mimeType else { throw ConnectionError.invalidResponse }
-    if response.expectedContentLength >= 0 && response.expectedContentLength != byteLimit {
+    guard response.statusCode == 200, response.mimeType == mimeType else {
+      throw ConnectionError.invalidResponse
+    }
+    if let expectedBytes, response.expectedContentLength >= 0,
+      response.expectedContentLength != expectedBytes
+    {
       throw ConnectionError.fileChanged
+    }
+    let byteLimit = expectedBytes ?? response.expectedContentLength
+    guard byteLimit > 0 else { throw ConnectionError.invalidResponse }
+    if let maximumSize, byteLimit > maximumSize { throw ConnectionError.resourceTooLarge }
+    let folder = FileManager.default.temporaryDirectory
+    let capacity = try FileManager.default.attributesOfFileSystem(forPath: folder.path)
+    if let freeBytes = capacity[.systemFreeSize] as? NSNumber,
+      byteLimit > freeBytes.int64Value - 128 * 1024 * 1024
+    {
+      throw ConnectionError.insufficientStorage
     }
 
     let destination = folder.appendingPathComponent("bookorbit-\(UUID().uuidString).content")
@@ -579,6 +640,70 @@ actor BookOrbitAPI {
     try ensureSession(generation)
     guard data.count == length else { throw ConnectionError.fileChanged }
     return .init(data: data, totalBytes: total, mimeType: mimeType)
+  }
+
+  func recordedAudioChunk(
+    bookID: Int, fileID: Int, clip: EpubMediaOverlayClip, offset: Int64, length: Int,
+    expectedSize: Int64?, generation: UUID
+  ) async throws -> AudioByteChunk {
+    guard bookID > 0, fileID > 0, clip.sectionIndex >= 0,
+      EPUBPublicationResources.validPath(clip.audioHref), clip.audioMimeType.hasPrefix("audio/"),
+      offset >= 0, (1...AudioStreamFormat.chunkLimit).contains(length)
+    else { throw ConnectionError.invalidResponse }
+    let (end, overflow) = offset.addingReportingOverflow(Int64(length) - 1)
+    guard !overflow, expectedSize.map({ end < $0 }) ?? true else {
+      throw ConnectionError.fileChanged
+    }
+    try ensureSession(generation)
+    var request = URLRequest(
+      url: profile.endpoint(
+        "epub/\(bookID)/media-overlay/file/\(clip.audioHref)",
+        query: [
+          URLQueryItem(name: "fileId", value: String(fileID)),
+          URLQueryItem(name: "sectionIndex", value: String(clip.sectionIndex)),
+        ]))
+    request.setValue("bytes=\(offset)-\(end)", forHTTPHeaderField: "Range")
+    request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+    request.setValue(clip.audioMimeType, forHTTPHeaderField: "Accept")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(generation)
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(generation)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    try ensureSession(generation)
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    let prefix = "bytes \(offset)-\(end)/"
+    let range = response.value(forHTTPHeaderField: "Content-Range") ?? ""
+    guard response.statusCode == 206, response.mimeType == clip.audioMimeType,
+      response.expectedContentLength == Int64(length), range.hasPrefix(prefix),
+      let size = Int64(range.dropFirst(prefix.count)), size > end,
+      expectedSize.map({ $0 == size }) ?? true,
+      response.value(forHTTPHeaderField: "Content-Encoding").map({ $0 == "identity" }) ?? true,
+      let validator = response.value(forHTTPHeaderField: "ETag"), !validator.isEmpty,
+      validator.utf8.count <= 512
+    else { throw ConnectionError.fileChanged }
+    var data = Data()
+    data.reserveCapacity(length)
+    for try await byte in bytes {
+      try Task.checkCancellation()
+      try ensureSession(generation)
+      guard data.count < length else { throw ConnectionError.fileChanged }
+      data.append(byte)
+    }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    guard data.count == length else { throw ConnectionError.fileChanged }
+    return .init(
+      data: data, totalBytes: size, mimeType: clip.audioMimeType, sourceValidator: validator)
   }
 
   private func ensureSession(_ generation: UUID) throws {

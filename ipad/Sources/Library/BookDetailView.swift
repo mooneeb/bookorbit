@@ -19,7 +19,8 @@ struct BookDetailView: View {
 
   private func isReadable(_ file: BookDetailFile) -> Bool {
     let format = file.format?.lowercased() ?? ""
-    return ["pdf", "cbz", "cbr", "cb7"].contains(format)
+    return NativeEbookVocabulary.mimeTypes[format] != nil
+      || ["pdf", "cbz", "cbr", "cb7"].contains(format)
       || AudioStreamFormat.mimeTypes[format] != nil
   }
 
@@ -103,13 +104,10 @@ struct BookDetailView: View {
     }
     .task { await model.load() }
     .fullScreenCover(item: $selectedFile, onDismiss: { Task { await model.load() } }) { file in
-      if ["cbz", "cbr", "cb7"].contains(file.format?.lowercased() ?? "") {
-        ComicReaderHost(api: model.api, bookID: model.bookID, file: file)
-      } else if AudioStreamFormat.mimeTypes[file.format?.lowercased() ?? ""] != nil {
-        AudiobookReaderView(api: model.api, bookID: model.bookID, file: file)
-      } else {
-        PDFReaderView(api: model.api, bookID: model.bookID, file: file)
-      }
+      NativeReaderHost(
+        api: model.api, bookID: model.bookID, file: file,
+        files: model.book?.files ?? [], title: model.book?.title ?? "Book",
+        language: model.book?.language)
     }
     .fullScreenCover(item: $model.draft) { draft in MetadataEditorView(model: model, draft: draft) }
     .fullScreenCover(isPresented: $isEditingReading, onDismiss: { Task { await model.load() } }) {

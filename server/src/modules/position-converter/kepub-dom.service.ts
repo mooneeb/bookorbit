@@ -1,7 +1,8 @@
 import { stat } from 'fs/promises';
 
 import { Injectable, Logger } from '@nestjs/common';
-import * as unzipper from 'unzipper';
+
+import { openBoundedEpubArchive } from '../../common/epub-archive';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { EpubSpine, loadChapterFromZip, readEpubSpine } from './epub-dom.service';
@@ -77,7 +78,7 @@ export class KepubDomService {
     }
 
     try {
-      const zip = await unzipper.Open.file(kepubPath);
+      const zip = await openBoundedEpubArchive(kepubPath);
       const doc = await loadChapterFromZip(zip, href);
       if (!doc) return null;
       this.chapterCache.set(cacheKey, doc);
@@ -105,7 +106,7 @@ export class KepubDomService {
     if (cached && cached.mtimeMs === mtimeMs) return cached;
 
     try {
-      const zip = await unzipper.Open.file(kepubPath);
+      const zip = await openBoundedEpubArchive(kepubPath);
       const spine = await readEpubSpine(zip);
       const entry: SpineCacheEntry = { mtimeMs, spine };
       this.spineCache.set(kepubPath, entry);

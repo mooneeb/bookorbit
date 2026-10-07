@@ -299,6 +299,51 @@ export type ReadAloudProgressSync = {
   koreaderDownloadAvailable: boolean;
 };
 
+export type BookContinuationDirection = "text_to_audio" | "audio_to_text";
+
+export type BookContinuationQuery = {
+  direction: BookContinuationDirection;
+  sourceFileId: number;
+  textCfi?: string;
+  audioRevision?: number;
+};
+
+export type BookContinuationUnavailableReason =
+  | "disabled"
+  | "unsupported_source"
+  | "no_media_overlay_epub"
+  | "ambiguous_media_overlay"
+  | "ambiguous_audio_order"
+  | "no_audio_files"
+  | "missing_duration"
+  | "duration_mismatch"
+  | "position_not_mapped"
+  | "position_not_synced"
+  | "too_many_files"
+  | "overlay_exceeds_limit";
+
+export type BookContinuationTarget = {
+  fileId: number;
+  format: string;
+  filename: string;
+  cfi: string | null;
+  assetId: string | null;
+  positionMs: number | null;
+  sequence: number | null;
+};
+
+export type BookContinuationResponse = {
+  sourceFileId: number;
+  sourceTextCfi: string | null;
+  sourceAudioRevision: number | null;
+  sourcePositionMs: number | null;
+  accuracy: "narrated_segment" | "duration_adjusted" | null;
+  state: "ready" | "unavailable";
+  reason: BookContinuationUnavailableReason | null;
+  overlayFileId: number | null;
+  targets: BookContinuationTarget[];
+};
+
 export type BookFileWriteDisabledReason =
   "library_disabled" | "no_primary_file" | "format_not_supported" | "format_disabled" | "file_exceeds_size_limit";
 

@@ -13,7 +13,14 @@ targets:
   BookOrbit:
     type: application
     platform: iOS
-    sources: [Sources]
+    sources:
+      - path: Sources
+      - path: EPUBReader
+        type: folder
+        buildPhase: resources
+      - path: ../client/public/assets/foliate
+        type: folder
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mooneeb.bookorbit.private
@@ -50,6 +57,9 @@ targets:
       - path: Sources
         excludes: [BookOrbitApp.swift]
       - path: ReaderProof/Sources
+      - path: EPUBReader
+        type: folder
+        buildPhase: resources
       - path: ReaderProof/EPUBProof
         type: folder
         buildPhase: resources

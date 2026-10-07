@@ -11,7 +11,7 @@ export class BookmarkResponseDto implements BookmarkResponse {
   pageNumber!: number | null;
   createdAt!: string;
 
-  static from(row: BookmarkRow): BookmarkResponseDto {
+  static from(row: Pick<BookmarkRow, keyof BookmarkResponse>): BookmarkResponseDto {
     const dto = new BookmarkResponseDto();
     dto.id = row.id;
     dto.bookId = row.bookId;

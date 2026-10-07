@@ -53,7 +53,7 @@ export class WatchDownloadController {
     @Res() reply: FastifyReply,
   ) {
     const resource = await this.watchDownloads.authorizeMediaOverlay(authorization, index);
-    const { data, contentType, size, status, contentRange } = await this.epubService.streamMediaOverlayFile(
+    const { data, contentType, size, status, contentRange, contentLength } = await this.epubService.streamMediaOverlayFile(
       resource.bookId,
       resource.href,
       resource.fileId,
@@ -64,7 +64,7 @@ export class WatchDownloadController {
     reply.code(status);
     reply.header('Content-Type', contentType);
     reply.header('Accept-Ranges', 'bytes');
-    reply.header('Content-Length', data.length);
+    reply.header('Content-Length', contentLength);
     if (contentRange) reply.header('Content-Range', contentRange);
     if (!contentRange && size > 0) reply.header('X-Content-Length-Full', size);
     reply.header('Cache-Control', 'private, no-store');

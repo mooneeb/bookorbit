@@ -1637,6 +1637,7 @@ export class BookRepository {
     const files = await this.db
       .select({
         id: bookFiles.id,
+        publicId: bookFiles.publicId,
         absolutePath: bookFiles.absolutePath,
         format: bookFiles.format,
         role: bookFiles.role,
@@ -1646,8 +1647,9 @@ export class BookRepository {
         mediaOverlayDurationSeconds: bookFiles.mediaOverlayDurationSeconds,
       })
       .from(bookFiles)
-      .where(eq(bookFiles.bookId, bookId))
-      .orderBy(asc(bookFiles.sortOrder), asc(bookFiles.id));
+      .where(and(eq(bookFiles.bookId, bookId), inArray(bookFiles.role, ['content', 'primary'])))
+      .orderBy(asc(bookFiles.sortOrder), asc(bookFiles.id))
+      .limit(4097);
 
     return { primaryFileId: book.primaryFileId, files };
   }
@@ -1655,6 +1657,14 @@ export class BookRepository {
   async findBookBase(bookId: number) {
     const [row] = await this.db.select().from(books).where(eq(books.id, bookId)).limit(1);
     return row ?? null;
+  }
+
+  findContinuationProgress(userId: number, fileIds: number[]) {
+    return this.db
+      .select({ bookFileId: readingProgress.bookFileId, cfi: readingProgress.cfi })
+      .from(readingProgress)
+      .where(and(eq(readingProgress.userId, userId), inArray(readingProgress.bookFileId, fileIds.slice(0, 32))))
+      .limit(32);
   }
 
   async findProgress(userId: number, fileId: number) {

@@ -26,9 +26,10 @@ enum AudioPlaybackError: LocalizedError {
 @MainActor
 final class AudioResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
   let url: URL
-  let descriptor: AudioAssetDescriptor
-  private let api: BookOrbitAPI
-  private let sessionGeneration: UUID
+  private let mimeType: String
+  private let expectedSize: Int64?
+  private let fetch: @Sendable (Int64, Int, Int64?) async throws -> AudioByteChunk
+  private var sourceValidator: String?
   private var requests: [ObjectIdentifier: AVAssetResourceLoadingRequest] = [:]
   private var pending: [ObjectIdentifier] = []
   private var active: [ObjectIdentifier: Task<Void, Never>] = [:]
@@ -40,10 +41,30 @@ final class AudioResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
   private(set) var peakRequests = 0
 
   init(api: BookOrbitAPI, descriptor: AudioAssetDescriptor, sessionGeneration: UUID) {
-    self.api = api
-    self.descriptor = descriptor
-    self.sessionGeneration = sessionGeneration
+    mimeType = AudioStreamFormat.mimeTypes[descriptor.format] ?? "application/octet-stream"
+    expectedSize = descriptor.sizeBytes
+    fetch = { offset, length, size in
+      try await api.audioChunk(
+        bookID: descriptor.bookID, assetID: descriptor.assetID,
+        format: descriptor.format, offset: offset, length: length,
+        expectedSize: size ?? descriptor.sizeBytes, generation: sessionGeneration)
+    }
     url = URL(string: "bookorbit-audio://\(UUID().uuidString)/asset.\(descriptor.format)")!
+    super.init()
+  }
+
+  init(
+    api: BookOrbitAPI, bookID: Int, fileID: Int, clip: EpubMediaOverlayClip, sessionGeneration: UUID
+  ) {
+    mimeType = clip.audioMimeType
+    expectedSize = Int64(clip.audioSizeBytes)
+    fetch = { offset, length, size in
+      try await api.recordedAudioChunk(
+        bookID: bookID, fileID: fileID, clip: clip,
+        offset: offset, length: length, expectedSize: size ?? Int64(clip.audioSizeBytes),
+        generation: sessionGeneration)
+    }
+    url = URL(string: "bookorbit-audio://\(UUID().uuidString)/recorded")!
     super.init()
   }
 
@@ -132,8 +153,7 @@ final class AudioResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
       throw CancellationError()
     }
     if let info = request.contentInformationRequest {
-      guard let mime = AudioStreamFormat.mimeTypes[descriptor.format],
-        let contentType = UTType(mimeType: mime)?.identifier,
+      guard let contentType = UTType(mimeType: mimeType)?.identifier,
         info.allowedContentTypes?.isEmpty != false
           || info.allowedContentTypes?.contains(contentType) == true
       else { throw AudioPlaybackError.unsupported }
@@ -164,10 +184,11 @@ final class AudioResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
 
   private func chunk(offset: Int64, length: Int) async throws -> AudioByteChunk {
     requestCount += 1
-    let result = try await api.audioChunk(
-      bookID: descriptor.bookID, assetID: descriptor.assetID, format: descriptor.format,
-      offset: offset, length: length, expectedSize: totalBytes ?? descriptor.sizeBytes,
-      generation: sessionGeneration)
+    let result = try await fetch(offset, length, totalBytes ?? expectedSize)
+    if let sourceValidator, result.sourceValidator != sourceValidator {
+      throw ConnectionError.fileChanged
+    }
+    if sourceValidator == nil { sourceValidator = result.sourceValidator }
     deliveredBytes += Int64(result.data.count)
     return result
   }

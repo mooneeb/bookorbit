@@ -227,7 +227,7 @@ struct BookFileRef: Codable, Sendable, Equatable, Identifiable {
 
 struct EpubMediaOverlayCapability: Codable, Sendable, Equatable {
     var `available`: Bool
-    var `durationSeconds`: Int?
+    var `durationSeconds`: Double?
 }
 
 struct BookDetail: Codable, Sendable, Equatable, Identifiable {
@@ -397,6 +397,35 @@ struct BookCoverSlot: Codable, Sendable, Equatable {
     var `updatedAt`: String
     var `width`: Int?
     var `height`: Int?
+}
+
+struct BookContinuationQuery: Codable, Sendable, Equatable {
+    var `direction`: String
+    var `sourceFileId`: Int
+    var `textCfi`: String?
+    var `audioRevision`: Int?
+}
+
+struct BookContinuationResponse: Codable, Sendable, Equatable {
+    var `sourceFileId`: Int
+    var `sourceTextCfi`: String?
+    var `sourceAudioRevision`: Int?
+    var `sourcePositionMs`: Int?
+    var `accuracy`: String?
+    var `state`: String
+    var `reason`: String?
+    var `overlayFileId`: Int?
+    var `targets`: [BookContinuationTarget]
+}
+
+struct BookContinuationTarget: Codable, Sendable, Equatable {
+    var `fileId`: Int
+    var `format`: String
+    var `filename`: String
+    var `cfi`: String?
+    var `assetId`: String?
+    var `positionMs`: Int?
+    var `sequence`: Int?
 }
 
 struct BookQuery: Codable, Sendable, Equatable {
@@ -633,7 +662,7 @@ struct FileReadingProgress: Codable, Sendable, Equatable {
     var `percentage`: Double
     var `positionSeconds`: Double?
     var `mediaOverlayFragment`: String?
-    var `mediaOverlaySectionIndex`: Double?
+    var `mediaOverlaySectionIndex`: Int?
     var `koboLocationSource`: String?
     var `koboLocationType`: String?
     var `koboLocationValue`: String?
@@ -649,7 +678,7 @@ struct SaveFileProgressPayload: Encodable, Sendable, Equatable {
     var `pageNumber`: Double?
     var `positionSeconds`: Double?
     var `mediaOverlayFragment`: String?
-    var `mediaOverlaySectionIndex`: Double?
+    var `mediaOverlaySectionIndex`: Int?
     var `koboLocationSource`: String?
     var `koboLocationType`: String?
     var `koboLocationValue`: String?
@@ -665,6 +694,7 @@ struct EpubBookInfo: Codable, Sendable, Equatable {
     var `spine`: [EpubSpineItem]
     var `manifest`: [EpubManifestItem]
     var `optionalFiles`: [String]?
+    var `toc`: EpubTocItem?
 }
 
 struct EpubSpineItem: Codable, Sendable, Equatable {
@@ -681,6 +711,40 @@ struct EpubManifestItem: Codable, Sendable, Equatable, Identifiable {
     var `properties`: [String]?
     var `mediaOverlay`: String?
     var `size`: Int
+}
+
+struct EpubTocItem: Codable, Sendable, Equatable {
+    var `label`: String
+    var `href`: String?
+    var `children`: [EpubTocItem]?
+}
+
+struct EpubMediaOverlayClipsPage: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `fileId`: Int?
+    var `sectionIndex`: Int
+    var `nextSectionIndex`: Int?
+    var `previousSectionIndex`: Int?
+    var `totalClips`: Int
+    var `items`: [EpubMediaOverlayClip]
+    var `nextCursor`: Int?
+}
+
+struct EpubMediaOverlayClip: Codable, Sendable, Equatable {
+    var `sectionClipIndex`: Int
+    var `startSeconds`: Double?
+    var `audioSizeBytes`: Double
+    var `index`: Int
+    var `sectionIndex`: Int
+    var `smilHref`: String
+    var `textHref`: String
+    var `textFragment`: String?
+    var `audioHref`: String
+    var `audioMimeType`: String
+    var `clipBeginSeconds`: Double
+    var `clipEndSeconds`: Double?
+    var `durationSeconds`: Double?
+    var `label`: String?
 }
 
 struct ComicPageCountResponse: Codable, Sendable, Equatable {
@@ -762,7 +826,7 @@ struct SeriesSummary: Codable, Sendable, Equatable, Identifiable {
 }
 
 struct SeriesVolumeSlot: Codable, Sendable, Equatable {
-    var `index`: Double?
+    var `index`: Int?
     var `bookId`: Int?
     var `title`: String?
     var `status`: String
@@ -1219,6 +1283,172 @@ struct FixedReaderDefaultsResponseCbx: Codable, Sendable, Equatable {
     var `autoAdvance`: Bool?
 }
 
+struct EpubReaderSettings: Codable, Sendable, Equatable {
+    var `themeName`: String
+    var `isDark`: Bool
+    var `fontFamily`: String?
+    var `fontWeight`: Double
+    var `fontStyle`: String
+    var `fontSize`: Double
+    var `lineHeight`: Double
+    var `paragraphSpacing`: Double
+    var `letterSpacing`: Double?
+    var `wordSpacing`: Double?
+    var `textIndent`: Double?
+    var `maxColumnCount`: Double
+    var `gap`: Double
+    var `maxInlineSize`: Double
+    var `maxBlockSize`: Double
+    var `justify`: Bool
+    var `hyphenate`: Bool
+    var `flow`: String
+    var `overrideBookFormatting`: Bool
+    var `footerDisplayMode`: Double
+    var `fixedLayoutSpread`: String
+}
+
+struct EpubReaderSettingsPatch: Codable, Sendable, Equatable {
+    var `themeName`: String?
+    var `isDark`: Bool?
+    var `fontFamily`: FieldUpdate<String>?
+    var `fontWeight`: Double?
+    var `fontStyle`: String?
+    var `fontSize`: Double?
+    var `lineHeight`: Double?
+    var `paragraphSpacing`: Double?
+    var `letterSpacing`: FieldUpdate<Double>?
+    var `wordSpacing`: FieldUpdate<Double>?
+    var `textIndent`: FieldUpdate<Double>?
+    var `maxColumnCount`: Double?
+    var `gap`: Double?
+    var `maxInlineSize`: Double?
+    var `maxBlockSize`: Double?
+    var `justify`: Bool?
+    var `hyphenate`: Bool?
+    var `flow`: String?
+    var `overrideBookFormatting`: Bool?
+    var `footerDisplayMode`: Double?
+    var `fixedLayoutSpread`: String?
+}
+
+struct EpubReaderDefaultsResponse: Codable, Sendable, Equatable {
+    var `epub`: EpubReaderDefaultsResponseEpub?
+}
+
+struct EpubReaderDefaultsResponseEpub: Codable, Sendable, Equatable {
+    var `themeName`: String?
+    var `isDark`: Bool?
+    var `fontFamily`: FieldUpdate<String>?
+    var `fontWeight`: Double?
+    var `fontStyle`: String?
+    var `fontSize`: Double?
+    var `lineHeight`: Double?
+    var `paragraphSpacing`: Double?
+    var `letterSpacing`: FieldUpdate<Double>?
+    var `wordSpacing`: FieldUpdate<Double>?
+    var `textIndent`: FieldUpdate<Double>?
+    var `maxColumnCount`: Double?
+    var `gap`: Double?
+    var `maxInlineSize`: Double?
+    var `maxBlockSize`: Double?
+    var `justify`: Bool?
+    var `hyphenate`: Bool?
+    var `flow`: String?
+    var `overrideBookFormatting`: Bool?
+    var `footerDisplayMode`: Double?
+    var `fixedLayoutSpread`: String?
+}
+
+struct EpubReaderDefaultsPatchBody: Codable, Sendable, Equatable {
+    var `set`: EpubReaderDefaultsPatchBodySet
+}
+
+struct EpubReaderDefaultsPatchBodySet: Codable, Sendable, Equatable {
+    var `themeName`: String?
+    var `isDark`: Bool?
+    var `fontFamily`: String?
+    var `fontWeight`: Double?
+    var `fontStyle`: String?
+    var `fontSize`: Double?
+    var `lineHeight`: Double?
+    var `paragraphSpacing`: Double?
+    var `letterSpacing`: Double?
+    var `wordSpacing`: Double?
+    var `textIndent`: Double?
+    var `maxColumnCount`: Double?
+    var `gap`: Double?
+    var `maxInlineSize`: Double?
+    var `maxBlockSize`: Double?
+    var `justify`: Bool?
+    var `hyphenate`: Bool?
+    var `flow`: String?
+    var `overrideBookFormatting`: Bool?
+    var `footerDisplayMode`: Double?
+    var `fixedLayoutSpread`: String?
+}
+
+struct EpubReaderPreferenceResponse: Codable, Sendable, Equatable {
+    var `settings`: EpubReaderPreferenceResponseSettings?
+    var `isCustomized`: Bool
+}
+
+struct EpubReaderPreferenceResponseSettings: Codable, Sendable, Equatable {
+    var `themeName`: String?
+    var `isDark`: Bool?
+    var `fontFamily`: FieldUpdate<String>?
+    var `fontWeight`: Double?
+    var `fontStyle`: String?
+    var `fontSize`: Double?
+    var `lineHeight`: Double?
+    var `paragraphSpacing`: Double?
+    var `letterSpacing`: FieldUpdate<Double>?
+    var `wordSpacing`: FieldUpdate<Double>?
+    var `textIndent`: FieldUpdate<Double>?
+    var `maxColumnCount`: Double?
+    var `gap`: Double?
+    var `maxInlineSize`: Double?
+    var `maxBlockSize`: Double?
+    var `justify`: Bool?
+    var `hyphenate`: Bool?
+    var `flow`: String?
+    var `overrideBookFormatting`: Bool?
+    var `footerDisplayMode`: Double?
+    var `fixedLayoutSpread`: String?
+}
+
+struct EpubReaderSettingsBody: Codable, Sendable, Equatable {
+    var `settings`: EpubReaderSettings
+}
+
+struct EpubReaderPreferencePatchBody: Codable, Sendable, Equatable {
+    var `set`: EpubReaderPreferencePatchBodySet?
+    var `unset`: [String]?
+}
+
+struct EpubReaderPreferencePatchBodySet: Codable, Sendable, Equatable {
+    var `themeName`: String?
+    var `isDark`: Bool?
+    var `fontFamily`: String?
+    var `fontWeight`: Double?
+    var `fontStyle`: String?
+    var `fontSize`: Double?
+    var `lineHeight`: Double?
+    var `paragraphSpacing`: Double?
+    var `letterSpacing`: Double?
+    var `wordSpacing`: Double?
+    var `textIndent`: Double?
+    var `maxColumnCount`: Double?
+    var `gap`: Double?
+    var `maxInlineSize`: Double?
+    var `maxBlockSize`: Double?
+    var `justify`: Bool?
+    var `hyphenate`: Bool?
+    var `flow`: String?
+    var `overrideBookFormatting`: Bool?
+    var `footerDisplayMode`: Double?
+    var `fixedLayoutSpread`: String?
+}
+
 struct AudioReaderSettings: Codable, Sendable, Equatable {
     var `playbackSpeed`: Double
     var `volume`: Double
@@ -1330,6 +1560,11 @@ struct CreateFixedPageBookmarkPayload: Codable, Sendable, Equatable {
     var `title`: String
 }
 
+struct CreateEpubBookmarkPayload: Codable, Sendable, Equatable {
+    var `cfi`: String
+    var `title`: String
+}
+
 struct SetBookReadingStatusPayload: Encodable, Sendable, Equatable {
     var `status`: String?
     var `startedAt`: FieldUpdate<String>?
@@ -1338,6 +1573,81 @@ struct SetBookReadingStatusPayload: Encodable, Sendable, Equatable {
 
 struct UpdateBookPersonalNotePayload: Encodable, Sendable, Equatable {
     var `note`: FieldUpdate<String>?
+}
+
+struct TtsPosition: Codable, Sendable, Equatable {
+    var `cfi`: String
+    var `chapterIndex`: Int?
+}
+
+struct TtsUserPreferences: Codable, Sendable, Equatable {
+    var `providerId`: String?
+    var `voiceId`: String?
+    var `speed`: Double
+}
+
+struct TtsEffectivePreferences: Codable, Sendable, Equatable {
+    var `providerId`: String?
+    var `voiceId`: String?
+    var `speed`: Double
+    var `isBookOverride`: Bool
+}
+
+struct TtsSpeedPreferencesPatch: Codable, Sendable, Equatable {
+    var `speed`: Double
+}
+
+struct TtsPreferencesPatch: Codable, Sendable, Equatable {
+    var `providerId`: String?
+    var `voiceId`: String?
+    var `speed`: Double?
+}
+
+struct TtsVoicePreviewRequest: Codable, Sendable, Equatable {
+    var `providerId`: String
+    var `voiceId`: String
+}
+
+struct TtsProviderInfo: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `name`: String
+    var `type`: String
+}
+
+struct TtsVoice: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `name`: String
+    var `shortName`: String
+    var `language`: String
+    var `locale`: String
+    var `gender`: String
+    var `providerId`: String
+    var `providerName`: String
+}
+
+struct TtsSynthesisRequest: Codable, Sendable, Equatable {
+    var `text`: String
+    var `voiceId`: String
+    var `providerId`: String
+    var `speed`: Double
+    var `format`: String?
+}
+
+struct TtsCaptionedSpeech: Codable, Sendable, Equatable {
+    var `audio`: String
+    var `format`: String
+    var `words`: [TtsWordTiming]
+}
+
+struct TtsWordTiming: Codable, Sendable, Equatable {
+    var `word`: String
+    var `startTime`: Double
+    var `endTime`: Double
+}
+
+struct NativeTtsVoiceSettings: Codable, Sendable, Equatable {
+    var `voiceIdentifier`: String?
+    var `useServer`: Bool?
 }
 
 struct UserDashboardSettingsResponse: Codable, Sendable, Equatable {
@@ -1369,6 +1679,10 @@ struct UserReaderSettingsResponse: Codable, Sendable, Equatable {
     var `permissions`: [String]
 }
 
+extension EpubReaderSettings {
+    static var readerDefault: Self { Self(themeName: "default", isDark: false, fontFamily: nil, fontWeight: 400, fontStyle: "normal", fontSize: 16, lineHeight: 1.5, paragraphSpacing: 0, letterSpacing: nil, wordSpacing: nil, textIndent: nil, maxColumnCount: 2, gap: 0.05, maxInlineSize: 720, maxBlockSize: 1440, justify: true, hyphenate: true, flow: "paginated", overrideBookFormatting: true, footerDisplayMode: 0, fixedLayoutSpread: "auto") }
+}
+
 extension AudioReaderSettings {
     static var readerDefault: Self { Self(playbackSpeed: 1, volume: 1, skipBackSeconds: 10, skipForwardSeconds: 30) }
 }
@@ -1379,6 +1693,20 @@ extension PdfReaderSettings {
 
 extension CbxReaderSettings {
     static var readerDefault: Self { Self(fitMode: "fit-page", viewMode: "single", scrollMode: "paginated", direction: "ltr", spreadAlignment: "normal", spreadGap: 0, forceTwoPage: false, widePageSingletonMode: "auto", bgColor: "black", autoAdvance: false) }
+}
+
+enum NativeEbookVocabulary {
+  static let mimeTypes: [String: String] = [
+    "epub": "application/epub+zip",
+    "mobi": "application/x-mobipocket-ebook",
+    "azw3": "application/vnd.amazon.ebook",
+    "azw": "application/vnd.amazon.ebook",
+    "fb2": "application/x-fictionbook+xml",
+  ]
+}
+
+enum EPUBThemeVocabulary {
+    static let names: [String] = ["default", "gray", "sepia", "crimson", "meadow", "rosewood", "azure", "dawnlight", "ember", "aurora", "ocean", "mist", "amoled"]
 }
 
 enum AudiobookVocabulary {

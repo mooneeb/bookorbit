@@ -7,6 +7,7 @@ final class AudioPlaybackModel {
   let api: BookOrbitAPI
   let bookID: Int
   let fileID: Int
+  private let continuation: BookContinuationTarget?
   private(set) var manifest: AudiobookManifest?
   private(set) var currentAsset: AudiobookManifestAsset?
   private(set) var state: AudiobookPlaybackState?
@@ -36,10 +37,11 @@ final class AudioPlaybackModel {
   @ObservationIgnored var ended: (() -> Void)?
   private var endReported = false
 
-  init(api: BookOrbitAPI, bookID: Int, fileID: Int) {
+  init(api: BookOrbitAPI, bookID: Int, fileID: Int, continuation: BookContinuationTarget? = nil) {
     self.api = api
     self.bookID = bookID
     self.fileID = fileID
+    self.continuation = continuation
   }
 
   var timeLabel: String {
@@ -78,6 +80,16 @@ final class AudioPlaybackModel {
           (0...100).contains(saved.percentage),
           loaded.assets.contains(where: { $0.assetId == saved.assetId })
         else { throw ConnectionError.fileChanged }
+      }
+      if let continuation {
+        guard continuation.fileId == fileID, saved?.assetId == continuation.assetId,
+          saved?.positionMs == continuation.positionMs
+        else {
+          throw NativeContinuationError(
+            message:
+              "The destination listening position changed. Close this player and save the source again before continuing."
+          )
+        }
       }
       self.manifest = loaded
       self.state = saved

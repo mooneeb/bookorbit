@@ -45,6 +45,33 @@ export class BookmarkRepository {
       .limit(limit);
   }
 
+  async findEpubPage(bookId: number, userId: number, limit: number, beforeId?: number) {
+    return this.db
+      .select({
+        id: bookmarks.id,
+        bookId: bookmarks.bookId,
+        cfi: bookmarks.cfi,
+        title: bookmarks.title,
+        positionSeconds: bookmarks.positionSeconds,
+        fileId: bookmarks.fileId,
+        pageNumber: bookmarks.pageNumber,
+        createdAt: bookmarks.createdAt,
+      })
+      .from(bookmarks)
+      .where(
+        and(
+          eq(bookmarks.bookId, bookId),
+          eq(bookmarks.userId, userId),
+          isNull(bookmarks.fileId),
+          isNotNull(bookmarks.cfi),
+          isNull(bookmarks.deletedAt),
+          beforeId == null ? undefined : lt(bookmarks.id, beforeId),
+        ),
+      )
+      .orderBy(desc(bookmarks.id))
+      .limit(limit);
+  }
+
   async findLiveByLocation(
     userId: number,
     bookId: number,

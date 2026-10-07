@@ -9,6 +9,7 @@ import { BookmarkRepository } from './bookmark.repository';
 import { BookmarkResponseDto } from './dto/bookmark-response.dto';
 import { CreateBookmarkDto } from './dto/create-bookmark.dto';
 import { BookmarkPageDto } from './dto/bookmark-page.dto';
+import { EpubBookmarkPageDto } from './dto/epub-bookmark-page.dto';
 import { CreateFixedPageBookmarkDto } from './dto/create-fixed-page-bookmark.dto';
 
 const BOOKMARK_CONFLICT_MESSAGE = 'Bookmark already exists';
@@ -38,6 +39,14 @@ export class BookmarkService {
     await this.verifyFixedFile(bookId, dto.fileId, user);
     const limit = dto.limit ?? 40;
     const rows = await this.bookmarkRepo.findFilePage(bookId, user.id, dto.fileId, limit + 1, dto.beforeId);
+    const items = rows.slice(0, limit).map((row) => BookmarkResponseDto.from(row));
+    return { items, nextCursor: rows.length > limit ? items.at(-1)!.id : null };
+  }
+
+  async getEpubPage(bookId: number, user: RequestUser, dto: EpubBookmarkPageDto): Promise<BookmarksPage> {
+    await this.bookService.verifyBookAccess(bookId, user);
+    const limit = dto.limit ?? 40;
+    const rows = await this.bookmarkRepo.findEpubPage(bookId, user.id, limit + 1, dto.beforeId);
     const items = rows.slice(0, limit).map((row) => BookmarkResponseDto.from(row));
     return { items, nextCursor: rows.length > limit ? items.at(-1)!.id : null };
   }

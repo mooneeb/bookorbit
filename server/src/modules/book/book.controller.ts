@@ -52,7 +52,7 @@ import { UpdatePersonalNoteDto } from './dto/update-personal-note.dto';
 import { SearchBooksDto } from './dto/search-books.dto';
 import { UpdateBookFileDto } from './dto/update-book-file.dto';
 import { SetStatusDto } from '../user-book-status/dto/set-status.dto';
-import { Permission, AuditAction, AuditResource } from '@bookorbit/types';
+import { Permission, AuditAction, AuditResource, BOOK_FILE_MIME_TYPES } from '@bookorbit/types';
 import type { BookDeletionAuditMeta } from '@bookorbit/types';
 import type { BookQuery, FileReadingProgress } from '@bookorbit/types';
 import { UpdateBookMetadataLocksDto } from '../book-metadata-lock/dto/update-book-metadata-locks.dto';
@@ -71,25 +71,12 @@ const AUDIO_MIME_TYPES: Record<string, string> = {
   flac: 'audio/flac',
 };
 
-const BOOK_MIME_TYPES: Record<string, string> = {
-  epub: 'application/epub+zip',
-  kepub: 'application/epub+zip',
-  pdf: 'application/pdf',
-  mobi: 'application/x-mobipocket-ebook',
-  azw: 'application/vnd.amazon.ebook',
-  azw3: 'application/vnd.amazon.ebook',
-  fb2: 'application/x-fictionbook+xml',
-  cbz: 'application/vnd.comicbook+zip',
-  cbr: 'application/vnd.comicbook-rar',
-  cb7: 'application/x-cb7',
-};
-
 function resolveAudioMimeType(format: string | null): string | null {
   return format ? (AUDIO_MIME_TYPES[format.toLowerCase()] ?? null) : null;
 }
 
 function resolveBookMimeType(format: string): string {
-  return resolveAudioMimeType(format) ?? BOOK_MIME_TYPES[format.toLowerCase()] ?? 'application/octet-stream';
+  return resolveAudioMimeType(format) ?? BOOK_FILE_MIME_TYPES[format.toLowerCase()] ?? 'application/octet-stream';
 }
 
 @Controller('books')
@@ -394,6 +381,7 @@ export class BookController {
   // These MUST come before `:id/*` routes to avoid NestJS matching 'files' as :id.
 
   @Get('files/:fileId/serve')
+  @RequirePermission(Permission.LibraryDownload)
   async serveFile(
     @Param('fileId', ParseIntPipe) fileId: number,
     @CurrentUser() user: RequestUser,

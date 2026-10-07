@@ -1,9 +1,12 @@
-import * as unzipper from 'unzipper';
+import type * as unzipper from 'unzipper';
+import { openBoundedEpubArchive, readBoundedEpubEntry } from '../../../common/epub-archive';
 import { XMLParser } from 'fast-xml-parser';
+import { BadRequestException } from '@nestjs/common';
 
 import type {
   EpubBookInfo,
   EpubMediaOverlayCapability,
+  EpubMediaOverlayClipsPage,
   EpubMediaOverlayPlaylist,
   EpubMediaOverlayPlaylistItem,
   EpubMediaOverlayPlaylistSection,
@@ -15,6 +18,17 @@ const smilParser = new XMLParser({
   attributeNamePrefix: '@_',
   textNodeName: '#text',
 });
+
+function assertBoundedOverlayMetadata(zip: unzipper.CentralDirectory): void {
+  const metadata = zip.files.filter((file) => /\.(?:opf|smil|xml)$/i.test(file.path));
+  if (
+    zip.files.length > 32768 ||
+    metadata.some((file) => file.uncompressedSize > 8 * 1024 * 1024) ||
+    metadata.reduce((total, file) => total + file.uncompressedSize, 0) > 64 * 1024 * 1024
+  ) {
+    throw new BadRequestException('The narration metadata exceeds the supported continuation limit');
+  }
+}
 
 function toArray<T>(v: T | T[] | undefined | null): T[] {
   if (v == null) return [];
@@ -121,7 +135,7 @@ async function readPackageMediaDurationSeconds(zip: unzipper.CentralDirectory, o
   if (!entry) return null;
   let doc: Record<string, unknown>;
   try {
-    doc = smilParser.parse(await entry.buffer()) as Record<string, unknown>;
+    doc = smilParser.parse(await readBoundedEpubEntry(entry)) as Record<string, unknown>;
   } catch {
     return null;
   }
@@ -143,11 +157,12 @@ function splitHrefFragment(href: string): { href: string; fragment: string | nul
 }
 
 async function parseEpubMediaOverlayBookInfo(epubPath: string): Promise<EpubBookInfo> {
-  const zip = await unzipper.Open.file(epubPath);
+  const zip = await openBoundedEpubArchive(epubPath);
+  assertBoundedOverlayMetadata(zip);
   const containerEntry = findEpubZipEntry(zip.files, 'META-INF/container.xml');
   if (!containerEntry) throw new Error('Missing META-INF/container.xml');
 
-  const containerDoc = smilParser.parse(await containerEntry.buffer()) as Record<string, unknown>;
+  const containerDoc = smilParser.parse(await readBoundedEpubEntry(containerEntry)) as Record<string, unknown>;
   const container = containerDoc['container'] as Record<string, unknown>;
   const rootfiles = (container?.rootfiles as Record<string, unknown>)?.rootfile;
   const rootfile: unknown = Array.isArray(rootfiles) ? rootfiles[0] : rootfiles;
@@ -158,7 +173,7 @@ async function parseEpubMediaOverlayBookInfo(epubPath: string): Promise<EpubBook
   const opfEntry = findEpubZipEntry(zip.files, opfPath);
   if (!opfEntry) throw new Error(`OPF not found: ${opfPath}`);
 
-  const opfDoc = smilParser.parse(await opfEntry.buffer()) as Record<string, unknown>;
+  const opfDoc = smilParser.parse(await readBoundedEpubEntry(opfEntry)) as Record<string, unknown>;
   const pkg = (opfDoc['package'] ?? opfDoc) as Record<string, unknown>;
   const manifestEl = pkg['manifest'] as Record<string, unknown> | undefined;
   const spineEl = pkg['spine'] as Record<string, unknown> | undefined;
@@ -238,8 +253,9 @@ async function parseSmilItems(
 > {
   const entry = findEpubZipEntry(zip.files, smilHref);
   if (!entry) return [];
+  if (entry.uncompressedSize > 8 * 1024 * 1024) throw new BadRequestException('The narration chapter exceeds the supported SMIL size');
   const smilDir = zipDir(smilHref);
-  const doc = smilParser.parse(await entry.buffer()) as Record<string, unknown>;
+  const doc = smilParser.parse(await readBoundedEpubEntry(entry)) as Record<string, unknown>;
   return collectPars(doc)
     .map((par) => {
       const textSrc = attr(par.text, 'src');
@@ -262,6 +278,84 @@ async function parseSmilItems(
     .filter((item): item is NonNullable<typeof item> => item != null);
 }
 
+export async function buildEpubMediaOverlayClipsPage(
+  epubPath: string,
+  info: EpubBookInfo,
+  bookId: number,
+  fileId: number | null,
+  sectionIndex: number,
+  cursor: number,
+  limit: number,
+): Promise<EpubMediaOverlayClipsPage> {
+  const manifest = new Map(info.manifest.map((item) => [item.id, item]));
+  const byHref = new Map(info.manifest.map((item) => [item.href, item]));
+  const labels = flattenTocLabels(info.toc);
+  const zip = await openBoundedEpubArchive(epubPath);
+  let elapsed: number | null = 0;
+  let index = 0;
+  const page: EpubMediaOverlayClipsPage = {
+    bookId,
+    fileId,
+    sectionIndex,
+    nextSectionIndex: null,
+    previousSectionIndex: null,
+    totalClips: 0,
+    items: [],
+    nextCursor: null,
+  };
+  for (let section = 0; section < info.spine.length; section++) {
+    const spine = info.spine[section];
+    const overlayID = manifest.get(spine.idref)?.mediaOverlay;
+    const overlay = overlayID ? manifest.get(overlayID) : undefined;
+    if (!overlay) continue;
+    if (section > sectionIndex) {
+      page.nextSectionIndex = section;
+      break;
+    }
+    const clips = await parseSmilItems(zip, overlay.href);
+    if (section < sectionIndex && clips.length) page.previousSectionIndex = section;
+    if (section === sectionIndex) page.totalClips = clips.length;
+    for (let local = 0; local < clips.length; local++) {
+      const clip = clips[local];
+      if (section === sectionIndex && local >= cursor && page.items.length < limit) {
+        page.items.push({
+          ...clip,
+          index,
+          sectionClipIndex: local,
+          sectionIndex,
+          smilHref: overlay.href,
+          audioMimeType: byHref.get(clip.audioHref)?.mediaType ?? 'application/octet-stream',
+          audioSizeBytes: findEpubZipEntry(zip.files, clip.audioHref)?.uncompressedSize ?? 0,
+          startSeconds: elapsed,
+          label: labels.get(clip.textHref) ?? labels.get(spine.href) ?? null,
+        });
+      }
+      elapsed = elapsed != null && clip.durationSeconds != null ? elapsed + clip.durationSeconds : null;
+      index++;
+    }
+    if (section === sectionIndex && cursor + page.items.length < clips.length) page.nextCursor = cursor + page.items.length;
+  }
+  return page;
+}
+
+export async function findEpubMediaOverlayAudio(
+  zip: unzipper.CentralDirectory,
+  info: EpubBookInfo,
+  audioHref: string,
+  sectionIndex?: number,
+): Promise<string | null> {
+  const manifest = new Map(info.manifest.map((item) => [item.id, item]));
+  const resource = info.manifest.find((item) => item.href === audioHref);
+  if (!resource?.mediaType.startsWith('audio/')) return null;
+  for (let section = 0; section < info.spine.length; section++) {
+    if (sectionIndex != null && section !== sectionIndex) continue;
+    const overlayID = manifest.get(info.spine[section].idref)?.mediaOverlay;
+    const overlay = overlayID ? manifest.get(overlayID) : undefined;
+    if (overlay && (await parseSmilItems(zip, overlay.href)).some((clip) => clip.audioHref === audioHref)) return resource.mediaType;
+  }
+  return null;
+}
+
 export async function buildEpubMediaOverlayPlaylist(
   epubPath: string,
   info: EpubBookInfo,
@@ -271,7 +365,8 @@ export async function buildEpubMediaOverlayPlaylist(
   const manifestById = new Map(info.manifest.map((item) => [item.id, item]));
   const manifestByHref = new Map(info.manifest.map((item) => [item.href, item]));
   const tocLabels = flattenTocLabels(info.toc);
-  const zip = await unzipper.Open.file(epubPath);
+  const zip = await openBoundedEpubArchive(epubPath);
+  assertBoundedOverlayMetadata(zip);
 
   const items: EpubMediaOverlayPlaylistItem[] = [];
   const sections: EpubMediaOverlayPlaylistSection[] = [];
@@ -301,6 +396,7 @@ export async function buildEpubMediaOverlayPlaylist(
         totalKnownDuration += smilItem.durationSeconds;
         if (sectionDuration != null) sectionDuration += smilItem.durationSeconds;
       }
+      if (items.length >= 100000) throw new BadRequestException('The narration exceeds the supported continuation clip limit');
       items.push({
         index: items.length,
         sectionIndex,
@@ -365,11 +461,11 @@ export async function inspectEpubMediaOverlay(epubPath: string, info: EpubBookIn
 }
 
 export async function inspectEpubMediaOverlayFile(epubPath: string): Promise<EpubMediaOverlayCapability> {
-  const zip = await unzipper.Open.file(epubPath);
+  const zip = await openBoundedEpubArchive(epubPath);
   const containerEntry = findEpubZipEntry(zip.files, 'META-INF/container.xml');
   if (!containerEntry) return { available: false, durationSeconds: null };
 
-  const containerDoc = smilParser.parse(await containerEntry.buffer()) as Record<string, unknown>;
+  const containerDoc = smilParser.parse(await readBoundedEpubEntry(containerEntry)) as Record<string, unknown>;
   const container = containerDoc['container'] as Record<string, unknown>;
   const rootfiles = (container?.rootfiles as Record<string, unknown>)?.rootfile;
   const rootfile: unknown = Array.isArray(rootfiles) ? rootfiles[0] : rootfiles;
@@ -380,7 +476,7 @@ export async function inspectEpubMediaOverlayFile(epubPath: string): Promise<Epu
   const opfEntry = findEpubZipEntry(zip.files, opfPath);
   if (!opfEntry) return { available: false, durationSeconds: null };
 
-  const opfDoc = smilParser.parse(await opfEntry.buffer()) as Record<string, unknown>;
+  const opfDoc = smilParser.parse(await readBoundedEpubEntry(opfEntry)) as Record<string, unknown>;
   const pkg = (opfDoc['package'] ?? opfDoc) as Record<string, unknown>;
   const manifestEl = pkg['manifest'] as Record<string, unknown> | undefined;
   const spineEl = pkg['spine'] as Record<string, unknown> | undefined;
