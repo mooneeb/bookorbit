@@ -92,13 +92,25 @@ struct AudioProofView: View {
       }
       .buttonStyle(AudioProofActionStyle())
       .navigationTitle("Audio proof")
-      .toolbar {
-        Button {
-          model.close()
-          dismiss()
-        } label: {
-          actionLabel("Done")
-        }.accessibilityIdentifier("audioDone")
+      .safeAreaInset(edge: .top) {
+        HStack {
+          Spacer()
+          Button {
+            model.close()
+            dismiss()
+          } label: {
+            Text("Done")
+              .font(.body)
+              .fixedSize(horizontal: false, vertical: true)
+              .padding(.horizontal, 16)
+              .frame(minWidth: 44, minHeight: 44)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(AudioProofActionStyle())
+          .accessibilityIdentifier("audioDone")
+        }
+        .padding(.horizontal)
+        .background(Color(uiColor: .systemBackground))
       }
     }
     .task { await model.open() }
