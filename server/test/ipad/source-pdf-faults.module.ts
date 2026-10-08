@@ -1,4 +1,4 @@
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import {
   BadRequestException,
@@ -7,6 +7,7 @@ import {
   Get,
   Global,
   HttpCode,
+  Inject,
   Injectable,
   Module,
   Param,
@@ -16,6 +17,11 @@ import {
 } from '@nestjs/common';
 import { PDFDocument, PDFName } from 'pdf-lib';
 import { Permission } from '@bookorbit/types';
+import { and, eq } from 'drizzle-orm';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { DB } from '../../src/db';
+import * as schema from '../../src/db/schema';
+import { computeFileHash } from '../../src/common/utils/file-hash.utils';
 import { CurrentUser } from '../../src/common/decorators/current-user.decorator';
 import { RequirePermission } from '../../src/common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../src/common/types/request-user';
@@ -63,6 +69,7 @@ class SourcePdfFixtureController {
   constructor(
     private readonly boundary: SourcePdfFixtureBoundary,
     private readonly books: BookService,
+    @Inject(DB) private readonly db: NodePgDatabase<typeof schema>,
   ) {}
 
   @Post('arm/:phase')
@@ -99,6 +106,17 @@ class SourcePdfFixtureController {
       await unlink(file.absolutePath);
     } else if (mode === 'restore') {
       await writeFile(file.absolutePath, this.original);
+      const state = await stat(file.absolutePath, { bigint: true });
+      await this.db
+        .update(schema.bookFiles)
+        .set({
+          fileHash: await computeFileHash(file.absolutePath),
+          mtime: state.mtime,
+          sizeBytes: Number(state.size),
+          ino: state.ino,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(schema.bookFiles.id, fileId), eq(schema.bookFiles.bookId, file.bookId)));
       this.original = undefined;
     } else if (mode === 'replace') {
       const replacement = await PDFDocument.create();
