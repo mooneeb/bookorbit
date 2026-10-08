@@ -16,6 +16,7 @@ import { inArray, type SQL } from 'drizzle-orm';
 
 import { MAX_BOOK_QUERY_OFFSET_ROWS, isBookQueryOffsetWithinLimit } from '../../common/constants/pagination.constants';
 import { compareAudioTracks, coverFetchInputs, resolveIsAudiobook } from '../../common/utils/book-media.utils';
+import type { ClearFileProgressQueryDto } from './dto/clear-file-progress-query.dto';
 import { filePositionVersion } from '../../common/utils/reader-position-version.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { selectPrimaryFile } from '../../common/utils/primary-file-selection.utils';
@@ -2267,24 +2268,35 @@ export class BookService {
     const conditionArgs: [] | [{ previous: NonNullable<typeof previous> | null; source: 'text' | 'narration' }] = dto.baseVersion
       ? [{ previous: previous ?? null, source }]
       : [];
-    const saved = await this.bookRepo.upsertProgress(
-      userId,
-      fileId,
-      text.cfi,
-      text.pageNumber,
-      text.percentage,
-      dto.positionSeconds,
-      dto.mediaOverlayFragment,
-      dto.mediaOverlaySectionIndex,
-      dto.koboLocationSource ?? null,
-      dto.koboLocationType ?? null,
-      dto.koboLocationValue ?? null,
-      dto.koboContentSourceProgressPercent ?? null,
-      dto.koreaderProgress ?? null,
-      dto.source === 'narration' ? { percentage: dto.percentage, updatedAt: now } : null,
-      text.moved ? now : null,
-      ...conditionArgs,
-    );
+    const writeStartedAt = Date.now();
+    let saved: Awaited<ReturnType<BookRepository['upsertProgress']>>;
+    try {
+      saved = await this.bookRepo.upsertProgress(
+        userId,
+        fileId,
+        text.cfi,
+        text.pageNumber,
+        text.percentage,
+        dto.positionSeconds,
+        dto.mediaOverlayFragment,
+        dto.mediaOverlaySectionIndex,
+        dto.koboLocationSource ?? null,
+        dto.koboLocationType ?? null,
+        dto.koboLocationValue ?? null,
+        dto.koboContentSourceProgressPercent ?? null,
+        dto.koreaderProgress ?? null,
+        dto.source === 'narration' ? { percentage: dto.percentage, updatedAt: now } : null,
+        text.moved ? now : null,
+        ...conditionArgs,
+      );
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'Unknown';
+      const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
+      this.logger.error(
+        `[book.save_file_progress] [fail] userId=${userId} fileId=${fileId} source=${source} durationMs=${Date.now() - writeStartedAt} errorClass=${errorClass} error="${message}" - position write failed`,
+      );
+      throw error;
+    }
     if (dto.baseVersion && !saved) throw new ConflictException('Reading position changed in another reader');
     if (dto.baseVersion && source === 'narration') return saved;
     // Everything downstream reads the position the file now holds, not the one the client sent.
@@ -2353,9 +2365,29 @@ export class BookService {
     });
   }
 
-  async clearFileProgress(userId: number, fileId: number, user: RequestUser): Promise<void> {
-    await this.verifyFileAccess(fileId, user);
-    await this.bookRepo.clearFileProgress(userId, fileId);
+  async clearFileProgress(userId: number, fileId: number, user: RequestUser, condition: ClearFileProgressQueryDto = {}): Promise<void> {
+    const startedAt = Date.now();
+    this.logger.log(
+      `[book.clear_file_progress] [start] userId=${userId} fileId=${fileId} conditional=${condition.textVersion !== undefined} - position reset started`,
+    );
+    try {
+      await this.verifyFileAccess(fileId, user);
+      const cleared =
+        condition.textVersion !== undefined
+          ? await this.bookRepo.clearFileProgress(userId, fileId, condition)
+          : await this.bookRepo.clearFileProgress(userId, fileId);
+      if (cleared === false) throw new ConflictException('The file position changed. Review its current position before resetting.');
+      this.logger.log(
+        `[book.clear_file_progress] [end] userId=${userId} fileId=${fileId} durationMs=${Date.now() - startedAt} cleared=true - position reset completed`,
+      );
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'Unknown';
+      const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
+      this.logger.error(
+        `[book.clear_file_progress] [fail] userId=${userId} fileId=${fileId} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${message}" - position reset failed`,
+      );
+      throw error;
+    }
   }
 
   async clearBookProgressForReread(userId: number, bookId: number, user: RequestUser): Promise<void> {

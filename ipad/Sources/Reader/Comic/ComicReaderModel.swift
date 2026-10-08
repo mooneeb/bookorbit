@@ -13,6 +13,7 @@ final class ComicReaderModel {
   private(set) var pageErrors: [Int: String] = [:]
   private(set) var error: String?
   private(set) var status = ""
+  private(set) var isPositionResetting = false
   private(set) var isClosing = false
   var hasUnsavedPosition: Bool {
     (pendingPage != nil || position.conflict.isBlocked) && saveTask == nil
@@ -70,8 +71,8 @@ final class ComicReaderModel {
   }
 
   func didTurn(to index: Int) {
-    guard !isClosed, !isClosing, !position.conflict.isBlocked, (0..<pageCount).contains(index),
-      index != pageIndex
+    guard !isClosed, !isPositionResetting, !isClosing, !position.conflict.isBlocked,
+      (0..<pageCount).contains(index), index != pageIndex
     else { return }
     pageIndex = index
     loadVisiblePages()
@@ -212,23 +213,26 @@ final class ComicReaderModel {
   }
 
   func retrySaving() {
-    guard !isClosed, saveTask == nil, pendingPage != nil, !position.conflict.isBlocked else {
-      return
-    }
+    guard !isClosed, !isPositionResetting, saveTask == nil, pendingPage != nil,
+      !position.conflict.isBlocked
+    else { return }
     status = "Saving position…"
     error = nil
     saveTask = Task { await savePendingPosition() }
   }
 
   func refreshPosition() async {
-    guard !isClosed, !isClosing, saveTask == nil, pageCount > 0 else { return }
+    guard !isClosed, !isPositionResetting, !isClosing, saveTask == nil, pageCount > 0 else {
+      return
+    }
     var local = SaveFileProgressPayload(percentage: Double(pageIndex + 1) / Double(pageCount) * 100)
     local.pageNumber = Double(pageIndex + 1)
     await position.refresh(local)
   }
 
   func choosePosition(local: Bool) async {
-    guard !isClosed, !isClosing, saveTask == nil, let saved = await position.choose(local: local),
+    guard !isClosed, !isPositionResetting, !isClosing, saveTask == nil,
+      let saved = await position.choose(local: local),
       let page = saved.pageNumber, page.isFinite, page >= 1, page <= Double(pageCount)
     else { return }
     pageIndex = Int(page) - 1
@@ -245,6 +249,25 @@ final class ComicReaderModel {
     retrySaving()
     await saveTask?.value
     return pendingPage == nil && !position.conflict.isBlocked
+  }
+
+  func beginPositionReset() async throws {
+    guard !isClosed, !isClosing else { throw CancellationError() }
+    isPositionResetting = true
+    position.suspendForReset(true)
+    try await NativePositionResetWait.drain {
+      self.saveTask != nil || self.position.isSaving || self.position.isResolving
+    }
+  }
+
+  func cancelPositionReset() {
+    isPositionResetting = false
+    position.suspendForReset(false)
+  }
+
+  func acknowledgePositionReset() {
+    pendingPage = nil
+    position.acknowledgeReset()
   }
 
   func close() {

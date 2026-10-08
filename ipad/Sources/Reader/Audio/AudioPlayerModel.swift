@@ -9,6 +9,8 @@ final class AudioPlayerModel {
   let sleepTimer = AudioSleepTimerModel()
   private(set) var volumeMemory = AudioVolumeMemory()
   private(set) var isChangingTrack = false
+  private(set) var isPositionResetting = false
+  private var positionResetGeneration = UUID()
   private(set) var isWriting = false
   private(set) var isClosing = false
   private(set) var isContinuing = false
@@ -37,25 +39,28 @@ final class AudioPlayerModel {
   }
 
   var canInteract: Bool {
-    !isClosed && !isChangingTrack && !isWriting && !isClosing && !isContinuing
+    !isClosed && !isPositionResetting && !isChangingTrack && !isWriting && !isClosing
+      && !isContinuing
       && !isApplyingSleep
       && !preferences.isSaving
       && engine.isReady && engine.canSelectTrack && !engine.progressBlocked
   }
 
   var canTogglePlayback: Bool {
-    !isClosed && (engine.isPlaying || canInteract)
+    !isClosed && !isPositionResetting && (engine.isPlaying || canInteract)
   }
 
   var canClose: Bool {
-    !isClosed && !isChangingTrack && !isWriting && !isClosing && !isContinuing
+    !isClosed && !isPositionResetting && !isChangingTrack && !isWriting && !isClosing
+      && !isContinuing
       && !isApplyingSleep
       && !preferences.isSaving
       && !engine.isSaving && !engine.isSeeking && !engine.isResolvingPosition
   }
 
   var canSave: Bool {
-    !isClosed && !isChangingTrack && !isWriting && !isClosing && !isContinuing && engine.canSave
+    !isClosed && !isPositionResetting && !isChangingTrack && !isWriting && !isClosing
+      && !isContinuing && engine.canSave
   }
 
   var hasPreviousTrack: Bool { (engine.currentAsset?.sequence ?? 0) > 0 }
@@ -265,7 +270,7 @@ final class AudioPlayerModel {
   }
 
   private func expireSleepTimer() {
-    guard !isClosed, sleepTimer.isActive else { return }
+    guard !isClosed, !isPositionResetting, sleepTimer.isActive else { return }
     cancelSleepTimer()
     sleepPaused = true
     wantsPlay = false
@@ -290,7 +295,7 @@ final class AudioPlayerModel {
   }
 
   func foreground() async {
-    guard !isClosed else { return }
+    guard !isClosed, !isPositionResetting else { return }
     if !(await engine.checkSession()) {
       wantsPlay = false
       cancelSleepTimer()
@@ -303,7 +308,7 @@ final class AudioPlayerModel {
   }
 
   func background() {
-    guard !isClosed, backgroundWrite == nil, canSave else { return }
+    guard !isClosed, !isPositionResetting, backgroundWrite == nil, canSave else { return }
     var identifier = UIBackgroundTaskIdentifier.invalid
     identifier = UIApplication.shared.beginBackgroundTask(withName: "Save audiobook position") {
       [weak self] in
@@ -335,6 +340,11 @@ final class AudioPlayerModel {
     refreshMedia()
   }
 
+  func reconfirmContinuation() async -> Bool {
+    isContinuing = false
+    return await beginContinuation()
+  }
+
   func finish() async -> Bool {
     guard canClose else { return false }
     isClosing = true
@@ -354,6 +364,41 @@ final class AudioPlayerModel {
     return false
   }
 
+  var canResetPosition: Bool {
+    !isClosed && !isPositionResetting && !isClosing && !isContinuing && !preferences.isSaving
+      && engine.manifest != nil
+  }
+
+  func beginPositionReset() async throws {
+    guard !isClosed else { throw CancellationError() }
+    let request = UUID()
+    positionResetGeneration = request
+    isPositionResetting = true
+    wantsPlay = false
+    resumeAfterInterruption = false
+    saveAfterWrite = false
+    advanceAfterWrite = false
+    cancelSleepTimer()
+    engine.pause()
+    refreshMedia()
+    try await NativePositionResetWait.drain {
+      self.isWriting || self.isChangingTrack || self.isApplyingSleep || self.engine.isSaving
+        || self.engine.isSeeking || self.engine.isResolvingPosition || self.engine.isLoading
+    }
+    await backgroundWrite?.value
+    try Task.checkCancellation()
+    guard request == positionResetGeneration, isPositionResetting else { throw CancellationError() }
+    engine.beginPositionReset()
+    refreshMedia()
+  }
+
+  func cancelPositionReset() {
+    positionResetGeneration = UUID()
+    isPositionResetting = false
+    engine.cancelPositionReset()
+    refreshMedia()
+  }
+
   func close() {
     guard !isClosed else { return }
     isClosed = true
@@ -371,7 +416,7 @@ final class AudioPlayerModel {
 
   @discardableResult
   private func persistPosition() async -> Bool {
-    guard engine.canSave, !isClosed, !isWriting else { return false }
+    guard engine.canSave, !isClosed, !isPositionResetting, !isWriting else { return false }
     isWriting = true
     refreshMedia()
     let saved = await engine.save()
@@ -381,9 +426,9 @@ final class AudioPlayerModel {
     }
     isWriting = false
     refreshMedia()
-    let saveAgain = saveAfterWrite && saved && !isClosed
+    let saveAgain = saveAfterWrite && saved && !isClosed && !isPositionResetting
     saveAfterWrite = false
-    let advance = advanceAfterWrite && saved && !isClosed && !sleepPaused
+    let advance = advanceAfterWrite && saved && !isClosed && !isPositionResetting && !sleepPaused
     advanceAfterWrite = false
     if saveAgain { return await persistPosition() }
     if advance { Task { @MainActor [weak self] in await self?.trackEnded() } }
@@ -417,14 +462,16 @@ final class AudioPlayerModel {
     }
     let opened = await engine.activate(asset, positionMs: positionMs)
     guard !isClosed else { return false }
-    wantsPlay = opened && autoplay && !sleepPaused
+    wantsPlay = opened && autoplay && !sleepPaused && !isPositionResetting
     isChangingTrack = false
     engineUpdated()
     return opened
   }
 
   private func trackEnded() async {
-    guard !isClosed, !isChangingTrack, !isClosing, !sleepPaused else { return }
+    guard !isClosed, !isPositionResetting, !isChangingTrack, !isClosing, !sleepPaused else {
+      return
+    }
     if sleepTimer.refreshCountdown()
       || sleepTimer.reachedChapterEnd(
         assetID: engine.currentAsset?.assetId,
@@ -442,7 +489,7 @@ final class AudioPlayerModel {
   }
 
   private func engineUpdated() {
-    guard !isClosed else { return }
+    guard !isClosed, !isPositionResetting else { return }
     if engine.error != nil {
       wantsPlay = false
       cancelSleepTimer()
@@ -499,7 +546,7 @@ final class AudioPlayerModel {
   }
 
   private func handle(_ command: AudioMediaController.Command) async {
-    guard !isClosed else { return }
+    guard !isClosed, !isPositionResetting else { return }
     switch command {
     case .play:
       if canInteract, !engine.isPlaying { await togglePlayback() }

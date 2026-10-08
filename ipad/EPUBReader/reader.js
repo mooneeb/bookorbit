@@ -10,6 +10,8 @@ import { describePosition } from "./position-preview.js";
 import { prepareCustomFonts, configureCustomFont, customFontCSS, settleCustomFonts, clearCustomFonts } from "./custom-fonts.js";
 import { publicationPosition, fractionTarget, withProgrammaticMovement } from "./position-navigation.js";
 
+const genericFontFamilies = new Set(["serif", "sans-serif", "monospace"]);
+const fontFamilyCSS = (family) => (genericFontFamilies.has(family) ? family : JSON.stringify(family));
 const view = document.querySelector("foliate-view");
 let closed = false;
 let narrationMovement = 0;
@@ -64,7 +66,8 @@ const location = () => {
     cfi: value.cfi,
     percentage: value.fraction * 100,
     chapterIndex: value.section.current,
-    rightToLeft: view.isFixedLayout || view.renderer.scrolled ? publication.dir === "rtl" : view.renderer.getAttribute("dir") === "rtl",
+    rightToLeft: view.isFixedLayout ? publication.dir === "rtl" : view.renderer.getAttribute("dir") === "rtl",
+    fixedLayout: view.isFixedLayout,
     page: !view.isFixedLayout && !view.renderer.scrolled ? view.renderer.page : null,
     pageTotal: !view.isFixedLayout && !view.renderer.scrolled ? Math.max(1, view.renderer.pages - 2) : null,
     remainingMinutes: Number.isFinite(value.time?.total) ? Math.max(0, Math.ceil(value.time.total)) : null,
@@ -185,6 +188,15 @@ const openPublication = async (book, cfi, settings, formatting) => {
   if (settings.fixedLayoutSpread === "none") publication.rendition.spread = "none";
   await view.open(publication);
   view.renderer.disablePointerNavigation?.();
+  view.renderer.addEventListener("before-section-load", () => {
+    resourceBytes = 0;
+  });
+  view.renderer.addEventListener("navigation-error", ({ detail }) => {
+    if (!closed)
+      window.webkit.messageHandlers.readerError.postMessage(
+        String(detail?.message ?? "This section could not be opened. Try Contents or reopen the reader.").slice(0, 500),
+      );
+  });
   await window.epubConfigure(settings, formatting, cfi);
   return location();
 };
@@ -236,7 +248,10 @@ window.epubConfigure = async (settings, formatting, cfi) => {
   }
   const renderer = view.renderer;
   configureCustomFont(settings, formatting && !view.isFixedLayout);
-  renderer.setAttribute("flow", settings.flow);
+  if (!view.isFixedLayout && settings.flow === "scrolled")
+    renderer.setAttribute("continuous-axis", settings.nativeContinuousAxis === "horizontal" ? "horizontal" : "vertical");
+  else renderer.removeAttribute("continuous-axis");
+  renderer.setAttribute("flow", view.isFixedLayout ? "paginated" : settings.flow);
   renderer.setAttribute("max-column-count", String(settings.maxColumnCount));
   renderer.setAttribute("gap", `${settings.gap * 100}%`);
   renderer.setAttribute("max-inline-size", String(settings.maxInlineSize));
@@ -248,7 +263,7 @@ window.epubConfigure = async (settings, formatting, cfi) => {
   const body =
     formatting && !view.isFixedLayout
       ? `
-    ${settings.fontFamily ? `font-family: ${JSON.stringify(settings.fontFamily)} !important;` : ""}
+    ${settings.fontFamily ? `font-family: ${fontFamilyCSS(settings.fontFamily)} !important;` : ""}
     ${settings.fontFamily?.startsWith("__") ? "font-synthesis: none !important;" : ""}
     font-weight: ${settings.fontWeight} !important; font-style: ${settings.fontStyle} !important;
     font-size: ${settings.fontSize}px !important; line-height: ${settings.lineHeight} !important;
@@ -276,10 +291,14 @@ window.epubConfigure = async (settings, formatting, cfi) => {
   else for (const { doc } of renderer.getContents()) applyDocumentStyles(doc);
   return await go(cfi || 0);
 };
-window.epubTurn = async (forward) => {
+window.epubTurn = async (forward, smooth = false) => {
   resourceBytes = 0;
-  await (forward ? view.next() : view.prev());
+  await withProgrammaticMovement(view.renderer, smooth, () => (forward ? view.next() : view.prev()));
   await settle();
+  return location();
+};
+window.epubLocation = () => {
+  view.renderer.captureLocation?.();
   return location();
 };
 window.epubGo = go;

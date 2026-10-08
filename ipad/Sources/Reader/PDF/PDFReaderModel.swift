@@ -12,6 +12,7 @@ final class PDFReaderModel {
   private(set) var searchSelection: PDFSelection?
   private(set) var status = ""
   private(set) var error: String?
+  private(set) var isPositionResetting = false
   private(set) var isClosing = false
   private(set) var isUnlocking = false
   private(set) var passwordError: String?
@@ -124,7 +125,7 @@ final class PDFReaderModel {
   }
 
   func didTurn(to index: Int) {
-    guard !isClosed, !isClosing, !position.conflict.isBlocked, let document,
+    guard !isClosed, !isPositionResetting, !isClosing, !position.conflict.isBlocked, let document,
       (0..<document.pageCount).contains(index),
       index != pageIndex
     else {
@@ -138,7 +139,8 @@ final class PDFReaderModel {
   }
 
   func openSearchMatch(_ match: PDFSearchMatch) {
-    guard !isClosed, !isClosing, let document, let page = document.page(at: match.pageIndex)
+    guard !isClosed, !isPositionResetting, !isClosing, let document,
+      let page = document.page(at: match.pageIndex)
     else { return }
     didTurn(to: match.pageIndex)
     let selection = PDFSelection(document: document)
@@ -149,10 +151,28 @@ final class PDFReaderModel {
   }
 
   func openContentsPage(_ index: Int) {
-    guard !isClosed, !isClosing, let document, (0..<document.pageCount).contains(index)
+    guard !isClosed, !isPositionResetting, !isClosing, let document,
+      (0..<document.pageCount).contains(index)
     else { return }
     searchSelection = nil
     didTurn(to: index)
+  }
+
+  func authorizeThumbnails(in document: PDFDocument) async -> Bool {
+    do {
+      try await checkSession()
+      return !isClosed && !isPositionResetting && !isClosing && self.document === document
+        && !document.isLocked
+    } catch { return false }
+  }
+
+  func openThumbnailPage(_ index: Int) async -> Bool {
+    guard let document, await authorizeThumbnails(in: document),
+      !position.conflict.isBlocked, !position.isResolving,
+      (0..<document.pageCount).contains(index)
+    else { return false }
+    openContentsPage(index)
+    return pageIndex == index
   }
 
   private func savePendingPosition() async {
@@ -192,9 +212,9 @@ final class PDFReaderModel {
   }
 
   func refreshPosition() async {
-    guard !isClosed, !isClosing, saveTask == nil, let document, document.pageCount > 0 else {
-      return
-    }
+    guard !isClosed, !isPositionResetting, !isClosing, saveTask == nil, let document,
+      document.pageCount > 0
+    else { return }
     var local = SaveFileProgressPayload(
       percentage: Double(pageIndex + 1) / Double(document.pageCount) * 100)
     local.pageNumber = Double(pageIndex + 1)
@@ -202,7 +222,7 @@ final class PDFReaderModel {
   }
 
   func choosePosition(local: Bool) async {
-    guard !isClosed, !isClosing, saveTask == nil, let document,
+    guard !isClosed, !isPositionResetting, !isClosing, saveTask == nil, let document,
       let saved = await position.choose(local: local),
       let page = saved.pageNumber, page.isFinite, page >= 1, page <= Double(document.pageCount)
     else { return }
@@ -223,12 +243,31 @@ final class PDFReaderModel {
   }
 
   func retrySaving() {
-    guard !isClosed, saveTask == nil, pendingPage != nil, !position.conflict.isBlocked else {
-      return
-    }
+    guard !isClosed, !isPositionResetting, saveTask == nil, pendingPage != nil,
+      !position.conflict.isBlocked
+    else { return }
     status = "Saving position…"
     error = nil
     saveTask = Task { await savePendingPosition() }
+  }
+
+  func beginPositionReset() async throws {
+    guard !isClosed, !isClosing else { throw CancellationError() }
+    isPositionResetting = true
+    position.suspendForReset(true)
+    try await NativePositionResetWait.drain {
+      self.saveTask != nil || self.position.isSaving || self.position.isResolving
+    }
+  }
+
+  func cancelPositionReset() {
+    isPositionResetting = false
+    position.suspendForReset(false)
+  }
+
+  func acknowledgePositionReset() {
+    pendingPage = nil
+    position.acknowledgeReset()
   }
 
   func close() {

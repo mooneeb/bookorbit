@@ -41,6 +41,7 @@ import { BulkEditMetadataDto } from './dto/bulk-edit-metadata.dto';
 import { DeleteBooksDto } from './dto/delete-books.dto';
 import { ExportBooksDto } from './dto/export-books.dto';
 import { MetadataExportDto } from './dto/metadata-export.dto';
+import { ClearFileProgressQueryDto } from './dto/clear-file-progress-query.dto';
 import { filePositionVersion } from '../../common/utils/reader-position-version.utils';
 import { SaveProgressDto } from './dto/save-progress.dto';
 import { UpsertAudioProgressDto } from './dto/upsert-audio-progress.dto';
@@ -559,8 +560,13 @@ export class BookController {
 
   @Delete('files/:fileId/progress')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async clearFileProgress(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser) {
-    await this.bookService.clearFileProgress(user.id, fileId, user);
+  async clearFileProgress(
+    @Param('fileId', ParseIntPipe) fileId: number,
+    @CurrentUser() user: RequestUser,
+    @Query() query: ClearFileProgressQueryDto = {},
+  ) {
+    if (query.textVersion !== undefined) await this.bookService.clearFileProgress(user.id, fileId, user, query);
+    else await this.bookService.clearFileProgress(user.id, fileId, user);
   }
 
   /**

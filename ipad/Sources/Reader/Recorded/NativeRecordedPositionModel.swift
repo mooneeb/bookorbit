@@ -177,6 +177,14 @@ final class NativeRecordedPositionModel {
     return Self.valid(value) ? value : nil
   }
 
+  func acknowledgeReset() {
+    saved = nil
+    hasPendingSave = false
+    acknowledgedAt = nil
+    message = nil
+    canonical.acknowledgeReset()
+  }
+
   func close() {
     isClosed = true
     canonical.close()

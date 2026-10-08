@@ -22,6 +22,7 @@ final class NativeContinuationModel {
   private(set) var isBusy = false
   private(set) var response: BookContinuationResponse?
   private(set) var message: String?
+  var readAloudSync: BookReadAloudSyncModel?
   @ObservationIgnored var beforeResolve: (@MainActor () async -> BookContinuationQuery?)?
   @ObservationIgnored var chosen: (@MainActor (NativeContinuationDestination) -> Void)?
   @ObservationIgnored var cancelled: (@MainActor () -> Void)?
@@ -112,12 +113,56 @@ final class NativeContinuationModel {
   }
 
   func cancel() {
+    readAloudSync?.detach()
+    readAloudSync = nil
     attempt = UUID()
     isBusy = false
     isPresented = false
     query = nil
     response = nil
     cancelled?()
+  }
+
+  func openReadAloudSync() {
+    guard isPresented, !isBusy, response?.reason == "disabled", let session else { return }
+    readAloudSync = BookReadAloudSyncModel(
+      api: api, bookID: bookID, files: files, session: session)
+  }
+
+  func readAloudSyncSaved(_ setting: BookReadAloudSyncModel, book: BookDetail, session: UUID)
+    async
+  {
+    guard readAloudSync?.id == setting.id, !setting.isDetached,
+      isPresented, !isBusy, self.session == session, book.id == bookID
+    else { return }
+    let attempt = self.attempt
+    isBusy = true
+    response = nil
+    query = nil
+    message = nil
+    defer { if self.attempt == attempt { isBusy = false } }
+    do {
+      try await check(attempt, session: session)
+      guard let query = await beforeResolve?() else {
+        throw NativeContinuationError(
+          message: "The setting was saved. Confirm your resume choice and Save before continuing.")
+      }
+      try await check(attempt, session: session)
+      self.query = query
+      let current = try await resolve(query, session: session)
+      try await check(attempt, session: session)
+      response = current
+      message = unavailableMessage(current.reason)
+    } catch {
+      guard self.attempt == attempt, isPresented else { return }
+      if case ConnectionError.http(409) = error {
+        message =
+          "The setting was saved, but the position changed in another reader. Close this sheet and choose a resume position before continuing."
+      } else {
+        message =
+          "The setting was saved. Continuation could not be confirmed. \(error.localizedDescription)"
+      }
+    }
   }
 
   private func resolve(_ query: BookContinuationQuery, session: UUID) async throws
@@ -171,7 +216,8 @@ final class NativeContinuationModel {
 
   private func unavailableMessage(_ reason: String?) -> String? {
     switch reason {
-    case "disabled": "Progress sync is disabled for this book in its web book settings."
+    case "disabled":
+      "Progress sync is disabled for your account on this book. Edit progress sync to enable matching ebook and audio continuation."
     case "unsupported_source": "This file format has no supported narration mapping."
     case "no_media_overlay_epub":
       "This book has no EPUB with recorded narration to match its text and audiobook."

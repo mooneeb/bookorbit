@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NativeTTSControlsView: View {
   let model: NativeTTSModel
+  @State private var positionReset: NativePositionResetModel?
   @State private var showSettings = false
   @State private var showPassage = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -104,6 +105,10 @@ struct NativeTTSControlsView: View {
     .padding()
     .background(Color(uiColor: .secondarySystemBackground))
     .clipShape(RoundedRectangle(cornerRadius: 12))
+    .sheet(item: $positionReset) { reset in
+      NativePositionResetView(model: reset, closed: positionResetClosed)
+    }
+    .interactiveDismissDisabled(model.isPositionResetting)
     .sheet(isPresented: $showSettings, onDismiss: settingsClosed) {
       NativeTTSSettingsView(model: model)
     }
@@ -142,6 +147,9 @@ struct NativeTTSControlsView: View {
             .disabled(!model.canStart)
             .accessibilityIdentifier("nativeTTSResumeSaved")
         }
+        Button("Clear saved speech position", action: promptPositionReset)
+          .disabled(!model.canResetPosition)
+          .accessibilityIdentifier("nativeTTSClearSavedPosition")
         Button("Speech settings", action: openSettings)
           .disabled(!model.canChangeSettings)
           .accessibilityIdentifier("nativeTTSOpenSettings")
@@ -152,6 +160,24 @@ struct NativeTTSControlsView: View {
       .accessibilityIdentifier("nativeTTSOptions")
     }
     .buttonStyle(.bordered)
+  }
+
+  private func promptPositionReset() {
+    guard model.canResetPosition else { return }
+    positionReset = NativePositionResetModel(
+      api: model.position.api,
+      target: .speech(bookID: model.bookID, fileID: model.position.fileID, label: model.title),
+      prepare: model.beginPositionReset, acknowledged: { model.acknowledgePositionReset() })
+  }
+
+  private func positionResetClosed(_ reset: NativePositionResetModel) {
+    reset.detach()
+    positionReset = nil
+    if reset.didAttempt {
+      Task { await model.endPositionReset(reset) }
+    } else {
+      model.cancelPositionReset()
+    }
   }
 
   private var stateLabel: String {

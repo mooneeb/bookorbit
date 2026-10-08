@@ -17,6 +17,7 @@ final class AudioPlaybackModel {
   private(set) var isLoading = false
   private(set) var isReady = false
   private(set) var isPlaying = false
+  private(set) var isPositionResetting = false
   private(set) var isSaving = false
   private(set) var error: String?
   private(set) var progressMessage: String?
@@ -62,11 +63,12 @@ final class AudioPlaybackModel {
 
   var hasPendingSave: Bool { pendingSave != nil }
   var canSave: Bool {
-    isReady && !isSaving && !isSeeking && !progressBlocked && !isResolvingPosition && !isClosed
+    isReady && !isSaving && !isSeeking && !progressBlocked && !isResolvingPosition
+      && !isPositionResetting && !isClosed
   }
   var canSelectTrack: Bool {
     !isSaving && !isSeeking && !isResolvingPosition && pendingSave == nil
-      && !positionConflict.isBlocked && !isClosed
+      && !positionConflict.isBlocked && !isPositionResetting && !isClosed
   }
 
   func open() async {
@@ -142,7 +144,7 @@ final class AudioPlaybackModel {
   }
 
   func play() {
-    guard isReady, !isClosed, let player else { return }
+    guard isReady, !isClosed, !isPositionResetting, let player else { return }
     do {
       try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
       try AVAudioSession.sharedInstance().setActive(true)
@@ -395,6 +397,34 @@ final class AudioPlaybackModel {
     return "Track \(track), \(Self.clock(Double(offset) / 1000))"
   }
 
+  func beginPositionReset() {
+    isPositionResetting = true
+    selectionGeneration = UUID()
+    preparation?.cancel()
+    preparation = nil
+    stopPlayer()
+  }
+
+  func cancelPositionReset() {
+    guard isPositionResetting else { return }
+    isPositionResetting = false
+    if let currentAsset {
+      begin(currentAsset, positionMs: Int((positionSeconds * 1000).rounded()))
+    }
+  }
+
+  func acknowledgePositionReset() {
+    state = nil
+    pendingSave = nil
+    pendingSaveBody = nil
+    conflictLocal = nil
+    conflictRemote = nil
+    resolutionChoice = nil
+    progressBlocked = false
+    positionConflict.clear()
+    progressMessage = nil
+  }
+
   func close() {
     isClosed = true
     updated = nil
@@ -472,7 +502,12 @@ final class AudioPlaybackModel {
     clockObserver = player.addPeriodicTimeObserver(
       forInterval: CMTime(seconds: 0.25, preferredTimescale: 1000), queue: .main
     ) { [weak self] time in
-      MainActor.assumeIsolated { self?.sample(time) }
+      MainActor.assumeIsolated {
+        guard let self, generation == self.selectionGeneration, !self.isPositionResetting else {
+          return
+        }
+        self.sample(time)
+      }
     }
     if positionMs > 0 {
       let completed = await player.seek(

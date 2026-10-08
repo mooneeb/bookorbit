@@ -29,6 +29,7 @@ import { AudiobookService } from './audiobook.service';
 import { parseAudioByteRange } from './audio-byte-range';
 import { AudiobookBookmarksPageQueryDto } from './dto/audiobook-bookmarks-page-query.dto';
 import { CreateAudiobookBookmarkDto } from './dto/create-audiobook-bookmark.dto';
+import { DeletePlaybackStateQueryDto } from './dto/delete-playback-state-query.dto';
 import { PutAudiobookPlaybackStateDto } from './dto/put-audiobook-playback-state.dto';
 import { UpdateAudiobookBookmarkDto } from './dto/update-audiobook-bookmark.dto';
 
@@ -97,8 +98,12 @@ export class AudiobookController {
 
   @Delete(':bookId/playback-state')
   @HttpCode(HttpStatus.NO_CONTENT)
-  deletePlaybackState(@Param('bookId', ParseIntPipe) bookId: number, @CurrentUser() user: RequestUser) {
-    return this.service.deletePlaybackState(bookId, user);
+  deletePlaybackState(
+    @Param('bookId', ParseIntPipe) bookId: number,
+    @CurrentUser() user: RequestUser,
+    @Query() query: DeletePlaybackStateQueryDto = {},
+  ) {
+    return query.baseRevision !== undefined ? this.service.deletePlaybackState(bookId, user, query) : this.service.deletePlaybackState(bookId, user);
   }
 
   @Get(':bookId/bookmarks')

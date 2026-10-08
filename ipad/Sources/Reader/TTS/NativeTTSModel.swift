@@ -16,6 +16,7 @@ enum NativeTTSState: String {
 @MainActor @Observable
 final class NativeTTSModel {
   nonisolated static let chunkLimit = 2048
+  let bookID: Int
   let title: String
   let language: String?
   let preferences: NativeTTSPreferencesModel
@@ -32,6 +33,9 @@ final class NativeTTSModel {
   private(set) var hasLoaded = false
   private(set) var isClosing = false
   private(set) var isReaderNavigating = false
+  private(set) var isPositionResetting = false
+  private(set) var positionResetRecovery = false
+  private var positionResetGeneration = UUID()
   private(set) var isStopping = false
   private(set) var reachedEnd = false
   private var isSettingsPresented = false
@@ -57,6 +61,7 @@ final class NativeTTSModel {
     api: BookOrbitAPI, bookID: Int, fileID: Int, title: String, language: String?,
     source: any EPUBSpeechSource
   ) {
+    self.bookID = bookID
     self.title = title
     self.language = language
     self.source = source
@@ -69,7 +74,8 @@ final class NativeTTSModel {
   var isActive: Bool { state == .playing || state == .paused || state == .loading }
   var isPlaying: Bool { state == .playing }
   var canStart: Bool {
-    hasLoaded && !isClosed && !isClosing && !isReaderNavigating && !isStopping
+    hasLoaded && !isClosed && !isPositionResetting && !isClosing && !isReaderNavigating
+      && !isStopping
       && !preferences.isSaving && !position.isSaving
       && !position.permissionBlocked && !position.conflict.isBlocked
       && state != .loading && !server.isPreviewing && !server.isLoadingPreview
@@ -85,7 +91,8 @@ final class NativeTTSModel {
       && (isActive || server.isPreviewing || server.isLoadingPreview)
   }
   var canChangeSettings: Bool {
-    hasLoaded && !isClosed && !isClosing && !isReaderNavigating && !isStopping
+    hasLoaded && !isClosed && !isPositionResetting && !isClosing && !isReaderNavigating
+      && !isStopping
       && !preferences.isSaving && !position.isSaving
   }
   var effectiveServerVoice: TtsVoice? {
@@ -179,7 +186,7 @@ final class NativeTTSModel {
         guard let self, !self.isClosed else { return }
         do {
           try await self.position.checkSession()
-          if self.position.hasPendingSave, !self.position.isSaving {
+          if !self.isPositionResetting, self.position.hasPendingSave, !self.position.isSaving {
             _ = await self.position.flush()
             if self.position.permissionBlocked { await self.fail(ConnectionError.denied) }
           }
@@ -192,7 +199,9 @@ final class NativeTTSModel {
   }
 
   func retry() async {
-    guard !isClosed, !isClosing, !isReaderNavigating, !isStopping else { return }
+    guard !isClosed, !isPositionResetting, !isClosing, !isReaderNavigating, !isStopping else {
+      return
+    }
     if !hasLoaded {
       await open()
     } else {
@@ -239,7 +248,7 @@ final class NativeTTSModel {
   }
 
   private func expireSleepTimer() async {
-    guard !isClosed else { return }
+    guard !isClosed, !isPositionResetting else { return }
     resumeAfterInterruption = false
     wantsPlay = false
     if state == .playing || state == .loading { await pause() }
@@ -251,7 +260,7 @@ final class NativeTTSModel {
     guard canStart else { return }
     let expirationCount = sleepTimer.expirationCount
     let saved = await stopAndSave(preservingSleepTimer: true)
-    guard !isClosed, saved else { return }
+    guard !isClosed, !isPositionResetting, saved else { return }
     guard expirationCount == sleepTimer.expirationCount else {
       state = .paused
       return
@@ -307,7 +316,9 @@ final class NativeTTSModel {
   }
 
   func togglePlayback() async {
-    guard !isClosed, !isClosing, !isReaderNavigating, !isStopping else { return }
+    guard !isClosed, !isPositionResetting, !isClosing, !isReaderNavigating, !isStopping else {
+      return
+    }
     resumeAfterInterruption = false
     if state == .playing || state == .loading {
       await pause()
@@ -459,7 +470,13 @@ final class NativeTTSModel {
   }
 
   func navigateReader(_ action: @MainActor () async -> Void) async {
-    guard !isClosed, !isClosing, !isReaderNavigating, !isStopping, !preferences.isSaving else {
+    if positionResetRecovery, !isClosed {
+      await action()
+      return
+    }
+    guard !isClosed, !isPositionResetting, !isClosing, !isReaderNavigating, !isStopping,
+      !preferences.isSaving
+    else {
       return
     }
     isReaderNavigating = true
@@ -478,7 +495,7 @@ final class NativeTTSModel {
   }
 
   func foreground() async {
-    guard !isClosed else { return }
+    guard !isClosed, !isPositionResetting else { return }
     refreshVoices()
     do {
       try await position.checkSession()
@@ -496,7 +513,7 @@ final class NativeTTSModel {
   }
 
   func background() {
-    guard !isClosed, hasLoaded, backgroundWrite == nil else { return }
+    guard !isClosed, !isPositionResetting, hasLoaded, backgroundWrite == nil else { return }
     sleepTimer.background()
     if server.isPreviewing || server.isLoadingPreview { stopPreview() }
     var identifier = UIBackgroundTaskIdentifier.invalid
@@ -540,13 +557,71 @@ final class NativeTTSModel {
   }
 
   func choosePosition(local: Bool) async {
-    guard !isClosed, !isStopping, position.conflict.isBlocked else { return }
+    guard !isClosed, !isPositionResetting, !isStopping, position.conflict.isBlocked else { return }
     await stop()
     guard await position.choosePosition(local: local), !isClosed else {
       await describePositionConflict()
       return
     }
     await resumeSavedPosition()
+  }
+
+  var canResetPosition: Bool {
+    hasLoaded && !isClosed && (!isPositionResetting || positionResetRecovery)
+      && !isClosing && !isReaderNavigating && !isStopping && !preferences.isSaving
+  }
+
+  func beginPositionReset() async throws {
+    guard !isClosed else { throw CancellationError() }
+    let request = UUID()
+    positionResetGeneration = request
+    isPositionResetting = true
+    positionResetRecovery = false
+    sleepTimer.cancel()
+    wantsPlay = false
+    resumeAfterInterruption = false
+    try await NativePositionResetWait.drain {
+      self.isStopping || self.isReaderNavigating || self.preferences.isSaving
+    }
+    guard request == positionResetGeneration, isPositionResetting else { throw CancellationError() }
+    await stop()
+    await backgroundWrite?.value
+    try await NativePositionResetWait.drain { self.position.isSaving || self.position.isResolving }
+    guard request == positionResetGeneration, isPositionResetting else { throw CancellationError() }
+    navigation.reset()
+    position.suspendForReset(true)
+    try Task.checkCancellation()
+  }
+
+  func acknowledgePositionReset() {
+    position.acknowledgeReset()
+    currentPassage = ""
+    currentWord = ""
+    reachedEnd = false
+  }
+
+  func endPositionReset(_ reset: NativePositionResetModel) async {
+    if reset.didClearLocalPosition {
+      position.suspendForReset(false)
+      await position.load()
+      isPositionResetting = !position.hasLoaded
+    } else if !reset.didAttempt {
+      position.suspendForReset(false)
+      isPositionResetting = false
+    }
+    positionResetRecovery = isPositionResetting
+    if isPositionResetting {
+      error = "Speech reset is unconfirmed. Clear saved speech position again to check or retry."
+    } else {
+      error = nil
+    }
+  }
+
+  func cancelPositionReset() {
+    positionResetGeneration = UUID()
+    isPositionResetting = false
+    positionResetRecovery = false
+    position.suspendForReset(false)
   }
 
   func close() {
@@ -866,7 +941,8 @@ final class NativeTTSModel {
             let expirationCount = self.sleepTimer.expirationCount
             await self.pause()
             self.resumeAfterInterruption =
-              resume && expirationCount == self.sleepTimer.expirationCount
+              !self.isPositionResetting && resume
+              && expirationCount == self.sleepTimer.expirationCount
           } else if type == AVAudioSession.InterruptionType.ended.rawValue {
             await self.sleepTimer.refreshElapsed()
             let resume =

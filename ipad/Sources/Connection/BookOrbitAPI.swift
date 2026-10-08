@@ -787,6 +787,65 @@ actor BookOrbitAPI {
     return destination
   }
 
+  func downloadBookFile(
+    fileID: Int, kind: BookFileDownloadKind, session: UUID,
+    progress: @MainActor @Sendable (BookFileTransferProgress) -> Void
+  ) async throws -> StagedBookFile {
+    guard fileID > 0 else { throw ConnectionError.invalidResponse }
+    try Task.checkCancellation()
+    try ensureSession(session)
+    var request = URLRequest(url: profile.endpoint(kind.path(fileID: fileID)))
+    request.cachePolicy = .reloadIgnoringLocalCacheData
+    request.timeoutInterval = 120
+    request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(session)
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(session)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    try ensureSession(session)
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    let staging = try BookFileDownloadStaging(response: response, kind: kind)
+    let total = staging.artifact.size
+    await progress(.init(received: 0, total: total))
+    var buffer = Data()
+    buffer.reserveCapacity(64 * 1024)
+    var received: Int64 = 0
+    var lastUpdate = Date.timeIntervalSinceReferenceDate
+    for try await byte in bytes {
+      guard received < total else { throw ConnectionError.fileChanged }
+      buffer.append(byte)
+      received += 1
+      if buffer.count == 64 * 1024 {
+        try Task.checkCancellation()
+        try ensureSession(session)
+        try staging.write(buffer)
+        buffer.removeAll(keepingCapacity: true)
+        if Date.timeIntervalSinceReferenceDate - lastUpdate >= 0.2 {
+          await progress(.init(received: received, total: total))
+          lastUpdate = Date.timeIntervalSinceReferenceDate
+        }
+      }
+    }
+    try Task.checkCancellation()
+    try ensureSession(session)
+    guard received == total else { throw ConnectionError.fileChanged }
+    if !buffer.isEmpty { try staging.write(buffer) }
+    await progress(.init(received: received, total: total))
+    try Task.checkCancellation()
+    try ensureSession(session)
+    return try staging.finish()
+  }
+
   func authenticatedSessionGeneration() throws -> UUID {
     try ensureSession(sessionGeneration)
     return sessionGeneration

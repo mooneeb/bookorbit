@@ -9,6 +9,7 @@ struct EPUBReaderView: View {
   @State private var initialSearchQuery = ""
   private let language: String?
   private let offersContinuation: Bool
+  @State private var positionReset: NativePositionResetModel?
   @State private var showingContents = false
   @State private var showingSearch = false
   @State private var showingSettings = false
@@ -106,6 +107,14 @@ struct EPUBReaderView: View {
             .accessibilityIdentifier("epubTextToSpeech")
         }
         ToolbarItem(placement: .topBarTrailing) {
+          Button(
+            "Clear reading position", systemImage: "arrow.counterclockwise",
+            action: promptPositionReset
+          )
+          .disabled(!model.isReady || isReaderAction || bridge.isPresented)
+          .accessibilityIdentifier("epubClearReadingPosition")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
           Menu("Reader tools", systemImage: "ellipsis.circle") {
             if offersContinuation {
               Button("Continue listening", action: openContinuation)
@@ -199,7 +208,7 @@ struct EPUBReaderView: View {
     .onDisappear {
       if !showingContents && !showingSearch && !showingSettings && !showingBookmarks
         && !showingSpeech && !showingRecorded && !showingPosition && !bridge.isPresented
-        && selectionTools.presentation == nil
+        && selectionTools.presentation == nil && positionReset == nil
       {
         Task {
           bridge.cancel()
@@ -209,6 +218,9 @@ struct EPUBReaderView: View {
           model.close()
         }
       }
+    }
+    .sheet(item: $positionReset) { reset in
+      NativePositionResetView(model: reset, closed: positionResetClosed)
     }
     .sheet(isPresented: $bridge.isPresented, onDismiss: bridge.cancel) {
       NativeContinuationView(model: bridge)
@@ -227,6 +239,7 @@ struct EPUBReaderView: View {
           .toolbar {
             ToolbarItem(placement: .confirmationAction) {
               Button("Done", action: closeSpeech)
+                .disabled(speech.isPositionResetting && !speech.positionResetRecovery)
                 .accessibilityIdentifier("nativeTTSCloseControls")
             }
           }
@@ -278,7 +291,9 @@ struct EPUBReaderView: View {
   }
 
   private var canCloseReader: Bool {
-    model.canClose && !isReaderAction && !bridge.isPresented && !speech.isClosing
+    model.canClose && positionReset == nil
+      && (!speech.isPositionResetting || speech.positionResetRecovery) && !isReaderAction
+      && !bridge.isPresented && !speech.isClosing
       && !speech.isStopping
       && !speech.preferences.isSaving && !speech.position.isSaving
       && !recorded.isBusy && !recorded.position.isSaving
@@ -404,6 +419,41 @@ struct EPUBReaderView: View {
     }
     .frame(height: feedbackHeight)
     .scrollBounceBehavior(.basedOnSize)
+  }
+
+  private func promptPositionReset() {
+    guard model.isReady, !isReaderAction, !bridge.isPresented else { return }
+    isReaderAction = true
+    positionReset = NativePositionResetModel(
+      api: model.api,
+      target: .file(
+        bookID: model.bookID, fileID: model.file.id, label: model.file.filename ?? "Ebook"),
+      prepare: {
+        try await model.beginPositionReset()
+        try await speech.beginPositionReset()
+        try await recorded.beginPositionReset()
+      },
+      acknowledged: {
+        model.acknowledgePositionReset()
+        recorded.acknowledgePositionReset()
+      })
+  }
+
+  private func positionResetClosed(_ reset: NativePositionResetModel) {
+    reset.detach()
+    positionReset = nil
+    if reset.didAttempt {
+      bridge.cancel()
+      recorded.close()
+      speech.close()
+      model.close()
+      dismiss()
+    } else {
+      model.cancelPositionReset()
+      recorded.cancelPositionReset()
+      speech.cancelPositionReset()
+      isReaderAction = false
+    }
   }
 
   private func previousPage() { navigate { await model.turn(forward: false) } }

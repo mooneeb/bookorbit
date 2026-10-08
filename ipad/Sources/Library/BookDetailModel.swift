@@ -13,6 +13,7 @@ final class BookDetailModel {
   private var isUnavailable = false
   private var deletionSession: UUID?
   private var moveSession: UUID?
+  private var fileSession: UUID?
 
   init(api: BookOrbitAPI, bookID: Int) {
     self.api = api
@@ -26,7 +27,7 @@ final class BookDetailModel {
     error = nil
     do {
       let result: BookDetail = try await api.boundedJSON(
-        "books/\(bookID)", session: deletionSession ?? moveSession)
+        "books/\(bookID)", session: deletionSession ?? moveSession ?? fileSession)
       guard self.loadID == loadID, !isUnavailable else { return }
       guard result.id == bookID else { throw ConnectionError.invalidResponse }
       book = result
@@ -85,9 +86,44 @@ final class BookDetailModel {
     draft = MetadataDraft(book: book)
   }
 
+  func awaitFileReadback(session: UUID) {
+    guard !isUnavailable else { return }
+    fileSession = session
+    loadID = UUID()
+    book = nil
+    draft = nil
+    error = "The file change is awaiting current server details. Reload when connected."
+  }
+
+  func acknowledgeFiles(_ saved: BookDetail) {
+    guard saved.id == bookID, !isUnavailable else { return }
+    loadID = UUID()
+    error = nil
+    book = saved
+  }
+
   func acknowledgeReading(_ saved: BookDetail) {
     guard saved.id == bookID, !isUnavailable else { return }
     book = saved
+  }
+
+  func acknowledgeAddedAt(_ saved: BookDetail) {
+    guard saved.id == bookID, saved.libraryId == book?.libraryId, !isUnavailable else { return }
+    loadID = UUID()
+    book = saved
+  }
+
+  func acknowledgeReadAloudSync(
+    _ saved: BookDetail, session: UUID, isCurrent: @MainActor () -> Bool
+  ) async {
+    guard (try? await api.authenticatedSessionGeneration()) == session,
+      isCurrent(),
+      saved.id == bookID, !isUnavailable, var current = book,
+      current.files.sorted(by: { $0.id < $1.id }) == saved.files.sorted(by: { $0.id < $1.id })
+    else { return }
+    current.readAloudSync = saved.readAloudSync
+    loadID = UUID()
+    book = current
   }
 
   func saveMetadata() async {

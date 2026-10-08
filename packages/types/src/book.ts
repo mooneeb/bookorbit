@@ -263,6 +263,10 @@ export type SaveFileProgressPayload = Partial<
   baseVersion?: string;
 };
 
+export type UpdateBookFilePayload = {
+  filename?: string;
+};
+
 export type BookDetailFile = {
   id: number;
   format: string | null;
@@ -285,6 +289,10 @@ export type AudioMetadata = {
 };
 
 export type ReadAloudProgressSyncMode = "auto" | "disabled";
+
+export type UpdateBookReadAloudSyncPayload = {
+  mode: ReadAloudProgressSyncMode;
+};
 
 export type ReadAloudProgressSyncState = "enabled" | "disabled" | "unavailable";
 
@@ -357,6 +365,11 @@ export type BookFileWriteStatus = {
   writableFields: BookFileWriteField[];
 };
 
+export interface ClearFileProgressQuery {
+  textVersion?: string;
+  narrationVersion?: string;
+}
+
 export type BookDetail = {
   id: number;
   libraryId: number;
@@ -411,6 +424,10 @@ export type BookCoverSlot = {
   updatedAt: string;
   width: number | null;
   height: number | null;
+};
+
+export type BookAddedAtUpdatePayload = {
+  addedAt: string;
 };
 
 export type BookMetadataSaveResult = {

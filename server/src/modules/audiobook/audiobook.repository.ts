@@ -74,8 +74,23 @@ export class AudiobookRepository {
     return row ?? null;
   }
 
-  async deletePlaybackState(userId: number, bookId: number) {
-    await this.db.delete(audiobookProgress).where(and(eq(audiobookProgress.userId, userId), eq(audiobookProgress.bookId, bookId)));
+  async deletePlaybackState(userId: number, bookId: number, baseRevision?: number) {
+    if (baseRevision === undefined) {
+      await this.db.delete(audiobookProgress).where(and(eq(audiobookProgress.userId, userId), eq(audiobookProgress.bookId, bookId)));
+      return true;
+    }
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`set local lock_timeout = '5s'`);
+      const [current] = await tx
+        .select()
+        .from(audiobookProgress)
+        .where(and(eq(audiobookProgress.userId, userId), eq(audiobookProgress.bookId, bookId)))
+        .limit(1)
+        .for('update');
+      if (baseRevision !== undefined && (current?.revision ?? 0) !== baseRevision) return false;
+      if (current) await tx.delete(audiobookProgress).where(and(eq(audiobookProgress.userId, userId), eq(audiobookProgress.bookId, bookId)));
+      return true;
+    });
   }
 
   findAudioBookmarks(userId: number, bookId: number) {

@@ -71,13 +71,17 @@ final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
     to size: CGSize, with coordinator: any UIViewControllerTransitionCoordinator
   ) {
     let cfi = model.visibleLocation?.cfi
+    let continuous = model.isContinuous
+    let anchor = Task { continuous ? await model.layoutAnchor() : cfi }
     isRotating = true
     super.viewWillTransition(to: size, with: coordinator)
     coordinator.animate(alongsideTransition: nil) { [weak self] _ in
       guard let self else { return }
       self.isRotating = false
       self.lastSize = self.view.bounds.size
-      if let cfi { Task { await self.model.preserveLayout(at: cfi) } }
+      Task {
+        if let cfi = await anchor.value { await self.model.preserveLayout(at: cfi) }
+      }
     }
   }
 
@@ -87,12 +91,15 @@ final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
     guard size != lastSize, size.width > 0, size.height > 0 else { return }
     let hadSize = lastSize != .zero
     lastSize = size
-    guard hadSize, !isRotating, let cfi = model.visibleLocation?.cfi else { return }
+    guard hadSize, !isRotating else { return }
+    let cfi = model.visibleLocation?.cfi
+    let continuous = model.isContinuous
     layoutTask?.cancel()
     layoutTask = Task { [weak self] in
       do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
       guard let self, !self.isDetached else { return }
-      await self.model.preserveLayout(at: cfi)
+      let target = continuous ? await self.model.layoutAnchor() : cfi
+      if let target { await self.model.preserveLayout(at: target) }
     }
   }
 
@@ -187,7 +194,7 @@ final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
 
   func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
     guard gestureRecognizer === pan, model.canNavigate, model.selectionCFI == nil,
-      model.preferences.value.settings.flow == "paginated", let pan
+      !model.isContinuous, let pan
     else { return false }
     let velocity = pan.velocity(in: view)
     return model.preferences.value.pageAnimation == .verticalSlide

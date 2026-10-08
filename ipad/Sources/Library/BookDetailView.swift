@@ -2,10 +2,14 @@ import SwiftUI
 
 struct BookDetailView: View {
   let canEditMetadata: Bool
+  private let requestedAPI: BookOrbitAPI
+  private let requestedBookID: Int
   let canRead: Bool
   let canDeleteBooks: Bool
   let userID: Int
   let bookUnavailable: (Int, BookDeletionOutcome) -> Void
+  private let readAloudSyncRequestedAPI: BookOrbitAPI
+  private let readAloudSyncRequestedBookID: Int
   @Environment(\.dismiss) private var dismiss
   @State private var model: BookDetailModel
   @State private var isManagingCollections = false
@@ -16,8 +20,13 @@ struct BookDetailView: View {
   @State private var deletion: BookDeletionModel?
   @State private var deletionOutcome: BookDeletionOutcome?
   @State private var deletionNotice: String?
+  @State private var positionReset: NativePositionResetModel?
+  @State private var positionResetNotice: String?
   @State private var movement: BookMoveModel?
   @State private var moveNotice: String?
+  @State private var addedAtContext = UUID()
+  @State private var readAloudSync: BookReadAloudSyncModel?
+  @State private var fileActions: BookFileActionsModel?
 
   init(
     api: BookOrbitAPI, bookID: Int, canEditMetadata: Bool, canRead: Bool,
@@ -26,18 +35,15 @@ struct BookDetailView: View {
     bookUnavailable: @escaping (Int, BookDeletionOutcome) -> Void = { _, _ in }
   ) {
     self.canEditMetadata = canEditMetadata
+    requestedAPI = api
+    requestedBookID = bookID
     self.canRead = canRead
     self.canDeleteBooks = canDeleteBooks
     self.userID = userID
     self.bookUnavailable = bookUnavailable
+    readAloudSyncRequestedAPI = api
+    readAloudSyncRequestedBookID = bookID
     _model = State(initialValue: BookDetailModel(api: api, bookID: bookID))
-  }
-
-  private func isReadable(_ file: BookDetailFile) -> Bool {
-    let format = file.format?.lowercased() ?? ""
-    return NativeEbookVocabulary.mimeTypes[format] != nil
-      || ["pdf", "cbz", "cbr", "cb7"].contains(format)
-      || AudioStreamFormat.mimeTypes[format] != nil
   }
 
   var body: some View {
@@ -72,18 +78,25 @@ struct BookDetailView: View {
                 }
               }
             }
+            if requestedBookID == book.id, requestedAPI === model.api {
+              addedAtSection(book)
+            }
             Section("Files") {
               ForEach(book.files) { file in
-                VStack(alignment: .leading) {
-                  Text(file.filename ?? "Book file")
-                  Text(file.format?.uppercased() ?? "Unknown format").font(.caption)
-                    .foregroundStyle(.secondary)
-                  if canRead, isReadable(file) {
-                    Button("Read") { selectedFile = file }
-                      .accessibilityIdentifier("readFile\(file.id)")
-                  }
-                }
+                BookFileRowView(
+                  file: file, canRead: canRead, canManage: userID > 0 && !model.isSaving,
+                  open: openFile, manage: promptFileActions)
               }
+              if book.files.isEmpty {
+                Text("This book has no files. Its current server status is \(book.status).")
+                  .fixedSize(horizontal: false, vertical: true)
+                  .accessibilityIdentifier("bookHasNoFiles")
+              }
+            }
+            if userID > 0 {
+              BookPositionResetSection(
+                book: book, canDownload: canRead, isDisabled: model.isSaving,
+                notice: positionResetNotice, reset: promptPositionReset)
             }
             Section("Collections") {
               Button("Manage collections") { isManagingCollections = true }
@@ -91,6 +104,18 @@ struct BookDetailView: View {
               if let collectionResult {
                 Text(collectionResult).fixedSize(horizontal: false, vertical: true)
                   .accessibilityIdentifier("collectionMembershipResult")
+              }
+            }
+            if BookReadAloudSyncPresentation.isVisible(book) {
+              Section("Read-aloud progress sync") {
+                LabeledContent(
+                  "Saved mode",
+                  value: BookReadAloudSyncPresentation.modeLabel(book.readAloudSync.mode)
+                )
+                .accessibilityIdentifier("bookReadAloudSyncMode")
+                BookReadAloudSyncStatusView(book: book)
+                Button("Edit progress sync", action: promptReadAloudSync).frame(minHeight: 44)
+                  .disabled(model.isSaving).accessibilityIdentifier("editReadAloudSync")
               }
             }
             Section("Your reading") {
@@ -147,7 +172,18 @@ struct BookDetailView: View {
       .toolbar { Button("Done", action: dismiss.callAsFunction) }
     }
     .task { await model.load() }
+    .onChange(of: ObjectIdentifier(readAloudSyncRequestedAPI)) { _, _ in discardReadAloudSync() }
+    .onChange(of: readAloudSyncRequestedBookID) { _, _ in discardReadAloudSync() }
+    .onChange(of: requestedBookID) { _, _ in addedAtContext = UUID() }
+    .onChange(of: ObjectIdentifier(requestedAPI)) { _, _ in addedAtContext = UUID() }
     .onChange(of: userID) { _, _ in
+      positionReset?.detach()
+      positionReset = nil
+      positionResetNotice = nil
+      addedAtContext = UUID()
+      discardReadAloudSync()
+      fileActions?.close()
+      fileActions = nil
       movement?.detach()
       movement = nil
       moveNotice = nil
@@ -155,6 +191,12 @@ struct BookDetailView: View {
       deletion = nil
       deletionOutcome = nil
       deletionNotice = nil
+    }
+    .sheet(item: $positionReset) { reset in
+      NativePositionResetView(model: reset, closed: positionResetClosed)
+    }
+    .sheet(item: $fileActions, onDismiss: { Task { await model.load() } }) { actions in
+      BookFileActionsView(model: actions)
     }
     .sheet(item: $movement) { movement in
       BookMoveView(model: movement, closed: moveClosed)
@@ -187,6 +229,84 @@ struct BookDetailView: View {
     .sheet(item: $deletion, onDismiss: deletionClosed) { deletion in
       BookDeletionView(model: deletion, resolved: deleted, closed: deletionDisappeared)
     }
+    .sheet(item: $readAloudSync) { setting in
+      BookReadAloudSyncView(model: setting) { saved, session in
+        guard readAloudSync?.id == setting.id, !setting.isDetached,
+          model.api === readAloudSyncRequestedAPI, model.bookID == readAloudSyncRequestedBookID
+        else { return }
+        await model.acknowledgeReadAloudSync(saved, session: session) {
+          readAloudSync?.id == setting.id && !setting.isDetached
+            && model.api === readAloudSyncRequestedAPI
+            && model.bookID == readAloudSyncRequestedBookID
+        }
+      }
+    }
+  }
+
+  private func promptReadAloudSync() {
+    guard let book = model.book, !model.isSaving,
+      model.api === readAloudSyncRequestedAPI, model.bookID == readAloudSyncRequestedBookID
+    else { return }
+    readAloudSync = BookReadAloudSyncModel(
+      api: model.api, bookID: model.bookID, files: book.files,
+      userID: userID > 0 ? userID : nil)
+  }
+
+  private func discardReadAloudSync() {
+    readAloudSync?.detach()
+    readAloudSync = nil
+  }
+
+  private func promptPositionReset(_ target: NativePositionResetTarget) {
+    guard userID > 0, model.book != nil, !model.isSaving else { return }
+    positionReset = NativePositionResetModel(api: model.api, target: target)
+  }
+
+  private func positionResetClosed(_ reset: NativePositionResetModel) {
+    guard positionReset?.id == reset.id else {
+      reset.detach()
+      return
+    }
+    if reset.isConfirmed {
+      positionResetNotice = "Saved position cleared for \(reset.target.label)."
+    } else if reset.didAttempt {
+      positionResetNotice =
+        reset.message ?? reset.error
+        ?? "Position reset was not confirmed. Check its current server position before retrying."
+    }
+    reset.detach()
+    positionReset = nil
+    if reset.didAttempt { Task { await model.load() } }
+  }
+
+  private func addedAtSection(_ book: BookDetail) -> some View {
+    let context = addedAtContext
+    return BookAddedAtSection(
+      api: model.api, book: book, userID: userID, canEditMetadata: canEditMetadata,
+      acknowledged: { saved in
+        guard addedAtContext == context, saved.id == requestedBookID,
+          requestedAPI === model.api
+        else { return }
+        model.acknowledgeAddedAt(saved)
+      }
+    )
+    .id(
+      "\(context).user.\(userID).book.\(requestedBookID).library.\(book.libraryId).added.\(book.addedAt)"
+    )
+  }
+
+  private func openFile(_ file: BookDetailFile) {
+    guard canRead, model.book?.files.contains(where: { $0.id == file.id }) == true else { return }
+    selectedFile = file
+  }
+
+  private func promptFileActions(_ file: BookDetailFile) {
+    guard userID > 0, !model.isSaving,
+      model.book?.files.contains(where: { $0.id == file.id }) == true
+    else { return }
+    fileActions = BookFileActionsModel(
+      api: model.api, bookID: model.bookID, fileID: file.id, userID: userID,
+      acknowledged: model.acknowledgeFiles, mutationPending: model.awaitFileReadback)
   }
 
   private func promptDelete() {
@@ -195,6 +315,7 @@ struct BookDetailView: View {
   }
 
   private func deleted(_ outcome: BookDeletionOutcome) {
+    discardReadAloudSync()
     model.discardDeletedBook()
     selectedFile = nil
     deletionOutcome = outcome
@@ -236,6 +357,7 @@ struct BookDetailView: View {
     Task {
       guard await movement.belongsToCurrentSession() else { return }
       selectedFile = nil
+      discardReadAloudSync()
       model.draft = nil
       isEditingReading = false
       isEditingCovers = false

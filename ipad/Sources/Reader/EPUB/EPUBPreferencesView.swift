@@ -16,10 +16,25 @@ struct EPUBPreferencesView: View {
       Form {
         Group {
           Section("Reading mode") {
-            Picker("Reading mode", selection: $draft.settings.flow) {
-              Text("Horizontal pagination").tag("paginated")
-              Text("Continuous scrolling").tag("scrolled")
-            }.accessibilityIdentifier("epubReadingMode")
+            if model.supportsContinuous {
+              Picker("Reading mode", selection: $draft.settings.flow) {
+                Text("Horizontal pagination").tag("paginated")
+                Text("Continuous scrolling").tag("scrolled")
+              }.accessibilityIdentifier("epubReadingMode")
+              if draft.settings.flow == "scrolled" {
+                Picker("Continuous direction", selection: $draft.continuousAxis) {
+                  ForEach(EPUBContinuousAxis.allCases) { Text($0.label).tag($0) }
+                }.accessibilityIdentifier("epubContinuousAxis")
+                Text(
+                  "Scroll freely. Swipe again at a section edge to continue to the next or previous section."
+                )
+              }
+            } else {
+              Text(
+                "Fixed-layout books keep the publisher's pages and do not use continuous scrolling."
+              )
+              .accessibilityIdentifier("epubPublisherPages")
+            }
             Picker("Page animation", selection: $draft.pageAnimation) {
               ForEach(ReaderTurnAnimation.allCases) { Text($0.label).tag($0) }
             }.accessibilityIdentifier("epubPageAnimation")
@@ -28,7 +43,7 @@ struct EPUBPreferencesView: View {
             }.accessibilityIdentifier("epubProgrammaticMovement")
             if reduceMotion { Text("Reduce Motion uses immediate page changes and jumps.") }
             Text(
-              "Page animation and programmatic movement stay on this device, with defaults and per-book settings."
+              "Continuous direction, page animation and programmatic movement stay on this device, with defaults and per-book settings."
             )
           }
           Section("Appearance") {
@@ -40,15 +55,14 @@ struct EPUBPreferencesView: View {
             Toggle("Dark appearance", isOn: $draft.settings.isDark).accessibilityIdentifier(
               "epubDarkAppearance")
             Picker("Font", selection: fontFamily) {
-              Text("Publisher font").tag("")
-              ForEach(["Georgia", "Helvetica", "Palatino", "Times New Roman"], id: \.self) {
-                Text($0).tag($0)
+              ForEach(EPUBBuiltInFont.allCases) { font in
+                Text(font.label).tag(font.rawValue)
               }
               ForEach(model.fonts.selectableFamilies) { family in
                 Text(family.label).tag(family.cssFamily)
               }
               if let family = draft.settings.fontFamily,
-                !["Georgia", "Helvetica", "Palatino", "Times New Roman"].contains(family),
+                EPUBBuiltInFont(rawValue: family) == nil,
                 !model.fonts.selectableFamilies.contains(where: { $0.cssFamily == family })
               {
                 Text("Saved font: \(family) (unavailable)").tag(family)

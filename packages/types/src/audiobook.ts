@@ -53,6 +53,11 @@ export interface AudiobookPlaybackState {
   manifestRevision: string;
 }
 
+export interface DeleteAudiobookPlaybackStateQuery {
+  baseRevision?: number;
+  manifestRevision?: string;
+}
+
 export interface PutAudiobookPlaybackState {
   assetId: string;
   positionMs: number;

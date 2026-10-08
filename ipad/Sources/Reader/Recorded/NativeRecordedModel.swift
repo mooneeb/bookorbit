@@ -13,6 +13,8 @@ final class NativeRecordedModel {
   private(set) var elapsed = 0.0
   private(set) var duration = 0.0
   private(set) var error: String?
+  private(set) var isPositionResetting = false
+  private var positionResetGeneration = UUID()
   private(set) var isBusy = false
   private(set) var follow = true
   private(set) var rate = 1.0
@@ -43,7 +45,8 @@ final class NativeRecordedModel {
   var isActive: Bool { state == .playing || state == .paused || state == .loading }
   var isPlaying: Bool { state == .playing }
   var canControl: Bool {
-    !isBusy && !position.isSaving && !isClosed && position.hasLoaded && !position.conflict.isBlocked
+    !isPositionResetting && !isBusy && !position.isSaving && !isClosed && position.hasLoaded
+      && !position.conflict.isBlocked
   }
   var timeLabel: String {
     "\(elapsed.formatted(.number.precision(.fractionLength(1)))) / \(duration.formatted(.number.precision(.fractionLength(1)))) seconds in segment"
@@ -221,6 +224,7 @@ final class NativeRecordedModel {
   }
 
   func foreground() async {
+    guard !isPositionResetting else { return }
     do {
       try await position.checkSession()
       await position.refresh()
@@ -255,8 +259,35 @@ final class NativeRecordedModel {
     await resumeSaved()
   }
 
+  func beginPositionReset() async throws {
+    guard !isClosed else { throw CancellationError() }
+    let request = UUID()
+    positionResetGeneration = request
+    isPositionResetting = true
+    audio.pause()
+    try await NativePositionResetWait.drain {
+      self.isBusy || self.position.isSaving || self.position.canonical.isResolving
+    }
+    guard request == positionResetGeneration, isPositionResetting else { throw CancellationError() }
+    _ = await stopAndSave()
+    try Task.checkCancellation()
+    guard request == positionResetGeneration, isPositionResetting else { throw CancellationError() }
+    position.canonical.suspendForReset(true)
+    try Task.checkCancellation()
+  }
+
+  func cancelPositionReset() {
+    positionResetGeneration = UUID()
+    isPositionResetting = false
+    position.canonical.suspendForReset(false)
+  }
+
+  func acknowledgePositionReset() { position.acknowledgeReset() }
+
   func close() {
-    do { try capture() } catch { self.error = error.localizedDescription }
+    do { if !isPositionResetting { try capture() } } catch {
+      self.error = error.localizedDescription
+    }
     isClosed = true
     operation = UUID()
     sessionTask?.cancel()
@@ -269,7 +300,7 @@ final class NativeRecordedModel {
   }
 
   private func perform(_ action: @MainActor () async throws -> Void) async {
-    guard !isBusy, !isClosed else { return }
+    guard !isBusy, !isClosed, !isPositionResetting else { return }
     isBusy = true
     error = nil
     defer { isBusy = false }
@@ -391,7 +422,9 @@ final class NativeRecordedModel {
           self.pendingEnd = false
           Task { await self.moveClip(forward: true) }
         }
-        if self.isPlaying, !self.isBusy, Date().timeIntervalSince(self.lastServerWrite) >= 15 {
+        if self.isPlaying, !self.isBusy, !self.isPositionResetting,
+          Date().timeIntervalSince(self.lastServerWrite) >= 15
+        {
           self.lastServerWrite = Date()
           _ = await self.position.flush()
         }

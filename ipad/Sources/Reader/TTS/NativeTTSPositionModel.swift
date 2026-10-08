@@ -33,6 +33,7 @@ final class NativeTTSPositionModel {
   var localTarget: String? { localCandidate?.cfi }
   var remoteTarget: String? { remoteCandidate?.position?.cfi }
   private var isClosed = false
+  private var resetSuspended = false
 
   init(api: BookOrbitAPI, fileID: Int) {
     self.api = api
@@ -87,7 +88,7 @@ final class NativeTTSPositionModel {
   }
 
   func record(_ position: TtsPosition) async throws {
-    guard hasLoaded, !isClosed, !conflict.isBlocked, Self.validPosition(position),
+    guard hasLoaded, !isClosed, !resetSuspended, !conflict.isBlocked, Self.validPosition(position),
       Self.validCFI(position.cfi)
     else {
       throw ConnectionError.invalidResponse
@@ -100,7 +101,7 @@ final class NativeTTSPositionModel {
 
   @discardableResult
   func flush() async -> Bool {
-    guard hasLoaded, !isClosed, !conflict.isBlocked else { return false }
+    guard hasLoaded, !isClosed, !resetSuspended, !conflict.isBlocked else { return false }
     guard !isSaving else { return false }
     guard let savedPosition, hasPendingSave else { return true }
     isSaving = true
@@ -165,7 +166,9 @@ final class NativeTTSPositionModel {
   }
 
   func refresh() async {
-    guard hasLoaded, !isClosed, !isSaving, !isResolving, !conflict.isBlocked else { return }
+    guard hasLoaded, !isClosed, !resetSuspended, !isSaving, !isResolving, !conflict.isBlocked else {
+      return
+    }
     do {
       let current = try await fetch()
       if current.version != version, let savedPosition {
@@ -175,8 +178,8 @@ final class NativeTTSPositionModel {
   }
 
   func choosePosition(local: Bool) async -> Bool {
-    guard !isClosed, !isSaving, !isResolving, conflict.isBlocked, let localCandidate,
-      let remoteCandidate
+    guard !isClosed, !resetSuspended, !isSaving, !isResolving, conflict.isBlocked,
+      let localCandidate, let remoteCandidate
     else {
       return false
     }
@@ -265,6 +268,23 @@ final class NativeTTSPositionModel {
       throw ConnectionError.expiredSession
     }
     try Task.checkCancellation()
+  }
+
+  func suspendForReset(_ suspended: Bool) { resetSuspended = suspended }
+
+  func acknowledgeReset() {
+    savedPosition = nil
+    acknowledged = nil
+    version = nil
+    hasLoaded = false
+    hasPendingSave = false
+    pendingRequest = nil
+    pendingBody = nil
+    pendingChoice = nil
+    localCandidate = nil
+    remoteCandidate = nil
+    conflict.clear()
+    message = nil
   }
 
   func close() { isClosed = true }

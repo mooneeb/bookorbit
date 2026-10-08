@@ -20,6 +20,7 @@ final class NativeFilePositionModel {
     source == "narration" ? remoteCandidate?.mediaOverlayFragment : remoteCandidate?.cfi
   }
   private var isClosed = false
+  private var resetSuspended = false
   private var pendingChoice: Bool?
   private var pendingBody: Data?
   private var beginning: SaveFileProgressPayload?
@@ -53,9 +54,8 @@ final class NativeFilePositionModel {
 
   @discardableResult
   func save(_ value: SaveFileProgressPayload) async -> FileReadingProgress? {
-    guard !isClosed, !isSaving, !isResolving, !conflict.isBlocked, let acknowledged else {
-      return nil
-    }
+    guard !isClosed, !resetSuspended, !isSaving, !isResolving, !conflict.isBlocked, let acknowledged
+    else { return nil }
     if pending == nil {
       var payload = value
       payload.source = source
@@ -67,7 +67,7 @@ final class NativeFilePositionModel {
   }
 
   private func flush() async -> FileReadingProgress? {
-    guard !isClosed, !isSaving, let pending else { return nil }
+    guard !isClosed, !resetSuspended, !isSaving, let pending else { return nil }
     isSaving = true
     message = nil
     defer { isSaving = false }
@@ -111,7 +111,8 @@ final class NativeFilePositionModel {
   }
 
   func refresh(_ local: SaveFileProgressPayload? = nil) async {
-    guard !isClosed, !isSaving, !isResolving, !conflict.isBlocked, let acknowledged else { return }
+    guard !isClosed, !resetSuspended, !isSaving, !isResolving, !conflict.isBlocked, let acknowledged
+    else { return }
     do {
       let current = try await fetch()
       if version(current) != version(acknowledged) {
@@ -121,8 +122,8 @@ final class NativeFilePositionModel {
   }
 
   func choose(local: Bool) async -> FileReadingProgress? {
-    guard !isClosed, !isSaving, !isResolving, conflict.isBlocked, let localCandidate,
-      let remoteCandidate
+    guard !isClosed, !resetSuspended, !isSaving, !isResolving, conflict.isBlocked,
+      let localCandidate, let remoteCandidate
     else {
       return nil
     }
@@ -154,6 +155,19 @@ final class NativeFilePositionModel {
       return await flush()
     } catch { if !isClosed { message = error.localizedDescription } }
     return nil
+  }
+
+  func suspendForReset(_ suspended: Bool) { resetSuspended = suspended }
+
+  func acknowledgeReset() {
+    pending = nil
+    pendingBody = nil
+    pendingChoice = nil
+    localCandidate = nil
+    remoteCandidate = nil
+    acknowledged = nil
+    conflict.clear()
+    message = nil
   }
 
   func close() { isClosed = true }

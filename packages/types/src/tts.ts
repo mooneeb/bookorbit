@@ -86,6 +86,10 @@ export interface TtsPositionSnapshot {
   version: string;
 }
 
+export interface ClearTtsPositionQuery {
+  baseVersion?: string;
+}
+
 export interface SaveTtsPositionPayload {
   cfi: string;
   chapterIndex?: number | null;

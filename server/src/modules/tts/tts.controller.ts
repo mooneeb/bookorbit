@@ -7,6 +7,7 @@ import { ForbidPermission } from '../../common/decorators/forbid-permission.deco
 import type { RequestUser } from '../../common/types/request-user';
 import { PreviewVoiceDto, SynthesizeDto } from './dto/synthesize.dto';
 import { UpdateTtsPreferencesDto } from './dto/tts-preferences.dto';
+import { ClearTtsPositionQueryDto } from './dto/clear-tts-position-query.dto';
 import { SaveTtsPositionDto } from './dto/tts-position.dto';
 import { ttsContentType } from './tts-audio-format';
 import { TtsService } from './tts.service';
@@ -96,8 +97,13 @@ export class TtsController {
 
   @Delete('position/:bookFileId')
   @HttpCode(204)
-  async deletePosition(@Param('bookFileId', ParseIntPipe) bookFileId: number, @CurrentUser() user: RequestUser) {
-    await this.ttsService.deletePosition(user.id, bookFileId, user);
+  async deletePosition(
+    @Param('bookFileId', ParseIntPipe) bookFileId: number,
+    @CurrentUser() user: RequestUser,
+    @Query() query: ClearTtsPositionQueryDto = {},
+  ) {
+    if (query.baseVersion !== undefined) await this.ttsService.deletePosition(user.id, bookFileId, user, query.baseVersion);
+    else await this.ttsService.deletePosition(user.id, bookFileId, user);
   }
 
   @Get('text/:bookFileId/:chapterIndex')

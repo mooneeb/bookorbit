@@ -1,15 +1,22 @@
 import Foundation
 import Observation
 
+enum EPUBContinuousAxis: String, Codable, CaseIterable, Identifiable {
+  case vertical, horizontal
+  var id: String { rawValue }
+  var label: String { self == .vertical ? "Vertical" : "Horizontal" }
+}
+
 struct EPUBPreferencesValue: Codable, Equatable {
   var settings = EpubReaderSettings.readerDefault
   var pageAnimation = ReaderTurnAnimation.curl
   var programmaticMovement = EPUBProgrammaticMovement.smooth
+  var continuousAxis = EPUBContinuousAxis.vertical
 
   init() {}
 
   private enum CodingKeys: String, CodingKey {
-    case settings, pageAnimation, programmaticMovement
+    case settings, pageAnimation, programmaticMovement, continuousAxis
   }
 
   init(from decoder: any Decoder) throws {
@@ -19,6 +26,8 @@ struct EPUBPreferencesValue: Codable, Equatable {
     programmaticMovement =
       try values.decodeIfPresent(EPUBProgrammaticMovement.self, forKey: .programmaticMovement)
       ?? .smooth
+    continuousAxis =
+      try values.decodeIfPresent(EPUBContinuousAxis.self, forKey: .continuousAxis) ?? .vertical
   }
 
   var isValid: Bool {
@@ -61,6 +70,7 @@ final class EPUBPreferencesModel {
   private(set) var error: String?
   private(set) var syncSettings = false
   private(set) var canSync = false
+  private(set) var supportsContinuous = true
   private var key: String?
   private var generation: UUID?
   private var isClosed = false
@@ -75,6 +85,8 @@ final class EPUBPreferencesModel {
     self.fileID = fileID
     fonts = EPUBCustomFontsModel(api: api)
   }
+  func setFixedLayout(_ fixed: Bool) { supportsContinuous = !fixed }
+
   var canSave: Bool {
     hasLoaded && !isLoading && !isSaving && !isClosed
   }

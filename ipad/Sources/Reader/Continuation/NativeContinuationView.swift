@@ -14,6 +14,10 @@ struct NativeContinuationView: View {
           Text(message).fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("continuationMessage")
         }
+        if model.response?.reason == "disabled" {
+          Button("Edit progress sync", action: model.openReadAloudSync).frame(minHeight: 44)
+            .disabled(model.isBusy).accessibilityIdentifier("continuationEditReadAloudSync")
+        }
         if let response = model.response, response.state == "ready" {
           Section {
             Text(model.explanation).fixedSize(horizontal: false, vertical: true)
@@ -45,6 +49,11 @@ struct NativeContinuationView: View {
           Button("Cancel", action: model.cancel).frame(minHeight: 44)
             .accessibilityIdentifier("continuationCancel")
         }
+      }
+    }
+    .sheet(item: $model.readAloudSync) { setting in
+      BookReadAloudSyncView(model: setting) { book, session in
+        await model.readAloudSyncSaved(setting, book: book, session: session)
       }
     }
   }

@@ -148,6 +148,11 @@ struct PutAudiobookPlaybackState: Encodable, Sendable, Equatable {
     var `manifestRevision`: String
 }
 
+struct DeleteAudiobookPlaybackStateQuery: Encodable, Sendable, Equatable {
+    var `baseRevision`: Int?
+    var `manifestRevision`: String?
+}
+
 struct NativeAuthResponse: Codable, Sendable, Equatable {
     var `user`: AuthUser
     var `accessToken`: String
@@ -402,8 +407,10 @@ struct CatalogSearchResult: Codable, Sendable, Equatable, Identifiable {
 
 struct BookDetail: Codable, Sendable, Equatable, Identifiable {
     var `id`: Int
+    var `status`: String
     var `libraryId`: Int
     var `libraryName`: String
+    var `addedAt`: String
     var `title`: String?
     var `subtitle`: String?
     var `description`: String?
@@ -430,6 +437,7 @@ struct BookDetail: Codable, Sendable, Equatable, Identifiable {
     var `providerIds`: BookDetailProviderIds
     var `hardcoverEditionId`: String?
     var `audioMetadata`: AudioMetadata?
+    var `readAloudSync`: ReadAloudProgressSync
     var `comicMetadata`: ComicMetadataFields?
     var `files`: [BookDetailFile]
     var `lockedFields`: [String]
@@ -495,6 +503,18 @@ struct AudiobookChapter: Codable, Sendable, Equatable {
     var `startMs`: Int
 }
 
+struct ReadAloudProgressSync: Codable, Sendable, Equatable {
+    var `mode`: String
+    var `state`: String
+    var `unavailableReason`: String?
+    var `overlayFileId`: Int?
+    var `audioDurationSeconds`: Double?
+    var `overlayDurationSeconds`: Double?
+    var `durationDifferenceSeconds`: Double?
+    var `durationDifferenceRatio`: Double?
+    var `koreaderDownloadAvailable`: Bool
+}
+
 struct ComicMetadataFields: Codable, Sendable, Equatable {
     var `issueNumber`: String?
     var `volumeName`: String?
@@ -516,6 +536,8 @@ struct BookDetailFile: Codable, Sendable, Equatable, Identifiable {
     var `filename`: String?
     var `sizeBytes`: Double?
     var `durationSeconds`: Int?
+    var `mediaOverlay`: EpubMediaOverlayCapability?
+    var `absolutePath`: String
 }
 
 struct BookDetailCovers: Codable, Sendable, Equatable {
@@ -528,6 +550,10 @@ struct BookCoverSlot: Codable, Sendable, Equatable {
     var `updatedAt`: String
     var `width`: Int?
     var `height`: Int?
+}
+
+struct UpdateBookReadAloudSyncPayload: Encodable, Sendable, Equatable {
+    var `mode`: String
 }
 
 struct BookContinuationQuery: Codable, Sendable, Equatable {
@@ -948,6 +974,10 @@ struct BookMetadataAndLocksUpdatePayload: Encodable, Sendable, Equatable {
     var `lockedFields`: [String]
 }
 
+struct BookAddedAtUpdatePayload: Encodable, Sendable, Equatable {
+    var `addedAt`: String
+}
+
 struct FileReadingProgress: Codable, Sendable, Equatable {
     var `cfi`: String?
     var `pageNumber`: Double?
@@ -981,6 +1011,11 @@ struct SaveFileProgressPayload: Encodable, Sendable, Equatable {
     var `percentage`: Double
     var `source`: String?
     var `baseVersion`: String?
+}
+
+struct ClearFileProgressQuery: Encodable, Sendable, Equatable {
+    var `textVersion`: String?
+    var `narrationVersion`: String?
 }
 
 struct EpubBookInfo: Codable, Sendable, Equatable {
@@ -1908,6 +1943,10 @@ struct UpdateBookPersonalNotePayload: Encodable, Sendable, Equatable {
     var `note`: FieldUpdate<String>?
 }
 
+struct UpdateBookFilePayload: Encodable, Sendable, Equatable {
+    var `filename`: String?
+}
+
 struct TtsPosition: Codable, Sendable, Equatable {
     var `cfi`: String
     var `chapterIndex`: Int?
@@ -1922,6 +1961,10 @@ struct TtsPositionSnapshot: Codable, Sendable, Equatable {
 struct SaveTtsPositionPayload: Encodable, Sendable, Equatable {
     var `cfi`: String
     var `chapterIndex`: Int?
+    var `baseVersion`: String?
+}
+
+struct ClearTtsPositionQuery: Encodable, Sendable, Equatable {
     var `baseVersion`: String?
 }
 

@@ -56,6 +56,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   private(set) var isReady = false
   private(set) var isLoading = false
   private(set) var isNavigating = false
+  private(set) var isPositionResetting = false
   private(set) var isSaving = false
   private(set) var isSearching = false
   private(set) var results: [EPUBSearchResult] = []
@@ -107,6 +108,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       resources, contentWorld: .page, name: "resource")
     configuration.userContentController.add(self, name: "location")
     configuration.userContentController.add(self, name: "selection")
+    configuration.userContentController.add(self, name: "readerError")
     preferences.validateFont = { [weak self] requested in
       guard let self, self.isReady, !self.isClosed else { throw EPUBFontError.loadFailed }
       try await self.prepareFontSelection(requested)
@@ -135,6 +137,9 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   var rightToLeft: Bool { visibleLocation?.rightToLeft == true }
+  var isContinuous: Bool {
+    preferences.supportsContinuous && preferences.value.settings.flow == "scrolled"
+  }
   var chapterCount: Int { deliveredOutline?.sectionCount ?? info?.spine.count ?? 0 }
   var contents: [EpubTocItem] {
     if let deliveredOutline { return deliveredOutline.toc }
@@ -142,11 +147,11 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
   var canNavigate: Bool {
     isReady && !isNavigating && !isSaving && !isSearching && pendingProgress == nil
-      && !position.conflict.isBlocked && !isClosed
+      && !position.conflict.isBlocked && !isPositionResetting && !isClosed
   }
   var canSave: Bool {
     isReady && location != nil && !isNavigating && !isSaving && !position.conflict.isBlocked
-      && !isClosed
+      && !isPositionResetting && !isClosed
   }
   var hasPendingSave: Bool { pendingProgress != nil }
   var canClose: Bool { !isSaving && !isNavigating && !isSearching }
@@ -309,7 +314,8 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
   func turn(forward: Bool) async {
     await navigate(
-      "return await window.epubTurn(forward)", arguments: ["forward": forward], forward: forward)
+      "return await window.epubTurn(forward, smooth)",
+      arguments: ["forward": forward, "smooth": false], forward: forward)
   }
 
   func goToChapter(_ index: Int) async {
@@ -395,6 +401,19 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     } catch { self.error = error.localizedDescription }
   }
 
+  func layoutAnchor() async -> String? {
+    guard isReady, !isClosed, !isNavigating else { return visibleLocation?.cfi }
+    guard isContinuous, narrationLocation == nil else { return visibleLocation?.cfi }
+    do {
+      let raw = try await webView.callAsyncJavaScript(
+        "return window.epubLocation()", arguments: [:], in: nil, contentWorld: .page)
+      guard !isClosed else { return nil }
+      let current = try decodedLocation(raw)
+      location = current
+      return current.cfi
+    } catch { return visibleLocation?.cfi }
+  }
+
   func preserveLayout(at cfi: String) async {
     guard isReady, !isClosed, !isNavigating else { return }
     isNavigating = true
@@ -463,13 +482,20 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
   @discardableResult
   func saveProgress() async -> Bool {
-    guard canSave, let generation, let location else { return false }
+    guard canSave, let generation else { return false }
     isSaving = true
     error = nil
     status = nil
     defer { isSaving = false }
     do {
       if pendingProgress == nil {
+        if isContinuous && narrationLocation == nil {
+          let raw = try await webView.callAsyncJavaScript(
+            "return window.epubLocation()", arguments: [:], in: nil, contentWorld: .page)
+          guard !isClosed else { return false }
+          location = try decodedLocation(raw)
+        }
+        guard let location else { throw ConnectionError.invalidResponse }
         var payload = SaveFileProgressPayload(percentage: location.percentage)
         payload.source = "text"
         payload.cfi = location.cfi
@@ -506,7 +532,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   func refreshPosition() async {
-    guard !isClosed, isReady, !isNavigating, !isSaving else { return }
+    guard !isClosed, !isPositionResetting, isReady, !isNavigating, !isSaving else { return }
     var local = SaveFileProgressPayload(percentage: location?.percentage ?? 0)
     local.cfi = location?.cfi
     await position.refresh(local)
@@ -514,7 +540,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   func choosePosition(local: Bool) async {
-    guard isReady, !isClosed, !isNavigating, !isSaving else { return }
+    guard isReady, !isClosed, !isPositionResetting, !isNavigating, !isSaving else { return }
     guard let saved = await position.choose(local: local) else {
       await describePositionConflict(position)
       return
@@ -545,6 +571,28 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     guard !isClosed, !position.conflict.isBlocked, let narrationLocation else { return }
     location = narrationLocation
     self.narrationLocation = nil
+  }
+
+  func beginPositionReset() async throws {
+    guard !isClosed else { throw CancellationError() }
+    isPositionResetting = true
+    position.suspendForReset(true)
+    try await NativePositionResetWait.drain {
+      self.isSaving || self.isNavigating || self.isSearching || self.position.isSaving
+        || self.position.isResolving
+    }
+    await saveTask?.value
+    try Task.checkCancellation()
+  }
+
+  func cancelPositionReset() {
+    isPositionResetting = false
+    position.suspendForReset(false)
+  }
+
+  func acknowledgePositionReset() {
+    discardPendingProgress()
+    position.acknowledgeReset()
   }
 
   func discardPendingProgress() {
@@ -611,17 +659,23 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   func userContentController(
     _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
   ) {
-    guard !isClosed, message.frameInfo.isMainFrame, message.frameInfo.request.url == resources.entry
+    guard !isClosed, !isPositionResetting, message.frameInfo.isMainFrame,
+      message.frameInfo.request.url == resources.entry
     else { return }
     if message.name == "location" {
       if !isNavigating, let value = try? decodedLocation(message.body) {
         if (message.body as? [String: Any])?["source"] as? String == "narration" {
           narrationLocation = value
         } else {
+          let moved = location?.cfi != value.cfi || location?.percentage != value.percentage
           location = value
           narrationLocation = nil
-          scheduleSave()
+          if moved { scheduleSave() }
         }
+      }
+    } else if message.name == "readerError" {
+      if let message = message.body as? String, !message.isEmpty, message.utf16.count <= 500 {
+        error = message
       }
     } else if message.name == "selection" {
       if let value = message.body as? [String: Any], let cfi = value["cfi"] as? String,
@@ -646,7 +700,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     allowPendingSave: Bool = false, programmatic: Bool = false,
     preserveContentOnFailure: Bool = false
   ) async -> Bool {
-    guard isReady, !isNavigating, !isSearching, !isClosed,
+    guard isReady, !isNavigating, !isSearching, !isPositionResetting, !isClosed,
       allowPendingSave || (!isSaving && pendingProgress == nil)
     else { return false }
     isNavigating = true
@@ -655,14 +709,15 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     if !isSaving { saveTask?.cancel() }
     let originalLocation = location
     let movement =
-      animate && (!programmatic || preferences.value.programmaticMovement == .smooth)
+      animate
+      && (!(programmatic || isContinuous) || preferences.value.programmaticMovement == .smooth)
       && !reduceMotion
     let animation: ReaderTurnAnimation =
-      !movement || preferences.value.settings.flow == "scrolled"
+      !movement || isContinuous
       ? .none : preferences.value.pageAnimation
     var commandArguments = arguments
-    if programmatic {
-      commandArguments["smooth"] = movement && preferences.value.settings.flow == "scrolled"
+    if programmatic || isContinuous {
+      commandArguments["smooth"] = movement && isContinuous
     }
     defer { isNavigating = false }
     do {
@@ -712,7 +767,9 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   private func scheduleSave() {
-    guard isReady, !isClosed, pendingProgress == nil, !position.conflict.isBlocked else { return }
+    guard isReady, !isClosed, !isPositionResetting, !isSaving, pendingProgress == nil,
+      !position.conflict.isBlocked
+    else { return }
     if let progressKey, let location,
       let data = try? JSONEncoder().encode(
         EPUBProgressJournal(cfi: location.cfi, percentage: location.percentage))
@@ -772,6 +829,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         || (locationTotal.map({ $0 > 0 && $0 <= 9_007_199_254_740_991 }) == true
           && locationNumber.map({ $0 > 0 && $0 <= (locationTotal ?? 0) }) == true)
     else { throw ConnectionError.invalidResponse }
+    preferences.setFixedLayout(value["fixedLayout"] as? Bool ?? false)
     return .init(
       cfi: cfi, percentage: percentage, chapterIndex: index,
       rightToLeft: value["rightToLeft"] as? Bool ?? false,
@@ -822,7 +880,11 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     }
     settings.fontSize = Double(
       UIFontMetrics(forTextStyle: .body).scaledValue(for: CGFloat(settings.fontSize)))
-    return try json(settings)
+    guard var rendered = try json(settings) as? [String: Any] else {
+      throw ConnectionError.invalidResponse
+    }
+    rendered["nativeContinuousAxis"] = (value ?? preferences.value).continuousAxis.rawValue
+    return rendered
   }
 
   private func prepareFontSelection(_ requested: EPUBPreferencesValue) async throws {

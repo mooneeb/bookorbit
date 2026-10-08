@@ -13,6 +13,7 @@ struct ComicReaderView: View {
   @State private var series: ComicSeriesModel
   @State private var isOpeningNext = false
   @State private var endArmed = false
+  @State private var positionReset: NativePositionResetModel?
   @State private var confirmsDiscard = false
   @State private var isNavigating = false
   @State private var isTurning = false
@@ -52,7 +53,8 @@ struct ComicReaderView: View {
             facingLayout: preferredFacingLayout
           )
           .allowsHitTesting(
-            !model.isClosing && !isOpeningNext && !model.position.conflict.isBlocked)
+            !model.isClosing && !model.isPositionResetting && !isOpeningNext
+              && !model.position.conflict.isBlocked)
         } else if model.error == nil {
           ProgressView("Opening comic…")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -121,6 +123,10 @@ struct ComicReaderView: View {
               .disabled(model.isClosing || isTurning)
             }
           }
+          Button("Clear reading position", action: promptPositionReset)
+            .frame(minHeight: 44)
+            .disabled(model.pageCount == 0 || model.isClosing || isTurning || positionReset != nil)
+            .accessibilityIdentifier("comicClearReadingPosition")
           Button("Close reader", action: closeReader)
             .frame(minHeight: 44)
             .disabled(model.isClosing)
@@ -144,13 +150,17 @@ struct ComicReaderView: View {
       model.configureContinuous(mode != "paginated")
     }
     .onDisappear {
-      if !isNavigating && !isEditingPreferences && !isBrowsingBookmarks {
+      if !isNavigating && !isEditingPreferences && !isBrowsingBookmarks && positionReset == nil {
         model.close()
         preferences.close()
         series.close()
       }
     }
     .disabled(isOpeningNext)
+    .sheet(item: $positionReset) { reset in
+      NativePositionResetView(model: reset, closed: positionResetClosed)
+    }
+    .interactiveDismissDisabled(positionReset != nil)
     .fullScreenCover(isPresented: $isBrowsingBookmarks) {
       ReaderBookmarksView(
         api: api, bookID: bookID, fileID: fileID, currentPage: model.pageIndex + 1,
@@ -216,6 +226,26 @@ struct ComicReaderView: View {
     } catch {}
   }
 
+  private func promptPositionReset() {
+    guard model.pageCount > 0, !model.isClosing, !isTurning, positionReset == nil else { return }
+    positionReset = NativePositionResetModel(
+      api: api,
+      target: .file(bookID: bookID, fileID: fileID, label: model.file.filename ?? "Book file"),
+      prepare: model.beginPositionReset, acknowledged: { model.acknowledgePositionReset() })
+  }
+
+  private func positionResetClosed(_ reset: NativePositionResetModel) {
+    reset.detach()
+    positionReset = nil
+    if reset.didAttempt {
+      model.close()
+      preferences.close()
+      dismiss()
+    } else {
+      model.cancelPositionReset()
+    }
+  }
+
   private func chooseLocalPosition() { Task { await model.choosePosition(local: true) } }
   private func chooseRemotePosition() { Task { await model.choosePosition(local: false) } }
 
@@ -254,7 +284,7 @@ struct ComicReaderView: View {
     }
   }
   private func nextPage() {
-    guard !isOpeningNext, !model.isClosing, !isTurning else { return }
+    guard !isOpeningNext, !model.isPositionResetting, !model.isClosing, !isTurning else { return }
     if let page = pageLayout.adjacentPage(to: model.pageIndex, delta: 1) {
       model.didTurn(to: page)
     } else if canAdvanceOnNext {
@@ -280,7 +310,8 @@ struct ComicReaderView: View {
   }
 
   private func openNext() {
-    guard !isOpeningNext, !isTurning, series.next != nil, let onOpenNext else { return }
+    guard !isOpeningNext, !model.isPositionResetting, !isTurning, series.next != nil, let onOpenNext
+    else { return }
     isOpeningNext = true
     Task {
       defer { isOpeningNext = false }

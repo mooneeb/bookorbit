@@ -1,3 +1,5 @@
+import { filePositionVersion } from '../../common/utils/reader-position-version.utils';
+import type { ClearFileProgressQueryDto } from './dto/clear-file-progress-query.dto';
 import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
 import { SQL, and, asc, count, eq, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { SUPPORTED_BOOK_FORMATS } from '../upload/upload-validator.service';
@@ -2425,56 +2427,75 @@ export class BookRepository {
             ...(mediaOverlayFragment !== undefined ? { mediaOverlayFragment } : {}),
             ...(mediaOverlaySectionIndex !== undefined ? { mediaOverlaySectionIndex } : {}),
           };
-    const [saved] = await this.db
-      .insert(readingProgress)
-      .values({
-        userId,
-        bookFileId: fileId,
-        cfi,
-        pageNumber,
-        percentage,
-        positionSeconds: positionSeconds ?? null,
-        mediaOverlayFragment: mediaOverlayFragment ?? null,
-        mediaOverlaySectionIndex: mediaOverlaySectionIndex ?? null,
-        koboLocationSource: normalizedKoboLocationSource,
-        koboLocationType: normalizedKoboLocationType,
-        koboLocationValue: normalizedKoboLocationValue,
-        koboContentSourceProgressPercent: normalizedKoboContentSourceProgressPercent,
-        koreaderProgress: normalizedKoreaderProgress,
-        updatedAt: now,
-        ...narrationColumns,
-        ...textColumns,
-      })
-      .onConflictDoUpdate({
-        target: [readingProgress.bookFileId, readingProgress.userId],
-        set: {
-          ...(condition?.source === 'narration' ? {} : { cfi, pageNumber, percentage }),
-          ...narrationPosition,
-          ...(condition?.source === 'narration'
-            ? {}
-            : {
-                koboLocationSource: normalizedKoboLocationSource,
-                koboLocationType: normalizedKoboLocationType,
-                koboLocationValue: normalizedKoboLocationValue,
-                koboContentSourceProgressPercent: normalizedKoboContentSourceProgressPercent,
-                koreaderProgress: normalizedKoreaderProgress,
-              }),
+    const write = async (executor: Db | BookRepositoryTx) => {
+      const [saved] = await executor
+        .insert(readingProgress)
+        .values({
+          userId,
+          bookFileId: fileId,
+          cfi,
+          pageNumber,
+          percentage,
+          positionSeconds: positionSeconds ?? null,
+          mediaOverlayFragment: mediaOverlayFragment ?? null,
+          mediaOverlaySectionIndex: mediaOverlaySectionIndex ?? null,
+          koboLocationSource: normalizedKoboLocationSource,
+          koboLocationType: normalizedKoboLocationType,
+          koboLocationValue: normalizedKoboLocationValue,
+          koboContentSourceProgressPercent: normalizedKoboContentSourceProgressPercent,
+          koreaderProgress: normalizedKoreaderProgress,
           updatedAt: now,
-          // Absent halves keep whatever is stored: a text write must not blank the narration
-          // position, and a narration write must not blank the text one.
           ...narrationColumns,
           ...textColumns,
-        },
-        setWhere,
-      })
-      .returning();
-    if (!saved) return null;
+        })
+        .onConflictDoUpdate({
+          target: [readingProgress.bookFileId, readingProgress.userId],
+          set: {
+            ...(condition?.source === 'narration' ? {} : { cfi, pageNumber, percentage }),
+            ...narrationPosition,
+            ...(condition?.source === 'narration'
+              ? {}
+              : {
+                  koboLocationSource: normalizedKoboLocationSource,
+                  koboLocationType: normalizedKoboLocationType,
+                  koboLocationValue: normalizedKoboLocationValue,
+                  koboContentSourceProgressPercent: normalizedKoboContentSourceProgressPercent,
+                  koreaderProgress: normalizedKoreaderProgress,
+                }),
+            updatedAt: now,
+            // Absent halves keep whatever is stored: a text write must not blank the narration
+            // position, and a narration write must not blank the text one.
+            ...narrationColumns,
+            ...textColumns,
+          },
+          setWhere,
+        })
+        .returning();
+      if (!saved) return null;
 
-    // Reading in BookOrbit is fresher intent than the reset that came before it, and it is
-    // the way out for a device that never pulls and would otherwise have every push held
-    // back indefinitely.
-    await this.db.delete(koreaderProgressResets).where(and(eq(koreaderProgressResets.userId, userId), eq(koreaderProgressResets.bookFileId, fileId)));
-    return saved;
+      // Reading in BookOrbit is fresher intent than the reset that came before it, and it is
+      // the way out for a device that never pulls and would otherwise have every push held
+      // back indefinitely.
+      await executor
+        .delete(koreaderProgressResets)
+        .where(and(eq(koreaderProgressResets.userId, userId), eq(koreaderProgressResets.bookFileId, fileId)));
+      return saved;
+    };
+    if (!condition) return write(this.db);
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`set local lock_timeout = '5s'`);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`bookorbit.file-position:${userId}:${fileId}`}, 0))`);
+      const [current] = await tx
+        .select()
+        .from(readingProgress)
+        .where(and(eq(readingProgress.userId, userId), eq(readingProgress.bookFileId, fileId)))
+        .limit(1);
+      if (
+        filePositionVersion(userId, fileId, condition.source, current) !== filePositionVersion(userId, fileId, condition.source, condition.previous)
+      )
+        return null;
+      return write(tx);
+    });
   }
 
   async upsertSyncedEpubProgressIfNewer(params: {
@@ -2675,7 +2696,7 @@ export class BookRepository {
     return settings?.twoWayProgressSync === true;
   }
 
-  async clearFileProgress(userId: number, fileId: number): Promise<void> {
+  async clearFileProgress(userId: number, fileId: number, condition: ClearFileProgressQueryDto = {}): Promise<boolean> {
     const [file] = await this.db
       .select({ bookId: bookFiles.bookId, primaryFileId: books.primaryFileId })
       .from(bookFiles)
@@ -2683,13 +2704,31 @@ export class BookRepository {
       .where(eq(bookFiles.id, fileId))
       .limit(1);
 
-    await this.db.transaction(async (tx) => {
-      await tx.delete(readingProgress).where(and(eq(readingProgress.userId, userId), eq(readingProgress.bookFileId, fileId)));
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`set local lock_timeout = '5s'`);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`bookorbit.file-position:${userId}:${fileId}`}, 0))`);
+      if (condition.textVersion !== undefined) {
+        const [current] = await tx
+          .select()
+          .from(readingProgress)
+          .where(and(eq(readingProgress.userId, userId), eq(readingProgress.bookFileId, fileId)))
+          .limit(1)
+          .for('update');
+        if (
+          filePositionVersion(userId, fileId, 'text', current) !== condition.textVersion ||
+          filePositionVersion(userId, fileId, 'narration', current) !== condition.narrationVersion
+        )
+          return false;
+        if (current) await tx.delete(readingProgress).where(and(eq(readingProgress.userId, userId), eq(readingProgress.bookFileId, fileId)));
+      } else {
+        await tx.delete(readingProgress).where(and(eq(readingProgress.userId, userId), eq(readingProgress.bookFileId, fileId)));
+      }
       await tx.delete(audiobookProgress).where(and(eq(audiobookProgress.userId, userId), eq(audiobookProgress.currentFileId, fileId)));
       await this.clearExternalDeviceProgress(tx, userId, [fileId]);
       // Kobo tracks the book through its primary file, so clearing a secondary file leaves
       // the device's bookmark alone.
       if (file && file.primaryFileId === fileId) await this.resetKoboReadingState(tx, userId, file.bookId);
+      return true;
     });
   }
 

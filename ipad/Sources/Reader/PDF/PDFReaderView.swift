@@ -6,10 +6,12 @@ struct PDFReaderView: View {
   let fileID: Int
   @State private var model: PDFReaderModel
   @State private var preferences: ReaderPreferencesModel
+  @State private var positionReset: NativePositionResetModel?
   @State private var confirmsDiscard = false
   @State private var isNavigating = false
   @State private var isSearching = false
   @State private var isBrowsingContents = false
+  @State private var isBrowsingThumbnails = false
   @State private var isEditingPreferences = false
   @State private var isBrowsingBookmarks = false
   @State private var isTurning = false
@@ -46,12 +48,16 @@ struct PDFReaderView: View {
     .task { await preferences.load() }
     .onDisappear {
       if !isNavigating && !isSearching && !isBrowsingContents && !isEditingPreferences
-        && !isBrowsingBookmarks
+        && !isBrowsingBookmarks && !isBrowsingThumbnails && positionReset == nil
       {
         model.close()
         preferences.close()
       }
     }
+    .sheet(item: $positionReset) { reset in
+      NativePositionResetView(model: reset, closed: positionResetClosed)
+    }
+    .interactiveDismissDisabled(positionReset != nil)
     .fullScreenCover(isPresented: $isBrowsingBookmarks) {
       if let document = model.document {
         ReaderBookmarksView(
@@ -66,6 +72,9 @@ struct PDFReaderView: View {
       if let document = model.document {
         PDFContentsView(document: document, onSelect: model.openContentsPage)
       }
+    }
+    .fullScreenCover(isPresented: $isBrowsingThumbnails) {
+      PDFThumbnailsView(model: model, rotation: preferences.value.pdf.rotation)
     }
     .fullScreenCover(isPresented: $isSearching) {
       if let document = model.document {
@@ -169,6 +178,10 @@ struct PDFReaderView: View {
         .frame(minHeight: 44)
         .accessibilityIdentifier("pdfContents")
         .disabled(model.document == nil || model.isClosing)
+      Button("Thumbnails", action: browseThumbnails)
+        .frame(minHeight: 44)
+        .accessibilityIdentifier("pdfThumbnails")
+        .disabled(model.document == nil || model.isClosing || isTurning)
       Button("Search") { isSearching = true }
         .frame(minHeight: 44)
         .accessibilityIdentifier("pdfSearch")
@@ -185,6 +198,10 @@ struct PDFReaderView: View {
       }
       .accessibilityIdentifier("readerBookmarks")
       .disabled(model.document == nil || model.isClosing || isTurning)
+      Button("Clear reading position", action: promptPositionReset)
+        .frame(minHeight: 44)
+        .disabled(model.isClosing || isTurning || positionReset != nil)
+        .accessibilityIdentifier("pdfClearReadingPosition")
       Button("Close reader", action: closeReader)
         .frame(minHeight: 44)
         .accessibilityIdentifier("pdfCloseReader")
@@ -199,6 +216,27 @@ struct PDFReaderView: View {
     preferences.close()
     dismiss()
   }
+  private func promptPositionReset() {
+    guard !model.isClosing, !isTurning, positionReset == nil else { return }
+    positionReset = NativePositionResetModel(
+      api: api,
+      target: .file(bookID: bookID, fileID: fileID, label: model.file.filename ?? "Book file"),
+      prepare: model.beginPositionReset, acknowledged: { model.acknowledgePositionReset() })
+  }
+
+  private func positionResetClosed(_ reset: NativePositionResetModel) {
+    reset.detach()
+    positionReset = nil
+    if reset.didAttempt {
+      model.close()
+      preferences.close()
+      dismiss()
+    } else {
+      model.cancelPositionReset()
+    }
+  }
+
+  private func browseThumbnails() { isBrowsingThumbnails = true }
   private func chooseLocalPosition() { Task { await model.choosePosition(local: true) } }
   private func chooseRemotePosition() { Task { await model.choosePosition(local: false) } }
 

@@ -8,6 +8,7 @@ struct AudiobookReaderView: View {
   @State private var model: AudioPlayerModel
   @State private var bridge: NativeContinuationModel
   private let offersContinuation: Bool
+  @State private var positionReset: NativePositionResetModel?
   @State private var showingSettings = false
   @State private var showingBookmarks = false
   @State private var showingCloseWarning = false
@@ -24,7 +25,7 @@ struct AudiobookReaderView: View {
     let bridge = NativeContinuationModel(
       api: api, bookID: bookID, direction: "audio_to_text", files: files)
     bridge.beforeResolve = { [weak model] in
-      guard let model, await model.beginContinuation(),
+      guard let model, await model.reconfirmContinuation(),
         let asset = model.engine.currentAsset, let saved = model.engine.state
       else { return nil }
       return BookContinuationQuery(
@@ -56,6 +57,9 @@ struct AudiobookReaderView: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
             playbackControls
+            Button("Clear saved listening position", action: promptPositionReset)
+              .frame(minHeight: 44).disabled(!model.canResetPosition || bridge.isPresented)
+              .accessibilityIdentifier("audiobookClearListeningPosition")
             Text("Tracks").font(.headline).accessibilityAddTraits(.isHeader)
             ForEach(manifest.assets, id: \.assetId) { asset in
               Button {
@@ -135,8 +139,10 @@ struct AudiobookReaderView: View {
     .interactiveDismissDisabled()
     .task { await model.open() }
     .onDisappear {
-      bridge.cancel()
-      model.close()
+      if positionReset == nil {
+        bridge.cancel()
+        model.close()
+      }
     }
     .onChange(of: model.engine.positionSeconds) {
       if !isScrubbing { scrubPosition = model.engine.positionSeconds }
@@ -147,6 +153,9 @@ struct AudiobookReaderView: View {
         model.background()
       }
       if scenePhase == .active { Task { await model.foreground() } }
+    }
+    .sheet(item: $positionReset) { reset in
+      NativePositionResetView(model: reset, closed: positionResetClosed)
     }
     .sheet(isPresented: $bridge.isPresented, onDismiss: bridge.cancel) {
       NativeContinuationView(model: bridge)
@@ -161,6 +170,28 @@ struct AudiobookReaderView: View {
       }
     } message: {
       Text(model.closeWarning ?? "Retry Save progress to confirm your listening position.")
+    }
+  }
+
+  private func promptPositionReset() {
+    guard model.canResetPosition, !bridge.isPresented, let manifest = model.engine.manifest else {
+      return
+    }
+    positionReset = NativePositionResetModel(
+      api: model.engine.api,
+      target: .audiobook(bookID: model.engine.bookID, label: manifest.book.title),
+      prepare: model.beginPositionReset, acknowledged: { model.engine.acknowledgePositionReset() })
+  }
+
+  private func positionResetClosed(_ reset: NativePositionResetModel) {
+    reset.detach()
+    positionReset = nil
+    if reset.didAttempt {
+      bridge.cancel()
+      model.close()
+      dismiss()
+    } else {
+      model.cancelPositionReset()
     }
   }
 
