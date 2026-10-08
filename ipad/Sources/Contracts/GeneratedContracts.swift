@@ -547,6 +547,15 @@ struct BookFileWriteStatus: Codable, Sendable, Equatable {
     var `reason`: String?
     var `writableFormats`: [String]
     var `writableFields`: [String]
+    var `targets`: [BookFileWriteTargetStatus]?
+}
+
+struct BookFileWriteTargetStatus: Codable, Sendable, Equatable {
+    var `fileId`: Int
+    var `format`: String?
+    var `writable`: Bool
+    var `reason`: String?
+    var `writableFields`: [String]
 }
 
 struct BookDetailCovers: Codable, Sendable, Equatable {
@@ -577,6 +586,14 @@ struct WriteResult: Codable, Sendable, Equatable {
     var `fieldsWritten`: [String]
     var `durationMs`: Int
     var `reason`: String?
+    var `fileCounts`: WriteResultFileCounts?
+}
+
+struct WriteResultFileCounts: Codable, Sendable, Equatable {
+    var `processed`: Int
+    var `succeeded`: Int
+    var `failed`: Int
+    var `skipped`: Int
 }
 
 struct FileRenameResult: Codable, Sendable, Equatable {
@@ -919,19 +936,19 @@ struct BookMoveCompletionEvent: Codable, Sendable, Equatable {
 }
 
 struct BookMetadataUpdatePayload: Encodable, Sendable, Equatable {
-    var `title`: FieldUpdate<String>?
-    var `subtitle`: FieldUpdate<String>?
-    var `description`: FieldUpdate<String>?
     var `publisher`: FieldUpdate<String>?
-    var `publishedYear`: FieldUpdate<Int>?
     var `language`: FieldUpdate<String>?
     var `pageCount`: FieldUpdate<Int>?
+    var `genres`: [String]?
+    var `tags`: [String]?
+    var `description`: FieldUpdate<String>?
+    var `title`: FieldUpdate<String>?
+    var `subtitle`: FieldUpdate<String>?
+    var `publishedYear`: FieldUpdate<Int>?
     var `seriesName`: FieldUpdate<String>?
     var `seriesIndex`: FieldUpdate<String>?
     var `isbn13`: FieldUpdate<String>?
     var `isbn10`: FieldUpdate<String>?
-    var `genres`: [String]?
-    var `tags`: [String]?
     var `rating`: FieldUpdate<Double>?
     var `publishedDate`: FieldUpdate<String>?
     var `googleBooksId`: FieldUpdate<String>?
@@ -1386,6 +1403,11 @@ struct MetadataSeriesMembership: Codable, Sendable, Equatable {
 }
 
 struct BookFileMetadataResponse: Codable, Sendable, Equatable {
+    var `publisher`: FieldUpdate<String>?
+    var `language`: FieldUpdate<String>?
+    var `pageCount`: FieldUpdate<Int>?
+    var `genres`: [String]?
+    var `description`: FieldUpdate<String>?
     var `googleBooksId`: FieldUpdate<String>?
     var `goodreadsId`: FieldUpdate<String>?
     var `amazonId`: FieldUpdate<String>?
@@ -1403,17 +1425,12 @@ struct BookFileMetadataResponse: Codable, Sendable, Equatable {
     var `title`: FieldUpdate<String>?
     var `subtitle`: FieldUpdate<String>?
     var `authors`: [String]?
-    var `description`: FieldUpdate<String>?
-    var `publisher`: FieldUpdate<String>?
     var `publishedYear`: FieldUpdate<Int>?
-    var `language`: FieldUpdate<String>?
-    var `pageCount`: FieldUpdate<Int>?
     var `seriesName`: FieldUpdate<String>?
     var `seriesIndex`: FieldUpdate<String>?
-    var `genres`: [String]?
-    var `publishedDate`: FieldUpdate<String>?
-    var `isbn10`: FieldUpdate<String>?
     var `isbn13`: FieldUpdate<String>?
+    var `isbn10`: FieldUpdate<String>?
+    var `publishedDate`: FieldUpdate<String>?
     var `narrators`: [String]?
     var `durationSeconds`: FieldUpdate<Int>?
     var `customMetadata`: [CustomMetadataBookValueInput]?
@@ -1440,6 +1457,8 @@ struct BookMetadataRefreshPreviewResponse: Codable, Sendable, Equatable {
 }
 
 struct BookMetadataRefreshPreviewFields: Codable, Sendable, Equatable {
+    var `isbn10`: FieldUpdate<String>?
+    var `isbn13`: FieldUpdate<String>?
     var `title`: FieldUpdate<String>?
     var `subtitle`: FieldUpdate<String>?
     var `description`: FieldUpdate<String>?

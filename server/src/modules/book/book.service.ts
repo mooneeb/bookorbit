@@ -1,3 +1,4 @@
+import { ReadingAttemptEventsService } from '../user-book-status/reading-attempt-events.service';
 import {
   BadRequestException,
   ForbiddenException,
@@ -19,9 +20,11 @@ import { compareAudioTracks, coverFetchInputs, resolveIsAudiobook } from '../../
 import type { ClearFileProgressQueryDto } from './dto/clear-file-progress-query.dto';
 import { filePositionVersion } from '../../common/utils/reader-position-version.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { mapWithConcurrency } from '../../common/utils/batch.utils';
+import { SelfWriteRegistry } from '../../common/services/self-write-registry.service';
 import { selectPrimaryFile } from '../../common/utils/primary-file-selection.utils';
 import { normalizeMetadataText, normalizeMetadataTextKey } from '../../common/utils/metadata-text-normalize.utils';
-import { naturalCompare } from '../../common/utils/natural-sort.utils';
+import { compareBookFilePaths } from '../../common/utils/audio-track-order.utils';
 import { normalizePublishedDate, publishedYearFromDateKey } from '../../common/utils/published-date.utils';
 import { buildPatternTokens } from '../../common/utils/pattern-tokens.utils';
 import { SeriesExpectedCountService } from '../../common/services/series-expected-count.service';
@@ -69,7 +72,6 @@ import type {
   JumpBucketsResponse,
   JumpBucketsQuery,
   MetadataFetchDiagnostics,
-  MetadataField,
   ReadStatus,
   ReadAloudProgressSync,
   ReadAloudProgressSyncMode,
@@ -88,7 +90,8 @@ import { MetadataService } from '../metadata/metadata.service';
 import { MetadataScoreService } from '../metadata-score/metadata-score.service';
 import { LibraryService } from '../library/library.service';
 import { books } from '../../db/schema';
-import { MetadataFetchPipeline, ResolvedMetadataFields } from '../metadata-fetch/metadata-fetch-pipeline';
+import { ExistingMetadataFields, MetadataFetchPipeline, ResolvedMetadataFields } from '../metadata-fetch/metadata-fetch-pipeline';
+import { splitMetadataIsbn } from '../../common/text-match/isbn-normalize';
 import type { MetadataSearchParams } from '../metadata-fetch/providers/metadata-search-params';
 import { FileRenameService, RENAME_RELEVANT_FIELDS } from '../file-write/file-rename.service';
 import { FileWriteService } from '../file-write/file-write.service';
@@ -179,6 +182,7 @@ const EXPORT_LIMITS = {
 } as const;
 
 const MAX_DELETION_AUDIT_BOOKS = 25;
+const BOOK_DELETION_CONCURRENCY = 8;
 
 type ExportCandidateFile = {
   bookId: number;
@@ -297,6 +301,7 @@ export class BookService {
     private readonly customMetadataService: CustomMetadataService,
     private readonly bookMetadataLockService: BookMetadataLockService,
     private readonly coverStore: BookCoverStore,
+    private readonly selfWriteRegistry: SelfWriteRegistry,
     @Optional() private readonly embedder: BookEmbedderService,
     @Optional() private readonly fileWriteService: FileWriteService,
     @Optional() private readonly fileRenameService: FileRenameService,
@@ -306,6 +311,7 @@ export class BookService {
     @Optional() private readonly audiobookEbookProgressSync?: AudiobookEbookProgressSyncService,
     @Optional() private readonly audiolessEpubService?: AudiolessEpubService,
     @Optional() private readonly coverReconciler?: CoverSlotReconciler,
+    @Optional() private readonly readingAttemptEvents?: ReadingAttemptEventsService,
   ) {
     this.appDataPath = this.config.get<string>('storage.appDataPath')!;
   }
@@ -424,6 +430,8 @@ export class BookService {
     if (r.publishedYear !== undefined) preview.publishedYear = r.publishedYear as number | null;
     if (r.language !== undefined) preview.language = r.language as string | null;
     if (r.pageCount !== undefined) preview.pageCount = r.pageCount as number | null;
+    if (r.isbn10 !== undefined) preview.isbn10 = r.isbn10 as string;
+    if (r.isbn13 !== undefined) preview.isbn13 = r.isbn13 as string;
     if (r.communityRatings !== undefined) preview.communityRatings = r.communityRatings as BookCommunityRating[];
     if (r.seriesName !== undefined) preview.seriesName = r.seriesName as string | null;
     if (r.seriesIndex !== undefined) preview.seriesIndex = r.seriesIndex as string | null;
@@ -1639,31 +1647,42 @@ export class BookService {
         const row = auditRowsById.get(bookId);
         return row ? [row] : [];
       });
-      const files = await this.bookRepo.findAllFilesByBookIds(bookIds);
-      await this.bookRepo.deleteByIdsAndInvalidateScanState(deletedBookIds);
-      const deleteTargets = [
-        ...rows.map((row) => ({
-          path: join(this.appDataPath, 'covers', String(row.id)),
-          options: { recursive: true, force: true },
-          kind: 'coverDir' as const,
-        })),
-        ...files.map((file) => ({ path: file.absolutePath, options: { force: true }, kind: 'bookFile' as const })),
-      ];
-      const deleteResults = await Promise.allSettled(deleteTargets.map((target) => rm(target.path, target.options)));
-      let failedDeletes = 0;
-      for (let i = 0; i < deleteResults.length; i += 1) {
-        const result = deleteResults[i];
-        if (result?.status !== 'rejected') continue;
-        failedDeletes += 1;
-        const target = deleteTargets[i]!;
-        const reason = result.reason;
-        const errorClass = reason instanceof Error ? reason.name : 'Error';
-        const errorMessage = sanitizeLogValue(reason instanceof Error ? reason.message : String(reason));
-        const pathValue = sanitizeLogValue(target.path);
-        this.logger.warn(
-          `[${event}] [fail] userId=${user.id} path="${pathValue}" kind=${target.kind} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${errorMessage}" - delete books cleanup target failed`,
-        );
-      }
+      const files = await this.bookRepo.findAllFilesByBookIds(deletedBookIds);
+      const removeTarget = async (path: string, kind: 'bookFile' | 'coverDir'): Promise<boolean> => {
+        try {
+          await rm(path, kind === 'coverDir' ? { recursive: true, force: true } : { force: true });
+          return true;
+        } catch (err) {
+          const errorClass = err instanceof Error ? err.name : 'Error';
+          const errorMessage = sanitizeLogValue(err instanceof Error ? err.message : String(err));
+          this.logger.warn(
+            `[${event}] [fail] userId=${user.id} path="${sanitizeLogValue(path)}" kind=${kind} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${errorMessage}" - delete books cleanup target failed`,
+          );
+          return false;
+        }
+      };
+
+      // A surviving content file would be imported again by the scanner. Keep all records and
+      // user state on failure; force:true lets a retry finish after a partially removed batch.
+      const paths = [...new Set(files.map((file) => file.absolutePath))];
+      // Defer watcher reconciliation until the records reflect the intentional removal.
+      await this.selfWriteRegistry.track(paths, async () => {
+        const fileResults = await mapWithConcurrency(paths, BOOK_DELETION_CONCURRENCY, (path) => removeTarget(path, 'bookFile'));
+        if (fileResults.some((removed) => !removed)) {
+          throw new InternalServerErrorException(
+            "Could not delete all book files. Book records were kept, but some files may already be removed. Check the server's library permissions or read-only mounts, then retry.",
+          );
+        }
+
+        await this.bookRepo.deleteByIdsAndInvalidateScanState(deletedBookIds);
+        this.readingAttemptEvents?.notifyChanged(null);
+      });
+      // Cover cleanup cannot resurrect a book and must not turn a committed deletion into a
+      // failure. Leave covers alone until the database transaction has succeeded.
+      const coverResults = await mapWithConcurrency(deletedBookIds, BOOK_DELETION_CONCURRENCY, (bookId) =>
+        removeTarget(join(this.appDataPath, 'covers', String(bookId)), 'coverDir'),
+      );
+      const failedDeletes = coverResults.filter((removed) => !removed).length;
       this.logger.log(
         `[${event}] [end] count=${bookIds.length} durationMs=${Date.now() - startedAt} deletedBooks=${rows.length} deletedFiles=${files.length} failedDeletes=${failedDeletes} - delete books completed`,
       );
@@ -2302,7 +2321,11 @@ export class BookService {
     // Everything downstream reads the position the file now holds, not the one the client sent.
     // A narration write that did not move the text position must not move a Kobo bookmark, an
     // audiobook position, or a read status either.
-    if (file.format === 'epub' && this.hasPermission(user, Permission.KoboSync) && (await this.bookRepo.isKoboTwoWayProgressSyncEnabled(userId))) {
+    if (
+      (file.format === 'epub' || file.format === 'kepub') &&
+      this.hasPermission(user, Permission.KoboSync) &&
+      (await this.bookRepo.isKoboTwoWayProgressSyncEnabled(userId))
+    ) {
       await this.bookRepo.syncKoboReadingStateFromProgress(
         userId,
         fileId,
@@ -2925,7 +2948,7 @@ export class BookService {
       const searchParams: MetadataSearchParams = {
         title: meta?.title ?? undefined,
         author: authorRows[0]?.name ?? undefined,
-        isbn: meta?.isbn13 ?? meta?.isbn10 ?? undefined,
+        isbn: meta?.isbn13?.trim() || meta?.isbn10?.trim() || undefined,
         seriesName: meta?.seriesName ?? undefined,
         seriesIndex: meta?.seriesIndex ?? undefined,
         existingProviderIds: providerIds,
@@ -2934,7 +2957,7 @@ export class BookService {
         maxCandidatesPerProvider: 1,
       };
 
-      const existingFields: Partial<Record<MetadataField, unknown>> = {
+      const existingFields: ExistingMetadataFields = {
         title: meta?.title,
         subtitle: meta?.subtitle,
         description: meta?.description,
@@ -2943,6 +2966,8 @@ export class BookService {
         publishedYear: meta?.publishedYear,
         language: meta?.language,
         pageCount: meta?.pageCount,
+        isbn10: meta?.isbn10,
+        isbn13: meta?.isbn13,
         communityRating: communityRatingRows,
         seriesName: meta?.seriesName,
         seriesIndex: meta?.seriesIndex,
@@ -2950,6 +2975,7 @@ export class BookService {
         duration: meta?.durationSeconds ?? undefined,
         abridged: meta?.abridged ?? undefined,
       };
+      if (meta?.lockedFields?.length) existingFields.lockedFields = meta.lockedFields;
       const coverState = await this.coverStore.fetchState(id);
       if (!coverState) throw new NotFoundException(`Book ${id} not found`);
       const coverInputs = coverFetchInputs(coverState);
@@ -2988,6 +3014,8 @@ export class BookService {
       if (r.publishedYear !== undefined) dto.publishedYear = r.publishedYear as number | null;
       if (r.language !== undefined) dto.language = r.language as string | null;
       if (r.pageCount !== undefined) dto.pageCount = r.pageCount as number | null;
+      if (r.isbn10 !== undefined) dto.isbn10 = r.isbn10 as string;
+      if (r.isbn13 !== undefined) dto.isbn13 = r.isbn13 as string;
       if (r.communityRatings !== undefined) dto.communityRatings = r.communityRatings as UpdateBookMetadataDto['communityRatings'];
       if (r.seriesName !== undefined) dto.seriesName = r.seriesName as string | null;
       if (r.seriesIndex !== undefined) dto.seriesIndex = r.seriesIndex as string | null;
@@ -3307,9 +3335,7 @@ export class BookService {
     const meta = book.book_metadata;
     const customMetadata = await this.customMetadataService.getBookValues(id, book.books.libraryId);
     const hasAudioFiles = fileRows.some((f) => f.format && isAudioFormat(f.format));
-    const orderedFileRows = hasAudioFiles
-      ? [...fileRows].sort((a, b) => naturalCompare(basename(a.absolutePath), basename(b.absolutePath)))
-      : fileRows;
+    const orderedFileRows = hasAudioFiles ? [...fileRows].sort((a, b) => compareBookFilePaths(a.absolutePath, b.absolutePath)) : fileRows;
     const resolvedChapters = this.resolveChapters(meta?.chapters as AudiobookChapter[] | null | undefined, orderedFileRows);
     const supplementalFields = buildBookDetailSupplementalFields({
       readStatus,
@@ -3396,7 +3422,15 @@ export class BookService {
       readAloudSync,
       formatPriority: (book.libraries?.formatPriority as string[] | null) ?? [],
       customMetadata,
-      fileWriteStatus: this.fileWriteService?.resolveBookFileWriteStatus(book.libraries, orderedFileRows, book.books.primaryFileId) ?? {
+      fileWriteStatus: this.fileWriteService?.resolveBookFileWriteStatus(
+        book.libraries,
+        // An EPUB inspected for the first time just above has a fresh read-along answer the row lacks.
+        orderedFileRows.map((file) => ({
+          ...file,
+          mediaOverlayAvailable: mediaOverlayByFileId.get(file.id)?.available ?? file.mediaOverlayAvailable,
+        })),
+        book.books.primaryFileId,
+      ) ?? {
         enabled: false,
         reason: 'library_disabled',
         writableFormats: [],
@@ -3656,7 +3690,7 @@ export class BookService {
           publishedDate,
           publishedYear: year,
           language: parsed.language,
-          isbn13: parsed.isbn,
+          ...splitMetadataIsbn(parsed.isbn),
           authors: parsed.authors.length > 0 ? parsed.authors : undefined,
           genres: parsed.tags.length > 0 ? parsed.tags : undefined,
         };

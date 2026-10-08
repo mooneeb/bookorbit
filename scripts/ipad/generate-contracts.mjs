@@ -67,6 +67,20 @@ const symbols = new Map(
 
 // These audited projections decode existing responses without generating unused server data.
 const projections = {
+  BookmarkResponse: ["id", "bookId", "cfi", "title", "positionSeconds", "fileId", "pageNumber", "createdAt"],
+  EpubBookmarkNavigationItem: [
+    "chapterTitle",
+    "contextPercentage",
+    "locationLabel",
+    "id",
+    "bookId",
+    "cfi",
+    "title",
+    "positionSeconds",
+    "fileId",
+    "pageNumber",
+    "createdAt",
+  ],
   FontNamedInstance: ["weight", "style", "name"],
   CreateAnnotationPayload: ["cfi", "bookFileId", "text", "color", "style", "note", "chapterTitle"],
   AnnotationItem: ["id", "bookId", "cfi", "jumpFileId", "text", "color", "style", "note", "chapterTitle", "positionStatus"],
