@@ -298,14 +298,7 @@ final class PDFPassageJourneyTests: XCTestCase {
     tap("tableOpen1_title", app)
     tap("Book details", app)
     XCTAssertTrue(app.navigationBars["Book details"].waitForExistence(timeout: 10))
-    let containers = app.descendants(matching: .any).matching(identifier: "bookDetailContent")
-    XCTAssertTrue(containers.firstMatch.waitForExistence(timeout: 10))
-    XCTAssertEqual(containers.count, 1)
-    let content = containers.element
-    let read = content.buttons["readFile\(fileID)"]
-    for _ in 0..<6 where !read.isHittable { content.swipeUp() }
-    XCTAssertTrue(read.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    read.tap()
+    guard E02ProfileSupport.openBookFile(app: app, fileID: fileID) else { return }
     XCTAssertTrue(app.buttons["pdfPassagePreview"].waitForExistence(timeout: 20))
   }
 

@@ -61,13 +61,7 @@ final class AnnotationProfilePerformanceTests: XCTestCase {
     selectFixture(app)
     app.buttons["tableOpen1_title"].tap()
     app.buttons["Book details"].tap()
-    let content = app.descendants(matching: .any).matching(identifier: "bookDetailContent")
-      .firstMatch
-    XCTAssertTrue(content.waitForExistence(timeout: 10))
-    let read = content.buttons["readFile1"]
-    for _ in 0..<6 where !read.isHittable { content.swipeUp() }
-    XCTAssertTrue(read.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    read.tap()
+    guard E02ProfileSupport.openBookFile(app: app, fileID: 1) else { return }
     let first = app.staticTexts["Page 1 of 3"]
     XCTAssertTrue(app.buttons["pdfNextPage"].waitForExistence(timeout: 15))
     for _ in 0..<3 where !first.exists && app.buttons["pdfPreviousPage"].isEnabled {

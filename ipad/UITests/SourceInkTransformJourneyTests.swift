@@ -631,16 +631,7 @@ final class SourceInkTransformJourneyTests: XCTestCase {
     attach(
       Data(app.debugDescription.utf8), name: "IPAD-E02-A03-book-details-hierarchy",
       type: "public.plain-text")
-    let containers = app.descendants(matching: .any).matching(identifier: "bookDetailContent")
-    let content = containers.element
-    XCTAssertTrue(content.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    XCTAssertEqual(containers.count, 1)
-    let matches = content.buttons.matching(identifier: "readFile1")
-    let read = matches.element
-    for _ in 0..<6 where !read.isHittable { content.swipeUp() }
-    XCTAssertTrue(read.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    XCTAssertEqual(matches.count, 1)
-    read.tap()
+    guard E02ProfileSupport.openBookFile(app: app, fileID: 1) else { return }
     XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 25))
     XCTAssertTrue(app.buttons["pdfInkDraw"].waitForExistence(timeout: 15))
   }

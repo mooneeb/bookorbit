@@ -75,6 +75,52 @@ enum E02ProfileSupport {
     return true
   }
 
+  static func openBookFile(app: XCUIApplication, fileID: Int) -> Bool {
+    let containers = app.collectionViews.matching(identifier: "bookDetailContent")
+    let content = containers.element
+    let navigationBars = app.navigationBars.matching(identifier: "Book details")
+    guard content.wait(for: \.isHittable, toEqual: true, timeout: 10), containers.count == 1,
+      navigationBars.count == 1
+    else {
+      XCTFail("Expected one visible Book details collection and navigation bar.")
+      return false
+    }
+    let contentFrame = content.frame.intersection(app.frame)
+    let visibleTop = max(contentFrame.minY, navigationBars.element.frame.maxY)
+    let viewport = CGRect(
+      x: contentFrame.minX, y: visibleTop, width: contentFrame.width,
+      height: contentFrame.maxY - visibleTop)
+    guard viewport.width > 0, viewport.height > 0 else {
+      XCTFail("Book details must have a visible content viewport below its navigation bar.")
+      return false
+    }
+    let matches = content.buttons.matching(identifier: "readFile\(fileID)")
+    let read = matches.element
+    for _ in 0..<12 {
+      guard matches.count <= 1 else {
+        XCTFail("Expected one Read action for file \(fileID).")
+        return false
+      }
+      if read.exists && read.isHittable && viewport.contains(read.frame) { break }
+      let scrollDown = read.exists && read.frame.minY < viewport.minY
+      let start = content.coordinate(
+        withNormalizedOffset: CGVector(
+          dx: 0.02,
+          dy: (viewport.minY + viewport.height * 0.65 - content.frame.minY) / content.frame.height))
+      let end = start.withOffset(CGVector(dx: 0, dy: viewport.height * (scrollDown ? 0.25 : -0.25)))
+      start.press(forDuration: 0.01, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+    }
+    guard matches.count == 1, read.wait(for: \.isHittable, toEqual: true, timeout: 10),
+      viewport.contains(read.frame), read.wait(for: \.isEnabled, toEqual: true, timeout: 10)
+    else {
+      XCTFail(
+        "File \(fileID) Read action is not fully visible after twelve bounded content scrolls.")
+      return false
+    }
+    read.tap()
+    return true
+  }
+
   static func applyMotionInSettings(_ test: XCTestCase) {
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
     settings.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]

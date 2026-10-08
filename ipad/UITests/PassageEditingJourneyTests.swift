@@ -236,14 +236,7 @@ final class PassageEditingJourneyTests: XCTestCase {
     search.typeText("\n")
     tap("tableOpen2_title", app)
     tap("Book details", app)
-    let matches = app.descendants(matching: .any).matching(identifier: "bookDetailContent")
-    XCTAssertTrue(matches.firstMatch.waitForExistence(timeout: 10))
-    XCTAssertEqual(matches.count, 1)
-    let content = matches.element
-    let read = content.buttons["readFile2"]
-    for _ in 0..<6 where !read.isHittable { content.swipeUp() }
-    XCTAssertTrue(read.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    read.tap()
+    guard E02ProfileSupport.openBookFile(app: app, fileID: 2) else { return }
     XCTAssertTrue(app.buttons["epubFixtureSelectPassage"].waitForExistence(timeout: 20))
   }
 

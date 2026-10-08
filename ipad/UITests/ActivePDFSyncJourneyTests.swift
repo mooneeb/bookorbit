@@ -436,14 +436,7 @@ final class ActivePDFSyncJourneyTests: XCTestCase {
     XCTAssertTrue(app.buttons["tableOpen1_title"].waitForExistence(timeout: 15))
     app.buttons["tableOpen1_title"].tap()
     app.buttons["Book details"].tap()
-    let containers = app.descendants(matching: .any).matching(identifier: "bookDetailContent")
-    let content = containers.element
-    XCTAssertTrue(content.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    XCTAssertEqual(containers.count, 1)
-    let read = content.buttons["readFile1"]
-    for _ in 0..<6 where !read.isHittable { content.swipeUp() }
-    XCTAssertTrue(read.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    read.tap()
+    guard E02ProfileSupport.openBookFile(app: app, fileID: 1) else { return app }
     XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 20))
     return app
   }
