@@ -196,7 +196,8 @@ async function collectNativeFiles(directory, artifacts, requireRecovery) {
   let totalBytes = 0;
   for await (const entry of await opendir(directory)) {
     if (++examined > 256) throw new Error("Public Documents export scan exceeded 256 entries");
-    if (!/^RecoveryUI-[A-Fa-f0-9-]+-recovery\.json$/.test(entry.name) && !/^BookOrbit annotations.*\.json$/.test(entry.name)) continue;
+    const sourcePDF = /^Deleted source A06-[A-Fa-f0-9-]+\.pdf$/.test(entry.name);
+    if (!sourcePDF && !/^RecoveryUI-[A-Fa-f0-9-]+-recovery\.json$/.test(entry.name) && !/^BookOrbit annotations.*\.json$/.test(entry.name)) continue;
     const source = join(directory, entry.name);
     const information = await lstat(source);
     if (!information.isFile() || information.isSymbolicLink() || dirname(await realpath(source)) !== directory)
@@ -224,8 +225,13 @@ async function collectNativeFiles(directory, artifacts, requireRecovery) {
     const record = { filename: entry.name, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
     manifest.push(record);
     await writeFile(join(destination, "manifest.json"), JSON.stringify(manifest, null, 2));
-    const value = JSON.parse(bytes.toString("utf8"));
-    record.identity = value.id ?? value.format ?? null;
+    if (sourcePDF) {
+      if (bytes.subarray(0, 5).toString("ascii") !== "%PDF-") throw new Error("Native retained source export must contain PDF bytes");
+      record.identity = "retained-source-pdf";
+    } else {
+      const value = JSON.parse(bytes.toString("utf8"));
+      record.identity = value.id ?? value.format ?? null;
+    }
     await writeFile(join(destination, "manifest.json"), JSON.stringify(manifest, null, 2));
   }
   await writeFile(join(destination, "manifest.json"), JSON.stringify(manifest, null, 2));

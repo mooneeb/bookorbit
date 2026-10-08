@@ -93,8 +93,10 @@ final class AnnotationProfilePerformanceTests: XCTestCase {
     measured("bounded-hub-open-and-search", budget: 5) {
     } operation: {
       app.buttons["openAnnotationHub"].tap()
-      let search = app.searchFields["annotationHubSearch"]
+      let searchFields = app.textFields.matching(identifier: "annotationHubSearch")
+      let search = searchFields.element
       XCTAssertTrue(search.wait(for: \.isHittable, toEqual: true, timeout: 5))
+      XCTAssertEqual(searchFields.count, 1)
       XCTAssertLessThanOrEqual(
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "annotationHubItem"))
           .count, 40)

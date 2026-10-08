@@ -276,7 +276,11 @@ final class RecoveryDraftJourneyTests: XCTestCase {
   private func openRecovery(_ app: XCUIApplication) {
     if app.buttons["openAnnotationHub"].exists {
       app.buttons["openAnnotationHub"].tap()
-      XCTAssertTrue(app.searchFields["annotationHubSearch"].waitForExistence(timeout: 15))
+      let searchFields = app.textFields.matching(identifier: "annotationHubSearch")
+      let search = searchFields.element
+      XCTAssertTrue(search.waitForExistence(timeout: 15))
+      XCTAssertEqual(searchFields.count, 1)
+      XCTAssertTrue(search.wait(for: \.isHittable, toEqual: true, timeout: 5))
     }
     tapHubControl("annotationHubRecovery", app: app)
     let storage = app.segmentedControls["annotationHubRecoveryStorage"]
@@ -374,7 +378,9 @@ final class RecoveryDraftJourneyTests: XCTestCase {
       ])
     let refresh = try XCTUnwrap(credentials["refreshToken"] as? String)
     addTeardownBlock {
-      _ = try await Self.request("auth/logout", method: "POST", body: ["refreshToken": refresh])
+      _ = try await Self.request(
+        "auth/logout", method: "POST",
+        body: JSONSerialization.data(withJSONObject: ["refreshToken": refresh]))
     }
     return try XCTUnwrap(credentials["accessToken"] as? String)
   }
@@ -426,19 +432,20 @@ final class RecoveryDraftJourneyTests: XCTestCase {
   private func json(
     _ path: String, method: String = "GET", token: String? = nil, body: [String: Any]? = nil
   ) async throws -> [String: Any] {
-    let data = try await Self.request(path, method: method, token: token, body: body)
+    let encodedBody = try body.map { try JSONSerialization.data(withJSONObject: $0) }
+    let data = try await Self.request(path, method: method, token: token, body: encodedBody)
     return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
   }
 
   private nonisolated static func request(
-    _ path: String, method: String = "GET", token: String? = nil, body: [String: Any]? = nil
+    _ path: String, method: String = "GET", token: String? = nil, body: Data? = nil
   ) async throws -> Data {
     var request = URLRequest(url: try XCTUnwrap(URL(string: "\(serverURL)/api/v1/\(path)")))
     request.httpMethod = method
     if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
     if let body {
       request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-      request.httpBody = try JSONSerialization.data(withJSONObject: body)
+      request.httpBody = body
     }
     let (data, response) = try await session.data(for: request)
     XCTAssertTrue((200..<300).contains((response as? HTTPURLResponse)?.statusCode ?? 0), path)
@@ -454,7 +461,7 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     for item in items {
       _ = try await request(
         "annotations/native/operations", method: "POST", token: token,
-        body: [
+        body: JSONSerialization.data(withJSONObject: [
           "deviceId": "Recovery UI fixture cleanup",
           "operations": [
             [
@@ -464,7 +471,7 @@ final class RecoveryDraftJourneyTests: XCTestCase {
               "baseVersion": try XCTUnwrap(item["version"] as? Int), "action": "delete",
             ]
           ],
-        ])
+        ]))
     }
   }
 
