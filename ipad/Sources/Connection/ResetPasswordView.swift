@@ -50,6 +50,7 @@ struct ResetPasswordView: View {
           Text(
             "Copy the reset link from your email and paste it here using the field's edit menu. The token is sent only to \(model.profile.url.absoluteString)."
           )
+          .foregroundStyle(Color(uiColor: .label))
         }
         .disabled(model.isBusy)
         Section {

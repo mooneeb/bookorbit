@@ -4,6 +4,22 @@ import Observation
 struct EPUBPreferencesValue: Codable, Equatable {
   var settings = EpubReaderSettings.readerDefault
   var pageAnimation = ReaderTurnAnimation.curl
+  var programmaticMovement = EPUBProgrammaticMovement.smooth
+
+  init() {}
+
+  private enum CodingKeys: String, CodingKey {
+    case settings, pageAnimation, programmaticMovement
+  }
+
+  init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    settings = try values.decode(EpubReaderSettings.self, forKey: .settings)
+    pageAnimation = try values.decode(ReaderTurnAnimation.self, forKey: .pageAnimation)
+    programmaticMovement =
+      try values.decodeIfPresent(EPUBProgrammaticMovement.self, forKey: .programmaticMovement)
+      ?? .smooth
+  }
 
   var isValid: Bool {
     let s = settings

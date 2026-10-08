@@ -13,6 +13,7 @@ struct EPUBReaderView: View {
   @State private var confirmsDiscard = false
   @State private var showingSpeech = false
   @State private var showingRecorded = false
+  @State private var showingPosition = false
   @State private var isReaderAction = false
   @ScaledMetric(relativeTo: .caption) private var feedbackHeight = 44
   @Environment(\.dismiss) private var dismiss
@@ -104,6 +105,18 @@ struct EPUBReaderView: View {
             Button("Recorded Read Along", action: openRecorded)
               .accessibilityIdentifier("epubRecordedReadAlong")
             Button("Contents", action: openContents).accessibilityIdentifier("epubContents")
+            Button("Go to position", action: openPosition).accessibilityIdentifier(
+              "epubGoToPosition"
+            )
+            .keyboardShortcut("l", modifiers: .command)
+            Button("Previous section", action: previousSection)
+              .disabled(!model.canGoToPreviousSection)
+              .keyboardShortcut(.upArrow, modifiers: .command)
+              .accessibilityIdentifier("epubPreviousSection")
+            Button("Next section", action: nextSection)
+              .disabled(!model.canGoToNextSection)
+              .keyboardShortcut(.downArrow, modifiers: .command)
+              .accessibilityIdentifier("epubNextSection")
             Button("Search book", action: openSearch).accessibilityIdentifier("epubSearch")
             Button("Bookmarks", action: openBookmarks).accessibilityIdentifier("epubBookmarks")
             Button("Reader settings", action: openSettings).accessibilityIdentifier("epubSettings")
@@ -167,7 +180,7 @@ struct EPUBReaderView: View {
     }
     .onDisappear {
       if !showingContents && !showingSearch && !showingSettings && !showingBookmarks
-        && !showingSpeech && !showingRecorded && !bridge.isPresented
+        && !showingSpeech && !showingRecorded && !showingPosition && !bridge.isPresented
       {
         Task {
           bridge.cancel()
@@ -180,6 +193,9 @@ struct EPUBReaderView: View {
     }
     .sheet(isPresented: $bridge.isPresented, onDismiss: bridge.cancel) {
       NativeContinuationView(model: bridge)
+    }
+    .sheet(isPresented: $showingPosition) {
+      EPUBPositionNavigationView(reader: model, onJump: jumpToPosition)
     }
     .sheet(isPresented: $showingSpeech) {
       NavigationStack {
@@ -348,6 +364,27 @@ struct EPUBReaderView: View {
 
   private func previousPage() { navigate { await model.turn(forward: false) } }
   private func nextPage() { navigate { await model.turn(forward: true) } }
+  private func previousSection() {
+    guard model.canGoToPreviousSection, let index = model.location?.chapterIndex else { return }
+    navigate { await model.goToChapter(index - 1) }
+  }
+  private func nextSection() {
+    guard model.canGoToNextSection, let index = model.location?.chapterIndex else { return }
+    navigate { await model.goToChapter(index + 1) }
+  }
+  private func openPosition() {
+    guard model.canNavigate, !isReaderAction, !bridge.isPresented else { return }
+    showingPosition = true
+  }
+  private func jumpToPosition(_ fraction: Double) async -> EPUBPositionJumpResult {
+    guard model.canNavigate, !isReaderAction, !bridge.isPresented,
+      !speech.isClosing, !speech.isStopping, !speech.preferences.isSaving
+    else { return .failed }
+    isReaderAction = true
+    defer { isReaderAction = false }
+    guard await recorded.stopAndSave(), await speech.stopAndSave() else { return .failed }
+    return await model.goToFraction(fraction)
+  }
   private func savePosition() { Task { await model.saveProgress() } }
   private func retryOpen() {
     Task {

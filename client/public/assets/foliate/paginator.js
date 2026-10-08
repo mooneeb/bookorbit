@@ -910,13 +910,13 @@ export class Paginator extends HTMLElement {
         ? ({ top, bottom }) => ({ left: top, right: bottom })
         : (f) => f
   }
-  async #scrollToRect(rect, reason) {
+  async #scrollToRect(rect, reason, smooth) {
     if (this.scrolled) {
       const offset = this.#getRectMapper()(rect).left - this.#margin
-      return this.#scrollTo(offset, reason)
+      return this.#scrollTo(offset, reason, smooth)
     }
     const offset = this.#getRectMapper()(rect).left
-    return this.#scrollToPage(Math.floor(offset / this.size) + (usesNegativePageScroll(this.#vertical, this.#rtl) ? -1 : 1), reason)
+    return this.#scrollToPage(Math.floor(offset / this.size) + (usesNegativePageScroll(this.#vertical, this.#rtl) ? -1 : 1), reason, smooth)
   }
   async #scrollTo(offset, reason, smooth) {
     const element = this.#container
@@ -943,10 +943,10 @@ export class Paginator extends HTMLElement {
     const offset = getPageScrollOffset(page, this.size, this.#vertical, this.#rtl)
     return this.#scrollTo(offset, reason, smooth)
   }
-  async scrollToAnchor(anchor, select) {
-    return this.#scrollToAnchor(anchor, select ? 'selection' : 'navigation')
+  async scrollToAnchor(anchor, select, smooth = false) {
+    return this.#scrollToAnchor(anchor, select ? 'selection' : 'navigation', smooth)
   }
-  async #scrollToAnchor(anchor, reason = 'anchor') {
+  async #scrollToAnchor(anchor, reason = 'anchor', smooth = false) {
     this.#anchor = anchor
     const rects = uncollapse(anchor)?.getClientRects?.()
     // if anchor is an element or a range
@@ -955,19 +955,19 @@ export class Paginator extends HTMLElement {
       // previous column, there is an extra zero width rect in that column
       const rect = Array.from(rects).find((r) => r.width > 0 && r.height > 0) || rects[0]
       if (!rect) return
-      await this.#scrollToRect(rect, reason)
+      await this.#scrollToRect(rect, reason, smooth)
       return
     }
     // if anchor is a fraction
     if (this.scrolled) {
-      await this.#scrollTo(anchor * this.viewSize, reason)
+      await this.#scrollTo(anchor * this.viewSize, reason, smooth)
       return
     }
     const { pages } = this
     if (!pages) return
     const textPages = pages - 2
     const newPage = Math.round(anchor * (textPages - 1))
-    await this.#scrollToPage(newPage + 1, reason)
+    await this.#scrollToPage(newPage + 1, reason, smooth)
   }
   #getVisibleRange() {
     if (this.scrolled) return getVisibleRange(this.#view.document, this.start + this.#margin, this.end - this.#margin, this.#getRectMapper())
@@ -993,7 +993,7 @@ export class Paginator extends HTMLElement {
     this.dispatchEvent(new CustomEvent('relocate', { detail }))
   }
   async #display(promise) {
-    const { index, src, anchor, onLoad, select } = await promise
+    const { index, src, anchor, onLoad, select, smooth } = await promise
     this.#index = index
     const hasFocus = this.#view?.document?.hasFocus()
     if (src) {
@@ -1021,14 +1021,14 @@ export class Paginator extends HTMLElement {
       )
       this.#view = view
     }
-    await this.scrollToAnchor((typeof anchor === 'function' ? anchor(this.#view.document) : anchor) ?? 0, select)
+    await this.scrollToAnchor((typeof anchor === 'function' ? anchor(this.#view.document) : anchor) ?? 0, select, smooth)
     if (hasFocus) this.focusView()
   }
   #canGoToIndex(index) {
     return index >= 0 && index <= this.sections.length - 1
   }
-  async #goTo({ index, anchor, select }) {
-    if (index === this.#index) await this.#display({ index, anchor, select })
+  async #goTo({ index, anchor, select, smooth = false }) {
+    if (index === this.#index) await this.#display({ index, anchor, select, smooth })
     else {
       const oldIndex = this.#index
       const onLoad = (detail) => {
@@ -1040,7 +1040,7 @@ export class Paginator extends HTMLElement {
         Promise.resolve(this.sections[index].load())
           .then((src) => {
             if (!src) throw new Error(`Failed to load section ${index}`)
-            return { index, src, anchor, onLoad, select }
+            return { index, src, anchor, onLoad, select, smooth }
           })
           .catch((e) => {
             console.warn(e)

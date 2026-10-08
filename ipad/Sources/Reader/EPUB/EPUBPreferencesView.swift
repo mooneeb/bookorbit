@@ -23,8 +23,13 @@ struct EPUBPreferencesView: View {
             Picker("Page animation", selection: $draft.pageAnimation) {
               ForEach(ReaderTurnAnimation.allCases) { Text($0.label).tag($0) }
             }.accessibilityIdentifier("epubPageAnimation")
-            if reduceMotion { Text("Reduce Motion uses immediate page changes.") }
-            Text("Native page animation stays on this device.")
+            Picker("Programmatic movement", selection: $draft.programmaticMovement) {
+              ForEach(EPUBProgrammaticMovement.allCases) { Text($0.label).tag($0) }
+            }.accessibilityIdentifier("epubProgrammaticMovement")
+            if reduceMotion { Text("Reduce Motion uses immediate page changes and jumps.") }
+            Text(
+              "Page animation and programmatic movement stay on this device, with defaults and per-book settings."
+            )
           }
           Section("Appearance") {
             Picker("Theme", selection: $draft.settings.themeName) {

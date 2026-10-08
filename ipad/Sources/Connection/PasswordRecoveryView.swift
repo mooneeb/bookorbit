@@ -40,9 +40,9 @@ struct PasswordRecoveryView: View {
               .disabled(model.isBusy)
               .accessibilityIdentifier("passwordRecoveryEmail")
             Button("Request reset link", action: model.requestReset)
+              .buttonStyle(PasswordRecoveryRequestButtonStyle())
               .frame(minHeight: 44).disabled(!model.canRequest)
               .accessibilityIdentifier("requestPasswordReset")
-          } footer: {
             Text("Use the email address associated with your BookOrbit account.")
               .font(.footnote).fixedSize(horizontal: false, vertical: true)
           }
@@ -100,5 +100,13 @@ struct PasswordRecoveryView: View {
   private func returnToSignIn() {
     model.close()
     dismiss()
+  }
+}
+
+private struct PasswordRecoveryRequestButtonStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .foregroundStyle(Color(uiColor: .label))
+      .opacity(configuration.isPressed ? 0.7 : 1)
   }
 }

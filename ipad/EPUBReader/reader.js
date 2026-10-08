@@ -6,6 +6,7 @@ import { themes } from "./themes.js";
 import { getBlocks } from "../foliate/tts.js";
 import { makeDeliveredBook } from "./delivered-book.js";
 import { prepareCustomFonts, configureCustomFont, customFontCSS, settleCustomFonts, clearCustomFonts } from "./custom-fonts.js";
+import { publicationPosition, fractionTarget, withProgrammaticMovement } from "./position-navigation.js";
 
 const view = document.querySelector("foliate-view");
 let closed = false;
@@ -65,17 +66,25 @@ const location = () => {
     pageTotal: !view.isFixedLayout && !view.renderer.scrolled ? Math.max(1, view.renderer.pages - 2) : null,
     remainingMinutes: Number.isFinite(value.time?.total) ? Math.max(0, Math.ceil(value.time.total)) : null,
     chapterLabel: String(value.tocItem?.label ?? "").slice(0, 500),
+    ...publicationPosition(value),
   };
 };
-const go = async (target) => {
+const go = async (target, smooth = false) => {
+  const opened = publication;
+  if (closed || !opened) throw new Error("The reader closed.");
   resourceBytes = 0;
   const resolved = await view.resolveNavigation(target);
   if (!resolved || !Number.isInteger(resolved.index) || !publication.sections[resolved.index])
     throw new Error("This passage is unavailable in the publication.");
-  await view.renderer.goTo(resolved);
-  await settle();
-  await view.renderer.goTo(resolved);
-  await settle();
+  const renderer = view.renderer;
+  await withProgrammaticMovement(renderer, smooth, async () => {
+    await renderer.goTo({ ...resolved, smooth });
+    await settle();
+    if (closed || opened !== publication || renderer !== view.renderer) throw new Error("The reader closed.");
+    await renderer.goTo(resolved);
+    await settle();
+  });
+  if (closed || opened !== publication || renderer !== view.renderer) throw new Error("The reader closed.");
   if (!view.renderer.getContents().some((item) => item.index === resolved.index)) throw new Error("The requested passage could not be opened.");
   return location();
 };
@@ -268,6 +277,7 @@ window.epubTurn = async (forward) => {
   return location();
 };
 window.epubGo = go;
+window.epubGoFraction = (fraction, smooth) => go(fractionTarget(fraction), smooth);
 window.epubSearchStart = async (query) => {
   searchState?.iterator?.return?.();
   searchState = { query, index: 0, iterator: null };

@@ -17,6 +17,8 @@ struct EPUBReadingLocation {
   let pageTotal: Int?
   let remainingMinutes: Int?
   let chapterLabel: String
+  let locationNumber: Int?
+  let locationTotal: Int?
 }
 
 struct EPUBSearchResult: Identifiable, Codable {
@@ -289,13 +291,15 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   func goToChapter(_ index: Int) async {
     guard (0..<chapterCount).contains(index) else { return }
     await navigate(
-      "return await window.epubGo(target)", arguments: ["target": index],
-      forward: index >= (location?.chapterIndex ?? 0))
+      "return await window.epubGo(target, smooth)", arguments: ["target": index],
+      forward: index >= (location?.chapterIndex ?? 0), programmatic: true)
   }
 
   func goToCFI(_ cfi: String) async {
     guard cfi.hasPrefix("epubcfi("), cfi.utf16.count <= 2000 else { return }
-    await navigate("return await window.epubGo(target)", arguments: ["target": cfi], forward: true)
+    await navigate(
+      "return await window.epubGo(target, smooth)", arguments: ["target": cfi], forward: true,
+      programmatic: true)
   }
 
   func goToHref(_ href: String) async {
@@ -320,7 +324,20 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       }
       guard allowed else { return }
     }
-    await navigate("return await window.epubGo(target)", arguments: ["target": href], forward: true)
+    await navigate(
+      "return await window.epubGo(target, smooth)", arguments: ["target": href], forward: true,
+      programmatic: true)
+  }
+
+  func goToFraction(_ fraction: Double) async -> EPUBPositionJumpResult {
+    guard fraction.isFinite, (0...1).contains(fraction), canNavigate else { return .failed }
+    let moved = await navigate(
+      "return await window.epubGoFraction(fraction, smooth)", arguments: ["fraction": fraction],
+      forward: fraction * 100 >= (location?.percentage ?? 0), programmatic: true,
+      preserveContentOnFailure: true)
+    guard moved else { return .failed }
+    saveTask?.cancel()
+    return await saveProgress() ? .saved : .pendingSave
   }
 
   func applyPreferences() async {
@@ -540,50 +557,73 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     }
   }
 
+  @discardableResult
   private func navigate(
     _ script: String, arguments: [String: Any], forward: Bool, animate: Bool = true,
-    allowPendingSave: Bool = false
-  ) async {
+    allowPendingSave: Bool = false, programmatic: Bool = false,
+    preserveContentOnFailure: Bool = false
+  ) async -> Bool {
     guard isReady, !isNavigating, !isSearching, !isClosed,
       allowPendingSave || (!isSaving && pendingProgress == nil)
-    else { return }
+    else { return false }
     isNavigating = true
     error = nil
     status = nil
     if !isSaving { saveTask?.cancel() }
+    let originalLocation = location
+    let movement =
+      animate && (!programmatic || preferences.value.programmaticMovement == .smooth)
+      && !reduceMotion
+    let animation: ReaderTurnAnimation =
+      !movement || preferences.value.settings.flow == "scrolled"
+      ? .none : preferences.value.pageAnimation
+    var commandArguments = arguments
+    if programmatic {
+      commandArguments["smooth"] = movement && preferences.value.settings.flow == "scrolled"
+    }
     defer { isNavigating = false }
     do {
       guard let generation, try await api.authenticatedSessionGeneration() == generation else {
         throw ConnectionError.expiredSession
       }
-      if animate && !reduceMotion && preferences.value.pageAnimation != .none
-        && preferences.value.settings.flow != "scrolled"
-      {
+      if animation != .none {
         let snapshot = try await webView.takeSnapshot(configuration: nil)
         prepareTurn?(snapshot)
       }
       let raw = try await webView.callAsyncJavaScript(
-        script, arguments: arguments, in: nil, contentWorld: .page)
+        script, arguments: commandArguments, in: nil, contentWorld: .page)
       let value = try decodedLocation(raw)
       guard !isClosed, try await api.authenticatedSessionGeneration() == generation else {
         throw ConnectionError.expiredSession
       }
-      let animation =
-        reduceMotion || !animate || preferences.value.settings.flow == "scrolled"
-        ? ReaderTurnAnimation.none : preferences.value.pageAnimation
       await commitTurn?(forward, animation)
-      guard !isClosed else { return }
+      guard !isClosed, try await api.authenticatedSessionGeneration() == generation else {
+        throw ConnectionError.expiredSession
+      }
       location = value
       selectionCFI = nil
       selectionText = ""
       scheduleSave()
+      return true
     } catch {
       cancelTurn?()
       if !isClosed {
         self.error = error.localizedDescription
-        clearContent()
-        resources.reset()
+        if preserveContentOnFailure, let originalLocation, let generation,
+          (try? await api.authenticatedSessionGeneration()) == generation,
+          let raw = try? await webView.callAsyncJavaScript(
+            "return await window.epubGo(target)", arguments: ["target": originalLocation.cfi],
+            in: nil, contentWorld: .page),
+          !isClosed, (try? await api.authenticatedSessionGeneration()) == generation,
+          let restored = try? decodedLocation(raw)
+        {
+          location = restored
+        } else {
+          clearContent()
+          resources.reset()
+        }
       }
+      return false
     }
   }
 
@@ -637,14 +677,22 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     let total = value["pageTotal"] as? Int
     let minutes = value["remainingMinutes"] as? Int
     let label = value["chapterLabel"] as? String ?? ""
+    let locationNumber = value["locationNumber"] as? Int
+    let locationTotal = value["locationTotal"] as? Int
     guard page.map({ (0...1_000_000).contains($0) }) ?? true,
       total.map({ (1...1_000_000).contains($0) }) ?? true,
       minutes.map({ (0...10_000_000).contains($0) }) ?? true, label.utf16.count <= 500
     else { throw ConnectionError.invalidResponse }
+    guard
+      (locationNumber == nil && locationTotal == nil)
+        || (locationTotal.map({ $0 > 0 && $0 <= 9_007_199_254_740_991 }) == true
+          && locationNumber.map({ $0 > 0 && $0 <= (locationTotal ?? 0) }) == true)
+    else { throw ConnectionError.invalidResponse }
     return .init(
       cfi: cfi, percentage: percentage, chapterIndex: index,
       rightToLeft: value["rightToLeft"] as? Bool ?? false,
-      page: page, pageTotal: total, remainingMinutes: minutes, chapterLabel: label)
+      page: page, pageTotal: total, remainingMinutes: minutes, chapterLabel: label,
+      locationNumber: locationNumber, locationTotal: locationTotal)
   }
 
   func publicationCommand(_ script: String, arguments: [String: Any]) async throws -> Any? {

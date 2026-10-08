@@ -12,7 +12,13 @@ final class PDFReaderModel {
   private(set) var status = ""
   private(set) var error: String?
   private(set) var isClosing = false
+  private(set) var isUnlocking = false
+  private(set) var passwordError: String?
+  var requiresPassword: Bool { lockedDocument != nil }
   var hasUnsavedPosition: Bool { pendingPage != nil && saveTask == nil }
+  private var lockedDocument: PDFDocument?
+  private var openingPageNumber: Double?
+  private var session: UUID?
   private var localFile: URL?
   private var pendingPage: Int?
   private var saveTask: Task<Void, Never>?
@@ -25,32 +31,88 @@ final class PDFReaderModel {
   }
 
   func load() async {
-    guard document == nil, !isLoading, !isClosed else { return }
+    guard document == nil, lockedDocument == nil, !isLoading, !isClosed else { return }
     isLoading = true
+    error = nil
     defer { isLoading = false }
     do {
-      let progress: FileReadingProgress = try await api.send("books/files/\(file.id)/progress")
+      let session = try await api.authenticatedSessionGeneration()
+      try Task.checkCancellation()
+      guard !isClosed else { return }
+      self.session = session
+      let progress: FileReadingProgress = try await api.boundedJSON(
+        "books/files/\(file.id)/progress", byteLimit: 16 * 1024, session: session)
+      try await checkSession()
       guard let size = file.sizeBytes else { throw ConnectionError.invalidResponse }
       let url = try await api.deliveredFile(
-        fileID: file.id, expectedSize: size, mimeType: "application/pdf")
+        fileID: file.id, expectedSize: size, mimeType: "application/pdf", session: session)
       if isClosed || Task.isCancelled {
         try? FileManager.default.removeItem(at: url)
         return
       }
       localFile = url
-      guard let pdf = PDFDocument(url: url), pdf.pageCount > 0 else {
+      try await checkSession()
+      guard let pdf = PDFDocument(url: url) else {
         throw ConnectionError.invalidResponse
       }
-      if let page = progress.pageNumber, page.isFinite, page >= 1, page <= Double(pdf.pageCount) {
-        pageIndex = Int(page.rounded(.down)) - 1
+      try await checkSession()
+      openingPageNumber = progress.pageNumber
+      if pdf.isLocked {
+        lockedDocument = pdf
+      } else {
+        try open(pdf)
       }
-      document = pdf
     } catch is CancellationError {
-      removeLocalFile()
+      discardOpeningDocument()
     } catch {
+      discardOpeningDocument()
+      guard !isClosed, !Task.isCancelled else { return }
       self.error = error.localizedDescription
-      removeLocalFile()
     }
+  }
+
+  func unlock(withPassword password: String) async {
+    guard !isClosed, !isUnlocking, let pdf = lockedDocument, !password.isEmpty else { return }
+    isUnlocking = true
+    passwordError = nil
+    defer { isUnlocking = false }
+    do {
+      try await checkSession()
+      guard pdf.unlock(withPassword: password), !pdf.isLocked else {
+        passwordError = "That password did not unlock the PDF. Try again."
+        return
+      }
+      try await checkSession()
+      try open(pdf)
+    } catch is CancellationError {
+      discardOpeningDocument()
+    } catch {
+      discardOpeningDocument()
+      guard !isClosed, !Task.isCancelled else { return }
+      self.error = error.localizedDescription
+    }
+  }
+
+  private func open(_ pdf: PDFDocument) throws {
+    guard !pdf.isLocked, pdf.pageCount > 0 else { throw ConnectionError.invalidResponse }
+    if let page = openingPageNumber, page.isFinite, page >= 1, page <= Double(pdf.pageCount) {
+      pageIndex = Int(page.rounded(.down)) - 1
+    }
+    document = pdf
+    lockedDocument = nil
+    openingPageNumber = nil
+    passwordError = nil
+    error = nil
+  }
+
+  private func checkSession() async throws {
+    try Task.checkCancellation()
+    guard !isClosed else { throw CancellationError() }
+    guard let session, session == (try await api.authenticatedSessionGeneration()) else {
+      throw ConnectionError.expiredSession
+    }
+    try Task.checkCancellation()
+    guard !isClosed else { throw CancellationError() }
   }
 
   func didTurn(to index: Int) {
@@ -96,7 +158,7 @@ final class PDFReaderModel {
         try Task.checkCancellation()
         guard !isClosed else { return }
         try await api.sendEmpty(
-          "books/files/\(file.id)/progress", body: JSONEncoder().encode(payload))
+          "books/files/\(file.id)/progress", body: JSONEncoder().encode(payload), session: session)
         guard !isClosed else { return }
         if pendingPage == nil {
           status = "Position saved"
@@ -133,6 +195,14 @@ final class PDFReaderModel {
     saveTask?.cancel()
     searchSelection = nil
     document = nil
+    session = nil
+    discardOpeningDocument()
+  }
+
+  private func discardOpeningDocument() {
+    lockedDocument = nil
+    openingPageNumber = nil
+    passwordError = nil
     removeLocalFile()
   }
 

@@ -28,84 +28,12 @@ struct PDFReaderView: View {
 
   var body: some View {
     NavigationStack {
-      VStack(spacing: 0) {
-        if let document = model.document {
-          PDFCurlView(
-            document: document, pageIndex: model.pageIndex, selection: model.searchSelection,
-            onTurn: model.didTurn, settings: preferences.value.pdf,
-            animation: preferences.value.pageAnimation, onLayout: { pageLayout = $0 },
-            onTransition: { isTurning = $0 }
-          )
-          .allowsHitTesting(!model.isClosing)
-        } else if model.error == nil {
-          ProgressView("Opening PDF…")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+      Group {
+        if model.requiresPassword {
+          PDFPasswordView(model: model, cancel: cancelOpening)
+        } else {
+          readerBody
         }
-        if let error = model.error { Text(error).padding() }
-        VStack {
-          if let document = model.document {
-            Text("Page \(model.pageIndex + 1) of \(document.pageCount)")
-          }
-          if !model.status.isEmpty { Text(model.status) }
-          if model.hasUnsavedPosition {
-            Button("Retry saving", action: model.retrySaving)
-              .buttonStyle(.plain)
-              .frame(minHeight: 44)
-            Button("Close without saving") { confirmsDiscard = true }
-              .buttonStyle(.plain)
-              .frame(minHeight: 44)
-          }
-          LazyVGrid(columns: [GridItem(.adaptive(minimum: actionWidth))]) {
-            Button("Previous page", action: previousPage)
-              .frame(minHeight: 44)
-              .keyboardShortcut(.leftArrow, modifiers: [])
-              .accessibilityIdentifier("pdfPreviousPage")
-              .disabled(
-                model.document == nil
-                  || pageLayout.adjacentPage(to: model.pageIndex, delta: -1) == nil
-                  || model.isClosing || isTurning)
-            Button("Next page", action: nextPage)
-              .frame(minHeight: 44)
-              .keyboardShortcut(.rightArrow, modifiers: [])
-              .accessibilityIdentifier("pdfNextPage")
-              .disabled(
-                model.document == nil
-                  || pageLayout.adjacentPage(to: model.pageIndex, delta: 1) == nil
-                  || model.isClosing || isTurning)
-            Button("Go to page") { isNavigating = true }
-              .frame(minHeight: 44)
-              .accessibilityIdentifier("pdfNavigate")
-              .disabled(model.document == nil || model.isClosing)
-            Button("Contents") { isBrowsingContents = true }
-              .frame(minHeight: 44)
-              .accessibilityIdentifier("pdfContents")
-              .disabled(model.document == nil || model.isClosing)
-            Button("Search") { isSearching = true }
-              .frame(minHeight: 44)
-              .accessibilityIdentifier("pdfSearch")
-              .disabled(model.document == nil || model.isClosing)
-            Button("Reader settings") { isEditingPreferences = true }
-              .frame(minHeight: 44)
-              .accessibilityIdentifier("readerSettings")
-              .disabled(model.isClosing || preferences.isLoading)
-            Button {
-              isBrowsingBookmarks = true
-            } label: {
-              Text("Bookmarks").frame(maxWidth: .infinity, minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .accessibilityIdentifier("readerBookmarks")
-            .disabled(model.document == nil || model.isClosing || isTurning)
-            Button("Close reader", action: closeReader)
-              .frame(minHeight: 44)
-              .disabled(model.isClosing)
-          }
-          .buttonStyle(.plain)
-          .frame(minHeight: 44)
-        }
-        .font(.body)
-        .foregroundStyle(.primary)
-        .padding()
       }
       .navigationTitle("PDF reader")
       .navigationBarTitleDisplayMode(.inline)
@@ -157,7 +85,117 @@ struct PDFReaderView: View {
     }
   }
 
+  private var readerBody: some View {
+    VStack(spacing: 0) {
+      if let document = model.document {
+        PDFCurlView(
+          document: document, pageIndex: model.pageIndex, selection: model.searchSelection,
+          onTurn: model.didTurn, settings: preferences.value.pdf,
+          animation: preferences.value.pageAnimation, onLayout: { pageLayout = $0 },
+          onTransition: { isTurning = $0 }
+        )
+        .allowsHitTesting(!model.isClosing)
+      } else if model.error == nil {
+        ProgressView("Opening PDF…")
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+      if let error = model.error {
+        Text(error).font(.body).foregroundStyle(.primary)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding().accessibilityIdentifier("pdfReaderError")
+      }
+      VStack {
+        if let document = model.document {
+          Text("Page \(model.pageIndex + 1) of \(document.pageCount)")
+        }
+        if !model.status.isEmpty { Text(model.status) }
+        if model.hasUnsavedPosition {
+          Button("Retry saving", action: model.retrySaving)
+            .buttonStyle(.plain)
+            .frame(minHeight: 44)
+          Button("Close without saving") { confirmsDiscard = true }
+            .buttonStyle(.plain)
+            .frame(minHeight: 44)
+        }
+        if model.document != nil {
+          readerActions
+        } else {
+          Button("Cancel", action: cancelOpening)
+            .buttonStyle(.plain)
+            .foregroundStyle(.primary)
+            .frame(minWidth: 44, minHeight: 44)
+            .keyboardShortcut(.cancelAction)
+            .accessibilityIdentifier("pdfCancelOpening")
+        }
+      }
+      .font(.body)
+      .foregroundStyle(.primary)
+      .padding()
+    }
+  }
+
+  private var readerActions: some View {
+    LazyVGrid(columns: [GridItem(.adaptive(minimum: actionWidth))]) {
+      Button("Previous page", action: previousPage)
+        .frame(minHeight: 44)
+        .keyboardShortcut(.leftArrow, modifiers: [])
+        .accessibilityIdentifier("pdfPreviousPage")
+        .disabled(
+          model.document == nil
+            || pageLayout.adjacentPage(to: model.pageIndex, delta: -1) == nil
+            || model.isClosing || isTurning)
+      Button("Next page", action: nextPage)
+        .frame(minHeight: 44)
+        .keyboardShortcut(.rightArrow, modifiers: [])
+        .accessibilityIdentifier("pdfNextPage")
+        .disabled(
+          model.document == nil
+            || pageLayout.adjacentPage(to: model.pageIndex, delta: 1) == nil
+            || model.isClosing || isTurning)
+      Button("Go to page") { isNavigating = true }
+        .frame(minHeight: 44)
+        .accessibilityIdentifier("pdfNavigate")
+        .disabled(model.document == nil || model.isClosing)
+      Button("Contents") { isBrowsingContents = true }
+        .frame(minHeight: 44)
+        .accessibilityIdentifier("pdfContents")
+        .disabled(model.document == nil || model.isClosing)
+      Button("Search") { isSearching = true }
+        .frame(minHeight: 44)
+        .accessibilityIdentifier("pdfSearch")
+        .disabled(model.document == nil || model.isClosing)
+      Button("Reader settings") { isEditingPreferences = true }
+        .frame(minHeight: 44)
+        .accessibilityIdentifier("readerSettings")
+        .disabled(model.isClosing || preferences.isLoading)
+      Button {
+        isBrowsingBookmarks = true
+      } label: {
+        Text("Bookmarks").frame(maxWidth: .infinity, minHeight: 44)
+          .contentShape(Rectangle())
+      }
+      .accessibilityIdentifier("readerBookmarks")
+      .disabled(model.document == nil || model.isClosing || isTurning)
+      Button("Close reader", action: closeReader)
+        .frame(minHeight: 44)
+        .accessibilityIdentifier("pdfCloseReader")
+        .disabled(model.isClosing)
+    }
+    .buttonStyle(.plain)
+    .frame(minHeight: 44)
+  }
+
+  private func cancelOpening() {
+    model.close()
+    preferences.close()
+    dismiss()
+  }
+
   private func closeReader() {
+    guard model.document != nil else {
+      cancelOpening()
+      return
+    }
     Task {
       if await model.prepareToClose() { dismiss() }
     }
