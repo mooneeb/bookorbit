@@ -40,8 +40,12 @@ final class PDFPassageJourneyTests: XCTestCase {
     let token = try await login(account.username)
     let user = try await object("auth/me", token: token)
     XCTAssertEqual(user["id"] as? Int, account.id)
-    XCTAssertTrue((user["permissions"] as? [String] ?? []).contains("annotation_manage_own"))
-    let book = try await object("books/1", token: token)
+    XCTAssertEqual(user["isSuperuser"] as? Bool, false)
+    XCTAssertEqual(
+      Set(user["permissions"] as? [String] ?? []),
+      Set(["library_download", "annotation_manage_own"]))
+    let bookData = try await request("books/1", token: token, expected: 200)
+    let book = try XCTUnwrap(JSONSerialization.jsonObject(with: bookData) as? [String: Any])
     let title = try XCTUnwrap(book["title"] as? String)
     let files = try XCTUnwrap(book["files"] as? [[String: Any]])
     let fileID = try XCTUnwrap(files.first { $0["format"] as? String == "pdf" }?["id"] as? Int)
@@ -155,6 +159,8 @@ final class PDFPassageJourneyTests: XCTestCase {
     XCTAssertEqual(deniedUser["id"] as? Int, account.id)
     XCTAssertFalse((deniedUser["permissions"] as? [String] ?? []).contains("annotation_manage_own"))
     XCTAssertTrue((deniedUser["permissions"] as? [String] ?? []).contains("library_download"))
+    XCTAssertEqual(deniedUser["isSuperuser"] as? Bool, false)
+    _ = try await request("books/1", token: readerToken, expected: 200)
     let privateRows = try await annotations(readerToken)
     let owned = try XCTUnwrap(privateRows.first { $0["id"] as? Int == id })
     XCTAssertEqual(owned["clientId"] as? String, restoredItem["clientId"] as? String)
@@ -226,6 +232,11 @@ final class PDFPassageJourneyTests: XCTestCase {
     _ = try await request(
       "auth/reset-password", method: "POST",
       body: ["token": resetToken, "newPassword": "IpadFixture123"])
+    let fixtureBook = try await object("books/1", token: administrator)
+    let libraryID = try XCTUnwrap(fixtureBook["libraryId"] as? Int)
+    _ = try await request(
+      "libraries/\(libraryID)/access", method: "POST", token: administrator,
+      body: ["userId": userID, "accessLevel": "viewer"], expected: 201)
     return (username, userID)
   }
 

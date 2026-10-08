@@ -61,7 +61,19 @@ final class PrivateAnnotationSyncJourneyTests: XCTestCase {
     _ = try await request(
       "auth/reset-password", method: "POST",
       body: ["token": resetToken, "newPassword": "IpadFixture123"])
+    let fixtureBook = try await object("books/2", token: administrator)
+    let libraryID = try XCTUnwrap(fixtureBook["libraryId"] as? Int)
+    _ = try await request(
+      "libraries/\(libraryID)/access", method: "POST", token: administrator,
+      body: ["userId": userID, "accessLevel": "viewer"], expected: 201)
     let token = try await login(username)
+    let currentUser = try await object("auth/me", token: token)
+    XCTAssertEqual(currentUser["id"] as? Int, userID)
+    XCTAssertEqual(currentUser["isSuperuser"] as? Bool, false)
+    XCTAssertEqual(
+      Set(currentUser["permissions"] as? [String] ?? []),
+      Set(["library_download", "annotation_manage_own"]))
+    _ = try await request("books/2", token: token, expected: 200)
     try await fault("reset")
     let proxy = Self.faultURL
     let reconnectURL = try XCTUnwrap(URL(string: "\(proxy)/__faults/annotations/online"))
