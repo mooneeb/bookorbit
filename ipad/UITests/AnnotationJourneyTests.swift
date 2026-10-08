@@ -180,7 +180,17 @@ final class AnnotationJourneyTests: XCTestCase {
     XCUIDevice.shared.orientation = .landscapeLeft
     XCTAssertTrue(
       app.buttons["epubPassageNotes"].wait(for: \.isHittable, toEqual: true, timeout: 10))
-    app.buttons["epubSettings"].tap()
+    for identifier in ["epubReaderTools", "epubSettings"] {
+      let matches = app.descendants(matching: .any).matching(identifier: identifier)
+      guard matches.element.waitForExistence(timeout: 5), matches.count == 1,
+        matches.element.wait(for: \.isHittable, toEqual: true, timeout: 5)
+      else {
+        XCTFail("Expected one hittable reader menu control: \(identifier).")
+        return
+      }
+      matches.element.tap()
+    }
+    XCTAssertTrue(app.navigationBars["Reader settings"].waitForExistence(timeout: 5))
     let increment = app.steppers["epubFontSize"].buttons["Increment"]
     XCTAssertTrue(increment.wait(for: \.isHittable, toEqual: true, timeout: 5))
     increment.tap()
