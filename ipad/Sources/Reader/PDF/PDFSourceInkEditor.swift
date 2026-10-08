@@ -28,6 +28,7 @@ final class PDFSourceInkEditor {
   private(set) var status = ""
   private(set) var error: String?
   private(set) var fixtureGeneration = 0
+  @ObservationIgnored private var consumedFixtureGeneration = 0
   @ObservationIgnored var fixtureLassoInput: (@MainActor () -> Void)?
   private var sources: [Int: NativePdfPageSource] = [:]
   private var autosave: Task<Void, Never>?
@@ -541,6 +542,13 @@ final class PDFSourceInkEditor {
   func feedFixture() {
     draw()
     fixtureGeneration += 1
+  }
+
+  func consumeFixtureGeneration(on page: Int) -> Int? {
+    guard page == currentPage, consumedFixtureGeneration != fixtureGeneration else { return nil }
+    // Source publication replaces page canvases, but must not replay an input already consumed.
+    consumedFixtureGeneration = fixtureGeneration
+    return fixtureGeneration
   }
 
   func feedFixtureLasso() {

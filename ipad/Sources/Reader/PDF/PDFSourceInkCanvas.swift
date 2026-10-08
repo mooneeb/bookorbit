@@ -19,7 +19,6 @@ final class PDFSourceInkCanvas: UIView, PKCanvasViewDelegate, UIGestureRecognize
   private var preview: PKDrawing?
   private var gestureIdentity: String?
   private var gestureVersion: Int?
-  private var fixtureGeneration = 0
   private var pencilInteraction: UIPencilInteraction?
   private let picker = PKToolPicker()
   private var previousEraser: Bool?
@@ -143,8 +142,7 @@ final class PDFSourceInkCanvas: UIView, PKCanvasViewDelegate, UIGestureRecognize
     resize.isEnabled = editor.mode.isWriting && editor.tool == .select && editor.canEdit
     isUserInteractionEnabled = editor.mode.isWriting && editor.canEdit
     updateSelection()
-    if editor.currentPage == pageIndex && fixtureGeneration != editor.fixtureGeneration {
-      fixtureGeneration = editor.fixtureGeneration
+    if let fixtureGeneration = editor.consumeFixtureGeneration(on: pageIndex) {
       let fixture = PDFSourceInkDrawing.fixture().transformed(
         using:
           CGAffineTransform(translationX: 0, y: CGFloat(max(0, fixtureGeneration - 1) * 32)))
