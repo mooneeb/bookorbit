@@ -110,14 +110,32 @@ final class SourceInkTransformJourneyTests: XCTestCase {
     let copied = try XCTUnwrap(copiedItems.first { !beforeCopy.contains($0["id"] as? Int ?? -1) })
     let copyID = try id(copied)
     let copyIdentity = try identity(copied)
+    XCTAssertNotEqual(copyID, selectedID)
     XCTAssertNotEqual(copyIdentity, selectedIdentity)
     XCTAssertEqual(try strokeIDs(copied).count, 1)
     XCTAssertFalse(try strokeIDs(copied).contains(selectedStrokeID))
     XCTAssertFalse(try strokeIDs(copied).contains(untouchedStrokeID))
+    let copiedStrokeID = try XCTUnwrap(strokeIDs(copied).first)
+    let copiedStroke = try stroke(copied, id: copiedStrokeID)
+    let selectedStroke = try stroke(resized, id: selectedStrokeID)
+    let copiedBounds = try strokeBounds(copied, id: copiedStrokeID)
+    let selectedBounds = try strokeBounds(resized, id: selectedStrokeID)
+    XCTAssertEqual(copiedBounds.width, selectedBounds.width, accuracy: 0.1)
+    XCTAssertEqual(copiedBounds.height, selectedBounds.height, accuracy: 0.1)
+    XCTAssertEqual(copiedStroke["color"] as? String, selectedStroke["color"] as? String)
     XCTAssertEqual(
-      try rect(copied).width, try strokeBounds(resized, id: selectedStrokeID).width, accuracy: 0.1)
-    XCTAssertGreaterThan(
-      try rect(copied).minX, try strokeBounds(resized, id: selectedStrokeID).minX)
+      try XCTUnwrap(copiedStroke["width"] as? Double),
+      try XCTUnwrap(selectedStroke["width"] as? Double), accuracy: 0.1)
+    let copiedPoints = try XCTUnwrap(copiedStroke["points"] as? [[String: Any]])
+    let selectedPoints = try XCTUnwrap(selectedStroke["points"] as? [[String: Any]])
+    XCTAssertEqual(copiedPoints.count, selectedPoints.count)
+    for (copiedPoint, selectedPoint) in zip(copiedPoints, selectedPoints) {
+      for axis in ["x", "y"] {
+        XCTAssertEqual(
+          try XCTUnwrap(copiedPoint[axis] as? Double),
+          try XCTUnwrap(selectedPoint[axis] as? Double) + 16, accuracy: 0.1)
+      }
+    }
     XCTAssertTrue(app.images["pdfInkItem\(copyIdentity)"].waitForExistence(timeout: 15))
     let copiedPDF = try await artifact(
       token: token, name: "copied", present: [selectedID, separateID, copyID])
