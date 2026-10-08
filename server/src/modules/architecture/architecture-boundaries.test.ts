@@ -35,6 +35,10 @@ describe('Architecture boundaries', () => {
 
   it('freezes direct DB injection in services to an explicit allowlist', async () => {
     const allowlist = [
+      // Annotation-owned sync, hub queries, and shared source ink stay inside the annotation boundary.
+      'src/modules/annotation/native-annotation.service.ts',
+      'src/modules/annotation/native-annotation-hub.service.ts',
+      'src/modules/annotation/native-source-ink.service.ts',
       'src/modules/auth/auth.service.ts',
       'src/modules/auth/oidc/backchannel-logout.service.ts',
       'src/modules/auth/oidc/oidc-group-mapping.service.ts',

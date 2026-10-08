@@ -70,6 +70,7 @@ function makeDb(...results: unknown[]) {
     return query;
   };
   const db = {
+    execute: vi.fn().mockResolvedValue([]),
     select: vi.fn().mockImplementation(next),
     selectDistinct: vi.fn().mockImplementation(next),
     insert: vi.fn().mockImplementation(next),

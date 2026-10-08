@@ -1,6 +1,6 @@
 import path from 'path';
 import { availableParallelism } from 'os';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 // Concurrent agents sharing this worktree each start their own runner, and an uncapped pool
 // sizes itself to the whole machine. The lock wrapper raises this for the run that holds the
@@ -21,6 +21,7 @@ export default defineConfig({
     maxWorkers: process.env.CI ? undefined : localMaxWorkers,
     testTimeout: 15_000,
     include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
+    exclude: [...configDefaults.exclude, 'test/ipad/bookmark-retirement.http.test.ts'],
     passWithNoTests: true,
     reporters: process.env.CI ? ['default', 'github-actions'] : ['default'],
     coverage: {

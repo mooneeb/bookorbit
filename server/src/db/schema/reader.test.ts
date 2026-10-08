@@ -105,14 +105,14 @@ describe('reader schema', () => {
     expect(annotations.style.default).toBe('highlight');
   });
 
-  it('frees a deleted audio bookmark position but keeps CFI tombstones unique for KOReader revival', () => {
+  it('enforces unique current bookmark locations while freeing deleted audio positions and CFI identities', () => {
     const dialect = new PgDialect();
     const predicates = new Map(getTableConfig(bookmarks).indexes.map((idx) => [idx.config.name, idx.config.where]));
     const positionPredicate = dialect.sqlToQuery(predicates.get('bookmarks_user_book_pos_uidx')!).sql;
     const cfiPredicate = dialect.sqlToQuery(predicates.get('bookmarks_user_book_cfi_uidx')!).sql;
 
     expect(positionPredicate).toContain('"deleted_at" is null');
-    expect(cfiPredicate).not.toContain('deleted_at');
+    expect(cfiPredicate).toBe('"bookmarks"."cfi" is not null and "bookmarks"."deleted_at" is null');
   });
 
   it('keeps reader preference uniqueness scoped to user and format/file', () => {

@@ -3,17 +3,9 @@ import { afterAll, beforeAll, expect, test, vi } from 'vitest';
 import type { BookmarkResponse } from '@bookorbit/types';
 
 import { createEpubFixture } from '../e2e/reader-state-isolation/reader-state-isolation-fixture-builder';
-import {
-  authHeader,
-  closeReaderStateIsolationE2EContext,
-  createLibraryWithFolder,
-  createReaderStateIsolationE2EContext,
-  locateBookByAbsolutePath,
-  triggerAndWaitForLibraryScan,
-  type LocatedBookFile,
-  type ReaderStateIsolationE2EContext,
-} from '../e2e/reader-state-isolation/reader-state-isolation-harness';
+import type { LocatedBookFile, ReaderStateIsolationE2EContext } from '../e2e/reader-state-isolation/reader-state-isolation-harness';
 
+let harness: typeof import('../e2e/reader-state-isolation/reader-state-isolation-harness');
 let ctx: ReaderStateIsolationE2EContext;
 let epub: LocatedBookFile;
 let fileHash: string;
@@ -41,7 +33,7 @@ async function create(payload: { clientId?: string; cfi: string; title: string }
   const response = await ctx.app.inject({
     method: 'POST',
     url: `/api/v1/books/${epub.bookId}/bookmarks`,
-    headers: authHeader(ctx.adminToken),
+    headers: harness.authHeader(ctx.adminToken),
     payload,
   });
   expect(response.statusCode, response.body).toBe(201);
@@ -52,7 +44,7 @@ async function remove(bookmarkId: number) {
   const response = await ctx.app.inject({
     method: 'DELETE',
     url: `/api/v1/books/${epub.bookId}/bookmarks/${bookmarkId}`,
-    headers: authHeader(ctx.adminToken),
+    headers: harness.authHeader(ctx.adminToken),
   });
   expect(response.statusCode).toBe(204);
 }
@@ -79,18 +71,26 @@ async function acknowledge(deviceId: string, applied: { serverId: number; pos: s
 }
 
 beforeAll(async () => {
-  const database = new URL(process.env.DATABASE_URL ?? '');
+  if (!process.env.DATABASE_URL || !URL.canParse(process.env.DATABASE_URL))
+    throw new Error('Retirement HTTP tests require DATABASE_URL from scripts/ipad/run-bookmark-retirement.mjs');
+  const database = new URL(process.env.DATABASE_URL);
   if (!['localhost', '127.0.0.1'].includes(database.hostname) || !/^bookorbit_bookmark_retirement_\d+_e2e$/.test(database.pathname.slice(1)))
     throw new Error('Retirement HTTP tests require their own migrated localhost bookmark-retirement database');
-  ctx = await createReaderStateIsolationE2EContext();
-  const library = await createLibraryWithFolder(ctx, { name: `Retirement fixture ${randomUUID()}` });
+  if (!process.env.JWT_SECRET) throw new Error('Retirement HTTP tests require JWT_SECRET from scripts/ipad/run-bookmark-retirement.mjs');
+  harness = await import('../e2e/reader-state-isolation/reader-state-isolation-harness');
+  ctx = await harness.createReaderStateIsolationE2EContext();
+  const library = await harness.createLibraryWithFolder(ctx, { name: `Retirement fixture ${randomUUID()}` });
   const epubPath = await createEpubFixture(library.folderPath, 'retirement.epub', {
     title: 'Bookmark retirement fixture',
     uid: `urn:uuid:${randomUUID()}`,
   });
-  await triggerAndWaitForLibraryScan(ctx, library.libraryId);
-  epub = await locateBookByAbsolutePath(ctx, epubPath);
-  const artifact = await ctx.app.inject({ method: 'GET', url: `/api/v1/books/files/${epub.bookFileId}/serve`, headers: authHeader(ctx.adminToken) });
+  await harness.triggerAndWaitForLibraryScan(ctx, library.libraryId);
+  epub = await harness.locateBookByAbsolutePath(ctx, epubPath);
+  const artifact = await ctx.app.inject({
+    method: 'GET',
+    url: `/api/v1/books/files/${epub.bookFileId}/serve`,
+    headers: harness.authHeader(ctx.adminToken),
+  });
   expect(artifact.statusCode).toBe(200);
   const hash = createHash('md5');
   for (const offset of [0, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864, 268435456, 1073741824]) {
@@ -101,7 +101,7 @@ beforeAll(async () => {
   const credentials = await ctx.app.inject({
     method: 'POST',
     url: '/api/v1/koreader/credentials',
-    headers: authHeader(ctx.adminToken),
+    headers: harness.authHeader(ctx.adminToken),
     payload: { username, password },
   });
   expect([200, 201]).toContain(credentials.statusCode);
@@ -109,7 +109,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   vi.useRealTimers();
-  if (ctx) await closeReaderStateIsolationE2EContext(ctx);
+  if (ctx) await harness.closeReaderStateIsolationE2EContext(ctx);
 });
 
 test('IPAD-E02-A05-bookmark-retirement: five hundred acknowledged tombstones release the device working set without losing retry identities', async () => {
@@ -138,7 +138,7 @@ test('IPAD-E02-A05-bookmark-retirement: five hundred acknowledged tombstones rel
   const stale = await ctx.app.inject({
     method: 'POST',
     url: `/api/v1/books/${epub.bookId}/bookmarks`,
-    headers: authHeader(ctx.adminToken),
+    headers: harness.authHeader(ctx.adminToken),
     payload: first!,
   });
   expect(stale.statusCode).toBe(409);
@@ -172,7 +172,12 @@ test('IPAD-E02-A05-bookmark-retirement: every device acknowledges before retirem
   await acknowledge(deviceB, [], [bookmark.id]);
   await pull(deviceB);
   expect((await pull(deviceB)).results[0].toApply.delete.map((item) => item.serverId)).not.toContain(bookmark.id);
-  const stale = await ctx.app.inject({ method: 'POST', url: `/api/v1/books/${epub.bookId}/bookmarks`, headers: authHeader(ctx.adminToken), payload });
+  const stale = await ctx.app.inject({
+    method: 'POST',
+    url: `/api/v1/books/${epub.bookId}/bookmarks`,
+    headers: harness.authHeader(ctx.adminToken),
+    payload,
+  });
   expect(stale.statusCode).toBe(409);
 
   const replacement = await create({ ...payload, clientId: randomUUID() });
@@ -193,7 +198,7 @@ test('IPAD-E02-A05-bookmark-retirement: every device acknowledges before retirem
   const afterUpload = await ctx.app.inject({
     method: 'POST',
     url: `/api/v1/books/${epub.bookId}/bookmarks`,
-    headers: authHeader(ctx.adminToken),
+    headers: harness.authHeader(ctx.adminToken),
     payload,
   });
   expect(afterUpload.statusCode).toBe(409);

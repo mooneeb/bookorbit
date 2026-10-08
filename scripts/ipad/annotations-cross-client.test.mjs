@@ -108,14 +108,55 @@ async function seedInk(request, session, x = 80, color = "#ff0000") {
   });
 }
 
+async function publicDeltaTargets(request, session, path, matches, { choose, maxTargets = 128 } = {}) {
+  const selected = new Map();
+  let chosen;
+  let cursor = "0";
+  let rowsScanned = 0;
+  const deadline = Date.now() + 60_000;
+  for (let page = 0; page < 64; page++) {
+    const remaining = deadline - Date.now();
+    expect(remaining, "Public delta pagination exceeded its bounded 60-second budget").toBeGreaterThan(0);
+    const response = await request.get(`${path}&cursor=${encodeURIComponent(cursor)}&limit=100`, {
+      headers: session.headers,
+      timeout: Math.min(15_000, remaining),
+    });
+    let delta;
+    try {
+      expect((await response.body()).length).toBeLessThanOrEqual(24 * 1024 * 1024);
+      delta = await json(response);
+    } finally {
+      await response.dispose();
+    }
+    expect(delta.items.length).toBeLessThanOrEqual(100);
+    expect(typeof delta.hasMore).toBe("boolean");
+    expect(String(delta.nextCursor)).toMatch(/^\d+$/);
+    rowsScanned += delta.items.length;
+    for (const item of delta.items) {
+      if (!matches(item)) continue;
+      if (choose) chosen = chosen ? choose(chosen, item) : item;
+      else {
+        selected.set(item.id, item);
+        expect(selected.size, "Public delta fixture target allowance exceeded").toBeLessThanOrEqual(maxTargets);
+      }
+    }
+    const nextCursor = String(delta.nextCursor);
+    if (!delta.hasMore)
+      return { items: choose ? (chosen ? [chosen] : []) : [...selected.values()], nextCursor, hasMore: false, pagesScanned: page + 1, rowsScanned };
+    expect(BigInt(nextCursor), "Public delta cursor must advance").toBeGreaterThan(BigInt(cursor));
+    cursor = nextCursor;
+  }
+  throw new Error("Public delta pagination exceeded its bounded 6400-row allowance");
+}
+
 async function resetBrowserInk(request, session) {
-  const sourceItems = await json(
-    await request.get("/api/v1/annotations/native/source-ink?bookId=1&bookFileId=1&cursor=0&limit=100&page=0", { headers: session.headers }),
-  );
-  expect(sourceItems.hasMore).toBe(false);
-  for (const item of sourceItems.items.filter(
+  const sourceItems = await publicDeltaTargets(
+    request,
+    session,
+    "/api/v1/annotations/native/source-ink?bookId=1&bookFileId=1&page=0",
     (entry) => !entry.deletedAt && entry.drawing?.strokes.some((stroke) => stroke.id === "browser-source-ink-fixture"),
-  )) {
+  );
+  for (const item of sourceItems.items) {
     const deleted = await operation(request, session, {
       operationId: randomUUID(),
       clientId: item.clientId,
@@ -370,7 +411,12 @@ test("IPAD-E02-A03-web/IPAD-E02-A02: right-click delete, precommit Undo, and ver
   expect(final.pixel(120, 600)).toEqual([255, 0, 0]);
   expect(final.pixel(300, 600)).toEqual([0, 255, 0]);
   expect((await source(request, session)).sourceRevision).toBe(final.revision);
-  const native = await json(await request.get("/api/v1/annotations/native/delta?bookId=1&cursor=0&limit=100", { headers: session.headers }));
+  const native = await publicDeltaTargets(
+    request,
+    session,
+    "/api/v1/annotations/native/delta?bookId=1",
+    (item) => item.id === original.annotation.id,
+  );
   expect(native.items.find((item) => item.id === original.annotation.id).version).toBe(restored.annotation.version);
   await writeFile(info.outputPath("A03-public-native-delta.json"), `${JSON.stringify(native, null, 2)}\n`);
   await captureAnnotationVisual(page, info, "A03-undo-source-convergence");
@@ -384,10 +430,14 @@ test("IPAD-E02-A05-web: committed browser deletion retains stale native edits as
   if (process.env.IPAD_E02_CONCURRENT_NATIVE === "1") {
     const checkpoint = "http://localhost:16485/__faults/annotations/checkpoint/";
     await expect.poll(async () => (await json(await request.get(`${checkpoint}native-offline-ready`))).reached, { timeout: 120_000 }).toBe(true);
-    const available = await json(
-      await request.get("/api/v1/annotations/native/source-ink?bookId=1&bookFileId=1&cursor=0&limit=100&page=0", { headers: session.headers }),
+    const available = await publicDeltaTargets(
+      request,
+      session,
+      "/api/v1/annotations/native/source-ink?bookId=1&bookFileId=1&page=0",
+      (item) => item.kind === "pdf_ink" && !item.deletedAt,
+      { choose: (left, right) => (left.id > right.id ? left : right) },
     );
-    const original = available.items.filter((item) => item.kind === "pdf_ink" && !item.deletedAt).sort((left, right) => right.id - left.id)[0];
+    const original = available.items[0];
     expect(original).toBeDefined();
     await signIn(page);
     await openPdf(page, original.id);
@@ -399,7 +449,7 @@ test("IPAD-E02-A05-web: committed browser deletion retains stale native edits as
     expect(removed.items.some((item) => item.id === original.id)).toBe(false);
     expect((await request.post(`${checkpoint}browser-delete-done`)).status()).toBe(204);
     await expect.poll(async () => (await json(await request.get(`${checkpoint}native-reconciled`))).reached, { timeout: 120_000 }).toBe(true);
-    const delta = await json(await request.get("/api/v1/annotations/native/delta?bookId=1&cursor=0&limit=100", { headers: session.headers }));
+    const delta = await publicDeltaTargets(request, session, "/api/v1/annotations/native/delta?bookId=1", (item) => item.id === original.id);
     const tombstone = delta.items.find((item) => item.id === original.id);
     expect(tombstone.deletedAt).not.toBeNull();
     expect(tombstone.version).toBeGreaterThan(original.version);
@@ -573,16 +623,15 @@ test("IPAD-E02-A06-web: replacement PDF hides old source selection and preserves
   await changeSource("restore");
   const originalSource = await source(request, session);
   const originalArtifact = await delivered(request, session, info, "A06-original-source");
-  const sourceItems = await json(
-    await request.get("/api/v1/annotations/native/source-ink?bookId=1&bookFileId=1&cursor=0&limit=100&page=0", { headers: session.headers }),
+  const embeddedIDs = new Set(originalArtifact.items.map((item) => item.id));
+  const sourceItems = await publicDeltaTargets(
+    request,
+    session,
+    "/api/v1/annotations/native/source-ink?bookId=1&bookFileId=1&page=0",
+    (item) => !item.deletedAt && item.pageFingerprint === originalSource.pageFingerprint && embeddedIDs.has(item.id),
+    { choose: (first) => first },
   );
-  expect(sourceItems.hasMore).toBe(false);
-  const initial = sourceItems.items.find(
-    (item) =>
-      !item.deletedAt &&
-      item.pageFingerprint === originalSource.pageFingerprint &&
-      originalArtifact.items.some((embedded) => embedded.id === item.id),
-  );
+  const initial = sourceItems.items[0];
   expect(initial, "A06 requires a live canonical group embedded in the saved source fixture").toBeTruthy();
   await signIn(page);
   await openPdf(page, initial.id);
@@ -610,7 +659,7 @@ test("IPAD-E02-A06-web: replacement PDF hides old source selection and preserves
     await expect(page.locator('[data-testid^="source-ink-"]')).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
     expect(requests).toHaveLength(0);
-    const delta = await json(await request.get("/api/v1/annotations/native/delta?bookId=1&cursor=0&limit=100", { headers: session.headers }));
+    const delta = await publicDeltaTargets(request, session, "/api/v1/annotations/native/delta?bookId=1", (item) => item.id === initial.id);
     expect(delta.items.find((item) => item.id === initial.id)).toMatchObject({
       version: initial.version,
       deletedAt: null,

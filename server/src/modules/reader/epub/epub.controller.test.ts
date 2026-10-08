@@ -100,6 +100,7 @@ describe('EpubController', () => {
       user,
       undefined,
       expect.any(AbortSignal),
+      undefined,
     );
     expect(reply.code).toHaveBeenCalledWith(206);
     expect(reply.header).toHaveBeenCalledWith('Accept-Ranges', 'bytes');
