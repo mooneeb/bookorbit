@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MetadataExtraFieldsView: View {
+  @Bindable var model: BookDetailModel
   @Bindable var draft: MetadataDraft
   @Bindable var extra: MetadataExtraDraft
 
@@ -39,16 +40,29 @@ struct MetadataExtraFieldsView: View {
   private var seriesSection: some View {
     VStack(alignment: .leading, spacing: 16) {
       Text("Series memberships").font(.title2)
+      Text("The first series is the primary series.")
+        .font(.footnote).fixedSize(horizontal: false, vertical: true)
       Text("Expected book counts apply to the shared series.")
         .fixedSize(horizontal: false, vertical: true)
       VStack(alignment: .leading, spacing: 16) {
         ForEach($extra.series) { $series in
           VStack(alignment: .leading, spacing: 12) {
+            Text(extra.series.first?.id == series.id ? "Primary series" : "Additional series")
+              .font(.headline).accessibilityAddTraits(.isHeader)
             textInput("Series name", text: $series.name, identifier: "metadataSeriesName")
+            MetadataDraftSuggestionButton(
+              model: model, draft: draft, text: seriesName(id: series.id), field: .seriesName,
+              label: "Series name", identifier: "metadataSeriesName", entryID: series.id)
             textInput("Series index", text: $series.index, identifier: "metadataSeriesIndex")
             textInput(
               "Expected book count", text: $series.expectedCount,
               identifier: "metadataSeriesExpectedCount")
+            if extra.series.count > 1 {
+              ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) { seriesMoveActions(series) }
+                VStack(alignment: .leading, spacing: 8) { seriesMoveActions(series) }
+              }
+            }
             Button("Remove series", role: .destructive) {
               extra.series.removeAll { $0.id == series.id }
             }
@@ -68,6 +82,27 @@ struct MetadataExtraFieldsView: View {
         draft: draft, field: "seriesIndex", label: "Lock series indices",
         identifier: "metadataSeriesIndexLock")
     }
+  }
+
+  @ViewBuilder private func seriesMoveActions(_ series: MetadataSeriesDraft) -> some View {
+    Button {
+      extra.moveSeries(series.id, by: -1)
+    } label: {
+      Label("Move up", systemImage: "arrow.up")
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+    }
+    .disabled(extra.series.first?.id == series.id)
+    .accessibilityLabel("Move up \(series.name.isEmpty ? "series" : series.name)")
+    .accessibilityIdentifier("metadataSeriesMoveUp-\(series.id.uuidString)")
+    Button {
+      extra.moveSeries(series.id, by: 1)
+    } label: {
+      Label("Move down", systemImage: "arrow.down")
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+    }
+    .disabled(extra.series.last?.id == series.id)
+    .accessibilityLabel("Move down \(series.name.isEmpty ? "series" : series.name)")
+    .accessibilityIdentifier("metadataSeriesMoveDown-\(series.id.uuidString)")
   }
 
   private var ratingsSection: some View {
@@ -113,7 +148,7 @@ struct MetadataExtraFieldsView: View {
       Text("Audio metadata").font(.title2)
       input(
         "Narrators (one per line)", text: $extra.narrators, lock: "narrators",
-        identifier: "metadataNarrators")
+        identifier: "metadataNarrators", suggestions: .narrators)
       input(
         "Duration in seconds", text: $extra.duration, lock: "durationSeconds",
         identifier: "metadataDurationSeconds")
@@ -140,7 +175,10 @@ struct MetadataExtraFieldsView: View {
     }
   }
 
-  private func input(_ label: String, text: Binding<String>, lock: String, identifier: String)
+  private func input(
+    _ label: String, text: Binding<String>, lock: String, identifier: String,
+    suggestions: MetadataDraftSuggestionField? = nil
+  )
     -> some View
   {
     VStack(alignment: .leading, spacing: 8) {
@@ -150,10 +188,24 @@ struct MetadataExtraFieldsView: View {
         .frame(minHeight: 44)
         .disabled(draft.lockedFields.contains(lock) || text.wrappedValue.isEmpty)
         .accessibilityIdentifier("\(identifier)Clear")
+      if let suggestions {
+        MetadataDraftSuggestionButton(
+          model: model, draft: draft, text: text, field: suggestions, label: "Narrators",
+          identifier: identifier)
+      }
       MetadataFieldLock(
         draft: draft, field: lock, label: "Lock \(label.lowercased())",
         identifier: "\(identifier)Lock")
     }
+  }
+
+  private func seriesName(id: UUID) -> Binding<String> {
+    Binding(
+      get: { extra.series.first { $0.id == id }?.name ?? "" },
+      set: { value in
+        guard let index = extra.series.firstIndex(where: { $0.id == id }) else { return }
+        extra.series[index].name = value
+      })
   }
 
   private func textInput(_ label: String, text: Binding<String>, identifier: String) -> some View {

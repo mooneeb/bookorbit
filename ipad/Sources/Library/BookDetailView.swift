@@ -27,6 +27,7 @@ struct BookDetailView: View {
   @State private var addedAtContext = UUID()
   @State private var readAloudSync: BookReadAloudSyncModel?
   @State private var fileActions: BookFileActionsModel?
+  @State private var isWritingFiles = false
 
   init(
     api: BookOrbitAPI, bookID: Int, canEditMetadata: Bool, canRead: Bool,
@@ -82,6 +83,23 @@ struct BookDetailView: View {
               addedAtSection(book)
             }
             Section("Files") {
+              BookFileWriteStatusView(book: book)
+              if let fileWrite = model.fileWrite {
+                if let result = fileWrite.result { BookWriteAndRenameResultView(result: result) }
+                if let message = fileWrite.message {
+                  Text(message).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("bookFileWriteDetailMessage")
+                }
+                if canEditMetadata {
+                  Button("Review source-file status", action: promptFileWrite)
+                    .frame(minHeight: 44).accessibilityIdentifier("bookFileWriteDetailReview")
+                }
+              }
+              if canEditMetadata {
+                Button("Edit metadata for file writing", action: model.beginEditing)
+                  .frame(minHeight: 44).disabled(model.isSaving)
+                  .accessibilityIdentifier("bookFilesEditMetadata")
+              }
               ForEach(book.files) { file in
                 BookFileRowView(
                   file: file, canRead: canRead, canManage: userID > 0 && !model.isSaving,
@@ -184,6 +202,8 @@ struct BookDetailView: View {
       discardReadAloudSync()
       fileActions?.close()
       fileActions = nil
+      model.detachFileWrite()
+      isWritingFiles = false
       movement?.detach()
       movement = nil
       moveNotice = nil
@@ -197,6 +217,9 @@ struct BookDetailView: View {
     }
     .sheet(item: $fileActions, onDismiss: { Task { await model.load() } }) { actions in
       BookFileActionsView(model: actions)
+    }
+    .sheet(isPresented: $isWritingFiles) {
+      if let fileWrite = model.fileWrite { BookWriteAndRenameView(model: fileWrite) }
     }
     .sheet(item: $movement) { movement in
       BookMoveView(model: movement, closed: moveClosed)
@@ -307,6 +330,11 @@ struct BookDetailView: View {
     fileActions = BookFileActionsModel(
       api: model.api, bookID: model.bookID, fileID: file.id, userID: userID,
       acknowledged: model.acknowledgeFiles, mutationPending: model.awaitFileReadback)
+  }
+
+  private func promptFileWrite() {
+    model.beginWritingFiles()
+    if model.fileWrite != nil { isWritingFiles = true }
   }
 
   private func promptDelete() {

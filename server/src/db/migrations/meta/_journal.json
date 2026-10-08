@@ -736,6 +736,13 @@
       "when": 1791363845169,
       "tag": "0104_audiobook_bookmark_precision",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1791455604504,
+      "tag": "0105_epub_bookmark_navigation",
+      "breakpoints": true
     }
   ]
 }

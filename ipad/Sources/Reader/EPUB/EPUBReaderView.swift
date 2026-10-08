@@ -6,6 +6,8 @@ struct EPUBReaderView: View {
   @State private var recorded: NativeRecordedModel
   @State private var bridge: NativeContinuationModel
   @State private var selectionTools: EPUBSelectionToolsModel
+  @State private var chrome: EPUBChromeModel
+  @State private var outline = EPUBContentsOutlineModel()
   @State private var initialSearchQuery = ""
   private let language: String?
   private let offersContinuation: Bool
@@ -18,12 +20,17 @@ struct EPUBReaderView: View {
   @State private var showingSpeech = false
   @State private var showingRecorded = false
   @State private var showingPosition = false
+  @State private var showingHelp = false
+  @State private var contentsMessage: String?
+  @State private var footerContentHeight: CGFloat = 120
+  @State private var hidesControlsAfterNavigation = false
   @State private var isReaderAction = false
   @ScaledMetric(relativeTo: .caption) private var feedbackHeight = 44
   @Environment(\.dismiss) private var dismiss
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Environment(\.scenePhase) private var scenePhase
+  @AccessibilityFocusState private var restoreControlsFocused: Bool
 
   init(
     api: BookOrbitAPI, bookID: Int, file: BookDetailFile,
@@ -33,6 +40,7 @@ struct EPUBReaderView: View {
   ) {
     let reader = EPUBReaderModel(api: api, bookID: bookID, file: file, continuation: continuation)
     _model = State(initialValue: reader)
+    _chrome = State(initialValue: EPUBChromeModel(api: api, fileID: file.id))
     self.language = language
     let speech = NativeTTSModel(
       api: api, bookID: bookID, fileID: file.id,
@@ -68,38 +76,187 @@ struct EPUBReaderView: View {
   }
 
   var body: some View {
-    NavigationStack {
-      ZStack {
-        // WebKit needs an attached viewport to finish the initial publication layout.
-        EPUBPageHost(model: model)
-          .accessibilityLabel("Book content")
-          .accessibilityHidden(!model.isReady)
-          .allowsHitTesting(
-            model.canNavigate && !speech.isActive && !recorded.isActive && !isReaderAction
-              && !bridge.isPresented)
-        if !model.isReady {
-          VStack(spacing: 0) {
-            if model.isLoading {
-              ProgressView("Opening ebook…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-              ContentUnavailableView(
-                "Could not open ebook", systemImage: "book.closed",
-                description: Text(model.error ?? "The publication is unavailable."))
-              Button("Retry opening", action: retryOpen).frame(minHeight: 44)
-                .accessibilityIdentifier("epubRetryOpen")
+    readerLifecycle
+      .sheet(item: $positionReset) { reset in
+        NativePositionResetView(model: reset, closed: positionResetClosed)
+      }
+      .sheet(isPresented: $showingHelp) {
+        EPUBReaderHelpView(
+          flow: model.isContinuous ? "scrolled" : "paginated",
+          animation: model.preferences.value.pageAnimation,
+          rightToLeft: model.rightToLeft, speechActive: speech.isActive)
+      }
+      .sheet(isPresented: $bridge.isPresented, onDismiss: bridge.cancel) {
+        NativeContinuationView(model: bridge)
+      }
+      .sheet(isPresented: $showingPosition) {
+        EPUBPositionNavigationView(reader: model, onJump: jumpToPosition)
+      }
+      .sheet(item: $selectionTools.presentation, onDismiss: selectionTools.dismiss) { _ in
+        EPUBSelectionToolsView(model: selectionTools)
+      }
+      .sheet(isPresented: $showingSpeech) {
+        NavigationStack {
+          ScrollView { NativeTTSControlsView(model: speech) }
+            .navigationTitle("System speech")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+              ToolbarItem(placement: .confirmationAction) {
+                Button("Done", action: closeSpeech)
+                  .disabled(speech.isPositionResetting && !speech.positionResetRecovery)
+                  .accessibilityIdentifier("nativeTTSCloseControls")
+              }
             }
+        }
+      }
+      .sheet(isPresented: $showingRecorded) {
+        NavigationStack {
+          ScrollView { NativeRecordedControlsView(model: recorded) }
+            .navigationTitle("Recorded Read Along").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+              ToolbarItem(placement: .confirmationAction) {
+                Button("Done", action: closeRecorded).accessibilityIdentifier(
+                  "recordedCloseControls")
+              }
+            }
+        }
+      }
+      .fullScreenCover(isPresented: $showingContents) {
+        EPUBContentsView(
+          model: model, outline: outline, isPinned: chrome.contentsPinned,
+          togglePin: toggleContentsPin, jump: jumpToContentsEntry)
+      }
+      .fullScreenCover(isPresented: $showingSearch) {
+        EPUBSearchView(model: model, initialQuery: initialSearchQuery)
+      }
+      .fullScreenCover(isPresented: $showingSettings, onDismiss: applySettings) {
+        EPUBPreferencesView(model: model.preferences)
+      }
+      .fullScreenCover(isPresented: $showingBookmarks) {
+        if let cfi = model.selectionCFI ?? model.visibleLocation?.cfi {
+          EPUBBookmarksView(
+            reader: model, cfi: cfi,
+            defaultTitle: model.selectionText.isEmpty
+              ? "Chapter \((model.visibleLocation?.chapterIndex ?? 0) + 1)"
+              : String(model.selectionText.prefix(200)),
+            onJump: jumpToBookmark)
+        }
+      }
+      .interactiveDismissDisabled(
+        !canCloseReader || model.hasPendingSave || model.position.conflict.isBlocked
+          || speech.isActive || speech.position.hasPendingSave
+          || recorded.isActive || recorded.position.hasPendingSave
+      )
+      .alert("Close without saving?", isPresented: $confirmsDiscard) {
+        Button("Keep reading", role: .cancel) {}
+        Button("Close without saving", role: .destructive, action: discardAndClose)
+      } message: {
+        Text(
+          "The latest server save was not confirmed. Closing uses the last confirmed reading position. Pending speech and recorded narration positions stay on this iPad and retry sync when reopened."
+        )
+      }
+  }
+
+  private var readerLifecycle: some View {
+    readerNavigation
+      .task { await loadReader() }
+      .onChange(of: model.location?.cfi) { old, new in
+        if old != nil && new != old && !showingContents && !showingSearch && !showingSettings
+          && !showingBookmarks && !showingPosition && !showingHelp
+          && model.error == nil && !model.position.conflict.isBlocked
+        {
+          hidesControlsAfterNavigation = true
+          finishChromeNavigation()
+        }
+      }
+      .onChange(of: isReaderAction) { _, _ in finishChromeNavigation() }
+      .onChange(of: model.isNavigating) { _, _ in finishChromeNavigation() }
+      .onChange(of: model.isSaving) { _, _ in finishChromeNavigation() }
+      .onChange(of: controlsVisible) { _, visible in restoreControlsFocused = !visible }
+      .onChange(of: model.position.conflict.isBlocked) { _, blocked in
+        if blocked { showControls() }
+      }
+      .onChange(of: model.error) { _, error in if error != nil { showControls() } }
+      .onChange(of: reduceMotion) { _, value in model.setReduceMotion(value) }
+      .onChange(of: dynamicTypeSize) { _, _ in applySettings() }
+      .onChange(of: model.publicationID) { _, _ in selectionTools.detach() }
+      .onChange(of: model.isReady) { _, ready in
+        if ready { rebuildContents() } else { selectionTools.detach() }
+      }
+      .onChange(of: scenePhase) { _, phase in
+        if phase == .active {
+          Task {
+            await model.refreshPosition()
+            await speech.foreground()
+            await recorded.foreground()
           }
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        if phase == .background {
+          selectionTools.dismiss()
+          bridge.cancel()
+          speech.background()
+          Task { _ = await recorded.stopAndSave() }
+        }
+      }
+      .onDisappear(perform: closeReaderIfAllowed)
+  }
+
+  private var readerNavigation: some View {
+    NavigationStack {
+      GeometryReader { geometry in
+        VStack(spacing: 0) {
+          if chrome.contentsPinned && geometry.size.width < 900 {
+            pinnedContents.frame(height: min(240, geometry.size.height * 0.28))
+            Divider()
+          }
+          HStack(spacing: 0) {
+            if chrome.contentsPinned && geometry.size.width >= 900 {
+              pinnedContents.frame(width: min(320, geometry.size.width * 0.32))
+              Divider()
+            }
+            publication
+          }
+        }
+        .safeAreaInset(edge: .bottom) {
+          ScrollView {
+            readerFooter
+              .fixedSize(horizontal: false, vertical: true)
+              .onGeometryChange(for: CGFloat.self) { geometry in
+                geometry.size.height
+              } action: { height in
+                footerContentHeight = height
+              }
+          }
+          .frame(height: min(footerContentHeight, geometry.size.height * 0.45))
+          .scrollBounceBehavior(.basedOnSize)
           .background(.background)
         }
       }
       .navigationTitle("Ebook reader")
       .navigationBarTitleDisplayMode(.inline)
+      .toolbarVisibility(controlsVisible ? .visible : .hidden, for: .navigationBar)
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
           Button("Close reader", action: closeReader).disabled(!canCloseReader)
             .accessibilityIdentifier("epubCloseReader")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+          Menu("Reader display", systemImage: "rectangle.topthird.inset.filled") {
+            Button(
+              chrome.controlsPinned ? "Unpin reader controls" : "Pin reader controls",
+              action: toggleControlsPin
+            ).disabled(!canChangeReaderLayout)
+              .accessibilityIdentifier("epubPinReaderControls")
+            Button("Hide reader controls", action: hideControls)
+              .disabled(!canChangeReaderLayout)
+              .accessibilityIdentifier("epubHideReaderControls")
+            Button(
+              chrome.contentsPinned ? "Unpin Contents" : "Pin Contents", action: toggleContentsPin
+            ).disabled(!model.isReady || !canChangeReaderLayout)
+              .accessibilityIdentifier("epubTogglePinnedContents")
+            Button("Reader help", action: openHelp).accessibilityIdentifier("epubHelp")
+          }
+          .accessibilityIdentifier("epubReaderDisplay")
         }
         ToolbarItem(placement: .topBarTrailing) {
           Button("Text to speech", systemImage: "speaker.wave.2", action: openSpeech)
@@ -143,151 +300,106 @@ struct EPUBReaderView: View {
           .accessibilityIdentifier("epubReaderTools")
         }
       }
-      .safeAreaInset(edge: .bottom) {
-        VStack(spacing: 8) {
-          if speech.isActive || speech.position.message != nil {
-            speechStatus
-          }
-          if recorded.isActive || recorded.position.message != nil {
-            ViewThatFits(in: .horizontal) {
-              HStack { recordedStatus }
-              VStack { recordedStatus }
-            }
-          }
-          if model.location != nil {
-            Text(model.positionText)
-              .font(.caption).accessibilityIdentifier("epubReadingPosition")
-          }
-          // Save feedback must not resize the publication and trigger another relocation/save.
-          ReaderPositionChoiceView(
-            conflict: model.position.conflict,
-            isSaving: model.position.isSaving || model.position.isResolving,
-            chooseLocal: chooseLocalPosition, chooseRemote: chooseRemotePosition)
-          readerFeedback
-          if model.selectionCFI != nil {
-            ViewThatFits(in: .horizontal) {
-              HStack { selectionActions }
-              VStack { selectionActions }
-            }
-          }
-          ViewThatFits(in: .horizontal) {
-            HStack { navigationButtons }
-            VStack { navigationButtons }
+      .accessibilityAction(.escape, showControls)
+    }
+  }
+
+  private var controlsVisible: Bool {
+    chrome.controlsVisible || !model.isReady || model.position.conflict.isBlocked
+  }
+
+  private var publication: some View {
+    ZStack {
+      // WebKit needs an attached viewport to finish the initial publication layout.
+      EPUBPageHost(model: model)
+        .accessibilityLabel("Book content")
+        .accessibilityHidden(!model.isReady)
+        .allowsHitTesting(
+          model.canNavigate && !speech.isActive && !recorded.isActive && !isReaderAction
+            && !bridge.isPresented)
+      if !model.isReady {
+        VStack(spacing: 0) {
+          if model.isLoading {
+            ProgressView("Opening ebook…")
+              .frame(maxWidth: .infinity, maxHeight: .infinity)
+          } else {
+            ContentUnavailableView(
+              "Could not open ebook", systemImage: "book.closed",
+              description: Text(model.error ?? "The publication is unavailable."))
+            Button("Retry opening", action: retryOpen).frame(minHeight: 44)
+              .accessibilityIdentifier("epubRetryOpen")
           }
         }
-        .buttonStyle(.plain).padding(.horizontal).padding(.vertical, 8).background(.background)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.background)
       }
     }
-    .task {
-      model.setReduceMotion(reduceMotion)
-      await model.load()
-      if model.isReady {
-        await recorded.open()
-        await speech.open()
-      }
-    }
-    .onChange(of: reduceMotion) { _, value in model.setReduceMotion(value) }
-    .onChange(of: dynamicTypeSize) { _, _ in applySettings() }
-    .onChange(of: model.publicationID) { _, _ in selectionTools.detach() }
-    .onChange(of: model.isReady) { _, ready in if !ready { selectionTools.detach() } }
-    .onChange(of: scenePhase) { _, phase in
-      if phase == .active {
-        Task {
-          await model.refreshPosition()
-          await speech.foreground()
-          await recorded.foreground()
+  }
+
+  private var pinnedContents: some View {
+    EPUBPinnedContentsView(
+      outline: outline, canNavigate: model.canNavigate && !isReaderAction && !bridge.isPresented,
+      canChangeLayout: canChangeReaderLayout,
+      open: openPinnedContentsEntry, unpin: toggleContentsPin, browse: openContents)
+  }
+
+  private var canChangeReaderLayout: Bool {
+    !isReaderAction && positionReset == nil && !model.isPositionResetting
+      && !model.isNavigating && !model.isSaving && !model.isSearching && !bridge.isPresented
+  }
+
+  private var readerFooter: some View {
+    VStack(spacing: 8) {
+      if !controlsVisible {
+        ViewThatFits(in: .horizontal) {
+          HStack { restoreControls }
+          VStack { restoreControls }
         }
       }
-      if phase == .background {
-        selectionTools.dismiss()
-        bridge.cancel()
-        speech.background()
-        Task { _ = await recorded.stopAndSave() }
+      if speech.isActive || speech.position.message != nil {
+        speechStatus
       }
-    }
-    .onDisappear {
-      if !showingContents && !showingSearch && !showingSettings && !showingBookmarks
-        && !showingSpeech && !showingRecorded && !showingPosition && !bridge.isPresented
-        && selectionTools.presentation == nil && positionReset == nil
-      {
-        Task {
-          bridge.cancel()
-          _ = await recorded.stopAndSave()
-          recorded.close()
-          speech.close()
-          model.close()
+      if recorded.isActive || recorded.position.message != nil {
+        ViewThatFits(in: .horizontal) {
+          HStack { recordedStatus }
+          VStack { recordedStatus }
         }
       }
-    }
-    .sheet(item: $positionReset) { reset in
-      NativePositionResetView(model: reset, closed: positionResetClosed)
-    }
-    .sheet(isPresented: $bridge.isPresented, onDismiss: bridge.cancel) {
-      NativeContinuationView(model: bridge)
-    }
-    .sheet(isPresented: $showingPosition) {
-      EPUBPositionNavigationView(reader: model, onJump: jumpToPosition)
-    }
-    .sheet(item: $selectionTools.presentation, onDismiss: selectionTools.dismiss) { _ in
-      EPUBSelectionToolsView(model: selectionTools)
-    }
-    .sheet(isPresented: $showingSpeech) {
-      NavigationStack {
-        ScrollView { NativeTTSControlsView(model: speech) }
-          .navigationTitle("System speech")
-          .navigationBarTitleDisplayMode(.inline)
-          .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-              Button("Done", action: closeSpeech)
-                .disabled(speech.isPositionResetting && !speech.positionResetRecovery)
-                .accessibilityIdentifier("nativeTTSCloseControls")
-            }
-          }
+      if controlsVisible && model.location != nil {
+        Text(model.positionText)
+          .font(.caption).accessibilityIdentifier("epubReadingPosition")
       }
-    }
-    .sheet(isPresented: $showingRecorded) {
-      NavigationStack {
-        ScrollView { NativeRecordedControlsView(model: recorded) }
-          .navigationTitle("Recorded Read Along").navigationBarTitleDisplayMode(.inline)
-          .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-              Button("Done", action: closeRecorded).accessibilityIdentifier("recordedCloseControls")
-            }
-          }
+      // Save feedback must not resize the publication and trigger another relocation/save.
+      ReaderPositionChoiceView(
+        conflict: model.position.conflict,
+        isSaving: model.position.isSaving || model.position.isResolving,
+        chooseLocal: chooseLocalPosition, chooseRemote: chooseRemotePosition)
+      readerFeedback
+      if model.selectionCFI != nil {
+        ViewThatFits(in: .horizontal) {
+          HStack { selectionActions }
+          VStack { selectionActions }
+        }
       }
-    }
-    .fullScreenCover(isPresented: $showingContents) { EPUBContentsView(model: model) }
-    .fullScreenCover(isPresented: $showingSearch) {
-      EPUBSearchView(model: model, initialQuery: initialSearchQuery)
-    }
-    .fullScreenCover(isPresented: $showingSettings, onDismiss: applySettings) {
-      EPUBPreferencesView(model: model.preferences)
-    }
-    .fullScreenCover(isPresented: $showingBookmarks) {
-      if let cfi = model.selectionCFI ?? model.visibleLocation?.cfi {
-        EPUBBookmarksView(
-          api: model.api, bookID: model.bookID, cfi: cfi,
-          defaultTitle: model.selectionText.isEmpty
-            ? "Chapter \((model.visibleLocation?.chapterIndex ?? 0) + 1)"
-            : String(model.selectionText.prefix(200))
-        ) { target in
-          navigate { await model.goToCFI(target) }
+      if controlsVisible {
+        ViewThatFits(in: .horizontal) {
+          HStack { navigationButtons }
+          VStack { navigationButtons }
         }
       }
     }
-    .interactiveDismissDisabled(
-      !canCloseReader || model.hasPendingSave || model.position.conflict.isBlocked
-        || speech.isActive || speech.position.hasPendingSave
-        || recorded.isActive || recorded.position.hasPendingSave
-    )
-    .alert("Close without saving?", isPresented: $confirmsDiscard) {
-      Button("Keep reading", role: .cancel) {}
-      Button("Close without saving", role: .destructive, action: discardAndClose)
-    } message: {
-      Text(
-        "The latest server save was not confirmed. Closing uses the last confirmed reading position. Pending speech and recorded narration positions stay on this iPad and retry sync when reopened."
-      )
-    }
+    .buttonStyle(.plain).padding(.horizontal).padding(.vertical, 8).background(.background)
+  }
+
+  @ViewBuilder private var restoreControls: some View {
+    Button("Show reader controls", action: showControls).frame(minHeight: 44)
+      .keyboardShortcut(.escape, modifiers: [])
+      .accessibilityFocused($restoreControlsFocused)
+      .accessibilityIdentifier("epubShowReaderControls")
+    Button("Close reader", action: closeReader).frame(minHeight: 44).disabled(!canCloseReader)
+      .accessibilityIdentifier("epubHiddenCloseReader")
+    Button("Reader help", action: openHelp).frame(minHeight: 44)
+      .accessibilityIdentifier("epubHiddenHelp")
   }
 
   private var canCloseReader: Bool {
@@ -402,6 +514,14 @@ struct EPUBReaderView: View {
   private var readerFeedback: some View {
     ScrollView {
       VStack(spacing: 8) {
+        if let contentsMessage {
+          Text(contentsMessage).font(.caption).fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("epubContentsNavigationMessage")
+        }
+        if let message = chrome.message {
+          Text(message).font(.caption).fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("epubChromePreferenceMessage")
+        }
         if let failure = model.fontFailure {
           Text(failure).font(.caption).fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("epubFontFailure")
@@ -419,6 +539,33 @@ struct EPUBReaderView: View {
     }
     .frame(height: feedbackHeight)
     .scrollBounceBehavior(.basedOnSize)
+  }
+
+  private func loadReader() async {
+    await chrome.load()
+    model.setReduceMotion(reduceMotion)
+    await model.load()
+    rebuildContents()
+    if model.isReady {
+      await recorded.open()
+      await speech.open()
+    }
+  }
+
+  private func closeReaderIfAllowed() {
+    if !showingContents && !showingSearch && !showingSettings && !showingBookmarks
+      && !showingSpeech && !showingRecorded && !showingPosition && !showingHelp
+      && !bridge.isPresented && selectionTools.presentation == nil && positionReset == nil
+    {
+      chrome.close()
+      Task {
+        bridge.cancel()
+        _ = await recorded.stopAndSave()
+        recorded.close()
+        speech.close()
+        model.close()
+      }
+    }
   }
 
   private func promptPositionReset() {
@@ -456,6 +603,77 @@ struct EPUBReaderView: View {
     }
   }
 
+  private func rebuildContents() {
+    outline.rebuild(contents: model.contents, chapterCount: model.chapterCount)
+  }
+
+  private func hideControls() {
+    guard canChangeReaderLayout else { return }
+    chrome.hideControls()
+    restoreControlsFocused = true
+  }
+
+  private func showControls() {
+    hidesControlsAfterNavigation = false
+    chrome.showControls()
+    restoreControlsFocused = false
+  }
+
+  private func finishChromeNavigation() {
+    guard hidesControlsAfterNavigation, canChangeReaderLayout else { return }
+    hidesControlsAfterNavigation = false
+    if model.error == nil && !model.position.conflict.isBlocked && !model.hasPendingSave {
+      chrome.didNavigate()
+    }
+  }
+
+  private func toggleControlsPin() {
+    guard canChangeReaderLayout else { return }
+    Task { await chrome.toggleControlsPin() }
+  }
+  private func toggleContentsPin() {
+    guard canChangeReaderLayout else { return }
+    Task { await chrome.toggleContentsPin() }
+  }
+  private func openHelp() { showingHelp = true }
+
+  private func openPinnedContentsEntry(_ entry: EPUBContentsEntry) {
+    Task { _ = await jumpToContentsEntry(entry) }
+  }
+
+  private func jumpToContentsEntry(_ entry: EPUBContentsEntry) async -> Bool {
+    guard model.canNavigate, !isReaderAction, positionReset == nil, !bridge.isPresented,
+      !speech.isClosing, !speech.isStopping, !speech.preferences.isSaving, !Task.isCancelled
+    else { return false }
+    contentsMessage = nil
+    isReaderAction = true
+    defer { isReaderAction = false }
+    guard await recorded.stopAndSave(), await speech.stopAndSave(), model.canNavigate else {
+      return false
+    }
+    let moved: Bool
+    if let href = entry.href {
+      moved = await model.goToHref(href)
+    } else if let chapter = entry.chapter {
+      moved = await model.goToContentsChapter(chapter)
+    } else {
+      return false
+    }
+    guard moved else {
+      contentsMessage =
+        "This Contents passage could not be opened. Review the reader status before retrying."
+      showControls()
+      return false
+    }
+    let saved = await model.saveProgress()
+    if !saved {
+      contentsMessage =
+        "The passage is open, but its save was not confirmed. Review the resume choice or retry Save position."
+      showControls()
+    }
+    return saved && model.isReady && !model.position.conflict.isBlocked && !Task.isCancelled
+  }
+
   private func previousPage() { navigate { await model.turn(forward: false) } }
   private func nextPage() { navigate { await model.turn(forward: true) } }
   private func previousSection() {
@@ -480,6 +698,15 @@ struct EPUBReaderView: View {
     defer { isReaderAction = false }
     guard await recorded.stopAndSave(), await speech.stopAndSave() else { return .failed }
     return await model.goToFraction(fraction)
+  }
+  private func jumpToBookmark(_ cfi: String) async -> EPUBPositionJumpResult {
+    guard model.canNavigate, !isReaderAction, !bridge.isPresented,
+      !speech.isClosing, !speech.isStopping, !speech.preferences.isSaving
+    else { return .failed }
+    isReaderAction = true
+    defer { isReaderAction = false }
+    guard await recorded.stopAndSave(), await speech.stopAndSave() else { return .failed }
+    return await model.goToBookmarkCFI(cfi)
   }
   private func savePosition() {
     Task {

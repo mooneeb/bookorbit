@@ -440,6 +440,8 @@ struct BookDetail: Codable, Sendable, Equatable, Identifiable {
     var `readAloudSync`: ReadAloudProgressSync
     var `comicMetadata`: ComicMetadataFields?
     var `files`: [BookDetailFile]
+    var `fileWriteStatus`: BookFileWriteStatus?
+    var `lastWrittenAt`: String?
     var `lockedFields`: [String]
     var `coverMedia`: [CoverMedium]
     var `covers`: BookDetailCovers
@@ -540,6 +542,13 @@ struct BookDetailFile: Codable, Sendable, Equatable, Identifiable {
     var `absolutePath`: String
 }
 
+struct BookFileWriteStatus: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+    var `reason`: String?
+    var `writableFormats`: [String]
+    var `writableFields`: [String]
+}
+
 struct BookDetailCovers: Codable, Sendable, Equatable {
     var `ebook`: BookCoverSlot?
     var `audio`: BookCoverSlot?
@@ -554,6 +563,28 @@ struct BookCoverSlot: Codable, Sendable, Equatable {
 
 struct UpdateBookReadAloudSyncPayload: Encodable, Sendable, Equatable {
     var `mode`: String
+}
+
+struct BookWriteAndRenameResult: Codable, Sendable, Equatable {
+    var `write`: WriteResult
+    var `rename`: FileRenameResult
+    var `libraryAutoWriteEnabled`: Bool
+    var `libraryAutoRenameEnabled`: Bool
+}
+
+struct WriteResult: Codable, Sendable, Equatable {
+    var `status`: String
+    var `fieldsWritten`: [String]
+    var `durationMs`: Int
+    var `reason`: String?
+}
+
+struct FileRenameResult: Codable, Sendable, Equatable {
+    var `status`: String
+    var `reason`: String?
+    var `oldPath`: String?
+    var `newPath`: String?
+    var `durationMs`: Int
 }
 
 struct BookContinuationQuery: Codable, Sendable, Equatable {
@@ -1920,6 +1951,33 @@ struct BookmarkResponse: Codable, Sendable, Equatable, Identifiable {
 struct BookmarksPage: Codable, Sendable, Equatable {
     var `items`: [BookmarkResponse]
     var `nextCursor`: Int?
+}
+
+struct EpubBookmarkNavigationItem: Codable, Sendable, Equatable, Identifiable {
+    var `chapterTitle`: String?
+    var `contextPercentage`: Int?
+    var `locationLabel`: String
+    var `id`: Int
+    var `bookId`: Int
+    var `cfi`: String?
+    var `title`: String
+    var `positionSeconds`: Double?
+    var `fileId`: Int?
+    var `pageNumber`: Int?
+    var `createdAt`: String
+}
+
+struct EpubBookmarkNavigationPage: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `fileId`: Int
+    var `fileRevision`: String
+    var `query`: String
+    var `sort`: String
+    var `items`: [EpubBookmarkNavigationItem]
+    var `nextCursor`: String?
+    var `currentBookmarkId`: Int?
+    var `scannedCount`: Int
+    var `scanLimited`: Bool
 }
 
 struct CreateFixedPageBookmarkPayload: Codable, Sendable, Equatable {

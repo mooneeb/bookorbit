@@ -1,10 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import type { EpubBookmarkSort } from '@bookorbit/types';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import { bookmarks, type BookmarkRow, type NewBookmark } from '../../db/schema';
+
+type EpubNavigationAnchor = NonNullable<Awaited<ReturnType<BookmarkRepository['epubNavigationAnchor']>>>;
+
+export interface EpubNavigationSelection {
+  bookId: number;
+  userId: number;
+  snapshotId: number;
+  contextJSON: string;
+}
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -19,6 +29,118 @@ export interface DeviceBookmarkFields {
 @Injectable()
 export class BookmarkRepository {
   constructor(@Inject(DB) private readonly db: Db) {}
+
+  async epubSnapshotId(bookId: number, userId: number): Promise<number> {
+    const [row] = await this.db
+      .select({ id: bookmarks.id })
+      .from(bookmarks)
+      .where(this.epubScope(bookId, userId))
+      .orderBy(desc(bookmarks.id))
+      .limit(1);
+    return row?.id ?? 0;
+  }
+
+  async epubNavigationAnchor(selection: EpubNavigationSelection, id: number) {
+    const [row] = await this.db
+      .select({ id: bookmarks.id, createdAt: sql<string>`${bookmarks.createdAt}::text`, cfiOrder: bookmarks.cfiOrder })
+      .from(bookmarks)
+      .where(and(this.epubScope(selection.bookId, selection.userId, true), eq(bookmarks.id, id), lte(bookmarks.id, selection.snapshotId)))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async epubNavigationPage(selection: EpubNavigationSelection, sort: EpubBookmarkSort, limit: number, anchor: EpubNavigationAnchor | null) {
+    const order = sql`(${bookmarks.cfiOrder})[1:32]`;
+    let seek: SQL | undefined;
+    if (anchor) {
+      if (sort === 'location') {
+        const key = sql`${JSON.stringify(anchor.cfiOrder)}::jsonb`;
+        const numbers = sql`array(select jsonb_array_elements_text(${key}))::numeric[]`;
+        seek = and(
+          gte(order, sql`(${numbers})[1:32]`),
+          or(
+            gt(bookmarks.cfiOrder, numbers),
+            and(
+              eq(bookmarks.cfiOrder, numbers),
+              or(
+                gt(bookmarks.createdAt, sql`${anchor.createdAt}::timestamptz`),
+                and(eq(bookmarks.createdAt, sql`${anchor.createdAt}::timestamptz`), gt(bookmarks.id, anchor.id)),
+              ),
+            ),
+          ),
+        );
+      } else {
+        const compare = sort === 'newest' ? lt : gt;
+        seek = or(
+          compare(bookmarks.createdAt, sql`${anchor.createdAt}::timestamptz`),
+          and(eq(bookmarks.createdAt, sql`${anchor.createdAt}::timestamptz`), compare(bookmarks.id, anchor.id)),
+        );
+      }
+    }
+    const ordering =
+      sort === 'location'
+        ? [asc(order), asc(bookmarks.cfiOrder), asc(bookmarks.createdAt), asc(bookmarks.id)]
+        : sort === 'newest'
+          ? [desc(bookmarks.createdAt), desc(bookmarks.id)]
+          : [asc(bookmarks.createdAt), asc(bookmarks.id)];
+    return this.epubNavigationRows(selection, seek)
+      .orderBy(...ordering)
+      .limit(limit);
+  }
+
+  async currentEpubBookmarkId(selection: EpubNavigationSelection, currentKey: string[]): Promise<number | null> {
+    const startKey = currentKey.slice(0, currentKey.indexOf('-3'));
+    const key = sql`array(select jsonb_array_elements_text(${JSON.stringify([...startKey, '0'])}::jsonb))::numeric[]`;
+    const prefix = sql`(${bookmarks.cfiOrder})[1:32]`;
+    const [previous] = await this.epubNavigationRows(selection, and(lte(prefix, sql`(${key})[1:32]`), lt(bookmarks.cfiOrder, key)))
+      .orderBy(desc(prefix), desc(bookmarks.cfiOrder), desc(bookmarks.createdAt), desc(bookmarks.id))
+      .limit(1);
+    if (previous) return previous.id;
+    const [first] = await this.epubNavigationRows(selection)
+      .orderBy(asc(prefix), asc(bookmarks.cfiOrder), asc(bookmarks.createdAt), asc(bookmarks.id))
+      .limit(1);
+    return first?.id ?? null;
+  }
+
+  private epubNavigationRows(selection: EpubNavigationSelection, seek?: SQL) {
+    const context = sql`jsonb_to_recordset(${selection.contextJSON}::jsonb) as bookmark_context("spineStep" numeric, "startKey" numeric[], "endKey" numeric[], "chapterTitle" text, percentage integer)`;
+    const title = sql<string | null>`bookmark_context."chapterTitle"`;
+    const percentage = sql<number | null>`bookmark_context.percentage`;
+    // Foliate's contents lookup chooses the last heading at or before a range's end.
+    const end = sql`(${bookmarks.cfiOrder})[array_position(${bookmarks.cfiOrder}, -3::numeric) + 1:array_length(${bookmarks.cfiOrder}, 1)]`;
+    const contextOrder = sql`(array[0]::numeric[] || ${end} || array[-3]::numeric[] || ${end})`;
+    return this.db
+      .select({
+        id: bookmarks.id,
+        bookId: bookmarks.bookId,
+        cfi: bookmarks.cfi,
+        title: bookmarks.title,
+        positionSeconds: bookmarks.positionSeconds,
+        fileId: bookmarks.fileId,
+        pageNumber: bookmarks.pageNumber,
+        createdAt: bookmarks.createdAt,
+        chapterTitle: title,
+        contextPercentage: percentage,
+      })
+      .from(bookmarks)
+      .leftJoin(
+        context,
+        sql`${bookmarks.cfiOrder}[1] = 0 and ${bookmarks.cfiOrder}[2] = 6
+      and ${bookmarks.cfiOrder}[3] = bookmark_context."spineStep" and ${contextOrder} >= bookmark_context."startKey"
+      and (bookmark_context."endKey" is null or ${contextOrder} < bookmark_context."endKey")`,
+      )
+      .where(and(this.epubScope(selection.bookId, selection.userId), lte(bookmarks.id, selection.snapshotId), seek));
+  }
+
+  private epubScope(bookId: number, userId: number, includesDeleted = false) {
+    return and(
+      eq(bookmarks.bookId, bookId),
+      eq(bookmarks.userId, userId),
+      isNull(bookmarks.fileId),
+      isNotNull(bookmarks.cfi),
+      includesDeleted ? undefined : isNull(bookmarks.deletedAt),
+    );
+  }
 
   async findByBookId(bookId: number, userId: number) {
     return this.db

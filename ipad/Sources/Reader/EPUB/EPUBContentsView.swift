@@ -1,70 +1,62 @@
 import SwiftUI
 
-private struct EPUBContentsEntry: Identifiable {
-  let id: Int
-  let label: String
-  let href: String?
-  let depth: Int
-}
-
 struct EPUBContentsView: View {
   let model: EPUBReaderModel
+  let outline: EPUBContentsOutlineModel
+  let isPinned: Bool
+  let togglePin: () -> Void
+  let jump: @MainActor (EPUBContentsEntry) async -> Bool
+  @State private var isJumping = false
+  @State private var failure: String?
   @Environment(\.dismiss) private var dismiss
-
-  private var entries: [EPUBContentsEntry] {
-    var pending = model.contents.reversed().map { ($0, 0) }
-    var entries: [EPUBContentsEntry] = []
-    while let (item, depth) = pending.popLast(), entries.count < 4096 {
-      entries.append(
-        .init(
-          id: entries.count, label: String(item.label.prefix(500)), href: item.href, depth: depth))
-      if depth < 32 {
-        for child in (item.children ?? []).reversed() { pending.append((child, depth + 1)) }
-      }
-      if pending.count > 4096 { break }
-    }
-    return entries
-  }
 
   var body: some View {
     NavigationStack {
-      List {
-        if !entries.isEmpty {
-          ForEach(entries) { entry in
-            if let href = entry.href {
-              Button {
-                open(href)
-              } label: {
-                Text(entry.label).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                  .padding(.leading, CGFloat(min(entry.depth, 4)) * 12)
-              }.accessibilityIdentifier("epubContentsEntry\(entry.id)")
-                .disabled(!model.canNavigate)
-            } else {
-              Text(entry.label).font(.headline)
-            }
-          }
-        } else {
-          ForEach(0..<model.chapterCount, id: \.self) { index in
-            Button("Chapter \(index + 1)") {
-              Task {
-                await model.goToChapter(index)
-                if model.error == nil { dismiss() }
-              }
-            }.frame(minHeight: 44).disabled(!model.canNavigate)
-          }
+      VStack(spacing: 0) {
+        EPUBContentsList(
+          outline: outline, canNavigate: model.canNavigate && !isJumping, open: open)
+        if let error = model.error {
+          Text(error).font(.caption).fixedSize(horizontal: false, vertical: true).padding()
+            .accessibilityIdentifier("epubContentsError")
         }
-        if let error = model.error { Text(error).accessibilityIdentifier("epubContentsError") }
+        if let failure {
+          Text(failure).font(.caption).fixedSize(horizontal: false, vertical: true).padding()
+            .accessibilityIdentifier("epubContentsJumpFailure")
+        }
       }
-      .buttonStyle(.plain).navigationTitle("Contents")
-      .toolbar { Button("Done", action: dismiss.callAsFunction).disabled(model.isNavigating) }
+      .navigationTitle("Contents").navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarLeading) {
+          Button(isPinned ? "Unpin Contents" : "Pin Contents", action: pin)
+            .disabled(isJumping || model.isNavigating)
+            .accessibilityIdentifier("epubContentsPin")
+        }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Done", action: dismiss.callAsFunction).disabled(isJumping || model.isNavigating)
+            .accessibilityIdentifier("epubContentsDone")
+        }
+      }
     }
-    .interactiveDismissDisabled(model.isNavigating)
+    .interactiveDismissDisabled(isJumping || model.isNavigating)
   }
 
-  private func open(_ href: String) {
+  private func pin() {
+    togglePin()
+    dismiss()
+  }
+
+  private func open(_ entry: EPUBContentsEntry) {
+    guard !isJumping else { return }
+    isJumping = true
+    failure = nil
     Task {
-      await model.goToHref(href)
-      if model.error == nil { dismiss() }
+      if await jump(entry) {
+        dismiss()
+      } else {
+        failure =
+          "The passage could not be opened and saved. Return to the reader to review position or narration status, then retry."
+      }
+      isJumping = false
     }
   }
 }

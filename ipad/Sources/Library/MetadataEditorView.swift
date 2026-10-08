@@ -6,6 +6,7 @@ struct MetadataEditorView: View {
   @Environment(\.dismiss) private var dismiss
   @State private var isFindingMetadata = false
   @State private var previewSource: MetadataPreviewSource?
+  @State private var isWritingFiles = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -17,6 +18,14 @@ struct MetadataEditorView: View {
         .accessibilityIdentifier("metadataHeading")
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
+          VStack(alignment: .leading, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+              HStack(spacing: 16) { allLockActions }
+              VStack(alignment: .leading, spacing: 8) { allLockActions }
+            }
+            Text("Lock changes are saved with the metadata.")
+              .font(.footnote).fixedSize(horizontal: false, vertical: true)
+          }
           Button("Find and compare metadata") { isFindingMetadata = true }
             .frame(minHeight: 44).accessibilityIdentifier("findMetadata")
           Button {
@@ -29,6 +38,12 @@ struct MetadataEditorView: View {
           } label: {
             Text("Compare metadata from file").frame(minHeight: 44).contentShape(Rectangle())
           }.accessibilityIdentifier("previewEmbeddedMetadata")
+          Button("Write saved metadata and rename files", action: promptFileWrite)
+            .frame(minHeight: 44).accessibilityIdentifier("writeSavedMetadataAndRename")
+          Text(
+            "This source-file operation uses saved server metadata. It does not save your current editor changes."
+          )
+          .font(.footnote).fixedSize(horizontal: false, vertical: true)
           if !draft.coverURLs.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
               ForEach(draft.coverURLs.keys.sorted(by: { $0.rawValue < $1.rawValue })) { medium in
@@ -72,11 +87,10 @@ struct MetadataEditorView: View {
           }
           VStack(alignment: .leading, spacing: 12) {
             Text("Description").font(.headline)
-            TextEditor(text: $draft.description)
-              .disabled(draft.lockedFields.contains("description"))
-              .frame(minHeight: 140)
-              .accessibilityLabel("Description")
-              .accessibilityIdentifier("metadataDescription")
+            RichDescriptionEditorView(
+              html: $draft.description, isLocked: draft.lockedFields.contains("description")
+            )
+            .id("\(draft.id)-\(draft.resetGeneration)")
             MetadataFieldLock(
               draft: draft, field: "description", label: "Lock description",
               identifier: "metadataDescriptionLock")
@@ -85,7 +99,7 @@ struct MetadataEditorView: View {
             Text("Publication").font(.title2)
             MetadataScalarField(
               draft: draft, text: $draft.publisher, field: "publisher", label: "Publisher",
-              identifier: "metadataPublisher")
+              identifier: "metadataPublisher", model: model)
             MetadataScalarField(
               draft: draft,
               text: Binding(get: { draft.publishedYear }, set: draft.setPublishedYear),
@@ -104,7 +118,7 @@ struct MetadataEditorView: View {
               identifier: "metadataPageCount", keyboard: .numberPad)
             MetadataScalarField(
               draft: draft, text: $draft.language, field: "language", label: "Language",
-              identifier: "metadataLanguage")
+              identifier: "metadataLanguage", model: model)
             MetadataScalarField(
               draft: draft, text: $draft.isbn10, field: "isbn10", label: "ISBN-10",
               identifier: "metadataISBN10")
@@ -116,13 +130,13 @@ struct MetadataEditorView: View {
             Text("People and organization").font(.title2)
             Text("Enter one name per line. Commas stay part of the name.").font(.footnote)
             MetadataNamesField(
-              draft: draft, text: $draft.authors, field: "authors", label: "Authors",
+              model: model, draft: draft, text: $draft.authors, field: "authors", label: "Authors",
               identifier: "metadataAuthors")
             MetadataNamesField(
-              draft: draft, text: $draft.genres, field: "genres", label: "Genres",
+              model: model, draft: draft, text: $draft.genres, field: "genres", label: "Genres",
               identifier: "metadataGenres")
             MetadataNamesField(
-              draft: draft, text: $draft.tags, field: "tags", label: "Tags",
+              model: model, draft: draft, text: $draft.tags, field: "tags", label: "Tags",
               identifier: "metadataTags")
           }
           VStack(alignment: .leading, spacing: 12) {
@@ -134,14 +148,14 @@ struct MetadataEditorView: View {
                 identifier: "metadata\(medium == .ebook ? "" : "Audio")CoverLock")
             }
           }
-          MetadataExtraFieldsView(draft: draft, extra: draft.extra)
+          MetadataExtraFieldsView(model: model, draft: draft, extra: draft.extra)
           if !draft.customFields.isEmpty { CustomMetadataFieldsView(fields: $draft.customFields) }
         }
         .padding()
       }
       .scrollEdgeEffectHidden()
       .clipped()
-      .disabled(model.isSaving)
+      .disabled(model.isSaving || model.fileWriteBlocksMetadata)
       .safeAreaInset(edge: .bottom) {
         VStack(alignment: .leading) {
           if let error = model.error {
@@ -149,27 +163,46 @@ struct MetadataEditorView: View {
               .accessibilityIdentifier("metadataSaveError")
           }
           if model.isSaving { ProgressView("Saving metadata…") }
+          if model.fileWriteBlocksMetadata || model.book == nil {
+            Text(
+              "Review source-file status and reload current book details before saving more changes."
+            )
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("metadataFileWritePending")
+            Button("Review source-file status", action: promptFileWrite)
+              .frame(minHeight: 44).accessibilityIdentifier("metadataReviewFileWriteStatus")
+          }
           if let message = draft.validationMessage {
             Label(
               message,
               systemImage: "exclamationmark.circle")
           }
-          HStack {
-            Button("Cancel", action: dismiss.callAsFunction)
-              .disabled(model.isSaving)
-            Spacer()
-            Button("Hide keyboard", systemImage: "keyboard.chevron.compact.down") {
-              UIApplication.shared.sendAction(
-                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+          ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+              cancelButton
+              resetButton
+              Spacer()
+              keyboardButton
+              saveButton
             }
-            .accessibilityIdentifier("metadataDismissKeyboard")
-            Button {
-              Task { await model.saveMetadata() }
-            } label: {
-              Label("Save", systemImage: draft.isValid ? "checkmark" : "exclamationmark.circle")
+            VStack(alignment: .leading, spacing: 8) {
+              HStack {
+                cancelButton
+                Spacer()
+                saveButton
+              }
+              HStack {
+                resetButton
+                Spacer()
+                keyboardButton
+              }
             }
-            .disabled(model.isSaving || !draft.isValid)
-            .accessibilityIdentifier("saveMetadata")
+            VStack(alignment: .leading, spacing: 8) {
+              cancelButton
+              resetButton
+              keyboardButton
+              saveButton
+            }
           }
           .frame(minHeight: 44)
         }
@@ -182,6 +215,9 @@ struct MetadataEditorView: View {
       .interactiveDismissDisabled(model.isSaving)
     }
     .background(Color(uiColor: .systemBackground))
+    .sheet(isPresented: $isWritingFiles) {
+      if let fileWrite = model.fileWrite { BookWriteAndRenameView(model: fileWrite) }
+    }
     .fullScreenCover(item: $previewSource) { source in
       MetadataPreviewView(api: model.api, bookID: model.bookID, source: source, draft: draft) {
         previewSource = nil
@@ -193,6 +229,67 @@ struct MetadataEditorView: View {
       }
     }
   }
+
+  private func promptFileWrite() {
+    model.beginWritingFiles()
+    if model.fileWrite != nil { isWritingFiles = true }
+  }
+
+  @ViewBuilder private var allLockActions: some View {
+    Button(action: draft.lockAll) {
+      Label("Lock all", systemImage: "lock")
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+    }
+    .disabled(draft.areAllLocked)
+    .accessibilityIdentifier("metadataLockAll")
+    Button(action: draft.unlockAll) {
+      Label("Unlock all", systemImage: "lock.open")
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+    }
+    .disabled(draft.lockedFields.isEmpty)
+    .accessibilityIdentifier("metadataUnlockAll")
+  }
+
+  private var cancelButton: some View {
+    Button(action: dismiss.callAsFunction) {
+      Text("Cancel").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+    }
+    .disabled(model.isSaving)
+  }
+
+  private var resetButton: some View {
+    Button(action: model.resetMetadata) {
+      Label("Reset", systemImage: "arrow.counterclockwise")
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+    }
+    .disabled(model.isSaving)
+    .accessibilityHint("Discard unsaved metadata, lock changes, and cover selections")
+    .accessibilityIdentifier("metadataReset")
+  }
+
+  private var keyboardButton: some View {
+    Button {
+      UIApplication.shared.sendAction(
+        #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    } label: {
+      Label("Hide keyboard", systemImage: "keyboard.chevron.compact.down")
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+    }
+    .accessibilityIdentifier("metadataDismissKeyboard")
+  }
+
+  private var saveButton: some View {
+    Button {
+      Task { await model.saveMetadata() }
+    } label: {
+      Label("Save", systemImage: draft.isValid ? "checkmark" : "exclamationmark.circle")
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+    }
+    .disabled(
+      model.book == nil || model.isSaving || model.fileWriteBlocksMetadata || !draft.isValid
+    )
+    .accessibilityIdentifier("saveMetadata")
+  }
 }
 
 private struct MetadataScalarField: View {
@@ -201,6 +298,7 @@ private struct MetadataScalarField: View {
   let field: String
   let label: String
   let identifier: String
+  var model: BookDetailModel? = nil
   var keyboard: UIKeyboardType = .default
   var locked = false
   var showsLock = true
@@ -221,6 +319,11 @@ private struct MetadataScalarField: View {
         MetadataClearButton(text: $text, label: label, identifier: identifier)
       }
       .disabled(locked || draft.lockedFields.contains(field))
+      if let model, let suggestionField = MetadataDraftSuggestionField(rawValue: field) {
+        MetadataDraftSuggestionButton(
+          model: model, draft: draft, text: $text, field: suggestionField, label: label,
+          identifier: identifier)
+      }
       if showsLock {
         MetadataFieldLock(
           draft: draft, field: field, label: lockLabel ?? "Lock \(label.lowercased())",
@@ -231,6 +334,7 @@ private struct MetadataScalarField: View {
 }
 
 private struct MetadataNamesField: View {
+  @Bindable var model: BookDetailModel
   @Bindable var draft: MetadataDraft
   @Binding var text: String
   let field: String
@@ -248,6 +352,11 @@ private struct MetadataNamesField: View {
       MetadataTextInput(text: $text, label: label, identifier: identifier)
         .disabled(draft.lockedFields.contains(field))
         .fixedSize(horizontal: false, vertical: true)
+      if let suggestionField = MetadataDraftSuggestionField(rawValue: field) {
+        MetadataDraftSuggestionButton(
+          model: model, draft: draft, text: $text, field: suggestionField, label: label,
+          identifier: identifier)
+      }
       MetadataFieldLock(
         draft: draft, field: field, label: "Lock \(label.lowercased())",
         identifier: "\(identifier)Lock")

@@ -325,6 +325,14 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       forward: index >= (visibleLocation?.chapterIndex ?? 0), programmatic: true)
   }
 
+  func goToContentsChapter(_ index: Int) async -> Bool {
+    guard (0..<chapterCount).contains(index), canNavigate else { return false }
+    return await navigate(
+      "return await window.epubGo(target, smooth)", arguments: ["target": index],
+      forward: index >= (visibleLocation?.chapterIndex ?? 0), programmatic: true,
+      preserveContentOnFailure: true)
+  }
+
   func goToCFI(_ cfi: String) async {
     guard cfi.hasPrefix("epubcfi("), cfi.utf16.count <= 2000 else { return }
     await navigate(
@@ -332,31 +340,54 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       programmatic: true)
   }
 
-  func goToHref(_ href: String) async {
-    guard href.utf16.count <= 4096 else { return }
+  func bookmarkSessionGeneration() async throws -> UUID {
+    guard isReady, !isClosed, let generation,
+      try await api.authenticatedSessionGeneration() == generation
+    else { throw ConnectionError.expiredSession }
+    return generation
+  }
+
+  func goToBookmarkCFI(_ cfi: String) async -> EPUBPositionJumpResult {
+    guard cfi.hasPrefix("epubcfi("), cfi.utf16.count <= 2000, canNavigate else { return .failed }
+    let moved = await navigate(
+      "return await window.epubGo(target, smooth)", arguments: ["target": cfi], forward: true,
+      programmatic: true, preserveContentOnFailure: true)
+    guard moved else { return .failed }
+    saveTask?.cancel()
+    return await saveProgress() ? .saved : .pendingSave
+  }
+
+  @discardableResult
+  func goToHref(_ href: String) async -> Bool {
+    guard href.utf16.count <= 4096, canNavigate else { return false }
     if let info {
       guard
         info.spine.contains(where: {
           $0.href == href.components(separatedBy: "#")[0].removingPercentEncoding
         })
-      else { return }
+      else { return false }
     } else {
-      var pending = contents
+      var pending: [(items: [EpubTocItem], index: Int, depth: Int)] = [(contents, 0, 0)]
       var scanned = 0
       var allowed = false
-      while let item = pending.popLast(), scanned < 4096 {
+      while let frame = pending.popLast(), scanned < 4096 {
+        guard frame.index < frame.items.count else { continue }
+        let item = frame.items[frame.index]
+        pending.append((frame.items, frame.index + 1, frame.depth))
         scanned += 1
         if item.href == href {
           allowed = true
           break
         }
-        pending.append(contentsOf: item.children ?? [])
+        if frame.depth < 32, let children = item.children, !children.isEmpty {
+          pending.append((children, 0, frame.depth + 1))
+        }
       }
-      guard allowed else { return }
+      guard allowed else { return false }
     }
-    await navigate(
+    return await navigate(
       "return await window.epubGo(target, smooth)", arguments: ["target": href], forward: true,
-      programmatic: true)
+      programmatic: true, preserveContentOnFailure: true)
   }
 
   func goToFraction(_ fraction: Double) async -> EPUBPositionJumpResult {

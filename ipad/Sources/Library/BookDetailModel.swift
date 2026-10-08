@@ -9,6 +9,8 @@ final class BookDetailModel {
   private(set) var isSaving = false
   var error: String?
   var draft: MetadataDraft?
+  private(set) var fileWrite: BookWriteAndRenameModel?
+  private var detailSession: UUID?
   private var loadID = UUID()
   private var isUnavailable = false
   private var deletionSession: UUID?
@@ -26,11 +28,14 @@ final class BookDetailModel {
     self.loadID = loadID
     error = nil
     do {
+      if detailSession == nil { detailSession = try await api.authenticatedSessionGeneration() }
       let result: BookDetail = try await api.boundedJSON(
-        "books/\(bookID)", session: deletionSession ?? moveSession ?? fileSession)
+        "books/\(bookID)", session: deletionSession ?? moveSession ?? fileSession ?? detailSession)
       guard self.loadID == loadID, !isUnavailable else { return }
       guard result.id == bookID else { throw ConnectionError.invalidResponse }
       book = result
+      beginWritingFiles()
+      await fileWrite?.inspectStatus(current: result)
     } catch {
       guard self.loadID == loadID, !isUnavailable else { return }
       self.error = error.localizedDescription
@@ -43,6 +48,7 @@ final class BookDetailModel {
     book = nil
     draft = nil
     error = nil
+    fileWrite?.detach()
   }
 
   func reconcileDeletion(session: UUID) async -> BookDeletionOutcome? {
@@ -86,6 +92,12 @@ final class BookDetailModel {
     draft = MetadataDraft(book: book)
   }
 
+  func resetMetadata() {
+    guard let draft, !isSaving else { return }
+    draft.reset()
+    error = nil
+  }
+
   func awaitFileReadback(session: UUID) {
     guard !isUnavailable else { return }
     fileSession = session
@@ -100,6 +112,38 @@ final class BookDetailModel {
     loadID = UUID()
     error = nil
     book = saved
+  }
+
+  var fileWriteBlocksMetadata: Bool {
+    fileWrite?.isBusy == true || fileWrite?.hasUnconfirmedWrite == true
+  }
+
+  func beginWritingFiles() {
+    guard !isUnavailable, !isSaving, let detailSession else { return }
+    if fileWrite == nil {
+      fileWrite = BookWriteAndRenameModel(
+        api: api, bookID: bookID, session: detailSession,
+        willWrite: { [weak self] session in self?.awaitFileWriteReadback(session: session) },
+        readBack: { [weak self] book, session in
+          self?.acknowledgeFileWrite(book, session: session)
+        })
+    }
+  }
+
+  func detachFileWrite() { fileWrite?.detach() }
+
+  private func awaitFileWriteReadback(session: UUID) {
+    guard session == detailSession, !isUnavailable else { return }
+    loadID = UUID()
+    book = nil
+    error = "Source-file work was requested. Reload this book to see its current files."
+  }
+
+  private func acknowledgeFileWrite(_ book: BookDetail, session: UUID) {
+    guard book.id == bookID, session == detailSession, !isUnavailable else { return }
+    loadID = UUID()
+    self.book = book
+    error = nil
   }
 
   func acknowledgeReading(_ saved: BookDetail) {
@@ -127,10 +171,11 @@ final class BookDetailModel {
   }
 
   func saveMetadata() async {
-    guard let book, let draft, draft.isValid, !isSaving else { return }
+    guard let book, let draft, draft.isValid, !isSaving, !fileWriteBlocksMetadata else { return }
     isSaving = true
     error = nil
     defer { isSaving = false }
+    var savedMedia: [CoverMedium] = []
     do {
       var metadata = BookMetadataUpdatePayload(
         title: update(draft.title, original: book.title),
@@ -150,36 +195,72 @@ final class BookDetailModel {
       draft.extra.write(to: &metadata)
       let payload = BookMetadataAndLocksUpdatePayload(
         metadata: metadata, lockedFields: draft.lockedFields.sorted())
+      let pendingMedia = [CoverMedium.ebook, .audio].filter { draft.coverURLs[$0] != nil }
+      for medium in pendingMedia where !book.lockedFields.contains(medium.lockField) {
+        guard
+          await saveCoverSelection(
+            medium, draft: draft, metadataSaved: false, savedMedia: savedMedia)
+        else { return }
+        savedMedia.append(medium)
+      }
       self.book = try await api.send(
         "books/\(bookID)/metadata-and-locks", method: "PATCH", body: JSONEncoder().encode(payload))
       if let saved = self.book {
-        draft.extra.acknowledge(saved)
-        draft.customFields = saved.customMetadata.map(CustomMetadataDraft.init)
+        draft.acknowledge(saved)
       }
-      for medium in [CoverMedium.ebook, .audio] {
-        if let url = draft.coverURLs[medium] {
-          do {
-            try await api.sendEmpty(
-              "books/\(bookID)/cover/from-url",
-              body: JSONEncoder().encode(UploadCoverFromUrlPayload(url: url)),
-              query: [URLQueryItem(name: "medium", value: medium.rawValue)])
-            draft.coverURLs[medium] = nil
-          } catch {
-            self.error =
-              "Metadata saved. \(medium.label) could not be saved. Your selection is kept. \(error.localizedDescription)"
-            return
-          }
-          do {
-            self.book = try await api.send("books/\(bookID)")
-          } catch {
-            self.error =
-              "Metadata and \(medium.label.lowercased()) saved. Book details could not be refreshed. Retry to reload them. \(error.localizedDescription)"
-            return
-          }
+      for medium in pendingMedia where draft.coverURLs[medium] != nil {
+        guard self.book?.lockedFields.contains(medium.lockField) == false else {
+          error =
+            "\(savedCoverSummary(savedMedia))Metadata saved. Your \(medium.label.lowercased()) selection is kept. Unlock its cover field and save again."
+          return
         }
+        guard
+          await saveCoverSelection(
+            medium, draft: draft, metadataSaved: true, savedMedia: savedMedia)
+        else { return }
+        savedMedia.append(medium)
       }
       self.draft = nil
-    } catch { self.error = error.localizedDescription }
+    } catch {
+      self.error =
+        savedMedia.isEmpty
+        ? error.localizedDescription
+        : "\(savedCoverSummary(savedMedia))Metadata has not been saved. Your metadata changes are kept. \(error.localizedDescription)"
+    }
+  }
+
+  private func saveCoverSelection(
+    _ medium: CoverMedium, draft: MetadataDraft, metadataSaved: Bool, savedMedia: [CoverMedium]
+  ) async -> Bool {
+    guard let url = draft.coverURLs[medium] else { return true }
+    do {
+      try await api.sendEmpty(
+        "books/\(bookID)/cover/from-url",
+        body: JSONEncoder().encode(UploadCoverFromUrlPayload(url: url)),
+        query: [URLQueryItem(name: "medium", value: medium.rawValue)])
+      draft.coverURLs[medium] = nil
+    } catch {
+      let metadataStatus = metadataSaved ? "Metadata saved." : "Metadata has not been saved."
+      self.error =
+        "\(savedCoverSummary(savedMedia))\(metadataStatus) \(medium.label) could not be saved. Your selection is kept. \(error.localizedDescription)"
+      return false
+    }
+    do {
+      self.book = try await api.send("books/\(bookID)")
+    } catch {
+      let savedStatus =
+        metadataSaved
+        ? "Metadata and \(medium.label.lowercased()) saved."
+        : "\(medium.label) saved. Metadata has not been saved."
+      self.error =
+        "\(savedCoverSummary(savedMedia))\(savedStatus) Book details could not be refreshed. Retry to reload them. \(error.localizedDescription)"
+      return false
+    }
+    return true
+  }
+
+  private func savedCoverSummary(_ media: [CoverMedium]) -> String {
+    media.map { "\($0.label) saved. " }.joined()
   }
 
   private func update(_ text: String, original: String?) -> FieldUpdate<String>? {
@@ -204,6 +285,8 @@ final class BookDetailModel {
 @MainActor @Observable
 final class MetadataDraft: Identifiable {
   let id = UUID()
+  private var original: BookDetail
+  private(set) var resetGeneration = 0
   var title: String
   var subtitle: String
   var description: String
@@ -223,6 +306,7 @@ final class MetadataDraft: Identifiable {
   var lockedFields: Set<String>
 
   init(book: BookDetail) {
+    original = book
     title = book.title ?? ""
     subtitle = book.subtitle ?? ""
     description = book.description ?? ""
@@ -243,6 +327,43 @@ final class MetadataDraft: Identifiable {
 
   var isValid: Bool { validationMessage == nil }
   var customUpdates: [CustomMetadataBookValueInput] { customFields.compactMap(\.update) }
+  var areAllLocked: Bool { Set(MetadataVocabulary.lockFields).isSubset(of: lockedFields) }
+
+  func lockAll() {
+    lockedFields = Set(MetadataVocabulary.lockFields)
+  }
+
+  func unlockAll() {
+    lockedFields = []
+  }
+
+  func acknowledge(_ book: BookDetail) {
+    original = book
+    extra.acknowledge(book)
+    customFields = book.customMetadata.map(CustomMetadataDraft.init)
+  }
+
+  func reset() {
+    let restored = MetadataDraft(book: original)
+    title = restored.title
+    subtitle = restored.subtitle
+    description = restored.description
+    publisher = restored.publisher
+    publishedDate = restored.publishedDate
+    publishedYear = restored.publishedYear
+    pageCount = restored.pageCount
+    language = restored.language
+    isbn10 = restored.isbn10
+    isbn13 = restored.isbn13
+    authors = restored.authors
+    genres = restored.genres
+    tags = restored.tags
+    customFields = restored.customFields
+    extra = restored.extra
+    lockedFields = restored.lockedFields
+    coverURLs = [:]
+    resetGeneration += 1
+  }
 
   var isPublicationLocked: Bool {
     lockedFields.contains("publishedYear")

@@ -27,6 +27,7 @@ actor BookOrbitAPI {
   private var saved: SavedSession?
   private var refreshTask: (id: UUID, task: Task<NativeCredentials, Error>)?
   private var sessionGeneration = UUID()
+  private var activeBookFileWrites: Set<String> = []
 
   init(profile: ServerProfile) throws {
     self.profile = profile
@@ -844,6 +845,41 @@ actor BookOrbitAPI {
     try Task.checkCancellation()
     try ensureSession(session)
     return try staging.finish()
+  }
+
+  func bookFileWriteIsUnconfirmed(_ bookID: Int, session: UUID) throws -> Bool {
+    try ensureSession(session)
+    guard let userID = saved?.user.id else { throw ConnectionError.expiredSession }
+    return try BookFileWriteUncertainty.contains(bookID, profile: profile, userID: userID)
+  }
+
+  func writeAndRenameBook(_ bookID: Int, session: UUID, deliberateRepeat: Bool) async throws
+    -> BookWriteAndRenameResult
+  {
+    try Task.checkCancellation()
+    try ensureSession(session)
+    guard let userID = saved?.user.id else { throw ConnectionError.expiredSession }
+    let operationKey = "\(userID).\(bookID)"
+    guard !activeBookFileWrites.contains(operationKey) else {
+      throw BookFileWriteRequestError.inProgress
+    }
+    let unconfirmed = try BookFileWriteUncertainty.contains(
+      bookID, profile: profile, userID: userID)
+    guard deliberateRepeat || !unconfirmed else {
+      throw BookFileWriteRequestError.unconfirmed
+    }
+    try BookFileWriteUncertainty.record(bookID, profile: profile, userID: userID)
+    activeBookFileWrites.insert(operationKey)
+    defer { activeBookFileWrites.remove(operationKey) }
+    let result: BookWriteAndRenameResult = try await boundedJSON(
+      "books/\(bookID)/write-and-rename", method: "POST", byteLimit: 256 * 1024,
+      session: session, expectedStatus: 201)
+    let statuses = [result.write.status, result.rename.status]
+    guard statuses.allSatisfy({ ["success", "skipped", "failed"].contains($0) }),
+      result.write.durationMs >= 0, result.rename.durationMs >= 0
+    else { throw ConnectionError.invalidResponse }
+    try? BookFileWriteUncertainty.clear(bookID, profile: profile, userID: userID)
+    return result
   }
 
   func authenticatedSessionGeneration() throws -> UUID {

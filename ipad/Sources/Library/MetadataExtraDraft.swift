@@ -58,6 +58,13 @@ final class MetadataExtraDraft {
 
   var hasAudio: Bool { original.coverMedia.contains(.audio) }
 
+  func moveSeries(_ id: UUID, by offset: Int) {
+    guard let index = series.firstIndex(where: { $0.id == id }),
+      series.indices.contains(index + offset)
+    else { return }
+    series.swapAt(index, index + offset)
+  }
+
   func acknowledge(_ book: BookDetail) {
     original = book
     series = series.map {

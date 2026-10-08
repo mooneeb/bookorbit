@@ -6,6 +6,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   real,
@@ -22,6 +23,7 @@ import { bookFiles, books } from './books';
 import { timestamptz } from './columns';
 import { libraries } from './libraries';
 import { users } from './auth';
+import { epubBookmarkCfiOrder } from './bookmark-cfi-order';
 
 export const userBookStatus = pgTable(
   'user_book_status',
@@ -417,6 +419,9 @@ export const bookmarks = pgTable(
       .references(() => books.id, { onDelete: 'cascade' }),
     // EPUB: CFI string pinpoints exact location. Null for audio bookmarks.
     cfi: varchar('cfi', { length: 2000 }),
+    cfiOrder: numeric('cfi_order')
+      .array()
+      .generatedAlwaysAs(epubBookmarkCfiOrder(sql.raw('"cfi"'))),
     fileId: integer('file_id').references(() => bookFiles.id, { onDelete: 'cascade' }),
     pageNumber: integer('page_number'),
     title: varchar('title', { length: 500 }).notNull(),
@@ -442,6 +447,13 @@ export const bookmarks = pgTable(
     uniqueIndex('bookmarks_user_book_client_id_uidx').on(t.userId, t.bookId, t.clientId),
     index('bookmarks_user_book_idx').on(t.userId, t.bookId),
     index('bookmarks_user_book_file_id_idx').on(t.userId, t.bookId, t.fileId, t.id),
+    index('bookmarks_epub_created_idx')
+      .on(t.userId, t.bookId, t.createdAt, t.id)
+      .where(sql`${t.fileId} is null and ${t.cfi} is not null and ${t.deletedAt} is null`),
+    // A bounded prefix avoids PostgreSQL's B-tree entry size limit for deep CFIs.
+    index('bookmarks_epub_order_idx')
+      .on(t.userId, t.bookId, sql`((${t.cfiOrder})[1:32])`, t.createdAt, t.id)
+      .where(sql`${t.fileId} is null and ${t.cfi} is not null and ${t.deletedAt} is null`),
     uniqueIndex('bookmarks_user_book_file_page_uidx')
       .on(t.userId, t.bookId, t.fileId, t.pageNumber)
       .where(sql`${t.fileId} is not null and ${t.pageNumber} is not null`),
