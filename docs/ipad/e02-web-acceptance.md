@@ -1,0 +1,136 @@
+# E02 browser annotation acceptance
+
+The approved seams are the real web/native visible UI, authenticated HTTP, and delivered/exported artifacts. `scripts/ipad/annotations-cross-client.test.mjs` exercises the production web reader through Chromium against the isolated NestJS/PostgreSQL/content harness. Its deterministic native-operation inputs are explicitly protocol fixtures, not evidence of physical Pencil capture or a native UI session.
+
+Run the browser journeys with the existing harness:
+
+```sh
+node scripts/ipad/run-harness.mjs --annotations --web
+```
+
+Run the actual native journeys before browser verification with:
+
+```sh
+node scripts/ipad/run-harness.mjs --annotations --ui --web
+```
+
+Run the concurrent native/web A05 handoff with:
+
+```sh
+node scripts/ipad/run-harness.mjs --annotations --ui --web --case=A05
+```
+
+For the combined A01 run, `IPAD_E02_EXPECT_NATIVE=1` additionally requires the native-created `Converted English passage fixture` note and the edited two-stroke retained drawing to appear in the actual web sidebar. The standalone browser run does not assert native UI creation.
+
+The focused A05 run sets `IPAD_E02_CONCURRENT_NATIVE=1`, starts both real clients, and uses three controlled coordination checkpoints at the transport fixture: `native-offline-ready`, `browser-delete-done`, and `native-reconciled`. The browser discovers the new source item through the bounded public source-ink API, performs actual right-click deletion, and verifies the delivered PDF, canonical tombstone/version and absence of recreation after native reconnection. The native driver must assert visible local recovery before signaling `native-reconciled`; a protected local draft need not have been submitted to the server. Checkpoints coordinate timing; assertions never read private app or database state.
+
+For an already running `--annotations --web --serve` harness:
+
+```sh
+IPAD_ANNOTATIONS_PROOF=1 IPAD_TEST_RUN=e02-browser-smoke pnpm exec playwright test --config scripts/ipad/playwright.config.mjs
+```
+
+The runner has no retries and does not accept new screenshot baselines. `captureAnnotationVisual` captures actual screenshots and compares only baselines with recorded human review. Missing human baselines remain explicit evidence residuals. Existing meaningful baseline differences fail, with actual/expected/diff preserved.
+
+| Test ID                       | Repeatable behavior                                                                                                                                                                   | Evidence                                                                                                                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| IPAD-E02-A01-web              | Owned EPUB handwriting retained as literal strokes; English converted-text search; raw drawing identifier excluded from search; portrait/landscape reflow; other-account isolation    | Real sidebar/search, retained drawing SVG, authenticated scoped hub, canonical annotations JSON, screenshots                                                                                       |
+| IPAD-E02-A03-web/IPAD-E02-A02 | Actual right-click Delete; precommit Undo cancels the request; postcommit Undo publishes a distinct inverse at the committed version; a newer independently created ink item survives | Actual menu/toolbar, clock boundary controlling the 350 ms window, authenticated operations/delta/source, delivered PDFs, independent Poppler renders and literal red/green/white pixel assertions |
+| IPAD-E02-A05-web              | Browser deletion remains authoritative across reload and stale native-operation retry; stale edit retained as a recovery draft; no PDF-byte change or recreation                      | Actual browser Delete, public draft API, operation retry identity, delivered PDF identity/bytes, browser screenshot                                                                                |
+| IPAD-E02-A03-web-permission   | Reader can select shared source ink but cannot see deletion controls or publish an unauthorized source mutation                                                                       | Actual source selection, canonical source permission, HTTP 403, screenshot                                                                                                                         |
+| IPAD-E02-A06-web              | Replacement page fingerprints hide old source selection while preserving the canonical group; source restoration returns the original page count                                      | Authenticated controlled source-input replacement/restoration, actual browser page count and selectors, delivered PDF geometry/text, canonical delta, screenshots                                  |
+
+`IPAD-E02-A05-web-private` additionally checks that opening a retained passage-note popover captures its version. Save after a concurrent native edit must preserve the newer canonical note, the unsaved browser input and a recoverable conflict draft. Its evidence is the actual passage click/popover/textarea/Save, authenticated native update, explicit saved base version, canonical note/draft APIs and conflict screenshot.
+
+The source PDF assertions preserve three pages, 600 by 800 page geometry, unrelated fixture passage text, editable group identities and retained drawing data. Private passage-note text must be absent from delivered source bytes. Every query is bounded to 100 records. This smoke fixture creates a bounded number of annotation rows and does not make a large-library scale claim.
+
+A06 changes the isolated source through the harness's authenticated `__faults/source-pdf/source/1/replace` input fixture. It leaves production inspection, publication, delivery, canonical persistence and browser rendering real. The test requires an active canonical group already embedded in the saved source fixture and chooses it through bounded public HTTP plus the delivered PDF. The known replacement has one 420 by 600 page containing `Replacement source fixture`; its fingerprint must differ, the browser must display one page, old source selectors and Delete must disappear, and the canonical item's old version/fingerprint must survive. Cleanup restores the exact original bytes, then verifies the three-page artifact, page 1 and the returned selection control. A06 makes no canonical annotation writes. This input substitution does not simulate an actual user's filesystem replacement.
+
+## Execution evidence
+
+On 2026-10-08, `node --check scripts/ipad/annotations-cross-client.test.mjs` and Playwright discovery passed for all four journeys. The initial `e02-web-a01-initial` execution failed with connection refused at `localhost:16484` before authentication, so it is an infrastructure failure and does not establish a functional red or green result. Its report, screenshot, and trace are retained in `test-results/ipad/e02-web-a01-initial/`.
+
+The initial failure screenshot at `test-results/ipad/e02-web-a01-initial/browser/annotations-cross-client-I-622fc-earches-converted-text-only/test-failed-1.png` was opened and inspected: it is a blank 1024 by 1366 page because failure occurred before navigation. It proves no reader layout behavior. No human-reviewed visual baseline has been accepted by this agent.
+
+The first real `e02-browser-smoke` run executed all four tests and failed. A01 waited for an auto-hidden toolbar; the three PDF journeys used an EPUB-default reader URL without choosing the PDF format. These were driver defects. The A03 artifact assertions passed before reader navigation. The first A01 correction run exposed duplicate fixture notes left by the prior failed run. The driver now opens the sidebar through the public `t` shortcut, chooses PDF through the actual book Read button, resets only its known fixtures through authenticated public routes, and verifies the visible EPUB passage after rotation.
+
+`e02-browser-a01-reset`: **A01 passed**, 4.3 seconds, on the real isolated server and Chromium with Playwright 1.63.0, Node 25.7, macOS 27.0, en-US/UTC, light theme and animation enabled. This standalone run used deterministic public native-operation input, not actual native UI creation. All four actual images below were opened and inspected under `test-results/ipad/e02-browser-a01-reset/browser/annotations-cross-client-I-622fc-earches-converted-text-only/`:
+
+| State                          | Viewport     | Image                                                     | Inspection                                                                                                                           |
+| ------------------------------ | ------------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Owned retained drawing         | 1024 by 1366 | `IPAD-E02-A01-A01-passage-handwriting-initial-window.png` | Stroke retained, note readable, sidebar filters and close/pin controls reachable; the overlay covers the left side of the passage    |
+| Rotated retained drawing       | 1366 by 1024 | `IPAD-E02-A01-A01-passage-handwriting-rotated-window.png` | Same drawing and controls retained; no sidebar clipping or overlap; passage visibility assessed separately after closing the overlay |
+| Visible passage after rotation | 1366 by 1024 | `IPAD-E02-A01-A01-visible-passage-after-rotation.png`     | Exact Alpha/emoji/combining-accent passage and yellow highlight at the first paragraph; page 1 of 1, no text clipping                |
+| Raw ink excluded from search   | 1366 by 1024 | `IPAD-E02-A01-A01-text-only-search-empty.png`             | Zero results and readable empty-state feedback; no drawing returned                                                                  |
+
+All visual review reports remain `pending-human-baseline`, which is recorded as residual evidence. No expected image was generated or accepted automatically.
+
+`e02-browser-pdf-fixed`: **A03 passed**, 10.0 seconds. Actual right-click Delete, request-free precommit Undo, postcommit distinct versioned inverse, native delta and delivered PDF revision all converged while a newer green source item survived. The A05 input was correctly rejected with HTTP 400 because it attempted to put a private note on source ink; the input now sends the known stale drawing only. The read-only PDF journey reached a real HTTP 403 delivery error because the original E01 reader fixture lacks `LibraryDownload`; the harness owner is adding that E02 read permission without granting source-edit permission. These failed runs are retained and do not count as passes.
+
+The following actual images were opened and inspected under `test-results/ipad/e02-browser-pdf-fixed/browser/annotations-cross-client-I-42ff9-th-source-PDF-and-newer-ink/`:
+
+| State                                 | Configuration       | Image                                             | Inspection                                                                                                 |
+| ------------------------------------- | ------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Selected source ink with context menu | 1024 by 1366, light | `IPAD-E02-A03-A03-source-ink-context-menu.png`    | Selection border aligned with the red group, Delete menu readable and reachable, toolbar within the window |
+| Committed deletion with newer ink     | 1024 by 1366, light | `IPAD-E02-A03-A03-deleted-with-newer-content.png` | Original group absent, newer green group visible, Undo available, page 1 stable                            |
+| Explicit inverse applied              | 1024 by 1366, light | `IPAD-E02-A03-A03-undo-source-convergence.png`    | Restored group selectable at the original geometry, newer green content retained, Delete action available  |
+| Delivered deletion artifact           | Poppler 600 by 800  | `A03-committed-delete.png`                        | Original lower red group absent; unrelated passage and earlier groups preserved                            |
+| Delivered inverse artifact            | Poppler 600 by 800  | `A03-versioned-inverse.png`                       | Lower red group restored and newer green group retained; source geometry unchanged                         |
+
+The live inspection run contains earlier publication/failure-test marks, so those images are functional evidence rather than an approved deterministic visual baseline. Baseline review must use a fresh isolated harness with the documented same full journey order and profile. The browser resets only its own explicitly named note/ink fixtures, preserving unrelated source content and native-created evidence.
+
+`e02-browser-private-initial`: **A05 private conflict failed**, 21.1 seconds, against the earlier compiled web preview. The real passage click opened the retained-note popover at version 1; the browser received the concurrent native version 2 through its actual delta request. Save did not send the required canonical operation and closed the popover. A subsequent authenticated public annotation read confirmed version 3 contained the stale browser text instead of the newer native note. The failure screenshot was opened and inspected: the modal was gone and the First passage highlight remained. Report/trace/image are retained under `test-results/ipad/e02-browser-private-initial/browser/annotations-cross-client-I-67f7b-nonical-version-on-conflict/`. This is a meaningful functional red, preserved alongside the later green run. No test was weakened to accept the overwrite.
+
+`e02-browser-final`: **all five standalone journeys passed**, 29.9 seconds, against the rebuilt web preview and real isolated server. Command:
+
+```sh
+IPAD_ANNOTATIONS_PROOF=1 IPAD_TEST_RUN=e02-browser-final ./node_modules/.bin/playwright test --config scripts/ipad/playwright.config.mjs
+```
+
+A01 passed in 4.0 seconds, A03 in 8.2 seconds, stale source recovery in 6.5 seconds, read-only permission in 4.9 seconds, and private popover conflict in 5.1 seconds. The latter sent captured base version 1, received conflict with canonical version 2, preserved the typed input and stored the recoverable draft. The read-only reader now has legitimate delivery permission while its attempted source deletion still returns HTTP 403. This run uses public native-operation fixtures; it does not claim an actual native UI session or simultaneous offline clients.
+
+The HTML report is `test-results/ipad/e02-browser-final/browser-report/index.html`. The following actual images under `test-results/ipad/e02-browser-final/browser/` were opened and inspected:
+
+| Test output directory suffix          | Image                                                         | Inspection                                                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `I-622fc-earches-converted-text-only` | `IPAD-E02-A01-A01-passage-handwriting-initial-window.png`     | Retained stroke, readable note and reachable sidebar controls; the overlay obscures the passage's left edge                    |
+| `I-622fc-earches-converted-text-only` | `IPAD-E02-A01-A01-visible-passage-after-rotation.png`         | Exact passage, emoji, combining accent and first-paragraph highlight visible after closing sidebar; stable page 1              |
+| `I-42ff9-th-source-PDF-and-newer-ink` | `IPAD-E02-A03-A03-source-ink-context-menu.png`                | Selection aligns with lower red group; Delete menu and toolbar reachable                                                       |
+| `I-42ff9-th-source-PDF-and-newer-ink` | `IPAD-E02-A03-A03-undo-source-convergence.png`                | Red group restored in its original position; newer green group and unrelated ink retained                                      |
+| `I-fbd2a-drafts-without-resurrection` | `IPAD-E02-A05-A05-authoritative-delete-after-reconnect.png`   | Deleted target absent after reload; unrelated passage and groups remain                                                        |
+| `I-29569-rejects-unauthorized-writes` | `IPAD-E02-A03-A03-read-only-source-permission.png`            | Selected blue group aligned; no Delete action or menu shown                                                                    |
+| `I-67f7b-nonical-version-on-conflict` | `IPAD-E02-A05-A05-private-popover-conflict-retains-input.png` | Retained drawing, typed text, Cancel and Save visible; Failed toast captured while sliding in and partly clipped at the bottom |
+| `I-42ff9-th-source-PDF-and-newer-ink` | `A03-committed-delete.png`, `A03-versioned-inverse.png`       | Independent Poppler renders preserve passage and unrelated groups; target red absent then restored, green survives             |
+
+Each directory starts with `annotations-cross-client-`. The transition-frame toast image is retained, and the runner now waits for the visible toast rectangle to enter the viewport before conflict captures, with animations enabled. Human baseline status remains pending. The subsequent fresh-context execution below covers the final source-fingerprint guard.
+
+`e02-browser-final-six`: **five passed and one failed**, 35.6 seconds, on the newly restarted real API and final web build. The five existing journeys passed again, including the account-specific A01 marker, final source guard and fully visible conflict toast. A06 verified replacement geometry, actual browser reload, hidden old source controls and the unchanged canonical group, then failed in cleanup: the fixture restored a global snapshot taken before its newly seeded ink existed, so the attempted canonical seed deletion reported publication failure. The source restore itself completed. This fixture mismatch is preserved in the report/trace, not counted as an A06 pass. The driver now selects an existing canonical group embedded in the saved source instead and performs no annotation mutations.
+
+`e02-browser-replacement-fixed`: **A06 passed**, 9.8 seconds, 11.0 seconds including runner startup:
+
+```sh
+IPAD_ANNOTATIONS_PROOF=1 IPAD_TEST_RUN=e02-browser-replacement-fixed ./node_modules/.bin/playwright test --config scripts/ipad/playwright.config.mjs --grep IPAD-E02-A06
+```
+
+All six final journeys therefore have passing live evidence: the five unchanged journeys in `e02-browser-final-six`, plus the corrected A06 in `e02-browser-replacement-fixed`. This is not a claim that the final six were run together in one fresh harness. Final syntax, Prettier and six-test discovery checks also pass.
+
+The settled-toast private conflict image was opened and inspected at `test-results/ipad/e02-browser-final-six/browser/annotations-cross-client-I-67f7b-nonical-version-on-conflict/IPAD-E02-A05-A05-private-popover-conflict-retains-input.png`: retained drawing, unsaved text, Cancel/Save and complete Failed feedback fit the viewport. The earlier partly clipped transition capture remains preserved.
+
+All five A06 actual images below were opened and inspected under `test-results/ipad/e02-browser-replacement-fixed/browser/annotations-cross-client-I-f0788-rves-retained-canonical-ink/`:
+
+| Image                                                         | Inspection                                                                                                              |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `IPAD-E02-A06-A06-replacement-hides-old-source-selection.png` | Actual replacement text and one-page toolbar visible; old source selection/Delete absent; page geometry fits the window |
+| `IPAD-E02-A06-A06-restored-source-geometry.png`               | Original passage and ink return on page 1 of 3; selection control reappears; toolbar reachable                          |
+| `A06-original-source.png`, `A06-restored-source.png`          | Independent Poppler renders retain the same passage and groups; delivered byte equality is asserted                     |
+| `A06-replacement.png`                                         | Independent 420 by 600 replacement artifact contains only the known replacement passage                                 |
+
+The corresponding replacement screenshot and independent artifact from the failed cleanup run were also inspected and preserved. Neither successful screenshots nor the empty baseline state were automatically accepted as human-reviewed regression baselines.
+
+## Remaining evidence
+
+- The actual native UI runner owns real-app creation, retained PKDrawing edit, gesture substitutions, offline transfer/restart, hub/export/trash/repair, and recovery screens. The public API fixture in this browser runner does not replace those checks.
+- The focused concurrent A05 driver is implemented and awaits execution against the live real services. Sequential native/browser stages do not prove simultaneous sessions.
+- A06 browser replacement has passed. Source deletion, interrupted file writes, explicit reattachment and native recovery/export need integrated evidence from their owning components; this browser runner does not claim them.
+- The representative profile matrix, large text, dark theme, Reduce Motion, accessibility auditing, and human-reviewed visual baselines require documented matrix runs. The runner's portrait/landscape passage captures alone do not prove that full matrix.
+- Real Pencil/Scribble recognition, pressure/tilt/hover/squeeze/roll/haptics, VoiceOver feel, and physical signing/private-network behavior remain justified device-specific checks. These are residual evidence rather than a reason to omit repeatable downstream assertions.

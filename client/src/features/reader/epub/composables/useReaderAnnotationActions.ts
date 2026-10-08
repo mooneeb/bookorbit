@@ -42,6 +42,7 @@ export function useReaderAnnotationActions({
   addAnnotation,
   redrawAnnotation,
 }: ReaderAnnotationActionsOptions) {
+  let noteBaseVersion: number | undefined
   function selectedAnnotation(): Annotation | null {
     const id = selection.overlappingAnnotationId.value
     if (id === null) return null
@@ -63,13 +64,14 @@ export function useReaderAnnotationActions({
     if (selection.overlappingAnnotationId.value !== null) {
       const patch: AnnotationPatch = { color, style }
       if (note !== undefined) patch.note = note
-      await updateSelectedAnnotation(patch, true)
+      const updated = await updateSelectedAnnotation(patch, true)
+      if (!updated) return false
       selection.dismiss()
-      return
+      return true
     }
 
     const annotationCfi = selection.cfi.value
-    if (!selection.text.value || !annotationCfi) return
+    if (!selection.text.value || !annotationCfi) return false
 
     const created = await annotations.create(bookId, {
       cfi: annotationCfi,
@@ -83,21 +85,27 @@ export function useReaderAnnotationActions({
     if (created?.cfi) {
       addAnnotation(created.cfi, created.color, created.style)
     }
+    if (!created) return false
     selection.dismiss()
+    return true
   }
 
   function handleOpenNoteDialog() {
+    noteBaseVersion = selectedAnnotation()?.version
     selection.openNoteDialog(selectedAnnotation()?.note ?? '')
   }
 
   async function handleSaveNote(note: string) {
     if (selection.overlappingAnnotationId.value !== null) {
-      await updateSelectedAnnotation({ note }, false)
+      const patch: AnnotationPatch = { note }
+      if (noteBaseVersion !== undefined) patch.baseVersion = noteBaseVersion
+      if (!(await updateSelectedAnnotation(patch, false))) return false
     } else {
-      await handleHighlight(DEFAULT_NOTE_HIGHLIGHT_COLOR, DEFAULT_NOTE_HIGHLIGHT_STYLE, note)
+      if (!(await handleHighlight(DEFAULT_NOTE_HIGHLIGHT_COLOR, DEFAULT_NOTE_HIGHLIGHT_STYLE, note))) return false
     }
     selection.showNoteDialog.value = false
     selection.noteText.value = ''
+    return true
   }
 
   return { handleHighlight, handleOpenNoteDialog, handleSaveNote }

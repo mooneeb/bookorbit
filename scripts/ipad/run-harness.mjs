@@ -1,11 +1,15 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sanitizeLogValue } from "../../server/src/common/utils/log-sanitize.utils.ts";
 import { startFaultProxy } from "./fault-proxy.mjs";
 import { createCoverFixture } from "./cover-fixture.mjs";
+import { annotationProfile } from "./annotation-matrix.mjs";
+import { compareNativeAnnotationVisuals } from "./annotation-visual.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(new URL("../../server/package.json", import.meta.url));
@@ -13,8 +17,27 @@ const { Client } = require("pg");
 const databaseName = `bookorbit_ipad_${process.pid}_e2e`;
 const databaseURL = `postgres://bookorbit:bookorbit@localhost:5432/${databaseName}`;
 const runID = `run-${process.pid}-${Date.now()}`;
+const artifactsRoot = `${root}/test-results/ipad/${runID}`;
+let commandNumber = 0;
+const annotationsProof = process.argv.includes("--annotations");
+const annotationVisualProfile = annotationProfile(process.argv.find((argument) => argument.startsWith("--profile="))?.slice(10));
+const nativeOnly = process.argv.includes("--native-only");
+if (nativeOnly && (!annotationsProof || !process.argv.includes("--ui") || process.argv.includes("--web"))) {
+  throw new Error("--native-only requires --annotations --ui and runs a focused native seam");
+}
+const annotationCase = process.argv.find((argument) => argument.startsWith("--case="))?.slice(7);
+const annotationConcurrent = annotationsProof && annotationCase === "A05" && process.argv.includes("--ui") && process.argv.includes("--web");
+if (annotationCase && (!annotationsProof || !/^A0[1-7]$/.test(annotationCase))) {
+  throw new Error("--case requires --annotations and one of A01 through A07");
+}
+if (process.argv.includes("--list-annotations")) {
+  console.log(
+    "IPAD-E02-A01 passage notes\nIPAD-E02-A02 source PDF publication\nIPAD-E02-A03 source ink edits and Undo\nIPAD-E02-A04 explicit offline resources\nIPAD-E02-A05 concurrent reconciliation\nIPAD-E02-A06 source recovery\nIPAD-E02-A07 annotation hub",
+  );
+  process.exit(0);
+}
 const progressOnly = process.argv.includes("--progress-only");
-if (progressOnly && ["--ui", "--web", "--serve"].some((flag) => process.argv.includes(flag))) {
+if (progressOnly && ["--ui", "--web", "--serve", "--annotations"].some((flag) => process.argv.includes(flag))) {
   throw new Error("Focused progress HTTP verification runs without UI, browser or retained-server modes");
 }
 const crossClient = process.argv.includes("--cross-client");
@@ -22,13 +45,17 @@ const metadataProof = process.argv.includes("--metadata-proof");
 const metadataClearsProof = process.argv.includes("--metadata-clears-proof");
 const coverProof = process.argv.includes("--cover-proof");
 const readerProof = process.argv.includes("--reader-proof");
+if (annotationsProof && (readerProof || process.argv.includes("--cross-client"))) {
+  throw new Error("Annotation acceptance uses the production app in its own focused run");
+}
 const epubProof = process.argv.includes("--epub-proof");
 const comicProof = process.argv.includes("--comic-proof");
 const organizationProof = process.argv.includes("--organization-proof");
 const pdfReader = process.argv.includes("--pdf-reader");
 const inspectWeb = process.argv.includes("--inspect-web");
 if (inspectWeb && !process.argv.includes("--web")) throw new Error("Browser inspection requires --web");
-const nativeScheme = readerProof ? "BookOrbitReaderProof" : "BookOrbit";
+const nativeScheme = readerProof ? "BookOrbitReaderProof" : annotationsProof ? "BookOrbitAnnotations" : "BookOrbit";
+const nativeTestBundle = readerProof ? "BookOrbitReaderProofUITests" : "BookOrbitUITests";
 if (readerProof && (!process.argv.includes("--ui") || crossClient)) {
   throw new Error("Reader proof requires --ui and runs separately from the production cross-client gate");
 }
@@ -47,9 +74,11 @@ if (
 }
 if ([metadataProof, metadataClearsProof, coverProof, pdfReader, organizationProof].filter(Boolean).length > 1)
   throw new Error("Select one focused journey");
-const nativeTests = process.env.IPAD_TEST_ONLY?.split(",") ?? [];
-if (nativeTests.some((name) => !new RegExp(`^${nativeScheme}UITests/[A-Za-z_]\\w*(?:/[A-Za-z_]\\w*)?$`).test(name))) {
-  throw new Error(`IPAD_TEST_ONLY must contain comma-separated ${nativeScheme}UITests classes or methods`);
+let nativeTests =
+  process.env.IPAD_TEST_ONLY?.split(",") ??
+  (annotationsProof ? ["BookOrbitUITests/AnnotationJourneyTests", "BookOrbitUITests/AnnotationHubJourneyTests"] : []);
+if (nativeTests.some((name) => !new RegExp(`^${nativeTestBundle}/[A-Za-z_]\\w*(?:/[A-Za-z_]\\w*)?$`).test(name))) {
+  throw new Error(`IPAD_TEST_ONLY must contain comma-separated ${nativeTestBundle} classes or methods`);
 }
 const env = {
   ...process.env,
@@ -58,6 +87,13 @@ const env = {
   NODE_ENV: "test",
   APP_URL: "http://localhost:16484",
   IPAD_TEST_RUN: runID,
+  IPAD_ANNOTATIONS_PROOF: annotationsProof ? "1" : "0",
+  IPAD_ANNOTATION_CASE: annotationCase ?? "",
+  IPAD_E02_PROFILE: annotationVisualProfile.name,
+  IPAD_E02_CONCURRENT_NATIVE: annotationConcurrent ? "1" : "0",
+  IPAD_E02_EXPECT_NATIVE:
+    annotationsProof && process.argv.includes("--ui") && process.argv.includes("--web") && (!annotationCase || annotationCase === "A01") ? "1" : "0",
+  TEST_RUNNER_IPAD_E02_CONCURRENT_NATIVE: annotationConcurrent ? "1" : "0",
   IPAD_PROGRESS_ONLY: progressOnly ? "1" : "0",
   IPAD_PROGRESS_API_URL: `http://localhost:${progressOnly ? 16487 : 16482}/api/v1`,
   IPAD_CROSS_CLIENT: crossClient ? "1" : "0",
@@ -69,7 +105,7 @@ const env = {
   IPAD_COMIC_PROOF: comicProof ? "1" : "0",
   IPAD_ORGANIZATION_PROOF: organizationProof ? "1" : "0",
   IPAD_PDF_READER: pdfReader ? "1" : "0",
-  ...(epubProof ? { IPAD_READER_PROOF_EPUB: `${root}/test-results/ipad/${runID}/reader-fixture/reader-proof.epub` } : {}),
+  ...(epubProof || annotationsProof ? { IPAD_READER_PROOF_EPUB: `${root}/test-results/ipad/${runID}/reader-fixture/reader-proof.epub` } : {}),
   JWT_SECRET: randomBytes(32).toString("hex"),
   SETUP_BOOTSTRAP_TOKEN: "",
   NATIVE_REDIRECT_URI: "bookorbit://oauth2-callback",
@@ -78,9 +114,15 @@ const env = {
 
 async function command(cmd, args, { capture = false, ...options } = {}) {
   if (interrupted) throw new Error("iPad harness interrupted");
+  await mkdir(`${artifactsRoot}/logs`, { recursive: true });
+  const log = createWriteStream(`${artifactsRoot}/logs/${String(++commandNumber).padStart(3, "0")}-${basename(cmd)}.log`);
   return new Promise((resolve, reject) => {
     let output = "";
-    const child = launch(cmd, args, { stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit", ...options });
+    const child = launch(cmd, args, { stdio: ["ignore", "pipe", "pipe"], ...options });
+    child.stdout.pipe(log, { end: false });
+    child.stderr.pipe(log, { end: false });
+    child.stderr.pipe(process.stderr, { end: false });
+    if (!capture) child.stdout.pipe(process.stdout, { end: false });
     if (capture) {
       child.stdout.setEncoding("utf8");
       child.stdout.on("data", (chunk) => {
@@ -91,12 +133,16 @@ async function command(cmd, args, { capture = false, ...options } = {}) {
         }
       });
     }
-    child.once("error", reject);
-    child.once("exit", (code, signal) => {
+    child.once("error", (error) => {
+      log.end();
+      reject(error);
+    });
+    child.once("close", (code, signal) => {
       children.delete(child);
-      if (code === 0) {
-        resolve(output);
-      } else reject(new Error(`${cmd} failed (${code ?? signal})`));
+      log.end(() => {
+        if (code === 0) resolve(output);
+        else reject(new Error(`${cmd} failed (${code ?? signal})`));
+      });
     });
   });
 }
@@ -133,6 +179,22 @@ process.once("SIGTERM", requestStop);
 let server;
 let web;
 let stopFaultProxy;
+async function startWeb() {
+  if (web) return;
+  web = launch("pnpm", ["--filter", "client", "exec", "vite", "preview", "--host", "127.0.0.1", "--port", "16484", "--strictPort"], {
+    env: { ...env, BOOKORBIT_API_TARGET: "http://localhost:16482" },
+    stdio: "inherit",
+  });
+  const deadline = Date.now() + 30_000;
+  while (true) {
+    if (web.exitCode !== null) throw new Error("iPad web server exited before becoming ready");
+    try {
+      if ((await fetch("http://localhost:16484", { signal: AbortSignal.timeout(1000) })).ok) break;
+    } catch {}
+    if (Date.now() >= deadline) throw new Error("iPad web server did not become ready");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
 async function stop(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   if (stops.has(child)) return stops.get(child);
@@ -179,6 +241,15 @@ async function cleanup() {
 
 async function runNativeTests() {
   const startedAt = Date.now();
+  const nativeLock = "/tmp/bookorbit-ipad-xcode.lock";
+  try {
+    await mkdir(nativeLock);
+  } catch (error) {
+    if (error.code === "EEXIST")
+      throw new Error(`Native runner already owned: ${await readFile(`${nativeLock}/owner.json`, "utf8").catch(() => "owner starting")}`);
+    throw error;
+  }
+  await writeFile(`${nativeLock}/owner.json`, JSON.stringify({ pid: process.pid, runID, root }));
   console.log(`[ipad.ui] [start] runId=${runID} filtered=${Boolean(process.env.IPAD_TEST_ONLY)} - native verification starting`);
   try {
     const artifacts = `${root}/test-results/ipad/${runID}`;
@@ -192,8 +263,19 @@ async function runNativeTests() {
       const device = matches[0];
       if (device.state === "Shutdown") await command("xcrun", ["simctl", "boot", device.udid]);
       await command("xcrun", ["simctl", "bootstatus", device.udid, "-b"]);
+    } else {
+      const explicitID = process.env.IPAD_TEST_DESTINATION.match(/(?:^|,)id=([A-Fa-f0-9-]+)/)?.[1];
+      if (explicitID) {
+        const devices = JSON.parse(await command("xcrun", ["simctl", "list", "devices", "available", "--json"], { capture: true }));
+        const device = Object.values(devices.devices)
+          .flat()
+          .find((candidate) => candidate.udid === explicitID);
+        if (!device) throw new Error("The explicit native test simulator is unavailable");
+        if (device.state === "Shutdown") await command("xcrun", ["simctl", "boot", explicitID]);
+        await command("xcrun", ["simctl", "bootstatus", explicitID, "-b"]);
+      }
     }
-    if (!readerProof) {
+    if (!readerProof && !annotationsProof) {
       const destination = process.env.IPAD_TEST_DESTINATION;
       const device = destination?.match(/(?:^|,)id=([A-Fa-f0-9-]+)/)?.[1] ?? "BookOrbit Test iPad";
       await command("xcrun", [
@@ -204,7 +286,47 @@ async function runNativeTests() {
         `${env.IPAD_COVER_FIXTURE_DIR}/ebook-large-selected.png`,
       ]);
     }
+    if (annotationsProof) {
+      const device = process.env.IPAD_TEST_DESTINATION?.match(/(?:^|,)id=([A-Fa-f0-9-]+)/)?.[1] ?? "BookOrbit Test iPad";
+      let installed = false;
+      try {
+        await command("xcrun", ["simctl", "get_app_container", device, "com.mooneeb.bookorbit.private", "data"], { capture: true });
+        installed = true;
+      } catch {}
+      if (installed) await command("xcrun", ["simctl", "uninstall", device, "com.mooneeb.bookorbit.private"]);
+      await command("xcrun", [
+        "simctl",
+        "status_bar",
+        device,
+        "override",
+        "--time",
+        "9:41",
+        "--dataNetwork",
+        "wifi",
+        "--wifiMode",
+        "active",
+        "--wifiBars",
+        "3",
+        "--batteryState",
+        "charged",
+        "--batteryLevel",
+        "100",
+      ]);
+    }
     await command("xcodegen", ["generate", "--spec", "ipad/project.yml"]);
+    if (annotationsProof && !process.env.IPAD_TEST_ONLY) {
+      nativeTests = [];
+      for (const file of await readdir(`${root}/ipad/UITests`)) {
+        if (!file.endsWith(".swift")) continue;
+        const source = await readFile(`${root}/ipad/UITests/${file}`, "utf8");
+        const className = source.match(/class\s+([A-Za-z_][A-Za-z_0-9]*)\s*:\s*XCTestCase/)?.[1];
+        if (!className) continue;
+        for (const match of source.matchAll(new RegExp(`func (testIPADE02${annotationCase ?? "A0[1-7]"}[A-Za-z_0-9]*)\\(`, "g"))) {
+          nativeTests.push(`BookOrbitUITests/${className}/${match[1]}`);
+        }
+      }
+      if (!nativeTests.length) throw new Error(`No implemented native ${annotationCase ?? "E02"} journey exists`);
+    }
     let nativeFailure;
     try {
       await command("xcodebuild", [
@@ -213,6 +335,7 @@ async function runNativeTests() {
         "ipad/BookOrbit.xcodeproj",
         "-scheme",
         nativeScheme,
+        ...(annotationsProof ? ["-testPlan", "AnnotationAcceptance", "-only-test-configuration", annotationVisualProfile.name] : []),
         "-parallel-testing-enabled",
         "NO",
         "-collect-test-diagnostics",
@@ -252,6 +375,7 @@ async function runNativeTests() {
           { capture: true },
         );
         await writeFile(`${artifacts}/native-attachments.log`, exported);
+        if (annotationsProof) await compareNativeAnnotationVisuals(artifacts, annotationVisualProfile.name);
         const summary = JSON.parse(summaryText);
         if (
           summary.totalTestCount < 1 ||
@@ -276,12 +400,19 @@ async function runNativeTests() {
       `[ipad.ui] [fail] runId=${runID} durationMs=${Date.now() - startedAt} errorClass=${error instanceof Error ? error.name : "Error"} error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - native verification failed`,
     );
     throw error;
+  } finally {
+    await rm(nativeLock, { recursive: true, force: true });
   }
 }
 
 try {
+  await mkdir(artifactsRoot, { recursive: true });
+  await writeFile(
+    `${artifactsRoot}/environment.json`,
+    `${JSON.stringify({ runID, node: process.version, nativeScheme, profile: annotationVisualProfile, destination: process.env.IPAD_TEST_DESTINATION ?? "platform=iOS Simulator,name=BookOrbit Test iPad", fixtureDate: "2026-10-05T00:00:00Z", apiURL: "http://localhost:16482/api/v1", webURL: "http://localhost:16484", annotationCase: annotationCase ?? "all", nativeInputSubstitution: annotationsProof ? "debug-only deterministic Pencil/Scribble boundary" : null }, null, 2)}\n`,
+  );
   await createCoverFixture(env.IPAD_COVER_FIXTURE_DIR);
-  if (epubProof) {
+  if (epubProof || annotationsProof) {
     await command(process.execPath, ["scripts/ipad/reader-fixture.mjs", `${root}/test-results/ipad/${runID}/reader-fixture`]);
   }
   await command("pnpm", ["ipad:contracts:check"]);
@@ -292,6 +423,7 @@ try {
   await command("pnpm", ["--filter", "server", "db:migrate"]);
   await command("pnpm", ["--filter", "server", "exec", "tsc", "-p", "tsconfig.ipad.json"]);
   server = launch(process.execPath, ["server/dist-ipad/test/ipad/harness.js"], { stdio: ["ignore", "pipe", "inherit"] });
+  server.stdout.pipe(createWriteStream(`${artifactsRoot}/server.log`));
   await new Promise((resolve, reject) => {
     let tail = "";
     const timeout = setTimeout(() => reject(new Error("iPad harness did not start within 120 seconds")), 120_000);
@@ -310,28 +442,47 @@ try {
     });
   });
   if (process.argv.includes("--serve")) {
+    if (annotationsProof) stopFaultProxy = await startFaultProxy();
+    if (process.argv.includes("--web")) await startWeb();
+    console.log(`[ipad.harness_serve] [end] runId=${runID} apiPort=16482 web=${Boolean(web)} - isolated test surfaces retained until interruption`);
     await interrupt;
   } else {
-    if (!progressOnly) await command(process.execPath, ["--test", "scripts/ipad/http.test.mjs"]);
+    if (annotationsProof && !nativeOnly) {
+      await command(process.execPath, [
+        "--test",
+        "--test-concurrency=1",
+        ...(annotationCase ? [`--test-name-pattern=IPAD-E02-.*${annotationCase}`] : []),
+        "scripts/ipad/annotation-http.test.mjs",
+        "scripts/ipad/annotation-hub-http.test.mjs",
+        "scripts/ipad/annotation-recovery-http.test.mjs",
+        "scripts/ipad/pdf-ink-http.test.mjs",
+        "scripts/ipad/offline-delivery-http.test.mjs",
+        "scripts/ipad/source-ink-http.test.mjs",
+        "scripts/ipad/bookmark-retry-http.test.mjs",
+        "scripts/ipad/source-pdf-cache-http.test.mjs",
+      ]);
+    }
+    if (!progressOnly && !annotationsProof) await command(process.execPath, ["--test", "scripts/ipad/http.test.mjs"]);
     if (organizationProof || crossClient) await command(process.execPath, ["--test", "scripts/ipad/organization-http.test.mjs"]);
-    await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);
+    if (!annotationsProof) await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);
     if (comicProof) await command(process.execPath, ["--test", "scripts/ipad/comic-http.test.mjs"]);
     if (process.argv.includes("--ui")) stopFaultProxy = await startFaultProxy();
-    if (process.argv.includes("--ui")) await runNativeTests();
-    if (process.argv.includes("--web")) {
-      web = launch("pnpm", ["--filter", "client", "exec", "vite", "preview", "--host", "127.0.0.1", "--port", "16484", "--strictPort"], {
-        env: { ...env, BOOKORBIT_API_TARGET: "http://localhost:16482" },
-        stdio: "inherit",
-      });
-      const deadline = Date.now() + 30_000;
-      while (true) {
-        if (web.exitCode !== null) throw new Error("iPad web server exited before becoming ready");
-        try {
-          if ((await fetch("http://localhost:16484", { signal: AbortSignal.timeout(1000) })).ok) break;
-        } catch {}
-        if (Date.now() >= deadline) throw new Error("iPad web server did not become ready");
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
+    if (annotationConcurrent) {
+      await startWeb();
+      const outcomes = await Promise.allSettled([
+        runNativeTests(),
+        command("pnpm", ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"]),
+      ]);
+      const failed = outcomes.filter((outcome) => outcome.status === "rejected");
+      if (failed.length)
+        throw new AggregateError(
+          failed.map((outcome) => outcome.reason),
+          "Concurrent native/browser A05 failed",
+        );
+    }
+    if (process.argv.includes("--ui") && !annotationConcurrent) await runNativeTests();
+    if (process.argv.includes("--web") && !annotationConcurrent) {
+      await startWeb();
       if (inspectWeb) {
         console.log(`[ipad.browser_inspection] [start] runId=${runID} - isolated native result and web server retained until interruption`);
         await interrupt;

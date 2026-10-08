@@ -28,6 +28,8 @@ struct BookDetailView: View {
   @State private var readAloudSync: BookReadAloudSyncModel?
   @State private var fileActions: BookFileActionsModel?
   @State private var isWritingFiles = false
+  @State private var isChoosingOffline = false
+  @State private var isReviewingSourceRecovery = false
 
   init(
     api: BookOrbitAPI, bookID: Int, canEditMetadata: Bool, canRead: Bool,
@@ -83,6 +85,14 @@ struct BookDetailView: View {
             }
             if requestedBookID == book.id, requestedAPI === model.api {
               addedAtSection(book)
+            }
+            if canRead {
+              Section("Offline reading") {
+                Button("Offline resources") { isChoosingOffline = true }
+                  .frame(minHeight: 44).accessibilityIdentifier("offlineResources")
+                Button("Source recovery") { isReviewingSourceRecovery = true }
+                  .frame(minHeight: 44).accessibilityIdentifier("sourceRecovery")
+              }
             }
             Section("Files") {
               BookFileWriteStatusView(book: book)
@@ -175,6 +185,7 @@ struct BookDetailView: View {
               }
             }
           }
+          .accessibilityIdentifier("bookDetailContent")
         } else if let error = model.error {
           ContentUnavailableView {
             Label("Could not open book", systemImage: "exclamationmark.triangle")
@@ -219,6 +230,12 @@ struct BookDetailView: View {
     }
     .sheet(item: $fileActions, onDismiss: { Task { await model.load() } }) { actions in
       BookFileActionsView(model: actions)
+    }
+    .sheet(isPresented: $isReviewingSourceRecovery) {
+      SourceRecoveryView(api: model.api, bookID: model.bookID)
+    }
+    .sheet(isPresented: $isChoosingOffline) {
+      if let book = model.book { OfflineBookView(api: model.api, book: book) }
     }
     .sheet(isPresented: $isWritingFiles) {
       if let fileWrite = model.fileWrite { BookWriteAndRenameView(model: fileWrite) }

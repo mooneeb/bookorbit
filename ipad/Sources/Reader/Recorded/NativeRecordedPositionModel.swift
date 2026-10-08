@@ -57,7 +57,7 @@ final class NativeRecordedPositionModel {
       "books/files/\(fileID)/progress",
       byteLimit: 16 * 1024, session: session)
     try await checkSession()
-    try canonical.accept(remote, session: session)
+    try await canonical.accept(remote, session: session)
     acknowledgedAt = remote.narrationUpdatedAt
     if let local = readJournal() {
       saved = local.resume

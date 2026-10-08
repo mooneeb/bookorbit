@@ -10,10 +10,16 @@ final class SessionModel {
       guard let user, let api else {
         seriesCollapse?.receive(user: nil)
         seriesCollapse = nil
+        if let api { Task { await NativeAnnotationRepository.disconnect(api: api) } }
         return
       }
       if seriesCollapse?.api !== api { seriesCollapse = SeriesCollapsePreferenceModel(api: api) }
       seriesCollapse?.receive(user: user)
+      Task {
+        guard self.api === api, self.user?.id == user.id else { return }
+        await self.synchronizeAnnotations(api: api)
+        await api.reconcileOfflineBooks()
+      }
     }
   }
   private(set) var seriesCollapse: SeriesCollapsePreferenceModel?
@@ -29,12 +35,17 @@ final class SessionModel {
     await perform {
       let profile = try ServerProfile(self.serverURL)
       let api = try BookOrbitAPI(profile: profile)
-      let options = try await api.loginOptions()
       self.api = api
-      self.options = options
       self.serverURL = profile.url.absoluteString
       UserDefaults.standard.set(self.serverURL, forKey: "serverURL")
-      self.user = try await api.resume()
+      do {
+        self.options = try await api.loginOptions()
+        self.user = try await api.resume()
+      } catch {
+        guard error is URLError, let user = try await api.resumeOfflineUser() else { throw error }
+        self.user = user
+        self.error = "Server unreachable. Your selected offline books remain available."
+      }
     }
   }
 
@@ -53,6 +64,8 @@ final class SessionModel {
       guard self.api === api, operationID == sessionOperationID else { return }
       user = resumedUser
       await seriesCollapse?.reconcile()
+      await synchronizeAnnotations(api: api)
+      await api.reconcileOfflineBooks()
     } catch {
       guard self.api === api, operationID == sessionOperationID else { return }
       switch error {
@@ -128,6 +141,17 @@ final class SessionModel {
     api = nil
     options = nil
     error = nil
+  }
+
+  private func synchronizeAnnotations(api: BookOrbitAPI) async {
+    do {
+      let repository = try await NativeAnnotationRepository.shared(api: api)
+      guard self.api === api, user != nil else { return }
+      await repository.synchronizePending()
+    } catch {
+      guard self.api === api, user != nil else { return }
+      self.error = error.localizedDescription
+    }
   }
 
   private func perform(_ work: () async throws -> Void) async {

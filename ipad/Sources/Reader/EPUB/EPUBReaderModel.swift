@@ -68,6 +68,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   @ObservationIgnored var prepareTurn: (@MainActor (UIImage) -> Void)?
   @ObservationIgnored var commitTurn: (@MainActor (Bool, ReaderTurnAnimation) async -> Void)?
   @ObservationIgnored var cancelTurn: (@MainActor () -> Void)?
+  @ObservationIgnored var openPassageAnnotation: (@MainActor (Int) -> Void)?
   private var navigationWait: CheckedContinuation<Void, any Error>?
   private var expectedNavigation: WKNavigation?
   private var navigationTimeout: Task<Void, Never>?
@@ -78,6 +79,9 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   private var sessionTask: Task<Void, Never>?
   private var isClosed = false
   private var reduceMotion = false
+  private(set) var annotationWriting = false
+  private var revealingAnnotation = false
+  private var annotationRevealOrigin: EPUBReadingLocation?
   private let openedAt = Date()
 
   init(
@@ -88,7 +92,9 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     self.bookID = bookID
     self.file = file
     self.continuation = continuation
-    position = NativeFilePositionModel(api: api, fileID: file.id)
+    position = NativeFilePositionModel(
+      api: api, fileID: file.id,
+      sourceIdentity: file.absolutePath + ":" + String(file.sizeBytes ?? -1))
     preferences = EPUBPreferencesModel(api: api, fileID: file.id)
     let resources = EPUBPublicationResources(api: api, bookID: bookID, fileID: file.id)
     self.resources = resources
@@ -108,6 +114,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       resources, contentWorld: .page, name: "resource")
     configuration.userContentController.add(self, name: "location")
     configuration.userContentController.add(self, name: "selection")
+    configuration.userContentController.add(self, name: "passageAnnotation")
     configuration.userContentController.add(self, name: "readerError")
     preferences.validateFont = { [weak self] requested in
       guard let self, self.isReady, !self.isClosed else { throw EPUBFontError.loadFailed }
@@ -185,9 +192,11 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       guard progress.percentage.isFinite, (0...100).contains(progress.percentage),
         progress.cfi.map({ $0.hasPrefix("epubcfi(") && $0.utf16.count <= 2000 }) ?? true
       else { throw ConnectionError.invalidResponse }
-      try position.accept(progress, session: session)
+      try await position.accept(progress, session: session)
       if let continuation {
-        guard continuation.fileId == file.id, continuation.cfi == progress.cfi else {
+        guard continuation.fileId == file.id, continuation.cfi == progress.cfi,
+          continuation.cfi == position.resumeCFI
+        else {
           throw NativeContinuationError(
             message:
               "The destination reading position changed. Close this reader and save the source again before continuing."
@@ -256,7 +265,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       try Task.checkCancellation()
       guard !isClosed else { return }
       var arguments: [String: Any] = [
-        "cfi": progress.cfi as Any? ?? NSNull(),
+        "cfi": position.resumeCFI as Any? ?? NSNull(),
         "settings": try renderSettings(hideCustomFont: true),
         "formatting": preferences.useFormatting,
       ]
@@ -294,7 +303,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         throw ConnectionError.expiredSession
       }
       isReady = true
-      if progress.cfi == nil, let location {
+      if position.resumeCFI == nil, let location {
         var beginning = SaveFileProgressPayload(percentage: location.percentage)
         beginning.cfi = location.cfi
         position.setBeginning(beginning)
@@ -428,7 +437,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       if preservesNarration { narrationLocation = restored } else { self.location = restored }
       selectionCFI = nil
       selectionText = ""
-      if !preservesNarration { scheduleSave() }
+      if !preservesNarration && annotationRevealOrigin == nil { scheduleSave() }
     } catch { self.error = error.localizedDescription }
   }
 
@@ -461,6 +470,46 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   func setReduceMotion(_ enabled: Bool) { reduceMotion = enabled }
+
+  func setAnnotationWriting(_ enabled: Bool) {
+    annotationWriting = enabled
+    webView.scrollView.isScrollEnabled = !enabled
+    guard isReady else { return }
+    Task {
+      _ = try? await webView.callAsyncJavaScript(
+        "window.epubAnnotationWriting(enabled)", arguments: ["enabled": enabled], in: nil,
+        contentWorld: .page)
+    }
+  }
+
+  func selectFixturePassage() {
+    guard annotationInputFixture, isReady else { return }
+    Task {
+      _ = try? await webView.callAsyncJavaScript(
+        "window.epubFixtureSelectPassage()", arguments: [:], in: nil, contentWorld: .page)
+    }
+  }
+
+  func setPassageAnnotations(_ annotations: [NativeAnnotationItem]) async {
+    guard isReady else { return }
+    let items = annotations.compactMap { item -> [String: Any]? in
+      guard let cfi = item.cfi else { return nil }
+      return ["id": item.id, "cfi": cfi]
+    }
+    _ = try? await webView.callAsyncJavaScript(
+      "window.epubSetPassageAnnotations(items)", arguments: ["items": items], in: nil,
+      contentWorld: .page)
+  }
+
+  func openAnnotationPassage(cfi: String) async {
+    guard cfi.hasPrefix("epubcfi("), cfi.utf16.count <= 2000, canNavigate else { return }
+    revealingAnnotation = true
+    annotationRevealOrigin = location
+    defer { revealingAnnotation = false }
+    _ = await navigate(
+      "return await window.epubGo(target, smooth)", arguments: ["target": cfi], forward: true,
+      programmatic: true, preserveContentOnFailure: true, savesPosition: false)
+  }
 
   func search(_ query: String) async {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -513,6 +562,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
   @discardableResult
   func saveProgress() async -> Bool {
+    if annotationRevealOrigin != nil && pendingProgress == nil { return true }
     guard canSave, let generation else { return false }
     isSaving = true
     error = nil
@@ -551,7 +601,8 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       else { throw ConnectionError.invalidResponse }
       pendingProgress = nil
       if let progressKey { UserDefaults.standard.removeObject(forKey: progressKey) }
-      status = "Reading position saved."
+      status =
+        position.hasPendingSync ? "Reading position saved on this iPad." : "Reading position saved."
       return true
     } catch {
       if !isClosed {
@@ -564,8 +615,9 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
   func refreshPosition() async {
     guard !isClosed, !isPositionResetting, isReady, !isNavigating, !isSaving else { return }
-    var local = SaveFileProgressPayload(percentage: location?.percentage ?? 0)
-    local.cfi = location?.cfi
+    let readingLocation = annotationRevealOrigin ?? location
+    var local = SaveFileProgressPayload(percentage: readingLocation?.percentage ?? 0)
+    local.cfi = readingLocation?.cfi
     await position.refresh(local)
     await describePositionConflict(position)
   }
@@ -701,13 +753,15 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
           let moved = location?.cfi != value.cfi || location?.percentage != value.percentage
           location = value
           narrationLocation = nil
-          if moved { scheduleSave() }
+          if moved && !revealingAnnotation { scheduleSave() }
         }
       }
     } else if message.name == "readerError" {
       if let message = message.body as? String, !message.isEmpty, message.utf16.count <= 500 {
         error = message
       }
+    } else if message.name == "passageAnnotation", let id = message.body as? Int {
+      openPassageAnnotation?(id)
     } else if message.name == "selection" {
       if let value = message.body as? [String: Any], let cfi = value["cfi"] as? String,
         let text = value["text"] as? String, cfi.hasPrefix("epubcfi("), cfi.utf16.count <= 2000,
@@ -729,7 +783,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   private func navigate(
     _ script: String, arguments: [String: Any], forward: Bool, animate: Bool = true,
     allowPendingSave: Bool = false, programmatic: Bool = false,
-    preserveContentOnFailure: Bool = false
+    preserveContentOnFailure: Bool = false, savesPosition: Bool = true
   ) async -> Bool {
     guard isReady, !isNavigating, !isSearching, !isPositionResetting, !isClosed,
       allowPendingSave || (!isSaving && pendingProgress == nil)
@@ -773,7 +827,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       narrationLocation = nil
       selectionCFI = nil
       selectionText = ""
-      scheduleSave()
+      if savesPosition { scheduleSave() }
       return true
     } catch {
       cancelTurn?()
@@ -798,6 +852,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   private func scheduleSave() {
+    annotationRevealOrigin = nil
     guard isReady, !isClosed, !isPositionResetting, !isSaving, pendingProgress == nil,
       !position.conflict.isBlocked
     else { return }

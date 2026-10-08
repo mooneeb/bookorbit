@@ -12,6 +12,9 @@ import { useSelectionCapability } from '@embedpdf/plugin-selection/vue'
 import { SpreadMode, useSpread } from '@embedpdf/plugin-spread/vue'
 import { ZoomMode, useZoom, type ZoomLevel } from '@embedpdf/plugin-zoom/vue'
 import type { AnnotationItem, PdfReaderSettings } from '@bookorbit/types'
+import { Permission } from '@bookorbit/types'
+import { usePermissions } from '@/features/auth/composables/usePermissions'
+import { toast } from 'vue-sonner'
 import { useFullscreen } from '../../shared/composables/useFullscreen'
 import PdfDocumentViewport from './PdfDocumentViewport.vue'
 import PdfPasswordPrompt from './PdfPasswordPrompt.vue'
@@ -28,6 +31,7 @@ import { usePdfSidebarLayout, type PdfSidebarTab } from '../composables/usePdfSi
 import NoteDialog from '../../shared/components/NoteDialog.vue'
 import PdfSelectionPopup from './PdfSelectionPopup.vue'
 import ReaderBookmarksButton from '../../shared/components/ReaderBookmarksButton.vue'
+import type { useSourcePdfInk } from '../composables/useSourcePdfInk'
 
 const props = defineProps<{
   documentId: string
@@ -36,9 +40,12 @@ const props = defineProps<{
   initialPage: number
   settings: PdfReaderSettings
   peekMode?: boolean
+  sourceInk?: ReturnType<typeof useSourcePdfInk>
 }>()
 
 const { t } = useI18n()
+const { hasPermission } = usePermissions()
+const canManageAnnotations = computed(() => hasPermission(Permission.AnnotationManageOwn))
 
 const emit = defineEmits<{
   back: []
@@ -110,6 +117,8 @@ const highlights = usePdfHighlights({
   getPopup: () => selectionPopup.value?.getElement() ?? null,
 })
 
+watch(pageRange, (range) => props.sourceInk?.setVisiblePages(range.start - 1, range.end - 1), { immediate: true })
+
 function handleBack() {
   emit('back')
 }
@@ -170,8 +179,8 @@ function handleHighlightNoteText(value: string) {
   highlights.noteText.value = value
 }
 
-function handleHighlightSaveNote(note: string) {
-  void highlights.saveNote(note)
+async function handleHighlightSaveNote(note: string) {
+  if (!(await highlights.saveNote(note))) toast.error(t('annotations.sync.status.failed'))
 }
 
 function handleHighlightCancelNote() {
@@ -188,7 +197,31 @@ function handleNavigateHighlight(annotation: AnnotationItem) {
 }
 
 function handleDeleteHighlight(id: number) {
+  const ink = props.sourceInk?.items.value.find((item) => item.id === id)
+  if (ink) {
+    props.sourceInk?.select(ink)
+    props.sourceInk?.removeSelected()
+    return
+  }
   void highlights.deleteAnnotation(id)
+}
+
+function handleSelectInk(item: AnnotationItem) {
+  highlights.dismissPopup()
+  props.sourceInk?.select(item)
+}
+function handleContextInk(item: AnnotationItem, event: MouseEvent) {
+  highlights.dismissPopup()
+  props.sourceInk?.select(item, event)
+}
+function handleDeleteInk() {
+  props.sourceInk?.removeSelected()
+}
+function handleUndoInk() {
+  void props.sourceInk?.undo()
+}
+function handleRetryInk() {
+  props.sourceInk?.retry()
 }
 
 function handleRetryHighlights() {
@@ -270,6 +303,17 @@ function handleKeydown(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null
   const editing = target?.matches('input, textarea, select, button, a, [role="button"], [role="menuitem"], [contenteditable="true"]') === true
 
+  if (!editing && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && props.sourceInk?.undoItem.value) {
+    event.preventDefault()
+    handleUndoInk()
+    return
+  }
+  if (!editing && (event.key === 'Delete' || event.key === 'Backspace') && props.sourceInk?.selected.value) {
+    event.preventDefault()
+    handleDeleteInk()
+    return
+  }
+
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
     event.preventDefault()
     sidebar.selectTab('search')
@@ -282,7 +326,8 @@ function handleKeydown(event: KeyboardEvent) {
   if (editing) return
 
   if (event.key === 'Escape') {
-    if (pendingExternalUrl.value) handleCancelExternalLink()
+    if (props.sourceInk?.selected.value || props.sourceInk?.menu.value) props.sourceInk.dismiss()
+    else if (pendingExternalUrl.value) handleCancelExternalLink()
     else if (sidebar.open.value) handleSidebarClose()
     return
   }
@@ -546,7 +591,14 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-            <PdfDocumentViewport v-else-if="isLoaded" :document-id="props.documentId" />
+            <PdfDocumentViewport
+              v-else-if="isLoaded"
+              :document-id="props.documentId"
+              :source-ink="props.sourceInk?.items.value"
+              :selected-ink-id="props.sourceInk?.selectedId.value"
+              @select-ink="handleSelectInk"
+              @context-ink="handleContextInk"
+            />
           </template>
         </DocumentContent>
         <PdfSelectionPopup
@@ -557,6 +609,7 @@ onUnmounted(() => {
           :selected-text="highlights.selectedText.value"
           :overlapping-annotation-id="highlights.overlappingAnnotationId.value"
           :disabled="highlights.isSaving.value"
+          :can-annotate="canManageAnnotations"
           @highlight="handleHighlightAction"
           @note="handleHighlightNote"
           @delete-annotation="handleDeleteHighlight"
@@ -564,6 +617,44 @@ onUnmounted(() => {
           @resize="handleSelectionPopupResize"
         />
       </div>
+    </div>
+
+    <div
+      v-if="props.sourceInk?.selected.value || props.sourceInk?.undoItem.value || props.sourceInk?.failed.value"
+      class="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-card px-3 py-2"
+      role="status"
+      aria-live="polite"
+    >
+      <span v-if="props.sourceInk?.busy.value" class="text-xs text-muted-foreground">{{ t('annotations.listItem.saving') }}</span>
+      <button
+        v-if="props.sourceInk?.selected.value && props.sourceInk?.canEdit.value"
+        class="rounded-md border border-border px-3 py-2 text-xs text-destructive disabled:opacity-50"
+        :disabled="props.sourceInk?.busy.value"
+        @click="handleDeleteInk"
+      >
+        {{ t('common.delete') }}
+      </button>
+      <button
+        v-if="props.sourceInk?.undoItem.value && props.sourceInk?.canEdit.value"
+        class="rounded-md border border-border px-3 py-2 text-xs"
+        @click="handleUndoInk"
+      >
+        {{ t('common.undo') }}
+      </button>
+      <template v-if="props.sourceInk?.failed.value">
+        <span class="text-xs text-destructive">{{ t('annotations.sync.status.failed') }}</span>
+        <button class="rounded-md border border-border px-3 py-2 text-xs" @click="handleRetryInk">{{ t('reader.retry') }}</button>
+      </template>
+    </div>
+    <div
+      v-if="props.sourceInk?.menu.value && props.sourceInk?.canEdit.value"
+      class="fixed z-[80] rounded-md border border-border bg-card p-1 shadow-lg"
+      :style="{ left: `${props.sourceInk.menu.value.x}px`, top: `${props.sourceInk.menu.value.y}px` }"
+      role="menu"
+    >
+      <button class="block w-full rounded px-3 py-2 text-start text-sm text-destructive hover:bg-muted" role="menuitem" @click="handleDeleteInk">
+        {{ t('common.delete') }}
+      </button>
     </div>
 
     <div v-if="pendingExternalUrl" class="fixed inset-0 z-[70] flex items-center justify-center bg-scrim p-4">
@@ -595,6 +686,8 @@ onUnmounted(() => {
       :selectedText="highlights.selectedText.value"
       :modelValue="highlights.noteText.value"
       :saving="highlights.isSaving.value"
+      :drawing="highlights.annotations.value.find((annotation) => annotation.id === highlights.overlappingAnnotationId.value)?.drawing"
+      :readonly="!canManageAnnotations"
       @update:modelValue="handleHighlightNoteText"
       @save="handleHighlightSaveNote"
       @cancel="handleHighlightCancelNote"

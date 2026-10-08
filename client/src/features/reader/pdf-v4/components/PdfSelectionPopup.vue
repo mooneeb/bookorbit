@@ -8,14 +8,18 @@ import { copyToClipboard } from '@/lib/clipboard'
 
 const { t } = useI18n()
 
-const props = defineProps<{
-  visible: boolean
-  position: { x: number; y: number }
-  showBelow: boolean
-  selectedText: string
-  overlappingAnnotationId: number | null
-  disabled?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    visible: boolean
+    position: { x: number; y: number }
+    showBelow: boolean
+    selectedText: string
+    overlappingAnnotationId: number | null
+    disabled?: boolean
+    canAnnotate?: boolean
+  }>(),
+  { canAnnotate: true },
+)
 
 const emit = defineEmits<{
   copy: []
@@ -126,7 +130,7 @@ async function handleCopy() {
           <TooltipContent>{{ copied ? t('reader.selection.copied') : t('reader.selection.copy') }}</TooltipContent>
         </Tooltip>
 
-        <Tooltip>
+        <Tooltip v-if="props.canAnnotate !== false">
           <TooltipTrigger as-child>
             <button
               class="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-muted"
@@ -141,7 +145,7 @@ async function handleCopy() {
           <TooltipContent>{{ t('reader.selection.highlight') }}</TooltipContent>
         </Tooltip>
 
-        <Tooltip>
+        <Tooltip v-if="props.canAnnotate !== false">
           <TooltipTrigger as-child>
             <button
               class="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -155,7 +159,7 @@ async function handleCopy() {
           <TooltipContent>{{ t('reader.note.title') }}</TooltipContent>
         </Tooltip>
 
-        <Tooltip v-if="overlappingAnnotationId !== null">
+        <Tooltip v-if="overlappingAnnotationId !== null && props.canAnnotate !== false">
           <TooltipTrigger as-child>
             <button
               class="flex h-8 w-8 items-center justify-center rounded-lg text-destructive transition-colors hover:bg-muted"
@@ -170,7 +174,7 @@ async function handleCopy() {
         </Tooltip>
       </div>
 
-      <div v-if="showColorPicker" class="space-y-1.5 border-t border-border pt-1.5">
+      <div v-if="showColorPicker && props.canAnnotate !== false" class="space-y-1.5 border-t border-border pt-1.5">
         <div class="flex gap-1 px-0.5">
           <button
             v-for="c in colors"

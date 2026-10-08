@@ -71,7 +71,7 @@ describe('usePdfAnnotations', () => {
     await store.load()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/books/9/annotations?page=1&pageSize=100&sortBy=position&sortDir=asc&bookFileId=33',
+      '/api/v1/books/9/annotations?page=1&pageSize=100&sortBy=position&sortDir=asc&bookFileId=33&excludeSourceInk=true',
       expect.objectContaining({ credentials: 'include' }),
     )
     const headers = fetchMock.mock.calls[0][1]?.headers as Headers
@@ -192,7 +192,7 @@ describe('usePdfAnnotations', () => {
     await store.loadMore()
 
     expect(fetchMock).toHaveBeenLastCalledWith(
-      '/api/v1/books/9/annotations?page=2&pageSize=100&sortBy=position&sortDir=asc&bookFileId=33',
+      '/api/v1/books/9/annotations?page=2&pageSize=100&sortBy=position&sortDir=asc&bookFileId=33&excludeSourceInk=true',
       expect.objectContaining({ credentials: 'include' }),
     )
     expect(store.annotations.value.map((annotation) => annotation.id)).toEqual([1, 2])

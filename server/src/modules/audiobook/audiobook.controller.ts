@@ -15,7 +15,6 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import { createReadStream } from 'node:fs';
 import { basename } from 'node:path';
 
 import type { FastifyReply } from 'fastify';
@@ -26,7 +25,7 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 import type { RequestUser } from '../../common/types/request-user';
 import { contentDispositionHeader } from '../../common/utils/content-disposition.utils';
 import { AudiobookService } from './audiobook.service';
-import { parseAudioByteRange } from './audio-byte-range';
+import { serveVerifiedFile } from '../../common/utils/file-delivery.utils';
 import { AudiobookBookmarksPageQueryDto } from './dto/audiobook-bookmarks-page-query.dto';
 import { CreateAudiobookBookmarkDto } from './dto/create-audiobook-bookmark.dto';
 import { DeletePlaybackStateQueryDto } from './dto/delete-playback-state-query.dto';
@@ -59,31 +58,13 @@ export class AudiobookController {
     @CurrentUser() user: RequestUser,
     @Headers('range') rangeHeader: string | undefined,
     @Res() reply: FastifyReply,
+    @Headers('if-range') ifRangeHeader?: string,
   ) {
     const asset = await this.service.getAsset(bookId, assetId, user);
-    const size = asset.sizeBytes;
     const mimeType = AUDIO_MIME_TYPES[asset.format.toLowerCase()] ?? 'application/octet-stream';
-    reply.header('Accept-Ranges', 'bytes');
-    reply.header('Cache-Control', 'private, no-store');
     reply.header('Content-Disposition', contentDispositionHeader('inline', basename(asset.absolutePath), 'audiobook'));
     reply.type(mimeType);
-
-    if (rangeHeader) {
-      const range = parseAudioByteRange(rangeHeader, size);
-      if (range) {
-        const { start, end } = range;
-        reply.status(206);
-        reply.header('Content-Range', `bytes ${start}-${end}/${size}`);
-        reply.header('Content-Length', end - start + 1);
-        reply.send(createReadStream(asset.absolutePath, { start, end }));
-        return;
-      }
-      reply.status(416).header('Content-Range', `bytes */${size}`).send();
-      return;
-    }
-
-    reply.header('Content-Length', size);
-    reply.send(createReadStream(asset.absolutePath));
+    await serveVerifiedFile(reply, asset.absolutePath, rangeHeader, ifRangeHeader, { userId: user.id, resourceId: assetId });
   }
 
   @Get(':bookId/playback-state')
@@ -117,11 +98,13 @@ export class AudiobookController {
   }
 
   @Post(':bookId/bookmarks')
+  @RequirePermission(Permission.LibraryDownload, Permission.AnnotationManageOwn)
   createBookmark(@Param('bookId', ParseIntPipe) bookId: number, @Body() dto: CreateAudiobookBookmarkDto, @CurrentUser() user: RequestUser) {
     return this.service.createBookmark(bookId, dto, user);
   }
 
   @Patch(':bookId/bookmarks/:bookmarkId')
+  @RequirePermission(Permission.LibraryDownload, Permission.AnnotationManageOwn)
   updateBookmark(
     @Param('bookId', ParseIntPipe) bookId: number,
     @Param('bookmarkId', ParseUUIDPipe) bookmarkId: string,
@@ -132,6 +115,7 @@ export class AudiobookController {
   }
 
   @Delete(':bookId/bookmarks/:bookmarkId')
+  @RequirePermission(Permission.LibraryDownload, Permission.AnnotationManageOwn)
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteBookmark(
     @Param('bookId', ParseIntPipe) bookId: number,

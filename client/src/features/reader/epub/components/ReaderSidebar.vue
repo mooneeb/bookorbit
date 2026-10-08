@@ -8,6 +8,7 @@ import type { Bookmark as BookmarkType } from '../composables/useBookmarks'
 import type { Annotation } from '../composables/useAnnotations'
 import { stripFragment, findNearestCfi, formatCfiLocation, formatDate, getCfiSortKey } from '../utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import RetainedHandwriting from '../../shared/components/RetainedHandwriting.vue'
 
 const { t } = useI18n()
 
@@ -22,9 +23,14 @@ const props = withDefaults(
     expandedHrefs: Set<string>
     pinned: boolean
     navigationLocked?: boolean
+    hasMore?: boolean
+    loadingMore?: boolean
+    annotationPage?: number
+    canManageAnnotations?: boolean
   }>(),
   {
     navigationLocked: false,
+    canManageAnnotations: true,
   },
 )
 
@@ -38,6 +44,8 @@ const emit = defineEmits<{
   deleteAnnotation: [id: number]
   toggleExpand: [href: string]
   togglePinned: []
+  loadMoreAnnotations: []
+  previousAnnotations: []
 }>()
 
 type Tab = 'chapters' | 'bookmarks' | 'highlights'
@@ -97,7 +105,7 @@ const filteredAndSortedHighlights = computed(() => {
     if (highlightColorFilter.value !== 'all' && ann.color !== highlightColorFilter.value) return false
     const chapterLabel = getContextChapter(ann)
     if (highlightChapterFilter.value !== 'all' && chapterLabel !== highlightChapterFilter.value) return false
-    if (highlightNotesOnly.value && !ann.note?.trim()) return false
+    if (highlightNotesOnly.value && !ann.note?.trim() && !ann.drawing) return false
     if (!q) return true
     const haystack = `${ann.text} ${ann.note ?? ''} ${chapterLabel ?? ''} ${getHighlightContextLine(ann)}`.toLowerCase()
     return haystack.includes(q)
@@ -229,6 +237,18 @@ function closeSidebar() {
 function togglePinned() {
   emit('togglePinned')
 }
+function loadMoreAnnotations() {
+  emit('loadMoreAnnotations')
+}
+function previousAnnotations() {
+  emit('previousAnnotations')
+}
+function handleNavigateChapter(href: string) {
+  emit('navigateChapter', href)
+}
+function handleToggleExpand(href: string) {
+  emit('toggleExpand', href)
+}
 </script>
 
 <template>
@@ -296,8 +316,8 @@ function togglePinned() {
             :expandedHrefs="expandedHrefs"
             :navigationLocked="props.navigationLocked"
             :depth="0"
-            @navigate="emit('navigateChapter', $event)"
-            @toggleExpand="emit('toggleExpand', $event)"
+            @navigate="handleNavigateChapter"
+            @toggleExpand="handleToggleExpand"
           />
           <div v-if="chapters.length === 0" class="px-4 py-8 text-center text-sm text-muted-foreground">{{ t('reader.sidebar.noChapters') }}</div>
         </template>
@@ -425,9 +445,10 @@ function togglePinned() {
                       </p>
                       <p class="text-[11px] text-muted-foreground mt-0.5">{{ formatDate(ann.createdAt) }}</p>
                       <p v-if="ann.note" class="text-[11px] text-muted-foreground mt-1 italic">{{ ann.note }}</p>
+                      <RetainedHandwriting v-if="ann.drawing" :drawing="ann.drawing" />
                     </div>
                   </button>
-                  <Tooltip>
+                  <Tooltip v-if="props.canManageAnnotations !== false">
                     <TooltipTrigger as-child>
                       <button
                         type="button"
@@ -444,6 +465,19 @@ function togglePinned() {
             </ul>
             <div v-else class="px-4 py-8 text-center text-sm text-muted-foreground">{{ t('reader.sidebar.noHighlightsMatch') }}</div>
           </template>
+          <div class="flex gap-2 p-3">
+            <button v-if="(props.annotationPage ?? 1) > 1" class="rounded-md border border-border px-3 py-2 text-xs" @click="previousAnnotations">
+              {{ t('annotations.pagination.previousPage') }}
+            </button>
+            <button
+              v-if="props.hasMore"
+              :disabled="props.loadingMore"
+              class="rounded-md border border-border px-3 py-2 text-xs disabled:opacity-50"
+              @click="loadMoreAnnotations"
+            >
+              {{ t('annotations.pagination.nextPage') }}
+            </button>
+          </div>
         </template>
       </div>
     </div>

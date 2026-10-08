@@ -61,12 +61,14 @@ export interface EpubBookmarkNavigationPage {
 }
 
 export interface CreateFixedPageBookmarkPayload {
+  clientId?: string;
   fileId: number;
   pageNumber: number;
   title: string;
 }
 
 export interface CreateEpubBookmarkPayload {
+  clientId?: string;
   cfi: string;
   title: string;
 }

@@ -1,0 +1,2 @@
+CREATE INDEX "annotation_positions_file_annotation_idx" ON "annotation_positions" USING btree ("book_file_id","annotation_id");--> statement-breakpoint
+CREATE INDEX "annotations_book_kind_change_idx" ON "annotations" USING btree ("book_id","kind","change_sequence");

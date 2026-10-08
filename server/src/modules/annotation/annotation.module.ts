@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { HttpAdapterHost } from '@nestjs/core';
+import type { FastifyInstance } from 'fastify';
 
 import { BookModule } from '../book/book.module';
 import { AchievementModule } from '../achievement/achievement.module';
@@ -14,11 +16,23 @@ import { AnnotationService } from './annotation.service';
 import { AnnotationSyncRepository } from './annotation-sync.repository';
 import { AnnotationSyncService } from './annotation-sync.service';
 import { DevicePositionRebuilderRegistry } from './device-position-rebuilder';
+import { NativeAnnotationController } from './native-annotation.controller';
+import { NativeAnnotationService, NATIVE_INK_PUBLISHER } from './native-annotation.service';
+import { SourcePdfPublicationModule } from '../source-pdf-publication/source-pdf-publication.module';
+import { SourcePdfPublicationService } from '../source-pdf-publication/source-pdf-publication.service';
+import { NativeAnnotationHubService } from './native-annotation-hub.service';
+import { NativeAnnotationHubController } from './native-annotation-hub.controller';
+import { NativeSourceInkController } from './native-source-ink.controller';
+import { NativeSourceInkService } from './native-source-ink.service';
 
 @Module({
-  imports: [BookModule, AchievementModule, PositionConverterModule],
-  controllers: [AnnotationController, AnnotationHubController],
+  imports: [BookModule, AchievementModule, PositionConverterModule, SourcePdfPublicationModule],
+  controllers: [AnnotationController, AnnotationHubController, NativeAnnotationController, NativeAnnotationHubController, NativeSourceInkController],
   providers: [
+    NativeAnnotationService,
+    NativeAnnotationHubService,
+    NativeSourceInkService,
+    { provide: NATIVE_INK_PUBLISHER, useExisting: SourcePdfPublicationService },
     AnnotationService,
     AnnotationRepository,
     AnnotationPositionRepository,
@@ -29,6 +43,19 @@ import { DevicePositionRebuilderRegistry } from './device-position-rebuilder';
     AnnotationHubService,
     DevicePositionRebuilderRegistry,
   ],
-  exports: [AnnotationSyncService, AnnotationHubService, DevicePositionRebuilderRegistry],
+  exports: [AnnotationSyncService, AnnotationHubService, DevicePositionRebuilderRegistry, NativeAnnotationService],
 })
-export class AnnotationModule {}
+export class AnnotationModule {
+  constructor(adapterHost: HttpAdapterHost) {
+    const fastify = adapterHost.httpAdapter?.getInstance() as FastifyInstance | undefined;
+    fastify?.addHook('onRoute', (route) => {
+      if (
+        route.url.endsWith('/annotations/native/operations') ||
+        route.url.endsWith('/annotations/native/hub/bulk') ||
+        route.url.endsWith('/annotations/native/source-ink/:bookId/:bookFileId/operations')
+      ) {
+        route.bodyLimit = 4 * 1024 * 1024;
+      }
+    });
+  }
+}

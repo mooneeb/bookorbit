@@ -9,8 +9,17 @@ import { SelectionLayer } from '@embedpdf/plugin-selection/vue'
 import { TilingLayer } from '@embedpdf/plugin-tiling/vue'
 import { Viewport } from '@embedpdf/plugin-viewport/vue'
 import { ZoomGestureWrapper } from '@embedpdf/plugin-zoom/vue'
+import type { AnnotationItem } from '@bookorbit/types'
+import SourcePdfInkLayer from './SourcePdfInkLayer.vue'
 
-defineProps<{ documentId: string }>()
+defineProps<{ documentId: string; sourceInk?: AnnotationItem[]; selectedInkId?: number | null }>()
+const emit = defineEmits<{ selectInk: [item: AnnotationItem]; contextInk: [item: AnnotationItem, event: MouseEvent] }>()
+function handleSelectInk(item: AnnotationItem) {
+  emit('selectInk', item)
+}
+function handleContextInk(item: AnnotationItem, event: MouseEvent) {
+  emit('contextInk', item, event)
+}
 </script>
 
 <template>
@@ -35,6 +44,17 @@ defineProps<{ documentId: string }>()
                   :text-style="{ background: 'color-mix(in oklch, var(--primary) 35%, transparent)' }"
                 />
                 <AnnotationLayer :document-id="documentId" :page-index="page.pageIndex" />
+                <SourcePdfInkLayer
+                  v-if="sourceInk?.length"
+                  :document-id="documentId"
+                  :page-index="page.pageIndex"
+                  :width="page.width"
+                  :height="page.height"
+                  :items="sourceInk"
+                  :selected-id="selectedInkId ?? null"
+                  @select="handleSelectInk"
+                  @context="handleContextInk"
+                />
               </PagePointerProvider>
             </Rotate>
           </template>

@@ -366,6 +366,7 @@ export class KoreaderBookmarkExchangeService {
 
   /** Opportunistic: a tombstone no device still holds has nothing left to tell anyone. */
   private async purgeExpiredTombstones(userId: number): Promise<void> {
+    const startedAt = Date.now();
     const deletedBefore = new Date(Date.now() - TOMBSTONE_RETENTION_DAYS * 24 * 60 * 60 * 1000);
     const candidates = await this.bookmarkSync.listPurgeableTombstones(userId, deletedBefore, PURGE_CANDIDATES_PER_REQUEST);
     if (candidates.length === 0) return;
@@ -374,7 +375,9 @@ export class KoreaderBookmarkExchangeService {
     if (purgeable.length === 0) return;
     const purged = await this.bookmarkSync.purge(userId, purgeable);
     if (purged > 0) {
-      this.logger.log(`[${EXCHANGE_EVENT}] userId=${userId} purged=${purged} - expired bookmark tombstones removed`);
+      this.logger.log(
+        `[${EXCHANGE_EVENT}] [end] userId=${userId} durationMs=${Date.now() - startedAt} released=${purged} - expired bookmark tombstones released from device sync`,
+      );
     }
   }
 

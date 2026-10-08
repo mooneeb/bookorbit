@@ -3,9 +3,10 @@ import UIKit
 
 struct EPUBPageHost: UIViewControllerRepresentable {
   let model: EPUBReaderModel
+  let pencilMode: PencilReaderMode
 
   func makeUIViewController(context: Context) -> EPUBPageController {
-    EPUBPageController(model: model)
+    EPUBPageController(model: model, pencilMode: pencilMode)
   }
 
   func updateUIViewController(_ controller: EPUBPageController, context: Context) {}
@@ -18,6 +19,7 @@ struct EPUBPageHost: UIViewControllerRepresentable {
 @MainActor
 final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
   private let model: EPUBReaderModel
+  private let pencilMode: PencilReaderMode
   private var pager: UIPageViewController?
   private var page = EPUBContentController()
   private var mode = ReaderTurnAnimation.curl
@@ -30,8 +32,9 @@ final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
   private var layoutTask: Task<Void, Never>?
   private var isRotating = false
 
-  init(model: EPUBReaderModel) {
+  init(model: EPUBReaderModel, pencilMode: PencilReaderMode) {
     self.model = model
+    self.pencilMode = pencilMode
     super.init(nibName: nil, bundle: nil)
   }
 
@@ -41,6 +44,7 @@ final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
     view = UIView()
     view.backgroundColor = .systemBackground
     view.accessibilityIdentifier = "epubNativePages"
+    view.addInteraction(UIPencilInteraction(delegate: pencilMode))
     installPager(mode)
     page.attach(model.webView)
     let gesture = UIPanGestureRecognizer(target: self, action: #selector(didPan(_:)))
@@ -193,7 +197,8 @@ final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
   }
 
   func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-    guard gestureRecognizer === pan, model.canNavigate, model.selectionCFI == nil,
+    guard gestureRecognizer === pan, model.canNavigate, !model.annotationWriting,
+      model.selectionCFI == nil,
       !model.isContinuous, let pan
     else { return false }
     let velocity = pan.velocity(in: view)
@@ -210,7 +215,9 @@ final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
   }
 
   @objc private func didPan(_ gesture: UIPanGestureRecognizer) {
-    guard gesture.state == .ended, model.canNavigate, model.selectionCFI == nil else { return }
+    guard gesture.state == .ended, model.canNavigate, !model.annotationWriting,
+      model.selectionCFI == nil
+    else { return }
     let movement = gesture.translation(in: view)
     let vertical = model.preferences.value.pageAnimation == .verticalSlide
     let distance = vertical ? movement.y : movement.x

@@ -3,7 +3,7 @@ import type { BookmarksPage } from '@bookorbit/types';
 
 import type { RequestUser } from '../../common/types/request-user';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
-import type { NewBookmark } from '../../db/schema';
+import type { BookmarkRow, NewBookmark } from '../../db/schema';
 import { BookService } from '../book/book.service';
 import { BookmarkRepository } from './bookmark.repository';
 import { BookmarkResponseDto } from './dto/bookmark-response.dto';
@@ -56,6 +56,7 @@ export class BookmarkService {
     return this.mutate('bookmark.create_fixed_page', bookId, user.id, async () => {
       await this.verifyFixedFile(bookId, dto.fileId, user);
       return this.persist(bookId, user.id, {
+        clientId: dto.clientId,
         cfi: null,
         positionSeconds: null,
         fileId: dto.fileId,
@@ -77,7 +78,7 @@ export class BookmarkService {
   private async persist(
     bookId: number,
     userId: number,
-    createData: Pick<NewBookmark, 'cfi' | 'title' | 'positionSeconds' | 'fileId' | 'pageNumber'>,
+    createData: Pick<NewBookmark, 'clientId' | 'cfi' | 'title' | 'positionSeconds' | 'fileId' | 'pageNumber'>,
   ): Promise<BookmarkResponseDto> {
     const location = {
       cfi: createData.cfi,
@@ -86,25 +87,38 @@ export class BookmarkService {
       pageNumber: createData.pageNumber,
     };
 
-    const existing = await this.bookmarkRepo.findLiveByLocation(userId, bookId, location);
-    if (existing) return BookmarkResponseDto.from(existing);
+    if (createData.clientId) {
+      const previous = await this.bookmarkRepo.findByClientId(userId, bookId, createData.clientId);
+      if (previous) return this.creationRetry(previous, createData);
+    } else {
+      const existing = await this.bookmarkRepo.findLiveByLocation(userId, bookId, location);
+      if (existing) return BookmarkResponseDto.from(existing);
+    }
 
     const row = await this.bookmarkRepo.create(userId, bookId, createData);
     if (row) return BookmarkResponseDto.from(row);
 
-    // The insert conflicted: either a tombstone still owns this location and has to
-    // come back to life, or another request created the same bookmark first.
-    const restored = await this.bookmarkRepo.restoreAtLocation(userId, bookId, location, {
-      title: createData.title,
-      origin: 'web',
-      devicePos: null,
-      pageno: null,
-    });
-    if (restored) return BookmarkResponseDto.from(restored);
-
-    const concurrent = await this.bookmarkRepo.findLiveByLocation(userId, bookId, location);
-    if (concurrent) return BookmarkResponseDto.from(concurrent);
+    if (createData.clientId) {
+      const concurrent = await this.bookmarkRepo.findByClientId(userId, bookId, createData.clientId);
+      if (concurrent) return this.creationRetry(concurrent, createData);
+    } else {
+      const concurrent = await this.bookmarkRepo.findLiveByLocation(userId, bookId, location);
+      if (concurrent) return BookmarkResponseDto.from(concurrent);
+    }
     throw new ConflictException(BOOKMARK_CONFLICT_MESSAGE);
+  }
+
+  private creationRetry(row: BookmarkRow, createData: Pick<NewBookmark, 'cfi' | 'positionSeconds' | 'fileId' | 'pageNumber'>): BookmarkResponseDto {
+    if (row.deletedAt) throw new ConflictException('This bookmark creation was already deleted; use a new clientId for an explicit new bookmark');
+    if (
+      row.cfi !== (createData.cfi ?? null) ||
+      row.positionSeconds !== (createData.positionSeconds ?? null) ||
+      row.fileId !== (createData.fileId ?? null) ||
+      row.pageNumber !== (createData.pageNumber ?? null)
+    ) {
+      throw new ConflictException('Bookmark identity cannot be reused for a different location');
+    }
+    return BookmarkResponseDto.from(row);
   }
 
   /**
@@ -152,8 +166,9 @@ export class BookmarkService {
     }
   }
 
-  private buildCreateData(dto: CreateBookmarkDto): Pick<NewBookmark, 'cfi' | 'title' | 'positionSeconds'> {
+  private buildCreateData(dto: CreateBookmarkDto): Pick<NewBookmark, 'clientId' | 'cfi' | 'title' | 'positionSeconds'> {
     return {
+      clientId: dto.clientId,
       cfi: dto.cfi,
       title: dto.title,
       positionSeconds: null,

@@ -2,6 +2,210 @@
 // Regenerate after shared contract changes.
 import Foundation
 
+struct NativeAnnotationItem: Codable, Sendable, Equatable, Identifiable {
+    var `clientId`: String? = nil
+    var `kind`: String
+    var `drawing`: NativeAnnotationDrawing? = nil
+    var `version`: Int
+    var `deletedAt`: String? = nil
+    var `sourceRevision`: String? = nil
+    var `pageFingerprint`: String? = nil
+    var `id`: Int
+    var `bookId`: Int
+    var `cfi`: String? = nil
+    var `jumpFileId`: Int? = nil
+    var `pageno`: Int? = nil
+    var `text`: String
+    var `color`: String
+    var `style`: String
+    var `note`: String? = nil
+    var `chapterTitle`: String? = nil
+    var `origin`: String
+    var `positionStatus`: String? = nil
+    var `chapterIndex`: Int? = nil
+    var `highlightedAt`: String
+    var `createdAt`: String
+    var `updatedAt`: String? = nil
+    var `pdf`: AnnotationPdfPosition? = nil
+    var `starredAt`: String? = nil
+}
+
+struct NativeAnnotationDrawing: Codable, Sendable, Equatable {
+    var `format`: String
+    var `strokes`: [NativeInkStroke]
+    var `nativeData`: String? = nil
+}
+
+struct NativeInkStroke: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `points`: [NativeInkPoint]
+    var `color`: String
+    var `width`: Double
+}
+
+struct NativeInkPoint: Codable, Sendable, Equatable {
+    var `x`: Double
+    var `y`: Double
+    var `pressure`: Double? = nil
+}
+
+struct AnnotationPdfPosition: Codable, Sendable, Equatable {
+    var `page`: Int
+    var `rect`: AnnotationRect
+    var `rects`: [AnnotationRect]
+}
+
+struct AnnotationRect: Codable, Sendable, Equatable {
+    var `x`: Double
+    var `y`: Double
+    var `width`: Double
+    var `height`: Double
+}
+
+struct NativeAnnotationPayload: Codable, Sendable, Equatable {
+    var `kind`: String? = nil
+    var `drawing`: NativeAnnotationDrawing? = nil
+    var `sourceRevision`: String? = nil
+    var `pageFingerprint`: String? = nil
+    var `cfi`: String? = nil
+    var `pdf`: AnnotationPdfPosition? = nil
+    var `bookFileId`: Int? = nil
+    var `text`: String? = nil
+    var `color`: String? = nil
+    var `style`: String? = nil
+    var `note`: String? = nil
+    var `chapterTitle`: String? = nil
+}
+
+struct NativeAnnotationOperation: Codable, Sendable, Equatable {
+    var `operationId`: String
+    var `clientId`: String
+    var `annotationId`: Int? = nil
+    var `bookId`: Int
+    var `baseVersion`: Int
+    var `action`: String
+    var `payload`: NativeAnnotationPayload? = nil
+}
+
+struct NativeAnnotationOperationsRequest: Codable, Sendable, Equatable {
+    var `deviceId`: String
+    var `operations`: [NativeAnnotationOperation]
+}
+
+struct NativeAnnotationOperationsResponse: Codable, Sendable, Equatable {
+    var `results`: [NativeAnnotationOperationResult]
+}
+
+struct NativeAnnotationOperationResult: Codable, Sendable, Equatable {
+    var `operationId`: String
+    var `status`: String
+    var `annotation`: NativeAnnotationItem? = nil
+    var `draftId`: Int? = nil
+    var `recoverySnapshot`: NativeAnnotationItem? = nil
+    var `recoverySnapshotUnavailableReason`: String? = nil
+    var `publication`: NativeAnnotationOperationResultPublication? = nil
+}
+
+struct NativeAnnotationOperationResultPublication: Codable, Sendable, Equatable {
+    var `status`: String
+    var `sourceRevision`: String? = nil
+    var `message`: String? = nil
+}
+
+struct NativeAnnotationDelta: Codable, Sendable, Equatable {
+    var `items`: [NativeAnnotationItem]
+    var `nextCursor`: String
+    var `hasMore`: Bool
+}
+
+struct NativeAnnotationAck: Codable, Sendable, Equatable {
+    var `deviceId`: String
+    var `bookId`: Int
+    var `cursor`: String
+}
+
+struct NativeAnnotationDraft: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `bookId`: Int
+    var `annotationId`: Int? = nil
+    var `operationId`: String
+    var `reason`: String
+    var `payload`: NativeAnnotationOperation
+    var `createdAt`: String
+    var `snapshot`: NativeAnnotationItem? = nil
+    var `snapshotUnavailableReason`: String? = nil
+}
+
+struct NativeAnnotationHubItem: Codable, Sendable, Equatable, Identifiable {
+    var `bookTitle`: String? = nil
+    var `author`: String? = nil
+    var `fileFormat`: String? = nil
+    var `groupKey`: String
+    var `clientId`: String? = nil
+    var `kind`: String
+    var `drawing`: NativeAnnotationDrawing? = nil
+    var `version`: Int
+    var `deletedAt`: String? = nil
+    var `sourceRevision`: String? = nil
+    var `pageFingerprint`: String? = nil
+    var `id`: Int
+    var `bookId`: Int
+    var `cfi`: String? = nil
+    var `jumpFileId`: Int? = nil
+    var `pageno`: Int? = nil
+    var `text`: String
+    var `color`: String
+    var `style`: String
+    var `note`: String? = nil
+    var `chapterTitle`: String? = nil
+    var `origin`: String
+    var `positionStatus`: String? = nil
+    var `chapterIndex`: Int? = nil
+    var `highlightedAt`: String
+    var `createdAt`: String
+    var `updatedAt`: String? = nil
+    var `pdf`: AnnotationPdfPosition? = nil
+    var `starredAt`: String? = nil
+}
+
+struct NativeAnnotationHubResponse: Codable, Sendable, Equatable {
+    var `items`: [NativeAnnotationHubItem]
+    var `nextCursor`: Int? = nil
+}
+
+struct NativeAnnotationHubDevice: Codable, Sendable, Equatable {
+    var `deviceId`: String
+    var `bookId`: Int
+    var `cursor`: Int
+    var `updatedAt`: String
+}
+
+struct NativeAnnotationHubDeviceResponse: Codable, Sendable, Equatable {
+    var `items`: [NativeAnnotationHubDevice]
+    var `nextCursor`: String? = nil
+}
+
+struct NativeAnnotationDraftResponse: Codable, Sendable, Equatable {
+    var `items`: [NativeAnnotationDraft]
+    var `nextCursor`: Int? = nil
+}
+
+struct NativePdfPageSource: Codable, Sendable, Equatable {
+    var `sourceRevision`: String
+    var `pageFingerprint`: String
+    var `width`: Double
+    var `height`: Double
+    var `page`: Int
+    var `canEditPdfInk`: Bool
+    var `matchedSourceRevision`: String?
+}
+
+struct NativePdfPageSourceBatch: Codable, Sendable, Equatable {
+    var `sourceRevision`: String
+    var `pages`: [NativePdfPageSource]
+    var `nextPage`: Int?
+}
+
 struct DictionaryResult: Codable, Sendable, Equatable {
     var `word`: String
     var `phonetic`: String?
@@ -2000,12 +2204,14 @@ struct EpubBookmarkNavigationPage: Codable, Sendable, Equatable {
 }
 
 struct CreateFixedPageBookmarkPayload: Codable, Sendable, Equatable {
+    var `clientId`: String?
     var `fileId`: Int
     var `pageNumber`: Int
     var `title`: String
 }
 
 struct CreateEpubBookmarkPayload: Codable, Sendable, Equatable {
+    var `clientId`: String?
     var `cfi`: String
     var `title`: String
 }
@@ -2306,6 +2512,7 @@ enum Permission: String, Sendable {
     case `libraryUpload` = "library_upload"
     case `libraryEditMetadata` = "library_edit_metadata"
     case `libraryDeleteBooks` = "library_delete_books"
+    case `annotationManageOwn` = "annotation_manage_own"
     case `bookDockAccess` = "book_dock_access"
     case `bookRequestAccess` = "book_request_access"
     case `podcastManageFeeds` = "podcast_manage_feeds"

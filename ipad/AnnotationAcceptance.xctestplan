@@ -1,0 +1,51 @@
+{
+  "configurations": [
+    {
+      "id": "10E02001-0000-4000-8000-000000000001",
+      "name": "pro13-portrait-light",
+      "options": {
+        "environmentVariableEntries": [
+          { "key": "IPAD_E02_PROFILE", "value": "pro13-portrait-light" }
+        ]
+      }
+    },
+    {
+      "id": "10E02001-0000-4000-8000-000000000002",
+      "name": "pro11-landscape-dark",
+      "options": {
+        "environmentVariableEntries": [
+          { "key": "IPAD_E02_PROFILE", "value": "pro11-landscape-dark" }
+        ]
+      }
+    },
+    {
+      "id": "10E02001-0000-4000-8000-000000000003",
+      "name": "pro11-portrait-large",
+      "options": {
+        "environmentVariableEntries": [
+          { "key": "IPAD_E02_PROFILE", "value": "pro11-portrait-large" }
+        ]
+      }
+    },
+    {
+      "id": "10E02001-0000-4000-8000-000000000004",
+      "name": "pro13-narrow-dark",
+      "options": {
+        "environmentVariableEntries": [
+          { "key": "IPAD_E02_PROFILE", "value": "pro13-narrow-dark" }
+        ]
+      }
+    }
+  ],
+  "defaultOptions": { "language": "en", "region": "US" },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:BookOrbit.xcodeproj",
+        "identifier": "1BAB2232886937D277B391B8",
+        "name": "BookOrbitUITests"
+      }
+    }
+  ],
+  "version": 1
+}

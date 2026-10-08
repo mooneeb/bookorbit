@@ -2,6 +2,34 @@ import { createServer, request } from "node:http";
 import { pipeline } from "node:stream/promises";
 
 export async function startFaultProxy() {
+  let annotationOffline = false;
+  let annotationWriteArmed = false;
+  let annotationTransferPath;
+  let annotationHeld = false;
+  let annotationRelease;
+  let annotationObserver;
+  let annotationHeldResponse;
+  const annotationCheckpoints = new Set();
+  let annotationTraffic = [];
+  let annotationTrafficTruncated = false;
+  async function holdAnnotation(outgoing) {
+    annotationHeld = true;
+    annotationHeldResponse = outgoing;
+    annotationObserver?.writeHead(200).end("held");
+    await new Promise((resolve) => {
+      const timeout = setTimeout(finish, 45_000);
+      function finish() {
+        clearTimeout(timeout);
+        outgoing.off("close", finish);
+        annotationHeld = false;
+        annotationHeldResponse = undefined;
+        annotationRelease = undefined;
+        resolve();
+      }
+      annotationRelease = finish;
+      outgoing.once("close", finish);
+    });
+  }
   let organizationUnavailable = false;
   let armed = false;
   let release;
@@ -26,6 +54,68 @@ export async function startFaultProxy() {
   const server = createServer(async (incoming, outgoing) => {
     const path = new URL(incoming.url, "http://localhost:16485").pathname;
     if (path.startsWith("/__faults/")) {
+      if (path.startsWith("/__faults/annotations/")) {
+        const action = path.slice("/__faults/annotations/".length);
+        if (action === "traffic" && incoming.method === "GET") {
+          return outgoing
+            .writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+            .end(JSON.stringify({ items: annotationTraffic, truncated: annotationTrafficTruncated }));
+        }
+        const checkpoint = action.match(/^checkpoint\/([a-z0-9-]+)$/);
+        if (checkpoint && incoming.method === "POST") {
+          annotationCheckpoints.add(checkpoint[1]);
+          return outgoing.writeHead(204).end();
+        }
+        if (checkpoint && incoming.method === "GET") {
+          return outgoing
+            .writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+            .end(JSON.stringify({ reached: annotationCheckpoints.has(checkpoint[1]) }));
+        }
+        if (incoming.method === "POST" && ["offline", "online", "reset"].includes(action)) {
+          annotationOffline = action === "offline";
+          if (action === "reset") {
+            annotationCheckpoints.clear();
+            annotationTraffic = [];
+            annotationTrafficTruncated = false;
+            annotationWriteArmed = false;
+            annotationTransferPath = undefined;
+            annotationRelease?.();
+          }
+          return outgoing.writeHead(204).end();
+        }
+        if (incoming.method === "POST" && action === "write-arm") {
+          if (annotationHeld || annotationWriteArmed) return outgoing.writeHead(409).end();
+          annotationWriteArmed = true;
+          return outgoing.writeHead(204).end();
+        }
+        if (incoming.method === "POST" && action === "transfer-arm") {
+          const target = new URL(incoming.url, "http://localhost:16485").searchParams.get("path");
+          if (!target || !/^\/api\/v1\/(?:books\/files\/[1-9][0-9]*\/(?:serve|download)|epub\/|cbz\/|audio\/)/.test(target)) {
+            return outgoing.writeHead(400).end();
+          }
+          if (annotationHeld || annotationTransferPath) return outgoing.writeHead(409).end();
+          annotationTransferPath = target;
+          return outgoing.writeHead(204).end();
+        }
+        if (incoming.method === "POST" && ["release", "cut"].includes(action)) {
+          if (!annotationHeld || !annotationRelease) return outgoing.writeHead(409).end();
+          if (action === "cut") annotationHeldResponse?.destroy();
+          annotationRelease();
+          return outgoing.writeHead(204).end();
+        }
+        if (incoming.method === "GET" && action === "held") {
+          if (annotationHeld) return outgoing.writeHead(200).end("held");
+          if (annotationObserver) return outgoing.writeHead(409).end();
+          annotationObserver = outgoing;
+          const timeout = setTimeout(() => outgoing.writeHead(504).end(), 15_000);
+          outgoing.once("close", () => {
+            clearTimeout(timeout);
+            if (annotationObserver === outgoing) annotationObserver = undefined;
+          });
+          return;
+        }
+        return outgoing.writeHead(404).end();
+      }
       if (incoming.method === "POST" && ["/__faults/organization/fail", "/__faults/organization/recover"].includes(path)) {
         organizationUnavailable = path.endsWith("/fail");
         return outgoing.writeHead(204).end();
@@ -133,6 +223,57 @@ export async function startFaultProxy() {
       }
       return outgoing.writeHead(404).end();
     }
+    const traffic = {
+      path: path.slice(0, 2048),
+      method: incoming.method,
+      range: incoming.headers.range?.slice(0, 256) ?? null,
+      status: null,
+      bytes: 0,
+      complete: false,
+    };
+    annotationTraffic.push(traffic);
+    if (annotationTraffic.length > 512) {
+      annotationTraffic.shift();
+      annotationTrafficTruncated = true;
+    }
+    const write = outgoing.write;
+    const end = outgoing.end;
+    function countBytes(chunk, encoding) {
+      if (typeof chunk === "string") traffic.bytes += Buffer.byteLength(chunk, typeof encoding === "string" ? encoding : "utf8");
+      else if (chunk && ArrayBuffer.isView(chunk)) traffic.bytes += chunk.byteLength;
+    }
+    outgoing.write = function (chunk, ...args) {
+      countBytes(chunk, args[0]);
+      return write.call(this, chunk, ...args);
+    };
+    outgoing.end = function (chunk, ...args) {
+      countBytes(chunk, args[0]);
+      return end.call(this, chunk, ...args);
+    };
+    outgoing.once("finish", () => {
+      traffic.status = outgoing.statusCode;
+      traffic.complete = true;
+    });
+    outgoing.once("close", () => {
+      traffic.status = outgoing.headersSent ? outgoing.statusCode : null;
+    });
+    if (annotationOffline && path.startsWith("/api/v1/")) {
+      incoming.resume();
+      outgoing.destroy();
+      return;
+    }
+    if (
+      annotationWriteArmed &&
+      incoming.method === "POST" &&
+      (path === "/api/v1/annotations/native/operations" ||
+        /^\/api\/v1\/annotations\/native\/source-ink\/[1-9][0-9]*\/[1-9][0-9]*\/operations$/.test(path))
+    ) {
+      annotationWriteArmed = false;
+      await holdAnnotation(outgoing);
+      if (outgoing.destroyed) return;
+    }
+    const holdAnnotationTransfer = incoming.method === "GET" && path === annotationTransferPath;
+    if (holdAnnotationTransfer) annotationTransferPath = undefined;
     if (
       (coverUploadsUnavailable && incoming.method === "POST" && path === "/api/v1/books/6/cover") ||
       (coverSnapshotUnavailable && incoming.method === "GET" && path === "/api/v1/books/6")
@@ -200,6 +341,27 @@ export async function startFaultProxy() {
       headers: { ...incoming.headers, host: "localhost:16482" },
     });
     upstream.once("response", async (response) => {
+      if (holdAnnotationTransfer && response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+        outgoing.writeHead(response.statusCode, response.headers);
+        let first = true;
+        try {
+          for await (const chunk of response) {
+            if (first) {
+              first = false;
+              outgoing.write(chunk.subarray(0, 1));
+              await holdAnnotation(outgoing);
+              if (outgoing.destroyed) return;
+              if (chunk.length > 1) outgoing.write(chunk.subarray(1));
+            } else if (!outgoing.write(chunk)) {
+              await new Promise((resolve) => outgoing.once("drain", resolve));
+            }
+          }
+          outgoing.end();
+        } catch {
+          outgoing.destroy();
+        }
+        return;
+      }
       if (holdProgress) {
         try {
           const chunks = [];
@@ -305,6 +467,8 @@ export async function startFaultProxy() {
     server.listen(16485, "127.0.0.1", resolve);
   });
   return async () => {
+    annotationRelease?.();
+    annotationObserver?.writeHead(503).end();
     armed = false;
     snapshotArmed = false;
     writeArmed = false;

@@ -12,6 +12,7 @@ struct NativePagedView: UIViewControllerRepresentable {
   var onTransition: (Bool) -> Void = { _ in }
   var rightToLeft = false
   var onBeyondLast: (() -> Void)?
+  var allowsNavigation = true
 
   func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -37,14 +38,29 @@ struct NativePagedView: UIViewControllerRepresentable {
     controller.view.accessibilityIdentifier = identifier
     controller.view.backgroundColor = .systemBackground
     context.coordinator.install(in: controller)
+    applyNavigation(to: controller)
     return controller
   }
 
   func updateUIViewController(_ controller: UIViewController, context: Context) {
     context.coordinator.configuration = self
+    applyNavigation(to: controller)
     (controller as? DiscretePageController)?.rightToLeft = rightToLeft
     context.coordinator.show(pageIndex, in: controller)
     context.coordinator.refresh()
+  }
+
+  private func applyNavigation(to controller: UIViewController) {
+    if let pager = controller as? UIPageViewController {
+      for gesture in pager.gestureRecognizers { gesture.isEnabled = allowsNavigation }
+      for subview in pager.view.subviews {
+        (subview as? UIScrollView)?.isScrollEnabled = allowsNavigation
+      }
+    } else {
+      for gesture in controller.view.gestureRecognizers ?? [] {
+        gesture.isEnabled = allowsNavigation
+      }
+    }
   }
 
   @MainActor
@@ -113,6 +129,7 @@ struct NativePagedView: UIViewControllerRepresentable {
     }
 
     func navigate(_ delta: Int) {
+      guard configuration.allowsNavigation else { return }
       let next = currentIndex + delta
       guard !isTransitioning else { return }
       if next == configuration.pageCount, delta == 1 {
@@ -171,6 +188,7 @@ struct NativePagedView: UIViewControllerRepresentable {
     func pageViewController(
       _ controller: UIPageViewController, viewControllerBefore viewController: UIViewController
     ) -> UIViewController? {
+      guard configuration.allowsNavigation else { return nil }
       guard let index = pages.first(where: { $0.value === viewController })?.key else { return nil }
       return page(at: index + (configuration.rightToLeft ? 1 : -1))
     }
@@ -178,6 +196,7 @@ struct NativePagedView: UIViewControllerRepresentable {
     func pageViewController(
       _ controller: UIPageViewController, viewControllerAfter viewController: UIViewController
     ) -> UIViewController? {
+      guard configuration.allowsNavigation else { return nil }
       guard let index = pages.first(where: { $0.value === viewController })?.key else { return nil }
       return page(at: index + (configuration.rightToLeft ? -1 : 1))
     }

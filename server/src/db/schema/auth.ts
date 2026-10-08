@@ -30,6 +30,7 @@ export const users = pgTable(
     email: varchar('email', { length: 255 }).unique(),
     passwordHash: varchar('password_hash', { length: 255 }).notNull(),
     active: boolean('active').notNull().default(true),
+    manageOwnAnnotations: boolean('manage_own_annotations').notNull().default(true),
     isSuperuser: boolean('is_superuser').notNull().default(false),
     isDefaultPassword: boolean('is_default_password').notNull().default(false),
     tokenVersion: integer('token_version').notNull().default(1),

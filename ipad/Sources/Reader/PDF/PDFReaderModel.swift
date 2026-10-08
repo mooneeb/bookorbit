@@ -8,6 +8,7 @@ final class PDFReaderModel {
   let file: BookDetailFile
   let position: NativeFilePositionModel
   private(set) var document: PDFDocument?
+  private(set) var sourceRevision: String?
   private(set) var pageIndex = 0
   private(set) var searchSelection: PDFSelection?
   private(set) var status = ""
@@ -32,7 +33,9 @@ final class PDFReaderModel {
   init(api: BookOrbitAPI, file: BookDetailFile) {
     self.api = api
     self.file = file
-    position = NativeFilePositionModel(api: api, fileID: file.id)
+    position = NativeFilePositionModel(
+      api: api, fileID: file.id,
+      sourceIdentity: file.absolutePath)
   }
 
   func load() async {
@@ -48,8 +51,11 @@ final class PDFReaderModel {
       let progress: FileReadingProgress = try await api.boundedJSON(
         "books/files/\(file.id)/progress", byteLimit: 16 * 1024, session: session)
       try await checkSession()
-      try position.accept(progress, session: session)
-      guard let size = file.sizeBytes else { throw ConnectionError.invalidResponse }
+      try await position.accept(progress, session: session)
+      let cached = try await api.offlineStore().sourceResource(fileID: file.id)
+      guard let size = cached?.expectedBytes.map(Double.init) ?? file.sizeBytes else {
+        throw ConnectionError.invalidResponse
+      }
       let url = try await api.deliveredFile(
         fileID: file.id, expectedSize: size, mimeType: "application/pdf", session: session)
       if isClosed || Task.isCancelled {
@@ -57,12 +63,14 @@ final class PDFReaderModel {
         return
       }
       localFile = url
+      sourceRevision = try await PDFSourceInkSource.revision(of: url)
+      try await position.bindSourceRevision(sourceRevision)
       try await checkSession()
       guard let pdf = PDFDocument(url: url) else {
         throw ConnectionError.invalidResponse
       }
       try await checkSession()
-      openingPageNumber = progress.pageNumber
+      openingPageNumber = position.resumePageNumber
       if pdf.isLocked {
         lockedDocument = pdf
       } else {
@@ -138,6 +146,12 @@ final class PDFReaderModel {
     if saveTask == nil { saveTask = Task { await savePendingPosition() } }
   }
 
+  func reveal(page index: Int) {
+    guard !isClosed, let document, (0..<document.pageCount).contains(index) else { return }
+    pageIndex = index
+    searchSelection = nil
+  }
+
   func openSearchMatch(_ match: PDFSearchMatch) {
     guard !isClosed, !isPositionResetting, !isClosing, let document,
       let page = document.page(at: match.pageIndex)
@@ -198,7 +212,7 @@ final class PDFReaderModel {
         }
         guard !isClosed else { return }
         if pendingPage == nil {
-          status = "Position saved"
+          status = position.hasPendingSync ? "Position saved on this iPad" : "Position saved"
           error = nil
         }
       } catch {
@@ -228,7 +242,9 @@ final class PDFReaderModel {
     else { return }
     pageIndex = Int(page) - 1
     pendingPage = nil
-    status = "Chosen reading position saved."
+    status =
+      position.hasPendingSync
+      ? "Chosen position saved on this iPad." : "Chosen reading position saved."
     error = nil
     searchSelection = nil
   }
@@ -276,6 +292,7 @@ final class PDFReaderModel {
     saveTask?.cancel()
     searchSelection = nil
     document = nil
+    sourceRevision = nil
     session = nil
     discardOpeningDocument()
   }

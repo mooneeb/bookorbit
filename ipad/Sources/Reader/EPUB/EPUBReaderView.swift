@@ -7,6 +7,10 @@ struct EPUBReaderView: View {
   @State private var bridge: NativeContinuationModel
   @State private var selectionTools: EPUBSelectionToolsModel
   @State private var chrome: EPUBChromeModel
+  @State private var annotations: PassageAnnotationModel
+  private let initialAnnotation: NativeAnnotationItem?
+  private let repairAnnotation: NativeAnnotationItem?
+  private let onRepairSelection: (@MainActor (NativeAnnotationPayload) -> Void)?
   @State private var outline = EPUBContentsOutlineModel()
   @State private var initialSearchQuery = ""
   private let language: String?
@@ -36,10 +40,17 @@ struct EPUBReaderView: View {
     api: BookOrbitAPI, bookID: Int, file: BookDetailFile,
     title: String = "Ebook", language: String? = nil,
     files: [BookDetailFile] = [], continuation: BookContinuationTarget? = nil,
-    onContinue: (@MainActor (NativeContinuationDestination) -> Void)? = nil
+    onContinue: (@MainActor (NativeContinuationDestination) -> Void)? = nil,
+    annotation: NativeAnnotationItem? = nil,
+    repairAnnotation: NativeAnnotationItem? = nil,
+    onRepairSelection: (@MainActor (NativeAnnotationPayload) -> Void)? = nil
   ) {
     let reader = EPUBReaderModel(api: api, bookID: bookID, file: file, continuation: continuation)
     _model = State(initialValue: reader)
+    _annotations = State(initialValue: PassageAnnotationModel(reader: reader))
+    initialAnnotation = annotation
+    self.repairAnnotation = repairAnnotation
+    self.onRepairSelection = onRepairSelection
     _chrome = State(initialValue: EPUBChromeModel(api: api, fileID: file.id))
     self.language = language
     let speech = NativeTTSModel(
@@ -77,6 +88,9 @@ struct EPUBReaderView: View {
 
   var body: some View {
     readerLifecycle
+      .popover(item: $annotations.presentation) { _ in
+        PassageAnnotationView(model: annotations).frame(minWidth: 320, idealWidth: 720)
+      }
       .sheet(item: $positionReset) { reset in
         NativePositionResetView(model: reset, closed: positionResetClosed)
       }
@@ -158,6 +172,38 @@ struct EPUBReaderView: View {
   }
 
   private var readerLifecycle: some View {
+    readerInteractionLifecycle
+      .onChange(of: model.error) { _, error in if error != nil { showControls() } }
+      .onChange(of: reduceMotion) { _, value in model.setReduceMotion(value) }
+      .onChange(of: annotations.mode.isWriting) { _, value in model.setAnnotationWriting(value) }
+      .onChange(of: annotations.repository?.generation) { _, _ in
+        Task { await annotations.load() }
+      }
+      .onChange(of: dynamicTypeSize) { _, _ in applySettings() }
+      .onChange(of: model.publicationID) { _, _ in selectionTools.detach() }
+      .onChange(of: model.isReady) { _, ready in
+        if ready { rebuildContents() } else { selectionTools.detach() }
+      }
+      .onChange(of: scenePhase) { _, phase in
+        if phase == .active {
+          Task {
+            await model.refreshPosition()
+            await annotations.synchronize()
+            await speech.foreground()
+            await recorded.foreground()
+          }
+        }
+        if phase == .background {
+          selectionTools.dismiss()
+          bridge.cancel()
+          speech.background()
+          Task { _ = await recorded.stopAndSave() }
+        }
+      }
+      .onDisappear(perform: closeReaderIfAllowed)
+  }
+
+  private var readerInteractionLifecycle: some View {
     readerNavigation
       .task { await loadReader() }
       .onChange(of: model.location?.cfi) { old, new in
@@ -176,29 +222,6 @@ struct EPUBReaderView: View {
       .onChange(of: model.position.conflict.isBlocked) { _, blocked in
         if blocked { showControls() }
       }
-      .onChange(of: model.error) { _, error in if error != nil { showControls() } }
-      .onChange(of: reduceMotion) { _, value in model.setReduceMotion(value) }
-      .onChange(of: dynamicTypeSize) { _, _ in applySettings() }
-      .onChange(of: model.publicationID) { _, _ in selectionTools.detach() }
-      .onChange(of: model.isReady) { _, ready in
-        if ready { rebuildContents() } else { selectionTools.detach() }
-      }
-      .onChange(of: scenePhase) { _, phase in
-        if phase == .active {
-          Task {
-            await model.refreshPosition()
-            await speech.foreground()
-            await recorded.foreground()
-          }
-        }
-        if phase == .background {
-          selectionTools.dismiss()
-          bridge.cancel()
-          speech.background()
-          Task { _ = await recorded.stopAndSave() }
-        }
-      }
-      .onDisappear(perform: closeReaderIfAllowed)
   }
 
   private var readerNavigation: some View {
@@ -311,7 +334,7 @@ struct EPUBReaderView: View {
   private var publication: some View {
     ZStack {
       // WebKit needs an attached viewport to finish the initial publication layout.
-      EPUBPageHost(model: model)
+      EPUBPageHost(model: model, pencilMode: annotations.mode)
         .accessibilityLabel("Book content")
         .accessibilityHidden(!model.isReady)
         .allowsHitTesting(
@@ -350,6 +373,12 @@ struct EPUBReaderView: View {
 
   private var readerFooter: some View {
     VStack(spacing: 8) {
+      if model.isReady {
+        ViewThatFits(in: .horizontal) {
+          HStack { annotationActions }
+          VStack(alignment: .leading) { annotationActions }
+        }
+      }
       if !controlsVisible {
         ViewThatFits(in: .horizontal) {
           HStack { restoreControls }
@@ -413,6 +442,13 @@ struct EPUBReaderView: View {
 
   private var selectionActions: some View {
     Group {
+      Button("Mark selected passage", action: markPassage).frame(minHeight: 44)
+        .accessibilityIdentifier("epubMarkPassage")
+        .disabled(!model.canNavigate || isReaderAction || bridge.isPresented)
+      if repairAnnotation != nil {
+        Button("Repair here", action: repairHere).frame(minHeight: 44)
+          .accessibilityIdentifier("passageRepairHere")
+      }
       Button("Bookmark selected passage", action: openBookmarks).frame(minHeight: 44)
         .accessibilityIdentifier("epubBookmarkSelection")
         .disabled(!model.canNavigate || isReaderAction || bridge.isPresented)
@@ -428,6 +464,46 @@ struct EPUBReaderView: View {
       .disabled(!model.canNavigate || isReaderAction || bridge.isPresented)
       .accessibilityIdentifier("epubSelectionTools")
     }
+  }
+
+  @ViewBuilder private var annotationActions: some View {
+    PencilModeControls(mode: annotations.mode)
+    Button("Undo annotation", action: annotations.undo).frame(minHeight: 44)
+      .disabled(annotations.lastOperationID == nil || annotations.isSaving)
+      .accessibilityIdentifier("passageUndo")
+    Menu("Recent passage notes", systemImage: "note.text") {
+      ForEach(annotations.items.prefix(50)) { item in
+        Button(String(item.text.prefix(80))) { annotations.edit(item) }
+          .accessibilityIdentifier("passageEdit\(item.id)")
+      }
+      if annotations.items.count > 50 {
+        Text("Browse all notes in Annotation Hub.")
+      }
+    }.frame(minHeight: 44).accessibilityIdentifier("epubPassageNotes")
+    if let repository = annotations.repository {
+      Text(
+        repository.isSynchronizing
+          ? "Syncing annotations" : "\(repository.pendingCount) pending changes"
+      )
+      .font(.caption).accessibilityIdentifier("passageSyncState")
+    }
+    if annotationInputFixture {
+      Button("Select fixture passage", action: model.selectFixturePassage).frame(minHeight: 44)
+        .accessibilityIdentifier("epubFixtureSelectPassage")
+    }
+    if let error = annotations.error {
+      Text(error).font(.caption).accessibilityIdentifier("passageReaderError")
+    }
+  }
+
+  private func markPassage() { annotations.preview(language: language) }
+  private func repairHere() {
+    guard let passage = model.selectedPassage(language: language) else { return }
+    var payload = NativeAnnotationPayload()
+    payload.cfi = passage.cfi
+    payload.text = passage.text
+    payload.bookFileId = model.file.id
+    onRepairSelection?(payload)
   }
 
   @ViewBuilder private var recordedStatus: some View {
@@ -488,7 +564,9 @@ struct EPUBReaderView: View {
 
   @ViewBuilder private var navigationButtons: some View {
     Button("Previous page", action: previousPage).frame(minWidth: 44, minHeight: 44)
-      .disabled(!model.canNavigate || isReaderAction || bridge.isPresented).accessibilityIdentifier(
+      .disabled(
+        !model.canNavigate || model.annotationWriting || isReaderAction || bridge.isPresented
+      ).accessibilityIdentifier(
         "epubPreviousPage"
       )
       .keyboardShortcut(model.rightToLeft ? .rightArrow : .leftArrow, modifiers: [])
@@ -505,7 +583,9 @@ struct EPUBReaderView: View {
     .accessibilityIdentifier("epubSavePosition")
     Spacer(minLength: 12)
     Button("Next page", action: nextPage).frame(minWidth: 44, minHeight: 44)
-      .disabled(!model.canNavigate || isReaderAction || bridge.isPresented).accessibilityIdentifier(
+      .disabled(
+        !model.canNavigate || model.annotationWriting || isReaderAction || bridge.isPresented
+      ).accessibilityIdentifier(
         "epubNextPage"
       )
       .keyboardShortcut(model.rightToLeft ? .leftArrow : .rightArrow, modifiers: [])
@@ -547,6 +627,17 @@ struct EPUBReaderView: View {
     await model.load()
     rebuildContents()
     if model.isReady {
+      await annotations.load()
+      model.openPassageAnnotation = { [weak annotations] id in
+        guard let annotations, let item = annotations.items.first(where: { $0.id == id }) else {
+          return
+        }
+        annotations.edit(item)
+      }
+      if let annotation = initialAnnotation, let cfi = annotation.cfi {
+        await model.openAnnotationPassage(cfi: cfi)
+        annotations.edit(annotation)
+      }
       await recorded.open()
       await speech.open()
     }
@@ -555,7 +646,9 @@ struct EPUBReaderView: View {
   private func closeReaderIfAllowed() {
     if !showingContents && !showingSearch && !showingSettings && !showingBookmarks
       && !showingSpeech && !showingRecorded && !showingPosition && !showingHelp
-      && !bridge.isPresented && selectionTools.presentation == nil && positionReset == nil
+      && !bridge.isPresented && selectionTools.presentation == nil
+      && annotations.presentation == nil
+      && positionReset == nil
     {
       chrome.close()
       Task {

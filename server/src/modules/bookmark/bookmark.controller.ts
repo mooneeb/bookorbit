@@ -26,7 +26,7 @@ export class BookmarkController {
   }
 
   @Post()
-  @RequirePermission(Permission.LibraryDownload)
+  @RequirePermission(Permission.LibraryDownload, Permission.AnnotationManageOwn)
   createBookmark(@Param('bookId', ParseIntPipe) bookId: number, @Body() dto: CreateBookmarkDto, @CurrentUser() user: RequestUser) {
     return this.bookmarkService.createBookmark(bookId, user, dto);
   }
@@ -50,13 +50,13 @@ export class BookmarkController {
   }
 
   @Post('fixed-page')
-  @RequirePermission(Permission.LibraryDownload)
+  @RequirePermission(Permission.LibraryDownload, Permission.AnnotationManageOwn)
   createFixedPageBookmark(@Param('bookId', ParseIntPipe) bookId: number, @Body() dto: CreateFixedPageBookmarkDto, @CurrentUser() user: RequestUser) {
     return this.bookmarkService.createFixedPageBookmark(bookId, user, dto);
   }
 
   @Patch(':bookmarkId')
-  @RequirePermission(Permission.LibraryDownload)
+  @RequirePermission(Permission.LibraryDownload, Permission.AnnotationManageOwn)
   updateBookmark(
     @Param('bookId', ParseIntPipe) bookId: number,
     @Param('bookmarkId', ParseIntPipe) bookmarkId: number,
@@ -67,7 +67,7 @@ export class BookmarkController {
   }
 
   @Delete(':bookmarkId')
-  @RequirePermission(Permission.LibraryDownload)
+  @RequirePermission(Permission.LibraryDownload, Permission.AnnotationManageOwn)
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteBookmark(
     @Param('bookId', ParseIntPipe) bookId: number,

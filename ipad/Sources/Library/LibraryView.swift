@@ -14,6 +14,8 @@ struct LibraryView: View {
   @State private var organization: OrganizationKind?
   @State private var showingDashboard = false
   @State private var showingScopes = false
+  @State private var showingAnnotations = false
+  @State private var showingOfflineBooks = false
   @State private var showingQuery = false
   @State private var showingSavedViews = false
   @State private var showingTableLayout = false
@@ -56,6 +58,10 @@ struct LibraryView: View {
           .accessibilityIdentifier("browseSeries")
         Button("Smart scopes") { showingScopes = true }
           .accessibilityIdentifier("browseSmartScopes")
+        Button("Annotations") { showingAnnotations = true }
+          .accessibilityIdentifier("openAnnotationHub")
+        Button("Offline books") { showingOfflineBooks = true }
+          .accessibilityIdentifier("offlineLibrary")
         ForEach(library.libraries) { item in
           Button(item.name) {
             Task { await library.select(.library(id: item.id, name: item.name)) }
@@ -327,6 +333,16 @@ struct LibraryView: View {
       }
     }
     .sheet(isPresented: $showingQuery) { LibraryQueryView(library: library) }
+    .sheet(isPresented: $showingAnnotations) {
+      AnnotationHubView(
+        api: library.api, userID: session.user?.id ?? 0,
+        canRead: session.user?.hasPermission(.libraryDownload) == true,
+        canManage: session.user?.hasPermission(.annotationManageOwn) == true,
+        canEditPdfInk: session.user?.hasPermission(.libraryEditMetadata) == true)
+    }
+    .sheet(isPresented: $showingOfflineBooks) {
+      OfflineLibraryView(api: library.api, user: session.user)
+    }
     .sheet(isPresented: $showingSavedViews) {
       SavedViewsView(
         model: savedViews, tablePresets: tablePresets, library: library,

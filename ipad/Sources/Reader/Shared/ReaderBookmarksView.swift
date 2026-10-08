@@ -77,7 +77,7 @@ struct ReaderBookmarksView: View {
                 actionLabel("Remove bookmark")
               }
               .accessibilityIdentifier("removeBookmark\(bookmark.id)")
-              .disabled(model.isBusy)
+              .disabled(!model.canRemove)
             }
           }
           Button {

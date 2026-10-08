@@ -206,23 +206,29 @@ export class AudiobookService {
   }
 
   async createBookmark(bookId: number, dto: CreateAudiobookBookmarkDto, user: RequestUser): Promise<AudiobookBookmark> {
-    const context = await this.loadManifestContext(bookId, user);
-    const totalDurationMs = context.manifest.totalDurationMs;
-    if (totalDurationMs > 0 && dto.positionMs > totalDurationMs + DURATION_SLACK_MS) {
-      throw new BadRequestException('positionMs exceeds the audiobook duration');
-    }
-    if (dto.chapterId && !context.manifest.chapters.some((chapter) => chapter.id === dto.chapterId)) {
-      throw new BadRequestException('chapterId does not belong to this audiobook manifest');
-    }
-    const row = await this.repo.createAudioBookmark(user.id, bookId, {
-      clientId: dto.clientId,
-      positionSeconds: (totalDurationMs > 0 ? Math.min(dto.positionMs, totalDurationMs) : dto.positionMs) / 1000,
-      chapterId: dto.chapterId ?? null,
-      title: dto.title,
-      note: dto.note ?? null,
+    return this.bookmarkMutation('audiobook.bookmark_create', bookId, user.id, dto.clientId, async () => {
+      const context = await this.loadManifestContext(bookId, user);
+      const totalDurationMs = context.manifest.totalDurationMs;
+      if (totalDurationMs > 0 && dto.positionMs > totalDurationMs + DURATION_SLACK_MS) {
+        throw new BadRequestException('positionMs exceeds the audiobook duration');
+      }
+      if (dto.chapterId && !context.manifest.chapters.some((chapter) => chapter.id === dto.chapterId)) {
+        throw new BadRequestException('chapterId does not belong to this audiobook manifest');
+      }
+      const row = await this.repo.createAudioBookmark(user.id, bookId, {
+        clientId: dto.clientId,
+        positionSeconds: (totalDurationMs > 0 ? Math.min(dto.positionMs, totalDurationMs) : dto.positionMs) / 1000,
+        chapterId: dto.chapterId ?? null,
+        title: dto.title,
+        note: dto.note ?? null,
+      });
+      if (!row) throw new ConflictException('Audiobook bookmark already exists');
+      if (row.deletedAt)
+        throw new ConflictException('This audiobook bookmark creation was already deleted; use a new clientId for an explicit new bookmark');
+      const positionSeconds = (totalDurationMs > 0 ? Math.min(dto.positionMs, totalDurationMs) : dto.positionMs) / 1000;
+      if (row.positionSeconds !== positionSeconds) throw new ConflictException('Bookmark identity cannot be reused for a different location');
+      return this.mapBookmark(row);
     });
-    if (!row) throw new ConflictException('Audiobook bookmark already exists');
-    return this.mapBookmark(row);
   }
 
   async updateBookmark(bookId: number, bookmarkId: string, dto: UpdateAudiobookBookmarkDto, user: RequestUser): Promise<AudiobookBookmark> {
@@ -236,9 +242,28 @@ export class AudiobookService {
   }
 
   async deleteBookmark(bookId: number, bookmarkId: string, user: RequestUser): Promise<void> {
-    await this.bookService.verifyBookAccess(bookId, user);
-    if (!(await this.repo.deleteAudioBookmark(user.id, bookId, bookmarkId))) {
-      throw new NotFoundException('Audiobook bookmark not found');
+    return this.bookmarkMutation('audiobook.bookmark_delete', bookId, user.id, bookmarkId, async () => {
+      await this.bookService.verifyBookAccess(bookId, user);
+      if (!(await this.repo.deleteAudioBookmark(user.id, bookId, bookmarkId))) {
+        throw new NotFoundException('Audiobook bookmark not found');
+      }
+    });
+  }
+
+  private async bookmarkMutation<T>(event: string, bookId: number, userId: number, clientId: string, operation: () => Promise<T>): Promise<T> {
+    const started = Date.now();
+    this.logger.log(`[${event}] [start] bookId=${bookId} userId=${userId} clientId=${clientId} - audiobook bookmark mutation started`);
+    try {
+      const result = await operation();
+      this.logger.log(
+        `[${event}] [end] bookId=${bookId} userId=${userId} clientId=${clientId} durationMs=${Date.now() - started} saved=true - audiobook bookmark mutation completed`,
+      );
+      return result;
+    } catch (error) {
+      this.logger.warn(
+        `[${event}] [fail] bookId=${bookId} userId=${userId} clientId=${clientId} durationMs=${Date.now() - started} errorClass=${error instanceof Error ? error.name : 'UnknownError'} error="${sanitizeLogValue(error instanceof Error ? error.message : 'Unknown error')}" - audiobook bookmark mutation failed`,
+      );
+      throw error;
     }
   }
 

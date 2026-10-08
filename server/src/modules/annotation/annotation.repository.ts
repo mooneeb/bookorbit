@@ -85,6 +85,7 @@ export interface HubSort {
 }
 
 export interface AnnotationFilters {
+  excludeSourceInk?: boolean;
   bookFileId?: number;
   colors?: string[];
   search?: string;
@@ -323,6 +324,7 @@ export class AnnotationRepository {
   async create(data: NewAnnotation & { cfi: string; bookFileId?: number | null }): Promise<AnnotationWithCfi> {
     const { cfi, bookFileId, ...annotationData } = data;
     return this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(7303, ${data.userId})`);
       const [row] = await tx.insert(annotations).values(annotationData).returning();
       await tx.insert(annotationPositions).values({
         annotationId: row.id,
@@ -345,6 +347,7 @@ export class AnnotationRepository {
     const { bookFileId, ...annotationData } = data;
     const pageno = pdf.page + 1;
     return this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(7303, ${data.userId})`);
       const [row] = await tx.insert(annotations).values(annotationData).returning();
       await tx.insert(annotationPositions).values({
         annotationId: row.id,
@@ -390,7 +393,7 @@ export class AnnotationRepository {
         ...(options.starred !== undefined && { starredAt: starredAtValue(options.starred) }),
         updatedAt: sql`now()`,
       })
-      .where(and(eq(annotations.id, annotationId), ...this.baseConditions(bookId, userId)))
+      .where(and(eq(annotations.id, annotationId), ...this.baseConditions(bookId, userId), this.changeLock(userId)))
       .returning();
     if (!row) return null;
     return this.findById(bookId, annotationId, userId);
@@ -400,7 +403,7 @@ export class AnnotationRepository {
     const result = await this.db
       .update(annotations)
       .set({ deletedAt: sql`now()`, version: sql`${annotations.version} + 1`, updatedAt: sql`now()` })
-      .where(and(eq(annotations.id, annotationId), ...this.baseConditions(bookId, userId)))
+      .where(and(eq(annotations.id, annotationId), ...this.baseConditions(bookId, userId), this.changeLock(userId)))
       .returning({ id: annotations.id });
     return result.length > 0;
   }
@@ -409,7 +412,15 @@ export class AnnotationRepository {
     const [row] = await this.db
       .update(annotations)
       .set({ deletedAt: null, version: sql`${annotations.version} + 1`, updatedAt: sql`now()` })
-      .where(and(eq(annotations.id, annotationId), eq(annotations.userId, userId), isNotNull(annotations.deletedAt)))
+      .where(
+        and(
+          eq(annotations.id, annotationId),
+          eq(annotations.userId, userId),
+          isNotNull(annotations.deletedAt),
+          sql`${annotations.kind} <> 'pdf_ink'`,
+          this.changeLock(userId),
+        ),
+      )
       .returning();
     return row ?? null;
   }
@@ -426,6 +437,7 @@ export class AnnotationRepository {
           eq(annotations.id, annotationId),
           eq(annotations.userId, userId),
           isNotNull(annotations.deletedAt),
+          isNull(annotations.clientId),
           notExists(
             this.db
               .select({ one: sql`1` })
@@ -681,7 +693,13 @@ export class AnnotationRepository {
         updatedAt: sql`now()`,
       })
       .where(
-        and(inArray(annotations.id, ids), eq(annotations.userId, userId), deleted ? isNull(annotations.deletedAt) : isNotNull(annotations.deletedAt)),
+        and(
+          inArray(annotations.id, ids),
+          eq(annotations.userId, userId),
+          deleted ? isNull(annotations.deletedAt) : isNotNull(annotations.deletedAt),
+          sql`${annotations.kind} <> 'pdf_ink'`,
+          this.changeLock(userId),
+        ),
       )
       .returning({ id: annotations.id });
     return result.length;
@@ -698,6 +716,7 @@ export class AnnotationRepository {
           inArray(annotations.id, ids),
           eq(annotations.userId, userId),
           isNull(annotations.deletedAt),
+          this.changeLock(userId),
           starred ? isNull(annotations.starredAt) : isNotNull(annotations.starredAt),
         ),
       )
@@ -710,7 +729,15 @@ export class AnnotationRepository {
     const result = await this.db
       .update(annotations)
       .set({ ...patch, version: sql`${annotations.version} + 1`, updatedAt: sql`now()` })
-      .where(and(inArray(annotations.id, ids), eq(annotations.userId, userId), isNull(annotations.deletedAt)))
+      .where(
+        and(
+          inArray(annotations.id, ids),
+          eq(annotations.userId, userId),
+          isNull(annotations.deletedAt),
+          sql`${annotations.kind} <> 'pdf_ink'`,
+          this.changeLock(userId),
+        ),
+      )
       .returning({ id: annotations.id });
     return result.length;
   }
@@ -751,9 +778,13 @@ export class AnnotationRepository {
   private baseConditions(bookId: number, userId: number): SQL[] {
     return [eq(annotations.bookId, bookId), eq(annotations.userId, userId), isNull(annotations.deletedAt)];
   }
+  private changeLock(userId: number): SQL {
+    return sql`exists(select 1 from pg_advisory_xact_lock(7303, ${userId}))`;
+  }
 
   private buildConditions(bookId: number, userId: number, filters: AnnotationFilters): SQL[] {
     const conditions = this.baseConditions(bookId, userId);
+    if (filters.excludeSourceInk) conditions.push(sql`${annotations.kind} <> 'pdf_ink'`);
 
     if (filters.bookFileId !== undefined) {
       conditions.push(

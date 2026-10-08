@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import type { NativeAnnotationDrawing } from '@bookorbit/types'
+import RetainedHandwriting from './RetainedHandwriting.vue'
 
 const { t } = useI18n()
 
@@ -7,6 +9,8 @@ const props = defineProps<{
   selectedText: string
   modelValue: string
   saving?: boolean
+  drawing?: NativeAnnotationDrawing | null
+  readonly?: boolean
 }>()
 const emit = defineEmits<{
   save: [note: string]
@@ -37,9 +41,11 @@ function handleSave() {
       <div class="bg-card text-card-foreground rounded-lg shadow-2xl p-4 w-full max-w-sm flex flex-col gap-3">
         <p class="text-sm font-medium">{{ t('reader.note.title') }}</p>
         <p class="text-xs text-muted-foreground line-clamp-2 italic">"{{ selectedText }}"</p>
+        <RetainedHandwriting v-if="props.drawing" :drawing="props.drawing" />
         <textarea
           :value="modelValue"
           :disabled="props.saving"
+          :readonly="props.readonly"
           @input="handleInput"
           class="w-full rounded-lg border border-border bg-background text-foreground text-sm p-2 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
           rows="4"
@@ -55,6 +61,7 @@ function handleSave() {
             {{ t('common.cancel') }}
           </button>
           <button
+            v-if="!props.readonly"
             class="px-3 py-1.5 rounded-lg text-sm bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
             :disabled="props.saving"
             @click="handleSave"

@@ -6,6 +6,10 @@ const SORT_DIR_OPTIONS = ['asc', 'desc'] as const;
 
 export class AnnotationQueryDto {
   @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  excludeSourceInk?: boolean;
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)

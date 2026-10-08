@@ -4,7 +4,7 @@ import { useScroll } from '@embedpdf/plugin-scroll/vue'
 import { useSelectionCapability, useSelectionPlugin } from '@embedpdf/plugin-selection/vue'
 import type { SelectionMenuPlacement } from '@embedpdf/plugin-selection'
 import type { AnnotationItem, AnnotationRect } from '@bookorbit/types'
-import { usePdfAnnotations } from './usePdfAnnotations'
+import { usePdfAnnotations, type PdfAnnotationPatch } from './usePdfAnnotations'
 import { boundingRect, buildPdfAnnotationObject, findOverlappingAnnotation, fromRect, toPdfPosition } from '../lib/pdf-annotation-render'
 
 const DEFAULT_HIGHLIGHT_COLOR = '#FACC15'
@@ -46,10 +46,13 @@ export function usePdfHighlights({ bookId, fileId, documentId, getSurface, getPo
   const showNoteDialog = ref(false)
   const noteText = ref('')
   const isSaving = ref(false)
+  let noteBaseVersion: number | undefined
 
   // Only this file's PDF highlights: a book may hold several files (e.g. an EPUB
   // and a PDF, or two PDFs), and their annotations share one book-scoped list.
-  const fileAnnotations = computed(() => store.annotations.value.filter((annotation) => annotation.pdf != null && annotation.jumpFileId === fileId))
+  const fileAnnotations = computed(() =>
+    store.annotations.value.filter((annotation) => annotation.kind !== 'pdf_ink' && annotation.pdf != null && annotation.jumpFileId === fileId),
+  )
 
   const renderedIds = new Set<number>()
   let pendingSelection: PendingSelectionPage[] = []
@@ -198,7 +201,7 @@ export function usePdfHighlights({ bookId, fileId, documentId, getSurface, getPo
     return fileAnnotations.value.find((annotation) => annotation.id === id) ?? null
   }
 
-  async function restyleExisting(id: number, patch: { color?: string; style?: string; note?: string | null }): Promise<boolean> {
+  async function restyleExisting(id: number, patch: PdfAnnotationPatch): Promise<boolean> {
     const previous = fileAnnotations.value.find((annotation) => annotation.id === id) ?? null
     const updated = await store.update(id, patch)
     if (!updated) return false
@@ -256,6 +259,7 @@ export function usePdfHighlights({ bookId, fileId, documentId, getSurface, getPo
   }
 
   function openNoteDialog() {
+    noteBaseVersion = selectedAnnotation()?.version
     noteText.value = selectedAnnotation()?.note ?? ''
     showNoteDialog.value = true
     dismissPopup()
@@ -269,7 +273,8 @@ export function usePdfHighlights({ bookId, fileId, documentId, getSurface, getPo
     isSaving.value = true
     try {
       let ok: boolean
-      if (annotationId !== null) ok = await restyleExisting(annotationId, { note })
+      if (annotationId !== null)
+        ok = await restyleExisting(annotationId, { note, ...(noteBaseVersion === undefined ? {} : { baseVersion: noteBaseVersion }) })
       else {
         const result = await createFromSelection(selection, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_HIGHLIGHT_STYLE, note)
         ok = result.ok
@@ -348,7 +353,12 @@ export function usePdfHighlights({ bookId, fileId, documentId, getSurface, getPo
     { immediate: true },
   )
 
-  watch(fileAnnotations, () => {
+  watch(fileAnnotations, (current, previous) => {
+    const byId = new Map(current.map((annotation) => [annotation.id, annotation]))
+    for (const annotation of previous) {
+      const next = byId.get(annotation.id)
+      if (!next || next.version !== annotation.version || next.updatedAt !== annotation.updatedAt) unrenderAnnotation(annotation)
+    }
     if (annScope()) renderAll()
   })
 

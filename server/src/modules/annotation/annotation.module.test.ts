@@ -18,7 +18,7 @@ describe('AnnotationModule', () => {
     const providers = Reflect.getMetadata(MODULE_METADATA.PROVIDERS, AnnotationModule);
 
     expect(imports).toEqual(expect.arrayContaining([BookModule]));
-    expect(controllers).toEqual([AnnotationController, AnnotationHubController]);
+    expect(controllers).toEqual(expect.arrayContaining([AnnotationController, AnnotationHubController]));
     expect(providers).toEqual(expect.arrayContaining([AnnotationService, AnnotationRepository, AnnotationSyncService, AnnotationHubService]));
   });
 });

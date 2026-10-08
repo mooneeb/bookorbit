@@ -12,6 +12,7 @@ struct NativeContinuousPagesView: UIViewControllerRepresentable {
   let refreshPage: (UIViewController, Int) -> Void
   let onTurn: (Int) -> Void
   let onVisible: (Set<Int>) -> Void
+  var allowsNavigation = true
 
   func makeUIViewController(context: Context) -> ContinuousPagesController {
     ContinuousPagesController(configuration: self)
@@ -78,6 +79,7 @@ final class ContinuousPagesController: UIViewController,
     self.configuration = configuration
     loadViewIfNeeded()
     applying = true
+    collection.isScrollEnabled = configuration.allowsNavigation
     let changedIndex = configuration.pageIndex != currentIndex
     let fraction = layout.fraction(at: collection.contentOffset, index: currentIndex)
     currentIndex = configuration.pageIndex

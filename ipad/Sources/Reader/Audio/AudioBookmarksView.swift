@@ -14,7 +14,7 @@ struct AudioBookmarksView: View {
     self.player = player
     _model = State(
       initialValue: AudioBookmarksModel(
-        api: player.engine.api, bookID: player.engine.bookID,
+        api: player.engine.api, bookID: player.engine.bookID, fileID: player.engine.fileID,
         capture: { [weak player] in player?.bookmarkPosition }))
   }
 

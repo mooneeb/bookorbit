@@ -70,7 +70,7 @@ function subtypeForStyle(style: string): PdfAnnotationSubtype {
  * truth, so the object id is derived from the database row id.
  */
 export function buildPdfAnnotationObject(annotation: AnnotationItem): { pageIndex: number; object: PdfAnnotationObject } | null {
-  if (!annotation.pdf) return null
+  if (!annotation.pdf || annotation.kind === 'pdf_ink') return null
   const { page, rect, rects } = annotation.pdf
   const shared = {
     id: toPluginId(annotation.id),

@@ -21,6 +21,44 @@ let publisherSpread;
 let currentStyles = "";
 let searchState;
 let resourceBytes = 0;
+let annotationWriting = false;
+let passageAnnotations = [];
+const renderPassageAnnotations = (doc, index) => {
+  const ranges = [];
+  for (const item of passageAnnotations) {
+    try {
+      const resolved = view.resolveNavigation(item.cfi);
+      if (resolved?.index !== index) continue;
+      const range = resolved.anchor(doc);
+      if (range && !range.collapsed) ranges.push(range);
+    } catch {}
+  }
+  if (doc.defaultView.CSS.highlights && doc.defaultView.Highlight) {
+    doc.defaultView.CSS.highlights.set("bookorbit-annotations", new doc.defaultView.Highlight(...ranges));
+  }
+};
+window.epubSetPassageAnnotations = (items) => {
+  passageAnnotations = items;
+  for (const { doc, index } of view.renderer.getContents()) renderPassageAnnotations(doc, index);
+};
+window.epubAnnotationWriting = (enabled) => {
+  annotationWriting = enabled;
+  view.renderer.style.touchAction = enabled ? "none" : "";
+  for (const { doc } of view.renderer.getContents()) doc.documentElement.style.touchAction = enabled ? "none" : "";
+};
+window.epubFixtureSelectPassage = () => {
+  for (const { doc, index } of view.renderer.getContents()) {
+    const paragraph = Array.from(doc.querySelectorAll("p")).find((item) => item.textContent.trim());
+    if (!paragraph) continue;
+    const range = doc.createRange();
+    range.selectNodeContents(paragraph);
+    const selected = doc.getSelection();
+    selected.removeAllRanges();
+    selected.addRange(range);
+    window.webkit.messageHandlers.selection.postMessage(selection(doc, index));
+    return;
+  }
+};
 const pending = [];
 const sendResource = (path) =>
   new Promise((resolve, reject) => {
@@ -123,6 +161,58 @@ const applyDocumentStyles = (doc) => {
 };
 view.addEventListener("load", ({ detail: { doc, index } }) => {
   if (view.isFixedLayout) applyDocumentStyles(doc);
+  renderPassageAnnotations(doc, index);
+  doc.documentElement.style.touchAction = annotationWriting ? "none" : "";
+  let pencilStart;
+  doc.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (!annotationWriting || event.pointerType !== "pen") return;
+      const caret = doc.caretRangeFromPoint(event.clientX, event.clientY);
+      if (!caret) return;
+      pencilStart = { node: caret.startContainer, offset: caret.startOffset };
+      event.preventDefault();
+    },
+    { passive: false },
+  );
+  doc.addEventListener(
+    "pointermove",
+    (event) => {
+      if (!pencilStart || !annotationWriting || event.pointerType !== "pen") return;
+      const caret = doc.caretRangeFromPoint(event.clientX, event.clientY);
+      if (!caret) return;
+      doc.getSelection().setBaseAndExtent(pencilStart.node, pencilStart.offset, caret.startContainer, caret.startOffset);
+      event.preventDefault();
+    },
+    { passive: false },
+  );
+  doc.addEventListener(
+    "pointerup",
+    (event) => {
+      if (!pencilStart || event.pointerType !== "pen") return;
+      pencilStart = null;
+      window.webkit.messageHandlers.selection.postMessage(selection(doc, index));
+      event.preventDefault();
+    },
+    { passive: false },
+  );
+  doc.addEventListener("pointercancel", () => {
+    pencilStart = null;
+  });
+  doc.addEventListener("click", (event) => {
+    if (closed || pencilStart || !doc.getSelection()?.isCollapsed) return;
+    const caret = doc.caretRangeFromPoint(event.clientX, event.clientY);
+    if (!caret) return;
+    for (const item of passageAnnotations) {
+      try {
+        const resolved = view.resolveNavigation(item.cfi);
+        if (resolved?.index !== index) continue;
+        if (!resolved.anchor(doc).isPointInRange(caret.startContainer, caret.startOffset)) continue;
+        window.webkit.messageHandlers.passageAnnotation.postMessage(item.id);
+        return;
+      } catch {}
+    }
+  });
   doc.addEventListener("selectionchange", () => {
     if (!closed) window.webkit.messageHandlers.selection.postMessage(selection(doc, index));
   });
@@ -286,6 +376,7 @@ window.epubConfigure = async (settings, formatting, cfi) => {
     a { color: ${palette.link}; }
     p { ${paragraph} }
     ::highlight(bookorbit-recorded), ::highlight(bookorbit-speech) { background-color: Highlight; color: HighlightText; }
+    ::highlight(bookorbit-annotations) { background-color: Mark; color: MarkText; }
   `;
   if (renderer.setStyles) renderer.setStyles(currentStyles);
   else for (const { doc } of renderer.getContents()) applyDocumentStyles(doc);
@@ -346,6 +437,8 @@ window.epubSearchCancel = () => {
   searchState = null;
 };
 window.epubClose = () => {
+  passageAnnotations = [];
+  annotationWriting = false;
   closed = true;
   window.epubSearchCancel();
   clearCustomFonts();
