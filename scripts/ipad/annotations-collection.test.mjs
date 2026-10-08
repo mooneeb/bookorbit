@@ -247,6 +247,8 @@ test("IPAD-E02-A03-collection: all PDF note windows remain reachable beyond one 
     }),
   );
   expect(canonical.total).toBeGreaterThan(1100);
+  const initialFixture = canonical.items.find((item) => item.note === `${prefix} PDF 0000`);
+  expect(initialFixture).toBeTruthy();
   await signIn(page);
   await page.goto("/book/1");
   const resumed = page.waitForResponse(
@@ -259,7 +261,15 @@ test("IPAD-E02-A03-collection: all PDF note windows remain reachable beyond one 
   await expect(page.getByRole("spinbutton", { name: "Current page", exact: true })).toHaveValue("1");
   await page.getByRole("tab", { name: "Notes", exact: true }).click();
   const sidebar = page.getByRole("tabpanel", { name: "Notes", exact: true });
-  await expect(page.getByText("Collection PDF note 0000", { exact: true })).toBeVisible();
+  const noteRow = (item) => sidebar.getByTestId("pdf-notes-list").getByRole("button", { name: `${item.text} ${item.note}`, exact: true });
+  const expectNoteRow = async (item) => {
+    const row = noteRow(item);
+    await expect(row).toHaveCount(1);
+    await expect(row).toBeVisible();
+    await expect(row.getByText(item.text, { exact: true })).toBeVisible();
+    await expect(row.getByText(item.note, { exact: true })).toBeVisible();
+  };
+  await expectNoteRow(initialFixture);
   await expect(sidebar.getByRole("button", { name: "Next page", exact: true })).toBeVisible();
   await visibleYellow(page);
   await captureAnnotationVisual(page, info, "collection-initial-hundred-row-window");
@@ -273,8 +283,9 @@ test("IPAD-E02-A03-collection: all PDF note windows remain reachable beyond one 
     expect(window.items.length).toBeLessThanOrEqual(100);
     const firstFixture = window.items.find((item) => item.note?.startsWith(prefix));
     expect(firstFixture).toBeTruthy();
-    await expect(sidebar.getByText(firstFixture.text, { exact: true })).toBeVisible();
-    if (number > 1) await expect(sidebar.getByText("Collection PDF note 0000", { exact: true })).toHaveCount(0);
+    expect(window.items.filter((item) => item.id === firstFixture.id)).toHaveLength(1);
+    await expectNoteRow(firstFixture);
+    if (number > 1) await expect(noteRow(initialFixture)).not.toBeVisible();
     await expect(page.getByRole("spinbutton", { name: "Current page", exact: true })).toHaveValue("1");
   };
   for (let number = 2; number <= 11; number++) await moveWindow("Next", number);
@@ -282,7 +293,7 @@ test("IPAD-E02-A03-collection: all PDF note windows remain reachable beyond one 
   await visibleYellow(page);
   await captureAnnotationVisual(page, info, "collection-eleventh-window-preserves-active-page");
   for (let number = 10; number >= 1; number--) await moveWindow("Previous", number);
-  await expect(sidebar.getByText("Collection PDF note 0000", { exact: true })).toBeVisible();
+  await expectNoteRow(initialFixture);
   await visibleYellow(page);
 
   const remoteRect = { x: 520, y: 140, width: 50, height: 20 };
@@ -316,7 +327,7 @@ test("IPAD-E02-A03-collection: all PDF note windows remain reachable beyond one 
   await captureAnnotationVisual(page, info, "collection-remote-addition-visible-on-active-page");
   for (let number = 2; number <= 11; number++) await moveWindow("Next", number);
   for (let number = 10; number >= 1; number--) await moveWindow("Previous", number);
-  await expect(sidebar.getByText("Collection PDF note 0000", { exact: true })).toBeVisible();
+  await expectNoteRow(initialFixture);
   await visibleYellow(page);
 });
 
