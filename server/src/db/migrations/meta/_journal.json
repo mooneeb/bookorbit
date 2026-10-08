@@ -743,6 +743,13 @@
       "when": 1791455604504,
       "tag": "0105_epub_bookmark_navigation",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1791474800707,
+      "tag": "0106_merge_upstream_schema",
+      "breakpoints": true
     }
   ]
 }

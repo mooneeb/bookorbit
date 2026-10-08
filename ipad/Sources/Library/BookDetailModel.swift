@@ -178,17 +178,17 @@ final class BookDetailModel {
     var savedMedia: [CoverMedium] = []
     do {
       var metadata = BookMetadataUpdatePayload(
-        title: update(draft.title, original: book.title),
-        subtitle: update(draft.subtitle, original: book.subtitle),
-        description: update(draft.description, original: book.description),
         publisher: update(draft.publisher, original: book.publisher),
-        publishedYear: updateNumber(draft.publishedYear, original: book.publishedYear),
         language: update(draft.language, original: book.language),
         pageCount: updateNumber(draft.pageCount, original: book.pageCount),
-        isbn13: update(draft.isbn13, original: book.isbn13),
-        isbn10: update(draft.isbn10, original: book.isbn10),
         genres: updateNames(draft.genres, original: book.genres),
         tags: updateNames(draft.tags, original: book.tags),
+        description: update(draft.description, original: book.description),
+        title: update(draft.title, original: book.title),
+        subtitle: update(draft.subtitle, original: book.subtitle),
+        publishedYear: updateNumber(draft.publishedYear, original: book.publishedYear),
+        isbn13: update(draft.isbn13, original: book.isbn13),
+        isbn10: update(draft.isbn10, original: book.isbn10),
         publishedDate: update(draft.publishedDate, original: book.publishedDate),
         authors: updateNames(draft.authors, original: book.authors.map(\.name)),
         customMetadata: draft.customUpdates.isEmpty ? nil : draft.customUpdates)

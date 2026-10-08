@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { Permission } from '@bookorbit/types';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -11,6 +11,7 @@ import { EpubBookmarkPageDto } from './dto/epub-bookmark-page.dto';
 import { CreateFixedPageBookmarkDto } from './dto/create-fixed-page-bookmark.dto';
 import { EpubBookmarkNavigationDto } from './dto/epub-bookmark-navigation.dto';
 import { EpubBookmarkNavigationService } from './epub-bookmark-navigation.service';
+import { UpdateBookmarkDto } from './dto/update-bookmark.dto';
 
 @Controller('books/:bookId/bookmarks')
 export class BookmarkController {
@@ -52,6 +53,17 @@ export class BookmarkController {
   @RequirePermission(Permission.LibraryDownload)
   createFixedPageBookmark(@Param('bookId', ParseIntPipe) bookId: number, @Body() dto: CreateFixedPageBookmarkDto, @CurrentUser() user: RequestUser) {
     return this.bookmarkService.createFixedPageBookmark(bookId, user, dto);
+  }
+
+  @Patch(':bookmarkId')
+  @RequirePermission(Permission.LibraryDownload)
+  updateBookmark(
+    @Param('bookId', ParseIntPipe) bookId: number,
+    @Param('bookmarkId', ParseIntPipe) bookmarkId: number,
+    @Body() dto: UpdateBookmarkDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.bookmarkService.updateBookmark(bookId, bookmarkId, user, dto);
   }
 
   @Delete(':bookmarkId')

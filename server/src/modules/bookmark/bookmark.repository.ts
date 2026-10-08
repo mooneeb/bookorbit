@@ -119,6 +119,11 @@ export class BookmarkRepository {
         fileId: bookmarks.fileId,
         pageNumber: bookmarks.pageNumber,
         createdAt: bookmarks.createdAt,
+        updatedAt: bookmarks.updatedAt,
+        note: bookmarks.note,
+        clientId: bookmarks.clientId,
+        origin: bookmarks.origin,
+        chapterId: bookmarks.chapterId,
         chapterTitle: title,
         contextPercentage: percentage,
       })
@@ -178,6 +183,11 @@ export class BookmarkRepository {
         fileId: bookmarks.fileId,
         pageNumber: bookmarks.pageNumber,
         createdAt: bookmarks.createdAt,
+        updatedAt: bookmarks.updatedAt,
+        note: bookmarks.note,
+        clientId: bookmarks.clientId,
+        origin: bookmarks.origin,
+        chapterId: bookmarks.chapterId,
       })
       .from(bookmarks)
       .where(
@@ -298,6 +308,30 @@ export class BookmarkRepository {
     return row ?? null;
   }
 
+  /** A live, located (CFI) bookmark the user owns; the same rows the web list and delete see. */
+  async findLive(bookId: number, bookmarkId: number, userId: number): Promise<BookmarkRow | null> {
+    const [row] = await this.db
+      .select()
+      .from(bookmarks)
+      .where(and(...this.liveConditions(bookId, bookmarkId, userId)))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async update(
+    bookId: number,
+    bookmarkId: number,
+    userId: number,
+    values: Partial<Pick<NewBookmark, 'title' | 'note'>>,
+  ): Promise<BookmarkRow | null> {
+    const [row] = await this.db
+      .update(bookmarks)
+      .set({ ...values, updatedAt: new Date() })
+      .where(and(...this.liveConditions(bookId, bookmarkId, userId)))
+      .returning();
+    return row ?? null;
+  }
+
   /** Soft delete: devices still holding the bookmark learn about it on their next exchange. */
   async softDelete(bookId: number, bookmarkId: number, userId: number) {
     const result = await this.db
@@ -306,6 +340,16 @@ export class BookmarkRepository {
       .where(and(eq(bookmarks.id, bookmarkId), eq(bookmarks.bookId, bookId), eq(bookmarks.userId, userId), isNull(bookmarks.deletedAt)))
       .returning({ id: bookmarks.id });
     return result.length > 0;
+  }
+
+  private liveConditions(bookId: number, bookmarkId: number, userId: number) {
+    return [
+      eq(bookmarks.id, bookmarkId),
+      eq(bookmarks.bookId, bookId),
+      eq(bookmarks.userId, userId),
+      isNotNull(bookmarks.cfi),
+      isNull(bookmarks.deletedAt),
+    ];
   }
 
   // Sync-facing operations. The bookmarks table stays owned here; the KOReader

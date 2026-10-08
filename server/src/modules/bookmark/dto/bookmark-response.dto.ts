@@ -10,6 +10,11 @@ export class BookmarkResponseDto implements BookmarkResponse {
   fileId!: number | null;
   pageNumber!: number | null;
   createdAt!: string;
+  note!: string | null;
+  updatedAt!: string;
+  clientId!: string;
+  origin!: string;
+  chapterId!: string | null;
 
   static from(row: Pick<BookmarkRow, keyof BookmarkResponse>): BookmarkResponseDto {
     const dto = new BookmarkResponseDto();
@@ -21,6 +26,11 @@ export class BookmarkResponseDto implements BookmarkResponse {
     dto.fileId = row.fileId ?? null;
     dto.pageNumber = row.pageNumber ?? null;
     dto.createdAt = row.createdAt.toISOString();
+    dto.note = row.note ?? null;
+    dto.updatedAt = row.updatedAt.toISOString();
+    dto.clientId = row.clientId;
+    dto.origin = row.origin;
+    dto.chapterId = row.chapterId ?? null;
     return dto;
   }
 }

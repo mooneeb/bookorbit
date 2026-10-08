@@ -22,6 +22,7 @@ const ZIP_ENTRIES_MAX = 32768;
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
+  removeNSPrefix: true,
   attributeNamePrefix: '@_',
   textNodeName: '#text',
 });
@@ -105,15 +106,16 @@ export async function readEpubSpine(zip: unzipper.CentralDirectory): Promise<Epu
   return { hrefs };
 }
 
-export async function loadChapterFromZip(zip: unzipper.CentralDirectory, href: string): Promise<ChapterDocument | null> {
+export async function loadChapterFromZip(zip: unzipper.CentralDirectory, href: string, canonicalKepub = false): Promise<ChapterDocument | null> {
   const entry = findInZip(zip.files, href);
   if (!entry || entry.uncompressedSize > ENTRY_BYTES_MAX) return null;
   const xhtml = (await readBoundedEpubEntry(entry)).toString('utf-8');
-  return parseChapterDocument(xhtml);
+  return parseChapterDocument(xhtml, canonicalKepub);
 }
 
 interface SpineCacheEntry {
   absolutePath: string;
+  format: string;
   mtimeMs: number;
   spine: EpubSpine;
 }
@@ -142,7 +144,7 @@ export class EpubDomService {
     const href = entry.spine.hrefs[chapterIndex];
     if (href == null) return null;
 
-    const cacheKey = `${bookFileId}:${entry.mtimeMs}:${chapterIndex}`;
+    const cacheKey = `${bookFileId}:${entry.format}:${entry.mtimeMs}:${chapterIndex}`;
     const cached = this.chapterCache.get(cacheKey);
     if (cached) {
       this.chapterCache.delete(cacheKey);
@@ -152,7 +154,7 @@ export class EpubDomService {
 
     try {
       const zip = await openBoundedEpubArchive(entry.absolutePath);
-      const doc = await loadChapterFromZip(zip, href);
+      const doc = await loadChapterFromZip(zip, href, entry.format === 'kepub');
       if (!doc) return null;
       this.chapterCache.set(cacheKey, doc);
       while (this.chapterCache.size > CHAPTER_CACHE_MAX) {
@@ -172,7 +174,7 @@ export class EpubDomService {
       .from(bookFiles)
       .where(eq(bookFiles.id, bookFileId))
       .limit(1);
-    if (!file || file.format !== 'epub') return null;
+    if (!file || (file.format !== 'epub' && file.format !== 'kepub')) return null;
 
     let mtimeMs: number;
     try {
@@ -183,12 +185,12 @@ export class EpubDomService {
     }
 
     const cached = this.spineCache.get(bookFileId);
-    if (cached && cached.absolutePath === file.absolutePath && cached.mtimeMs === mtimeMs) return cached;
+    if (cached && cached.absolutePath === file.absolutePath && cached.format === file.format && cached.mtimeMs === mtimeMs) return cached;
 
     try {
       const zip = await openBoundedEpubArchive(file.absolutePath);
       const spine = await readEpubSpine(zip);
-      const entry: SpineCacheEntry = { absolutePath: file.absolutePath, mtimeMs, spine };
+      const entry: SpineCacheEntry = { absolutePath: file.absolutePath, format: file.format, mtimeMs, spine };
       this.spineCache.set(bookFileId, entry);
       while (this.spineCache.size > SPINE_CACHE_MAX) {
         const oldest = this.spineCache.keys().next().value as number;

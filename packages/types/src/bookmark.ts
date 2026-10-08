@@ -7,6 +7,11 @@ export interface BookmarkResponse {
   fileId: number | null;
   pageNumber: number | null;
   createdAt: string;
+  note: string | null;
+  updatedAt: string;
+  clientId: string;
+  origin: string;
+  chapterId: string | null;
 }
 
 export interface BookmarksPage {
