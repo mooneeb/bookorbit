@@ -96,6 +96,13 @@ const xmlParser = new XMLParser({
   textNodeName: '#text',
 });
 
+const opfParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '@_',
+  textNodeName: '#text',
+  removeNSPrefix: true,
+});
+
 function toArray<T>(v: T | T[] | undefined | null): T[] {
   if (v == null) return [];
   return Array.isArray(v) ? v : [v];
@@ -221,7 +228,7 @@ async function parseEpub(epubPath: string): Promise<EpubBookInfo> {
 
   const opfEntry = findInZip(zip.files, opfPath);
   if (!opfEntry) throw new Error(`OPF not found: ${opfPath}`);
-  const opfDoc = xmlParser.parse(await opfEntry.buffer()) as Record<string, unknown>;
+  const opfDoc = opfParser.parse(await opfEntry.buffer()) as Record<string, unknown>;
   const pkg = (opfDoc['package'] ?? opfDoc) as Record<string, unknown>;
   const manifestEl = pkg['manifest'] as Record<string, unknown> | undefined;
   const spineEl = pkg['spine'] as Record<string, unknown> | undefined;
@@ -258,12 +265,12 @@ async function parseEpub(epubPath: string): Promise<EpubBookInfo> {
 
   const metadata: Record<string, unknown> = {};
   if (metadataEl) {
-    const title = getText(metadataEl['dc:title']);
-    const creator = getText(toArray(metadataEl['dc:creator'])[0]);
-    const language = getText(metadataEl['dc:language']);
-    const publisher = getText(metadataEl['dc:publisher']);
-    const description = getText(metadataEl['dc:description']);
-    const identifier = getText(toArray(metadataEl['dc:identifier'])[0]);
+    const title = getText(metadataEl['title']);
+    const creator = getText(toArray(metadataEl['creator'])[0]);
+    const language = getText(metadataEl['language']);
+    const publisher = getText(metadataEl['publisher']);
+    const description = getText(metadataEl['description']);
+    const identifier = getText(toArray(metadataEl['identifier'])[0]);
     if (title) metadata.title = title;
     if (creator) metadata.creator = creator;
     if (language) metadata.language = language;
