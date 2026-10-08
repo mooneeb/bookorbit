@@ -1014,33 +1014,49 @@ final class AnnotationJourneyTests: XCTestCase {
 
   @MainActor
   private func selectA07Chapter(second: Bool, app: XCUIApplication) {
-    let tools = app.buttons["epubReaderTools"]
-    for _ in 0..<3 {
-      XCTAssertTrue(tools.wait(for: \.isHittable, toEqual: true, timeout: 20))
-      tools.tap()
-      let previous = app.buttons["epubPreviousSection"]
-      XCTAssertTrue(previous.waitForExistence(timeout: 10))
-      if !previous.isEnabled {
-        if second {
-          let next = app.buttons["epubNextSection"]
-          XCTAssertTrue(next.wait(for: \.isHittable, toEqual: true, timeout: 10))
-          XCTAssertTrue(next.isEnabled)
-          next.tap()
-        } else {
-          XCTAssertTrue(tools.isHittable, "Dismiss the native Reader tools menu visibly")
-          tools.tap()
-        }
-        XCTAssertTrue(tools.wait(for: \.isEnabled, toEqual: true, timeout: 20))
-        XCTAssertTrue(
-          app.buttons["epubFixtureSelectPassage"].wait(
-            for: \.isHittable, toEqual: true, timeout: 20))
-        return
-      }
-      XCTAssertTrue(previous.isHittable)
-      previous.tap()
-      XCTAssertTrue(tools.wait(for: \.isEnabled, toEqual: true, timeout: 20))
+    let tools = app.descendants(matching: .any).matching(identifier: "epubReaderTools")
+    let previous = app.descendants(matching: .any).matching(identifier: "epubPreviousSection")
+    let next = app.descendants(matching: .any).matching(identifier: "epubNextSection")
+    let firstChapter = app.webViews.staticTexts.matching(
+      NSPredicate(format: "label == %@", "First chapter ends here."))
+    let secondChapter = app.webViews.staticTexts.matching(
+      NSPredicate(format: "label == %@", "Second chapter begins here."))
+    XCTAssertTrue(tools.element.wait(for: \.isHittable, toEqual: true, timeout: 20))
+    XCTAssertEqual(tools.count, 1)
+    XCTAssertTrue(tools.element.wait(for: \.isEnabled, toEqual: true, timeout: 20))
+    tools.element.tap()
+    XCTAssertTrue(previous.element.waitForExistence(timeout: 10))
+    XCTAssertEqual(previous.count, 1)
+    XCTAssertTrue(previous.element.isHittable)
+    if previous.element.isEnabled {
+      previous.element.tap()
+      XCTAssertTrue(previous.element.wait(for: \.isHittable, toEqual: false, timeout: 10))
+      XCTAssertTrue(firstChapter.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+      XCTAssertEqual(firstChapter.count, 1)
+      XCTAssertTrue(tools.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
+      XCTAssertTrue(tools.element.wait(for: \.isEnabled, toEqual: true, timeout: 20))
+      tools.element.tap()
+      XCTAssertTrue(previous.element.waitForExistence(timeout: 10))
+      XCTAssertEqual(previous.count, 1)
     }
-    XCTFail("The two-chapter A07 fixture could not reach its first chapter")
+    XCTAssertFalse(previous.element.isEnabled, "The fixture has two chapters; begin from the first")
+    if second {
+      XCTAssertTrue(next.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
+      XCTAssertEqual(next.count, 1)
+      XCTAssertTrue(next.element.isEnabled)
+      next.element.tap()
+      XCTAssertTrue(next.element.wait(for: \.isHittable, toEqual: false, timeout: 10))
+      XCTAssertTrue(secondChapter.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+      XCTAssertEqual(secondChapter.count, 1)
+    } else {
+      XCTAssertTrue(tools.element.isHittable, "Dismiss the native Reader tools menu visibly")
+      tools.element.tap()
+      XCTAssertTrue(previous.element.wait(for: \.isHittable, toEqual: false, timeout: 10))
+      XCTAssertTrue(firstChapter.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+      XCTAssertEqual(firstChapter.count, 1)
+    }
+    XCTAssertTrue(
+      app.buttons["epubFixtureSelectPassage"].wait(for: \.isHittable, toEqual: true, timeout: 20))
   }
 
   @MainActor
