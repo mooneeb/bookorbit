@@ -4,6 +4,9 @@ struct OrganizationDirectoryView: View {
   let libraries: [Library]
   let canEditMetadata: Bool
   let canRead: Bool
+  let seriesCollapse: SeriesCollapsePreferenceModel?
+  let canDeleteBooks: Bool
+  let userID: Int
   @Environment(\.dismiss) private var dismiss
   @State private var model: OrganizationDirectoryModel
   @State private var selection: OrganizationSelection?
@@ -12,11 +15,15 @@ struct OrganizationDirectoryView: View {
 
   init(
     api: BookOrbitAPI, kind: OrganizationKind, libraries: [Library], canEditMetadata: Bool,
-    canRead: Bool
+    canRead: Bool, seriesCollapse: SeriesCollapsePreferenceModel? = nil,
+    canDeleteBooks: Bool = false, userID: Int = 0
   ) {
     self.libraries = libraries
     self.canEditMetadata = canEditMetadata
     self.canRead = canRead
+    self.seriesCollapse = seriesCollapse
+    self.canDeleteBooks = canDeleteBooks
+    self.userID = userID
     _model = State(initialValue: OrganizationDirectoryModel(api: api, kind: kind))
   }
 
@@ -127,7 +134,8 @@ struct OrganizationDirectoryView: View {
       .navigationDestination(item: $selection) { selected in
         OrganizationDetailView(
           api: model.api, kind: model.kind, selection: selected,
-          libraryID: model.filters.libraryID, canEditMetadata: canEditMetadata, canRead: canRead)
+          libraryID: model.filters.libraryID, canEditMetadata: canEditMetadata, canRead: canRead,
+          seriesCollapse: seriesCollapse, canDeleteBooks: canDeleteBooks, userID: userID)
       }
       .onChange(of: model.sort) { Task { await model.load() } }
       .onChange(of: model.descending) { Task { await model.load() } }

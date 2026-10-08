@@ -11,6 +11,8 @@ enum BookTableAction {
   case editMetadata(book: BookCard)
   case refreshMetadata(book: BookCard)
   case collections(book: BookCard)
+  case delete(book: BookCard)
+  case move(book: BookCard)
   case authors(name: String)
   case series(id: Int, name: String)
   case quickFilter(rule: Rule)
@@ -24,9 +26,12 @@ enum BookTableAction {
   let customFields: [CustomMetadataFieldSummary]
   let canEditMetadata: Bool
   let canRead: Bool
+  var canDeleteBooks = false
   var isBusy = false
   var sort = "title"
   var descending = false
+  var openSeriesGroup: @MainActor (BookCard) -> Void = { _ in }
+  var openSeriesBook: @MainActor (Int) -> Void = { _ in }
   let action: @MainActor (BookTableAction) -> Void
 
   func makeHeader(column: String) -> UIView {
@@ -68,6 +73,11 @@ enum BookTableAction {
   }
 
   func makeCell(book: BookCard, column: String) -> UIView {
+    if book.collapsedSeries != nil {
+      return BookTableSeriesGroupPresentation.makeCell(
+        api: api, book: book, column: column, isBusy: isBusy,
+        openSeries: { openSeriesGroup(book) }, openBook: openSeriesBook)
+    }
     let title = book.title ?? "Untitled book"
     if column == "cover" {
       return BookTableCoverButton(api: api, book: book) { action(.cover(book: book)) }
@@ -188,6 +198,10 @@ enum BookTableAction {
   }
 
   func makeMenu(book: BookCard) -> UIMenu {
+    if book.collapsedSeries != nil {
+      return BookTableSeriesGroupPresentation.makeMenu(
+        book: book, isBusy: isBusy, openSeries: { openSeriesGroup(book) }, openBook: openSeriesBook)
+    }
     var children: [UIMenuElement] = [
       menuAction("Quick view", image: "book") { action(.quickView(book: book)) },
       menuAction("Book details", image: "info.circle") { action(.details(book: book)) },
@@ -209,12 +223,27 @@ enum BookTableAction {
         menuAction("Refresh metadata", image: "arrow.clockwise") {
           action(.refreshMetadata(book: book))
         },
+        menuAction("Move to library", image: "folder") { action(.move(book: book)) },
       ])
+    }
+    if canDeleteBooks {
+      let deletion = UIAction(
+        title: "Delete book", image: UIImage(systemName: "trash"),
+        attributes: isBusy ? [.destructive, .disabled] : .destructive
+      ) { _ in action(.delete(book: book)) }
+      children.append(deletion)
     }
     return UIMenu(title: book.title ?? "Untitled book", children: children)
   }
 
   func fittingWidth(book: BookCard, column: String) -> CGFloat {
+    if book.collapsedSeries != nil {
+      return max(
+        CGFloat(
+          BookTableColumnSchema.definition(id: column, customFields: customFields)?.minimumWidth
+            ?? 44),
+        BookTableSeriesGroupPresentation.fittingWidth(book: book, column: column))
+    }
     guard let definition = BookTableColumnSchema.definition(id: column, customFields: customFields)
     else { return 160 }
     if ["cover", "read", "actions", "lockRow"].contains(column) {

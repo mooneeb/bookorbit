@@ -3,29 +3,40 @@ import SwiftUI
 struct OrganizationDetailView: View {
   let canEditMetadata: Bool
   let canRead: Bool
+  let canDeleteBooks: Bool
+  let userID: Int
   @State private var model: OrganizationDetailModel
   @State private var selectedBook: OrganizationSelection?
+  @State private var selectedSeries: SeriesGroupSelection?
 
   init(
     api: BookOrbitAPI, kind: OrganizationKind, selection: OrganizationSelection,
-    libraryID: Int?, canEditMetadata: Bool, canRead: Bool
+    libraryID: Int?, canEditMetadata: Bool, canRead: Bool,
+    seriesCollapse: SeriesCollapsePreferenceModel? = nil, canDeleteBooks: Bool = false,
+    userID: Int = 0
   ) {
     self.canEditMetadata = canEditMetadata
     self.canRead = canRead
+    self.canDeleteBooks = canDeleteBooks
+    self.userID = userID
     _model = State(
       initialValue: OrganizationDetailModel(
-        api: api, kind: kind, selection: selection, libraryID: libraryID))
+        api: api, kind: kind, selection: selection, libraryID: libraryID,
+        seriesCollapse: seriesCollapse))
   }
 
   var body: some View {
     VStack(spacing: 0) {
+      if model.kind == .authors {
+        SeriesCollapseControls(model: model.seriesCollapse, scope: .authors)
+      }
       if let error = model.error {
         ContentUnavailableView {
           Label("Could not load books", systemImage: "wifi.exclamationmark")
         } description: {
           Text(error)
         } actions: {
-          Button("Try again") { Task { await model.load() } }
+          Button("Try again") { Task { await model.refreshBooks() } }
         }
       } else {
         List {
@@ -63,26 +74,31 @@ struct OrganizationDetailView: View {
           }
           Section("Books") {
             ForEach(model.books) { book in
-              Button {
-                selectedBook = OrganizationSelection(
-                  id: book.id, name: book.title ?? "Untitled book")
-              } label: {
-                VStack(alignment: .leading, spacing: 6) {
-                  Text(book.title ?? "Untitled book").font(.headline)
-                  Text(book.authors.joined(separator: ", ")).font(.subheadline)
-                  Text(
-                    book.files.map { $0.format?.uppercased() ?? "Unknown format" }.joined(
-                      separator: ", ")
-                  )
-                  .font(.subheadline)
+              if book.collapsedSeries != nil {
+                SeriesGroupRow(
+                  api: model.api, book: book, openSeries: openSeries, openBook: openBook)
+              } else {
+                Button {
+                  selectedBook = OrganizationSelection(
+                    id: book.id, name: book.title ?? "Untitled book")
+                } label: {
+                  VStack(alignment: .leading, spacing: 6) {
+                    Text(book.title ?? "Untitled book").font(.headline)
+                    Text(book.authors.joined(separator: ", ")).font(.subheadline)
+                    Text(
+                      book.files.map { $0.format?.uppercased() ?? "Unknown format" }.joined(
+                        separator: ", ")
+                    )
+                    .font(.subheadline)
+                  }
+                  .foregroundStyle(Color(uiColor: .label))
+                  .padding(.vertical, 8)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .contentShape(Rectangle())
                 }
-                .foregroundStyle(Color(uiColor: .label))
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("organizationBook\(book.id)")
               }
-              .buttonStyle(.plain)
-              .accessibilityIdentifier("organizationBook\(book.id)")
             }
             if model.books.isEmpty && !model.isBusy { Text("No accessible books") }
           }
@@ -119,12 +135,34 @@ struct OrganizationDetailView: View {
     .navigationTitle(model.selection.name)
     .onChange(of: model.sort) { Task { await model.load() } }
     .onChange(of: model.descending) { Task { await model.load() } }
+    .onChange(of: model.collapseSeries) { Task { await model.seriesCollapseChanged() } }
     .task { await model.load() }
     .sheet(
-      item: $selectedBook, onDismiss: { Task { await model.load() } },
+      item: $selectedBook, onDismiss: { Task { await model.refreshAfterBookMutation() } },
       content: { book in
         BookDetailView(
-          api: model.api, bookID: book.id, canEditMetadata: canEditMetadata, canRead: canRead)
+          api: model.api, bookID: book.id, canEditMetadata: canEditMetadata, canRead: canRead,
+          canDeleteBooks: canDeleteBooks, userID: userID,
+          bookUnavailable: { bookID, _ in
+            model.discardUnavailableBook(bookID)
+            if selectedBook?.id == bookID { selectedBook = nil }
+          })
+      }
+    )
+    .sheet(
+      item: $selectedSeries, onDismiss: { Task { await model.refreshAfterBookMutation() } },
+      content: { group in
+        SeriesGroupContentsView(
+          api: model.api, group: group, canEditMetadata: canEditMetadata, canRead: canRead,
+          seriesCollapse: model.seriesCollapse, canDeleteBooks: canDeleteBooks, userID: userID)
       })
+  }
+
+  private func openSeries(_ book: BookCard) {
+    selectedSeries = SeriesGroupSelection(book: book, libraryID: model.libraryID)
+  }
+
+  private func openBook(_ id: Int) {
+    selectedBook = OrganizationSelection(id: id, name: "Book")
   }
 }

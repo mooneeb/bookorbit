@@ -13,9 +13,13 @@ struct PasswordRecoveryView: View {
   var body: some View {
     NavigationStack {
       Form {
-        Section("Server") {
+        Section {
           Text(model.profile.url.absoluteString)
             .font(.body).fixedSize(horizontal: false, vertical: true)
+        } header: {
+          Text("Server")
+            .font(.headline).foregroundStyle(Color.primary)
+            .fixedSize(horizontal: false, vertical: true)
         }
         if model.requestAccepted {
           Section {
@@ -63,11 +67,23 @@ struct PasswordRecoveryView: View {
         }
       }
       .navigationTitle("Forgot password")
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Return to sign in", action: returnToSignIn)
-            .accessibilityIdentifier("returnToSignIn")
+      .safeAreaInset(edge: .top) {
+        HStack {
+          Button(action: returnToSignIn) {
+            Text("Return to sign in")
+              .font(.body)
+              .fixedSize(horizontal: false, vertical: true)
+              .padding(.horizontal, 16)
+              .frame(minWidth: 44, minHeight: 44)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .foregroundStyle(Color(uiColor: .label))
+          .accessibilityIdentifier("returnToSignIn")
+          Spacer()
         }
+        .padding(.horizontal)
+        .background(Color(uiColor: .systemBackground))
       }
     }
     .onDisappear(perform: model.close)

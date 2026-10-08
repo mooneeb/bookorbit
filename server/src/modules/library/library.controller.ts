@@ -12,6 +12,7 @@ import type { RequestUser } from '../../common/types/request-user';
 import { BookQueryPipe, JumpBucketsQueryPipe } from '../book/pipes/book-query.pipe';
 import { BookService } from '../book/book.service';
 import { BulkRenameExecuteDto } from './dto/bulk-rename-execute.dto';
+import { BookMoveDestinationsQueryDto, BookMoveFoldersQueryDto } from './dto/book-move-destinations-query.dto';
 import { BulkRenamePreviewQueryDto } from './dto/bulk-rename-preview-query.dto';
 import { CreateLibraryDto } from './dto/create-library.dto';
 import { GrantLibraryAccessDto } from './dto/grant-library-access.dto';
@@ -35,6 +36,20 @@ export class LibraryController {
   @Get()
   findAll(@CurrentUser() user: RequestUser) {
     return this.libraryService.findAll(user);
+  }
+
+  @Get('move-destinations')
+  @RequirePermission(Permission.LibraryEditMetadata)
+  moveDestinations(@Query() query: BookMoveDestinationsQueryDto, @CurrentUser() user: RequestUser) {
+    return this.libraryService.findMoveDestinations(query, user);
+  }
+
+  @Get(':id/move-folders')
+  @RequirePermission(Permission.LibraryEditMetadata)
+  @RequireLibraryAccess('editor')
+  @RequireLibraryType('books')
+  moveFolders(@Param('id', ParseIntPipe) id: number, @Query() query: BookMoveFoldersQueryDto, @CurrentUser() user: RequestUser) {
+    return this.libraryService.findMoveFolders(id, query, user);
   }
 
   /**

@@ -27,13 +27,19 @@ final class BookTableInteractionModel {
   var quickBook: BookCard?
   var destination: BookTableDestination?
   var organization: BookTableOrganizationDestination?
+  var deletion: BookDeletionModel?
+  var movement: BookMoveModel?
   private(set) var isBusy = false
   private(set) var error: String?
   private(set) var message: String?
   private var retryAction: BookTableAction?
   private var refreshPending = false
+  private var refreshSession: UUID?
+  private var refreshFailureMessage =
+    "Changes saved. The table could not be reloaded. Retry to reload it."
   private var pendingCoverEditor: BookTableDestination?
   private var pendingBookDetails: Int?
+  private var moveRefresh: (bookID: Int, session: UUID)?
 
   init(library: LibraryModel) { self.library = library }
 
@@ -65,6 +71,16 @@ final class BookTableInteractionModel {
       guard canEdit else { return }
       Task { await mutate(action, book: book) }
     case .collections(let book): collectionBook = book
+    case .delete(let book):
+      guard user.hasPermission(.libraryDeleteBooks), !library.isBusy, book.collapsedSeries == nil,
+        library.books.contains(where: { $0.id == book.id && $0.collapsedSeries == nil })
+      else { return }
+      deletion = BookDeletionModel(api: library.api, bookID: book.id, userID: user.id)
+    case .move(let book):
+      guard canEdit, !library.isBusy, book.collapsedSeries == nil,
+        library.books.contains(where: { $0.id == book.id && $0.collapsedSeries == nil })
+      else { return }
+      movement = BookMoveModel(api: library.api, bookID: book.id, userID: user.id)
     case .authors(let name): organization = .init(kind: .authors, name: name)
     case .series(let id, let name):
       organization = .init(kind: .series, name: name, selection: .init(id: id, name: name))
@@ -103,14 +119,59 @@ final class BookTableInteractionModel {
   }
 
   func retry(user: AuthUser?, select: (Int) -> Void) {
-    if refreshPending {
-      Task { await refresh() }
+    if moveRefresh != nil {
+      Task { await refreshMove() }
+    } else if refreshPending {
+      Task { await refresh(failureMessage: refreshFailureMessage, session: refreshSession) }
     } else if let retryAction {
       handle(retryAction, user: user, select: select)
     }
   }
 
   func didSaveCell() { Task { await refresh() } }
+  func moveSessionChanged() {
+    movement?.detach()
+    movement = nil
+    moveRefresh = nil
+    refreshPending = false
+    refreshSession = nil
+    message = nil
+    error = nil
+  }
+  func moveClosed(_ movement: BookMoveModel) {
+    guard movement.needsStatusRefresh, let session = movement.session else { return }
+    let result =
+      movement.message ?? "The move is unconfirmed. Reload this book to check its current library."
+    Task {
+      guard await movement.belongsToCurrentSession() else { return }
+      editor = nil
+      cover = nil
+      collectionBook = nil
+      quickBook = nil
+      destination = nil
+      pendingBookDetails = nil
+      pendingCoverEditor = nil
+      retryAction = nil
+      message = result
+      moveRefresh = (movement.bookID, session)
+      await refreshMove()
+    }
+  }
+
+  private func refreshMove() async {
+    guard let moveRefresh, !isBusy else { return }
+    isBusy = true
+    defer { isBusy = false }
+    await library.refreshAfterMove(bookID: moveRefresh.bookID, session: moveRefresh.session)
+    if let failure = library.error {
+      error =
+        "\(message ?? "The move is unconfirmed.") The table could not be reloaded. Retry only reloads the current page. \(failure)"
+    } else {
+      self.moveRefresh = nil
+      error = nil
+      refreshPending = false
+    }
+  }
   func destinationClosed() { Task { await refresh() } }
   func editCovers(bookID: Int) {
     pendingCoverEditor = .init(bookID: bookID, kind: .coverEditor)
@@ -137,6 +198,38 @@ final class BookTableInteractionModel {
     Task {
       await library.collections.refresh()
       await refresh()
+    }
+  }
+
+  func didResolveDeletion(bookID: Int, outcome: BookDeletionOutcome) {
+    library.discardUnavailableBook(bookID)
+    if editor?.book.id == bookID { editor = nil }
+    if cover?.id == bookID { cover = nil }
+    if collectionBook?.id == bookID { collectionBook = nil }
+    if quickBook?.id == bookID { quickBook = nil }
+    if destination?.bookID == bookID { destination = nil }
+    if pendingCoverEditor?.bookID == bookID { pendingCoverEditor = nil }
+    if pendingBookDetails == bookID { pendingBookDetails = nil }
+    switch retryAction {
+    case .toggleLock(let book, _), .toggleAllLocks(let book), .refreshMetadata(let book):
+      if book.id == bookID { retryAction = nil }
+    default: break
+    }
+    message = outcome.message
+    deletion = nil
+  }
+
+  func deletionClosed(_ deletion: BookDeletionModel) {
+    guard deletion.didAttemptDeletion || deletion.outcome != nil else { return }
+    Task {
+      guard await deletion.belongsToCurrentSession() else { return }
+      let result =
+        deletion.outcome?.message
+        ?? "The deletion was not confirmed. Reload this book's status before trying again."
+      message = result
+      await refresh(
+        failureMessage: "\(result) The table could not be reloaded. Retry to reload it.",
+        session: deletion.session)
     }
   }
 
@@ -179,11 +272,16 @@ final class BookTableInteractionModel {
     }
   }
 
-  private func refresh() async {
-    await library.refreshAfterTableMutation()
+  private func refresh(
+    failureMessage: String = "Changes saved. The table could not be reloaded. Retry to reload it.",
+    session: UUID? = nil
+  ) async {
+    refreshFailureMessage = failureMessage
+    refreshSession = session
+    await library.refreshAfterTableMutation(session: session)
     refreshPending = library.error != nil
     if refreshPending {
-      error = "Changes saved. The table could not be reloaded. Retry to reload it."
+      error = failureMessage
     } else {
       error = nil
     }

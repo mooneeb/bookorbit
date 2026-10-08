@@ -5,7 +5,18 @@ import UIKit
 @MainActor @Observable
 final class SessionModel {
   private(set) var api: BookOrbitAPI?
-  private(set) var user: AuthUser?
+  private(set) var user: AuthUser? {
+    didSet {
+      guard let user, let api else {
+        seriesCollapse?.receive(user: nil)
+        seriesCollapse = nil
+        return
+      }
+      if seriesCollapse?.api !== api { seriesCollapse = SeriesCollapsePreferenceModel(api: api) }
+      seriesCollapse?.receive(user: user)
+    }
+  }
+  private(set) var seriesCollapse: SeriesCollapsePreferenceModel?
   private(set) var options: LoginOptionsResponse?
   private(set) var isBusy = false
   var error: String?
@@ -41,6 +52,7 @@ final class SessionModel {
       let resumedUser = try await api.resume()
       guard self.api === api, operationID == sessionOperationID else { return }
       user = resumedUser
+      await seriesCollapse?.reconcile()
     } catch {
       guard self.api === api, operationID == sessionOperationID else { return }
       switch error {

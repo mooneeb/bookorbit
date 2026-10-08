@@ -26,7 +26,15 @@ struct CredentialStore: Sendable {
     guard status == errSecSuccess, let data = result as? Data else {
       throw ConnectionError.keychain(status)
     }
-    return try JSONDecoder().decode(SavedSession.self, from: data)
+    var archiveData = data
+    if var archive = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+      var user = archive["user"] as? [String: Any], user["settings"] == nil
+    {
+      user["settings"] = [String: Any]()
+      archive["user"] = user
+      archiveData = try JSONSerialization.data(withJSONObject: archive)
+    }
+    return try JSONDecoder().decode(SavedSession.self, from: archiveData)
   }
 
   func write(_ session: SavedSession) throws {

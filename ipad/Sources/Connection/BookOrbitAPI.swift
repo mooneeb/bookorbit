@@ -155,7 +155,7 @@ actor BookOrbitAPI {
 
   func boundedJSON<T: Decodable & Sendable>(
     _ path: String, method: String = "GET", body: Data? = nil, query: [URLQueryItem] = [],
-    byteLimit: Int = 1024 * 1024, session: UUID? = nil
+    byteLimit: Int = 1024 * 1024, session: UUID? = nil, expectedStatus: Int? = nil
   ) async throws -> T {
     let generation = session ?? sessionGeneration
     try ensureSession(generation)
@@ -180,6 +180,9 @@ actor BookOrbitAPI {
     guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
     if response.statusCode == 401 { throw ConnectionError.expiredSession }
     try validate(response)
+    if let expectedStatus, response.statusCode != expectedStatus {
+      throw ConnectionError.invalidResponse
+    }
     guard response.mimeType == "application/json" else { throw ConnectionError.invalidResponse }
     guard byteLimit > 0, response.expectedContentLength <= byteLimit else {
       throw ConnectionError.responseTooLarge
@@ -200,7 +203,7 @@ actor BookOrbitAPI {
 
   func sendEmpty(
     _ path: String, method: String = "POST", body: Data? = nil, query: [URLQueryItem] = [],
-    session: UUID? = nil
+    session: UUID? = nil, expectedStatus: Int? = nil
   ) async throws {
     let generation = session ?? sessionGeneration
     try ensureSession(generation)
@@ -217,6 +220,166 @@ actor BookOrbitAPI {
       if response.statusCode == 401 { throw ConnectionError.expiredSession }
     }
     try validate(response)
+    if let expectedStatus, response.statusCode != expectedStatus {
+      throw ConnectionError.invalidResponse
+    }
+  }
+
+  func updateSeriesCollapsePreferences(
+    _ payload: UpdateSeriesCollapsePreferencesPayload, session: UUID
+  ) async throws {
+    try await sendEmpty(
+      "users/me/series-collapse-preferences", method: "PATCH",
+      body: JSONEncoder().encode(payload), session: session, expectedStatus: 204)
+  }
+
+  func seriesCollapseUser(session: UUID) async throws -> AuthUser {
+    try ensureSession(session)
+    guard let expectedUserID = saved?.user.id else { throw ConnectionError.expiredSession }
+    let user: AuthUser = try await boundedJSON("auth/me", session: session)
+    try ensureSession(session)
+    guard user.id == expectedUserID, var current = saved else {
+      throw ConnectionError.expiredSession
+    }
+    current.user = user
+    try store.write(current)
+    saved = current
+    return user
+  }
+
+  func deleteBook(_ bookID: Int, session: UUID) async throws {
+    guard bookID > 0 else { throw ConnectionError.invalidResponse }
+    try Task.checkCancellation()
+    try ensureSession(session)
+    var request = URLRequest(url: profile.endpoint("books"))
+    request.httpMethod = "DELETE"
+    request.httpBody = try JSONEncoder().encode(BookIdsSelection(bookIds: [bookID]))
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(session)
+    try Task.checkCancellation()
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(session)
+      try Task.checkCancellation()
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    try ensureSession(session)
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    guard response.statusCode == 204, response.expectedContentLength <= 0 else {
+      throw ConnectionError.invalidResponse
+    }
+    for try await _ in bytes { throw ConnectionError.invalidResponse }
+    try Task.checkCancellation()
+    try ensureSession(session)
+  }
+
+  func moveBook(
+    _ body: BookMoveExplicitExecuteRequest, session: UUID,
+    receive: @MainActor @Sendable (BookMoveBookProgress) -> Void
+  ) async throws -> BookMoveCompletionEvent {
+    guard body.selection.bookIds.count == 1, let bookID = body.selection.bookIds.first,
+      bookID > 0, body.targetLibraryId > 0, body.targetFolderId > 0,
+      ["keep_both", "merge", "skip", "suggested"].contains(body.collisionPolicy),
+      body.overrides == nil
+    else { throw ConnectionError.invalidResponse }
+    try Task.checkCancellation()
+    try ensureSession(session)
+    var request = URLRequest(url: profile.endpoint("books/move"))
+    request.httpMethod = "POST"
+    request.httpBody = try JSONEncoder().encode(body)
+    request.timeoutInterval = 600
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(session)
+    try Task.checkCancellation()
+    var delivery = try await transport.bytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(session)
+      try Task.checkCancellation()
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await transport.bytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    try ensureSession(session)
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    if [400, 403, 404, 409].contains(response.statusCode) {
+      throw BookMoveRejection.status(response.statusCode)
+    }
+    try validate(response)
+    guard response.statusCode == 200, response.mimeType == "text/event-stream" else {
+      throw ConnectionError.invalidResponse
+    }
+    var line = Data()
+    var frame = Data()
+    var received = 0
+    var progress: BookMoveBookProgress?
+    for try await byte in bytes {
+      try Task.checkCancellation()
+      try ensureSession(session)
+      received += 1
+      guard received <= 256 * 1024, line.count < 64 * 1024, frame.count < 64 * 1024 else {
+        throw ConnectionError.responseTooLarge
+      }
+      if byte != 10 {
+        line.append(byte)
+        continue
+      }
+      if line.last == 13 { line.removeLast() }
+      guard let text = String(data: line, encoding: .utf8) else {
+        throw ConnectionError.invalidResponse
+      }
+      line.removeAll(keepingCapacity: true)
+      if text.isEmpty {
+        guard !frame.isEmpty else { continue }
+        let event: BookMoveStreamEvent
+        do { event = try JSONDecoder().decode(BookMoveStreamEvent.self, from: frame) } catch {
+          throw ConnectionError.invalidResponse
+        }
+        frame.removeAll(keepingCapacity: true)
+        switch event {
+        case .book(let item):
+          guard item.bookId == bookID, progress == nil,
+            ["success", "merged", "failed", "skipped"].contains(item.status)
+          else { throw ConnectionError.invalidResponse }
+          progress = item
+          await receive(item)
+        case .completed(let result):
+          let counts = [result.succeeded, result.merged, result.failed, result.skipped]
+          guard result.done, counts.allSatisfy({ (0...1).contains($0) }),
+            result.processed == counts.reduce(0, +), result.processed <= 1,
+            result.processed == (progress == nil ? 0 : 1),
+            (progress?.status == "success") == (result.succeeded == 1),
+            (progress?.status == "merged") == (result.merged == 1),
+            (progress?.status == "failed") == (result.failed == 1),
+            (progress?.status == "skipped") == (result.skipped == 1)
+          else { throw ConnectionError.invalidResponse }
+          try Task.checkCancellation()
+          try ensureSession(session)
+          return result
+        }
+      } else if text.hasPrefix("data:") {
+        if !frame.isEmpty { frame.append(10) }
+        var value = text.dropFirst(5)
+        if value.first == " " { value = value.dropFirst() }
+        frame.append(contentsOf: value.utf8)
+      } else if !text.hasPrefix(":") {
+        throw ConnectionError.invalidResponse
+      }
+    }
+    throw ConnectionError.invalidResponse
   }
 
   func speechAudio(_ path: String, body: Data, session: UUID) async throws -> Data {

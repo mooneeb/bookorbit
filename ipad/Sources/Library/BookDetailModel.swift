@@ -9,6 +9,10 @@ final class BookDetailModel {
   private(set) var isSaving = false
   var error: String?
   var draft: MetadataDraft?
+  private var loadID = UUID()
+  private var isUnavailable = false
+  private var deletionSession: UUID?
+  private var moveSession: UUID?
 
   init(api: BookOrbitAPI, bookID: Int) {
     self.api = api
@@ -16,9 +20,62 @@ final class BookDetailModel {
   }
 
   func load() async {
+    guard !isUnavailable else { return }
+    let loadID = UUID()
+    self.loadID = loadID
     error = nil
-    do { book = try await api.send("books/\(bookID)") } catch {
+    do {
+      let result: BookDetail = try await api.boundedJSON(
+        "books/\(bookID)", session: deletionSession ?? moveSession)
+      guard self.loadID == loadID, !isUnavailable else { return }
+      guard result.id == bookID else { throw ConnectionError.invalidResponse }
+      book = result
+    } catch {
+      guard self.loadID == loadID, !isUnavailable else { return }
       self.error = error.localizedDescription
+    }
+  }
+
+  func discardDeletedBook() {
+    loadID = UUID()
+    isUnavailable = true
+    book = nil
+    draft = nil
+    error = nil
+  }
+
+  func reconcileDeletion(session: UUID) async -> BookDeletionOutcome? {
+    deletionSession = session
+    let loadID = UUID()
+    self.loadID = loadID
+    book = nil
+    error = "The deletion outcome has not been confirmed. Reload this book when connected."
+    do {
+      let result: BookDetail = try await api.boundedJSON("books/\(bookID)", session: session)
+      guard self.loadID == loadID, !isUnavailable else { return nil }
+      guard result.id == bookID else { throw ConnectionError.invalidResponse }
+      book = result
+      error = nil
+    } catch {
+      guard self.loadID == loadID, !isUnavailable else { return nil }
+      guard (try? await api.authenticatedSessionGeneration()) == session else { return nil }
+      if case ConnectionError.http(404) = error { return .unavailable }
+      if case ConnectionError.denied = error { return .unavailable }
+      self.error =
+        "The deletion outcome is still unknown. Reload this book when connected. \(error.localizedDescription)"
+    }
+    return nil
+  }
+
+  func reconcileMove(session: UUID) async {
+    moveSession = session
+    loadID = UUID()
+    book = nil
+    draft = nil
+    await load()
+    if book == nil {
+      error =
+        "This book's current status could not be loaded after the move. It may have changed or become unavailable to your account. \(error ?? "")"
     }
   }
 
@@ -29,7 +86,7 @@ final class BookDetailModel {
   }
 
   func acknowledgeReading(_ saved: BookDetail) {
-    guard saved.id == bookID else { return }
+    guard saved.id == bookID, !isUnavailable else { return }
     book = saved
   }
 

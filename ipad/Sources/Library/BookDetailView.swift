@@ -3,6 +3,9 @@ import SwiftUI
 struct BookDetailView: View {
   let canEditMetadata: Bool
   let canRead: Bool
+  let canDeleteBooks: Bool
+  let userID: Int
+  let bookUnavailable: (Int, BookDeletionOutcome) -> Void
   @Environment(\.dismiss) private var dismiss
   @State private var model: BookDetailModel
   @State private var isManagingCollections = false
@@ -10,10 +13,23 @@ struct BookDetailView: View {
   @State private var isEditingCovers = false
   @State private var selectedFile: BookDetailFile?
   @State private var isEditingReading = false
+  @State private var deletion: BookDeletionModel?
+  @State private var deletionOutcome: BookDeletionOutcome?
+  @State private var deletionNotice: String?
+  @State private var movement: BookMoveModel?
+  @State private var moveNotice: String?
 
-  init(api: BookOrbitAPI, bookID: Int, canEditMetadata: Bool, canRead: Bool) {
+  init(
+    api: BookOrbitAPI, bookID: Int, canEditMetadata: Bool, canRead: Bool,
+    canDeleteBooks: Bool = false,
+    userID: Int = 0,
+    bookUnavailable: @escaping (Int, BookDeletionOutcome) -> Void = { _, _ in }
+  ) {
     self.canEditMetadata = canEditMetadata
     self.canRead = canRead
+    self.canDeleteBooks = canDeleteBooks
+    self.userID = userID
+    self.bookUnavailable = bookUnavailable
     _model = State(initialValue: BookDetailModel(api: api, bookID: bookID))
   }
 
@@ -30,6 +46,14 @@ struct BookDetailView: View {
         if let book = model.book {
           List {
             Section {
+              if let deletionNotice {
+                Text(deletionNotice).fixedSize(horizontal: false, vertical: true)
+                  .accessibilityIdentifier("bookDeletionNotice")
+              }
+              if let moveNotice {
+                Text(moveNotice).fixedSize(horizontal: false, vertical: true)
+                  .accessibilityIdentifier("bookMoveNotice")
+              }
               Text(book.title ?? "Untitled book").font(.title)
               if let subtitle = book.subtitle { Text(subtitle).font(.headline) }
               if !book.authors.isEmpty {
@@ -42,6 +66,10 @@ struct BookDetailView: View {
                   .accessibilityIdentifier("editMetadata")
                 Button("Edit covers") { isEditingCovers = true }
                   .accessibilityIdentifier("editCovers")
+                if userID > 0 {
+                  Button("Move to library", action: promptMove).frame(minHeight: 44)
+                    .disabled(model.isSaving).accessibilityIdentifier("moveBook")
+                }
               }
             }
             Section("Files") {
@@ -93,11 +121,24 @@ struct BookDetailView: View {
                 }
               }
             }
+            if canDeleteBooks, userID > 0 {
+              Section {
+                Button("Delete book", role: .destructive, action: promptDelete)
+                  .frame(minHeight: 44)
+                  .disabled(model.isSaving)
+                  .accessibilityIdentifier("deleteBook")
+              }
+            }
           }
         } else if let error = model.error {
-          ContentUnavailableView(
-            "Could not open book", systemImage: "exclamationmark.triangle", description: Text(error)
-          )
+          ContentUnavailableView {
+            Label("Could not open book", systemImage: "exclamationmark.triangle")
+          } description: {
+            Text(error)
+          } actions: {
+            Button("Reload book") { Task { await model.load() } }
+              .accessibilityIdentifier("reloadBookDetails")
+          }
         } else {
           ProgressView("Loading book…")
         }
@@ -106,6 +147,18 @@ struct BookDetailView: View {
       .toolbar { Button("Done", action: dismiss.callAsFunction) }
     }
     .task { await model.load() }
+    .onChange(of: userID) { _, _ in
+      movement?.detach()
+      movement = nil
+      moveNotice = nil
+      deletion?.detach()
+      deletion = nil
+      deletionOutcome = nil
+      deletionNotice = nil
+    }
+    .sheet(item: $movement) { movement in
+      BookMoveView(model: movement, closed: moveClosed)
+    }
     .fullScreenCover(item: $selectedFile, onDismiss: { Task { await model.load() } }) { file in
       NativeReaderHost(
         api: model.api, bookID: model.bookID, file: file,
@@ -130,6 +183,65 @@ struct BookDetailView: View {
         collectionResult =
           included ? "Added to \(collection.name)" : "Removed from \(collection.name)"
       }
+    }
+    .sheet(item: $deletion, onDismiss: deletionClosed) { deletion in
+      BookDeletionView(model: deletion, resolved: deleted, closed: deletionDisappeared)
+    }
+  }
+
+  private func promptDelete() {
+    guard canDeleteBooks, userID > 0, model.book != nil, !model.isSaving else { return }
+    deletion = BookDeletionModel(api: model.api, bookID: model.bookID, userID: userID)
+  }
+
+  private func deleted(_ outcome: BookDeletionOutcome) {
+    model.discardDeletedBook()
+    selectedFile = nil
+    deletionOutcome = outcome
+    deletion = nil
+    bookUnavailable(model.bookID, outcome)
+  }
+
+  private func deletionClosed() {
+    if deletionOutcome != nil { dismiss() }
+  }
+
+  private func deletionDisappeared(_ deletion: BookDeletionModel) {
+    guard deletion.didAttemptDeletion, deletion.outcome == nil, let session = deletion.session
+    else {
+      return
+    }
+    Task {
+      guard await deletion.belongsToCurrentSession() else { return }
+      deletionNotice = "The deletion was not confirmed. Reloading the book's current status."
+      if let outcome = await model.reconcileDeletion(session: session) {
+        deleted(outcome)
+        dismiss()
+      } else if model.book != nil {
+        deletionNotice =
+          "This book is currently available. The earlier deletion was not confirmed and may still be finishing."
+      }
+    }
+  }
+
+  private func promptMove() {
+    guard canEditMetadata, userID > 0, model.book != nil, !model.isSaving else { return }
+    movement = BookMoveModel(api: model.api, bookID: model.bookID, userID: userID)
+  }
+
+  private func moveClosed(_ movement: BookMoveModel) {
+    guard movement.needsStatusRefresh, let session = movement.session else { return }
+    let notice =
+      movement.message ?? "The move is unconfirmed. Reload this book to check its current library."
+    Task {
+      guard await movement.belongsToCurrentSession() else { return }
+      selectedFile = nil
+      model.draft = nil
+      isEditingReading = false
+      isEditingCovers = false
+      isManagingCollections = false
+      moveNotice = notice
+      await model.reconcileMove(session: session)
     }
   }
 }

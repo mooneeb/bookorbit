@@ -12,6 +12,7 @@ const entries = [
   "auth",
   "author",
   "book",
+  "book-move",
   "book-selection",
   "catalog",
   "bookmark",
@@ -31,6 +32,7 @@ const entries = [
   "reader-settings",
   "reader-themes",
   "series",
+  "series-collapse",
   "smart-scope",
   "table-layout",
   "table-view-backup",
@@ -66,10 +68,10 @@ const projections = {
   CreateAnnotationPayload: ["cfi", "bookFileId", "text", "color", "style", "note", "chapterTitle"],
   AnnotationItem: ["id", "bookId", "cfi", "jumpFileId", "text", "color", "style", "note", "chapterTitle", "positionStatus"],
   AnnotationListResponse: ["items", "total", "page", "pageSize"],
-  AuthUser: ["id", "username", "name", "active", "isSuperuser", "isDefaultPassword", "permissions"],
+  AuthUser: ["id", "username", "name", "active", "isSuperuser", "isDefaultPassword", "permissions", "settings"],
   UserDashboardSettingsResponse: ["settings"],
   UserReaderSettingsResponse: ["settings", "permissions"],
-  UserSettings: ["dashboardConfig", "dashboardShelfConfig", "syncReaderPreferences", "timezone"],
+  UserSettings: ["dashboardConfig", "dashboardShelfConfig", "syncReaderPreferences", "timezone", "seriesCollapsePreferences"],
   Library: ["id", "type", "accessLevel", "name", "bookCount"],
   BookCard: [
     "id",
@@ -99,6 +101,7 @@ const projections = {
     "addedAt",
     "lockedFields",
     "customMetadata",
+    "collapsedSeries",
   ],
   BookDetail: [
     "id",
@@ -142,6 +145,8 @@ const projections = {
   SmartScope: ["id", "userId", "mediaType", "name", "icon", "filter", "defaultSort", "isPublic", "syncToKobo", "koboSyncEnabled", "isOwner"],
   Collection: ["id", "userId", "mediaType", "name", "icon", "isPublic", "isOwner", "bookCount", "memberCount"],
   BookIdsSelection: ["bookIds"],
+  BookMoveExplicitPreviewRequest: ["selection", "targetLibraryId", "targetFolderId"],
+  BookMoveExplicitExecuteRequest: ["selection", "targetLibraryId", "targetFolderId", "collisionPolicy", "overrides"],
   EpubBookInfo: ["containerPath", "rootPath", "spine", "manifest", "optionalFiles", "toc"],
 };
 const aliases = { Collection: "BookCollection", SmartScope: "BookSmartScope" };
@@ -178,8 +183,26 @@ const integerFields = new Set([
   "memberCount",
   "bookTotal",
   "bookId",
+  "targetLibraryId",
+  "targetFolderId",
+  "sourceLibraryId",
+  "existingBookId",
+  "totalSelected",
+  "readyCount",
+  "alreadyInTargetCount",
+  "collisionCount",
+  "ineligibleCount",
+  "deviceCount",
+  "processed",
+  "succeeded",
+  "merged",
+  "failed",
+  "skipped",
   "coverBookId",
   "coverBookIds",
+  "firstUnreadBookId",
+  "latestVolumeBookId",
+  "firstVolumeBookId",
   "nextBookId",
   "publishedYear",
   "pageCount",
@@ -240,6 +263,7 @@ const requestModels = new Set([
   "SaveFileProgressPayload",
   "PutAudiobookPlaybackState",
   "CreateAnnotationPayload",
+  "UpdateSeriesCollapsePreferencesPayload",
 ]);
 const nullableResponses = new Set([
   "BookFileMetadataResponse",
@@ -369,7 +393,7 @@ function swiftType(type, name, field) {
   if (type.flags & ts.TypeFlags.NumberLike) return integerFields.has(field) || integerFields.has(name) ? "Int" : "Double";
   if (type.flags & ts.TypeFlags.BooleanLike) return "Bool";
   if (checker.isArrayType(type)) return `[${swiftType(checker.getTypeArguments(type)[0], `${name}Item`, field)}]`;
-  const indexed = checker.getIndexTypeOfType(type, ts.IndexKind.String);
+  const indexed = checker.getIndexTypeOfType(type, ts.IndexKind.String) ?? checker.getIndexTypeOfType(type, ts.IndexKind.Number);
   if (indexed) return `[String: ${swiftType(indexed, `${name}Value`, field)}]`;
   if (type.flags & ts.TypeFlags.Object || type.isIntersection()) {
     const symbolName = type.aliasSymbol?.name ?? type.symbol?.name;
@@ -456,6 +480,15 @@ for (const name of [
   "CreateCollectionPayload",
   "UpdateCollectionPayload",
   "BookIdsSelection",
+  "BookMoveExplicitPreviewRequest",
+  "BookMoveExplicitExecuteRequest",
+  "BookMoveDestinationQuery",
+  "BookMoveFolderQuery",
+  "BookMoveDestinationsPage",
+  "BookMoveFoldersPage",
+  "BookMovePreviewResult",
+  "BookMoveBookProgress",
+  "BookMoveCompletionEvent",
   "BookMetadataUpdatePayload",
   "BookMetadataAndLocksUpdatePayload",
   "FileReadingProgress",
@@ -469,6 +502,9 @@ for (const name of [
   "SeriesPage",
   "SeriesBooksPage",
   "SeriesNextBookResponse",
+  "SeriesCollapsePreferences",
+  "CollapsedSeriesInfo",
+  "UpdateSeriesCollapsePreferencesPayload",
   "DashboardScrollerBatchRequest",
   "DashboardScrollerBatchResponse",
   "DashboardShelfConfig",

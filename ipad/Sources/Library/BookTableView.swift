@@ -114,7 +114,8 @@ struct BookTableView: UIViewRepresentable {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
       guard books.indices.contains(indexPath.row) else { return }
       tableView.deselectRow(at: indexPath, animated: true)
-      select(books[indexPath.row].id)
+      let book = books[indexPath.row]
+      if book.collapsedSeries != nil { renderer.openSeriesGroup(book) } else { select(book.id) }
     }
 
     func tableView(
@@ -240,8 +241,11 @@ private final class BookTableCell: UITableViewCell {
     columns.configure(
       layout: layout, customFields: renderer.customFields, padding: CGFloat(density.verticalPadding)
     ) { renderer.makeCell(book: book, column: $0) }
-    accessibilityLabel = book.title ?? "Untitled book"
-    accessibilityIdentifier = "tableBook\(book.id)"
+    accessibilityLabel =
+      book.collapsedSeries == nil ? book.title ?? "Untitled book" : book.seriesName ?? "Series"
+    accessibilityValue = book.collapsedSeries == nil ? nil : book.seriesGroupCountText
+    accessibilityIdentifier =
+      book.collapsedSeries == nil ? "tableBook\(book.id)" : "tableSeriesGroupRow\(book.id)"
   }
 }
 

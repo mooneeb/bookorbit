@@ -43,6 +43,8 @@ struct ResetPasswordView: View {
           }
         } header: {
           Text("Reset email")
+            .font(.headline).foregroundStyle(Color.primary)
+            .fixedSize(horizontal: false, vertical: true)
         } footer: {
           Text(
             "Copy the reset link from your email and paste it here using the field's edit menu. The token is sent only to \(model.profile.url.absoluteString)."

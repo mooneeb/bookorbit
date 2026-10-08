@@ -1,9 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, getTableColumns, gt, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, exists, getTableColumns, gt, ilike, inArray, isNotNull, lte, ne, or, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { APP_FEATURES, type AccessLevel, type ContentFilterRules, type LibraryStats } from '@bookorbit/types';
 
 import { buildContentFilterClauses } from '../../common/utils/content-filter-sql.utils';
+import { escapeLikePattern } from '../../common/utils/accent-insensitive-search.utils';
 import { DB } from '../../db';
 import { MIN_VALID_FILE_TIME_MS } from '../../common/utils/file-time.utils';
 import * as schema from '../../db/schema';
@@ -36,6 +37,56 @@ const podcastShowCount = sql<number | null>`case when ${libraries.type} = 'podca
 @Injectable()
 export class LibraryRepository {
   constructor(@Inject(DB) private readonly db: Db) {}
+
+  async findMoveDestinations(userId: number, isSuperuser: boolean, sourceLibraryId: number, page: number, size: number, q?: string) {
+    const access = schema.userLibraryAccess;
+    const editorAccess = this.db
+      .select({ id: access.libraryId })
+      .from(access)
+      .where(and(eq(access.libraryId, libraries.id), eq(access.userId, userId), inArray(access.accessLevel, ['editor', 'owner'])));
+    const condition = and(
+      eq(libraries.type, 'books'),
+      ne(libraries.id, sourceLibraryId),
+      isSuperuser ? undefined : exists(editorAccess),
+      q ? ilike(libraries.name, `%${escapeLikePattern(q)}%`) : undefined,
+    );
+    const [items, counts] = await Promise.all([
+      this.db
+        .select({ id: libraries.id, name: libraries.name, organizationMode: libraries.organizationMode })
+        .from(libraries)
+        .where(condition)
+        .orderBy(sql`lower(${libraries.name})`, libraries.id)
+        .limit(size)
+        .offset(page * size),
+      this.db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(libraries)
+        .where(condition),
+    ]);
+    return { items, total: counts[0]?.total ?? 0, page, size };
+  }
+
+  async findMoveFolders(libraryId: number, page: number, size: number, q?: string) {
+    const condition = and(
+      eq(libraryFolders.libraryId, libraryId),
+      eq(libraryFolders.role, 'downloads'),
+      q ? ilike(libraryFolders.path, `%${escapeLikePattern(q)}%`) : undefined,
+    );
+    const [items, counts] = await Promise.all([
+      this.db
+        .select({ id: libraryFolders.id, path: libraryFolders.path })
+        .from(libraryFolders)
+        .where(condition)
+        .orderBy(libraryFolders.id)
+        .limit(size)
+        .offset(page * size),
+      this.db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(libraryFolders)
+        .where(condition),
+    ]);
+    return { libraryId, items, total: counts[0]?.total ?? 0, page, size };
+  }
 
   findAll() {
     return this.db

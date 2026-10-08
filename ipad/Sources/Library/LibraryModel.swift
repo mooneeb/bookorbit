@@ -5,6 +5,7 @@ import Observation
 final class LibraryModel {
   let api: BookOrbitAPI
   let collections: CollectionModel
+  let seriesCollapse: SeriesCollapsePreferenceModel
   private(set) var libraries: [Library] = []
   private(set) var customFields: [CustomMetadataFieldSummary] = []
   private(set) var isLoadingCustomFields = false
@@ -21,12 +22,20 @@ final class LibraryModel {
   private(set) var filter: GroupRule?
   private(set) var location = BookLocation.all
   private var requestID = UUID()
+  private var queriedCollapseSeries: Bool?
   let pageSize = 40
   private var randomSeed = Int.random(in: 0...Int(Int32.max))
 
-  init(api: BookOrbitAPI) {
+  init(api: BookOrbitAPI, seriesCollapse: SeriesCollapsePreferenceModel? = nil) {
     self.api = api
     collections = CollectionModel(api: api)
+    self.seriesCollapse = seriesCollapse ?? SeriesCollapsePreferenceModel(api: api)
+  }
+
+  var collapseSeries: Bool { seriesCollapse.effective(in: location.seriesCollapseScope) }
+
+  func seriesCollapseChanged() async {
+    if queriedCollapseSeries != collapseSeries { await query(page: 0) }
   }
 
   var canGoNext: Bool { (page + 1) * pageSize < total && !isBusy }
@@ -77,11 +86,19 @@ final class LibraryModel {
     await query(page: 0)
   }
   func refreshBooks() async { await query(page: page) }
-  func refreshAfterTableMutation() async {
-    await query(page: page)
+  func discardUnavailableBook(_ bookID: Int) {
+    requestID = UUID()
+    books.removeAll { $0.id == bookID }
+  }
+  func refreshAfterMove(bookID: Int, session: UUID) async {
+    discardUnavailableBook(bookID)
+    await refreshAfterTableMutation(session: session)
+  }
+  func refreshAfterTableMutation(session: UUID? = nil) async {
+    await query(page: page, session: session)
     if error == nil, books.isEmpty, page > 0 {
       let lastPage = max(0, (total - 1) / pageSize)
-      if page > lastPage { await query(page: lastPage) }
+      if page > lastPage { await query(page: lastPage, session: session) }
     }
   }
   func collectionUpdated(_ collection: BookCollection) {
@@ -128,29 +145,44 @@ final class LibraryModel {
   func nextPage() async { if canGoNext { await query(page: page + 1) } }
   func previousPage() async { if canGoBack { await query(page: page - 1) } }
 
-  private func query(page: Int) async {
+  private func query(page: Int, session: UUID? = nil) async {
     let id = UUID()
     requestID = id
     isBusy = true
     error = nil
     defer { if requestID == id { isBusy = false } }
     do {
+      if !seriesCollapse.isLoaded { await seriesCollapse.reconcile() }
+      let capturedSession: UUID
+      if let session {
+        capturedSession = session
+      } else {
+        capturedSession = try await api.authenticatedSessionGeneration()
+      }
+      try Task.checkCancellation()
+      guard requestID == id else { return }
+      let collapseSeries = self.collapseSeries
       let query = BookQuery(
         filter: filter,
         sort: [SortSpec(field: sort, dir: descending ? "desc" : "asc")] + secondarySort,
         pagination: BookQueryPagination(page: page, size: pageSize), q: search,
-        collapseSeries: false,
+        collapseSeries: collapseSeries,
         randomSeed: sort == "random" || secondarySort.contains { $0.field == "random" }
           ? randomSeed : nil)
       let path = location.queryPath
-      let result: BooksPage = try await api.send(
-        path, method: "POST", body: JSONEncoder().encode(query))
+      let result: BooksPage = try await api.boundedJSON(
+        path, method: "POST", body: JSONEncoder().encode(query), session: capturedSession)
+      try Task.checkCancellation()
       guard requestID == id else { return }
+      guard result.items.count <= pageSize, result.page == page, result.total >= 0 else {
+        throw ConnectionError.invalidResponse
+      }
       books = result.items
       total = result.total
       self.page = result.page
+      queriedCollapseSeries = collapseSeries
     } catch {
-      guard requestID == id else { return }
+      guard requestID == id, !Task.isCancelled else { return }
       self.error = error.localizedDescription
     }
   }

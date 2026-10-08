@@ -135,6 +135,53 @@ struct AuthUser: Codable, Sendable, Equatable, Identifiable {
     var `isSuperuser`: Bool
     var `isDefaultPassword`: Bool
     var `permissions`: [String]
+    var `settings`: UserSettings
+}
+
+struct UserSettings: Codable, Sendable, Equatable {
+    var `dashboardConfig`: DashboardConfig?
+    var `dashboardShelfConfig`: DashboardShelfConfig?
+    var `syncReaderPreferences`: Bool?
+    var `timezone`: String?
+    var `seriesCollapsePreferences`: SeriesCollapsePreferences?
+}
+
+struct DashboardConfig: Codable, Sendable, Equatable {
+    var `readingGoal`: Double?
+    var `widgets`: [WidgetConfig]?
+    var `libraryIds`: [Int]?
+}
+
+struct WidgetConfig: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `type`: String
+    var `enabled`: Bool
+    var `order`: Double
+}
+
+struct DashboardShelfConfig: Codable, Sendable, Equatable {
+    var `syncAcrossSessions`: Bool?
+    var `scrollers`: [ScrollerConfig]?
+    var `shelfLayout`: String?
+}
+
+struct ScrollerConfig: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `type`: String
+    var `label`: String
+    var `enabled`: Bool
+    var `order`: Double
+    var `limit`: Double
+    var `rows`: Double
+    var `smartScopeId`: Int?
+}
+
+struct SeriesCollapsePreferences: Codable, Sendable, Equatable {
+    var `global`: Bool
+    var `libraries`: [String: Bool]
+    var `collections`: [String: Bool]
+    var `smartScopes`: [String: Bool]?
+    var `authorPages`: Bool?
 }
 
 struct NativeCredentials: Codable, Sendable, Equatable {
@@ -243,6 +290,7 @@ struct BookCard: Codable, Sendable, Equatable, Identifiable {
     var `addedAt`: String
     var `lockedFields`: [String]
     var `customMetadata`: [CustomMetadataBookValue]
+    var `collapsedSeries`: CollapsedSeriesInfo?
 }
 
 struct BookFileRef: Codable, Sendable, Equatable, Identifiable {
@@ -295,6 +343,17 @@ enum CustomMetadataPrimitiveValue: Codable, Sendable, Equatable {
         case .null: try container.encodeNil()
         }
     }
+}
+
+struct CollapsedSeriesInfo: Codable, Sendable, Equatable {
+    var `bookCount`: Int
+    var `readCount`: Int
+    var `coverBookIds`: [Int]
+    var `coverUpdatedAtByBookId`: [String: String?]?
+    var `seriesLatestAddedAt`: String?
+    var `firstVolumeBookId`: Int?
+    var `latestVolumeBookId`: Int?
+    var `firstUnreadBookId`: Int?
 }
 
 struct CustomMetadataFieldSummary: Codable, Sendable, Equatable, Identifiable {
@@ -622,6 +681,156 @@ struct BookIdsSelection: Codable, Sendable, Equatable {
     var `bookIds`: [Int]
 }
 
+struct BookMoveExplicitPreviewRequest: Codable, Sendable, Equatable {
+    var `selection`: BookIdsSelection
+    var `targetLibraryId`: Int
+    var `targetFolderId`: Int
+}
+
+struct BookMoveExplicitExecuteRequest: Codable, Sendable, Equatable {
+    var `selection`: BookIdsSelection
+    var `targetLibraryId`: Int
+    var `targetFolderId`: Int
+    var `collisionPolicy`: String
+    var `overrides`: [BookMoveCollisionOverride]?
+}
+
+struct BookMoveCollisionOverride: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `policy`: String
+}
+
+struct BookMoveDestinationQuery: Codable, Sendable, Equatable {
+    var `sourceLibraryId`: Int
+    var `page`: Int?
+    var `size`: Int?
+    var `q`: String?
+}
+
+struct BookMoveFolderQuery: Codable, Sendable, Equatable {
+    var `page`: Int?
+    var `size`: Int?
+    var `q`: String?
+}
+
+struct BookMoveDestinationsPage: Codable, Sendable, Equatable {
+    var `items`: [BookMoveDestination]
+    var `total`: Int
+    var `page`: Int
+    var `size`: Int
+}
+
+struct BookMoveDestination: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `organizationMode`: String
+}
+
+struct BookMoveFoldersPage: Codable, Sendable, Equatable {
+    var `libraryId`: Int
+    var `items`: [BookMoveFolder]
+    var `total`: Int
+    var `page`: Int
+    var `size`: Int
+}
+
+struct BookMoveFolder: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `path`: String
+}
+
+struct BookMovePreviewResult: Codable, Sendable, Equatable {
+    var `targetLibraryId`: Int
+    var `targetFolderId`: Int
+    var `targetOrganizationMode`: String
+    var `totalSelected`: Int
+    var `readyCount`: Int
+    var `ready`: [BookMovePreviewReadyItem]
+    var `alreadyInTargetCount`: Int
+    var `collisionCount`: Int
+    var `collisions`: [BookMovePreviewCollisionItem]
+    var `collisionsTruncated`: Bool
+    var `ineligibleCount`: Int
+    var `ineligible`: [BookMovePreviewIneligibleItem]
+    var `ineligibleTruncated`: Bool
+    var `warnings`: BookMoveWarnings
+    var `requiresReview`: Bool
+}
+
+struct BookMovePreviewReadyItem: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `title`: String
+    var `currentPath`: String
+    var `targetPath`: String
+    var `layoutChange`: String?
+}
+
+struct BookMovePreviewCollisionItem: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `title`: String
+    var `kind`: String
+    var `currentPath`: String
+    var `targetPath`: String
+    var `existingBookId`: Int?
+    var `suggestedPolicy`: String
+    var `keepBothPath`: String
+}
+
+struct BookMovePreviewIneligibleItem: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `title`: String
+    var `reason`: String
+    var `detail`: String?
+}
+
+struct BookMoveWarnings: Codable, Sendable, Equatable {
+    var `accessLosers`: [BookMoveAccessLoser]
+    var `koboImpact`: [BookMoveKoboImpact]
+    var `layout`: BookMoveLayoutSummary?
+    var `formatMismatches`: [BookMoveFormatMismatch]
+    var `crossDevice`: Bool
+}
+
+struct BookMoveAccessLoser: Codable, Sendable, Equatable {
+    var `userId`: Int
+    var `username`: String
+    var `bookCount`: Int
+}
+
+struct BookMoveKoboImpact: Codable, Sendable, Equatable {
+    var `userId`: Int
+    var `username`: String
+    var `deviceCount`: Int
+    var `bookCount`: Int
+}
+
+struct BookMoveLayoutSummary: Codable, Sendable, Equatable {
+    var `change`: String
+    var `bookCount`: Int
+}
+
+struct BookMoveFormatMismatch: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `title`: String
+    var `format`: String
+}
+
+struct BookMoveBookProgress: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `status`: String
+    var `reason`: String?
+}
+
+struct BookMoveCompletionEvent: Codable, Sendable, Equatable {
+    var `done`: Bool
+    var `processed`: Int
+    var `succeeded`: Int
+    var `merged`: Int
+    var `failed`: Int
+    var `skipped`: Int
+    var `cancelled`: Bool
+}
+
 struct BookMetadataUpdatePayload: Encodable, Sendable, Equatable {
     var `title`: FieldUpdate<String>?
     var `subtitle`: FieldUpdate<String>?
@@ -923,6 +1132,14 @@ struct SeriesNextBook: Codable, Sendable, Equatable {
     var `seriesIndex`: String?
 }
 
+struct UpdateSeriesCollapsePreferencesPayload: Encodable, Sendable, Equatable {
+    var `global`: Bool?
+    var `authorPages`: Bool?
+    var `libraries`: [String: Bool?]?
+    var `collections`: [String: Bool?]?
+    var `smartScopes`: [String: Bool?]?
+}
+
 struct DashboardScrollerBatchRequest: Codable, Sendable, Equatable {
     var `items`: [DashboardScrollerBatchItem]
 }
@@ -942,23 +1159,6 @@ struct DashboardScrollerBatchResult: Codable, Sendable, Equatable, Identifiable 
     var `id`: String
     var `books`: [BookCard]
     var `failed`: Bool
-}
-
-struct DashboardShelfConfig: Codable, Sendable, Equatable {
-    var `syncAcrossSessions`: Bool?
-    var `scrollers`: [ScrollerConfig]?
-    var `shelfLayout`: String?
-}
-
-struct ScrollerConfig: Codable, Sendable, Equatable, Identifiable {
-    var `id`: String
-    var `type`: String
-    var `label`: String
-    var `enabled`: Bool
-    var `order`: Double
-    var `limit`: Double
-    var `rows`: Double
-    var `smartScopeId`: Int?
 }
 
 struct SmartScopesPage: Codable, Sendable, Equatable {
@@ -1752,26 +1952,6 @@ struct NativeTtsVoiceSettings: Codable, Sendable, Equatable {
 
 struct UserDashboardSettingsResponse: Codable, Sendable, Equatable {
     var `settings`: UserSettings
-}
-
-struct UserSettings: Codable, Sendable, Equatable {
-    var `dashboardConfig`: DashboardConfig?
-    var `dashboardShelfConfig`: DashboardShelfConfig?
-    var `syncReaderPreferences`: Bool?
-    var `timezone`: String?
-}
-
-struct DashboardConfig: Codable, Sendable, Equatable {
-    var `readingGoal`: Double?
-    var `widgets`: [WidgetConfig]?
-    var `libraryIds`: [Int]?
-}
-
-struct WidgetConfig: Codable, Sendable, Equatable, Identifiable {
-    var `id`: String
-    var `type`: String
-    var `enabled`: Bool
-    var `order`: Double
 }
 
 struct UserReaderSettingsResponse: Codable, Sendable, Equatable {

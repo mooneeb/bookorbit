@@ -3,12 +3,19 @@ import SwiftUI
 struct BookTableOrganizationView: View {
   let destination: BookTableOrganizationDestination
   let user: AuthUser?
+  let libraryID: Int?
+  let seriesCollapse: SeriesCollapsePreferenceModel?
   @Environment(\.dismiss) private var dismiss
   @State private var model: OrganizationDirectoryModel
 
-  init(api: BookOrbitAPI, destination: BookTableOrganizationDestination, user: AuthUser?) {
+  init(
+    api: BookOrbitAPI, destination: BookTableOrganizationDestination, user: AuthUser?,
+    libraryID: Int? = nil, seriesCollapse: SeriesCollapsePreferenceModel? = nil
+  ) {
     self.destination = destination
     self.user = user
+    self.libraryID = libraryID
+    self.seriesCollapse = seriesCollapse
     let model = OrganizationDirectoryModel(api: api, kind: destination.kind)
     model.search = destination.name
     _model = State(initialValue: model)
@@ -63,7 +70,8 @@ struct BookTableOrganizationView: View {
   private func detail(_ selection: OrganizationSelection) -> some View {
     OrganizationDetailView(
       api: model.api, kind: destination.kind, selection: selection,
-      libraryID: nil, canEditMetadata: user?.hasPermission(.libraryEditMetadata) == true,
-      canRead: user?.hasPermission(.libraryDownload) == true)
+      libraryID: libraryID, canEditMetadata: user?.hasPermission(.libraryEditMetadata) == true,
+      canRead: user?.hasPermission(.libraryDownload) == true, seriesCollapse: seriesCollapse,
+      canDeleteBooks: user?.hasPermission(.libraryDeleteBooks) == true, userID: user?.id ?? 0)
   }
 }

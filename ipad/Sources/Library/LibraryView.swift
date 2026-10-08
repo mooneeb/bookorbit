@@ -5,6 +5,9 @@ struct LibraryView: View {
   @Bindable var session: SessionModel
   @State private var library: LibraryModel
   @State private var selectedBook: Int?
+  @State private var selectedSeries: SeriesGroupSelection?
+  @State private var deletion: BookDeletionModel?
+  @State private var deletionResult: String?
   @State private var presentation = "list"
   @State private var isCreatingCollection = false
   @State private var editingCollection: BookCollection?
@@ -21,10 +24,13 @@ struct LibraryView: View {
   @State private var tablePresets: TablePresetModel
   @State private var tablePreferencesError: String?
   @State private var savedViews: SavedViewModel
+  @State private var movement: BookMoveModel?
+  @State private var moveNotice: String?
+  @State private var moveRefresh: (bookID: Int, session: UUID)?
 
   init(session: SessionModel, api: BookOrbitAPI) {
     self.session = session
-    _library = State(initialValue: LibraryModel(api: api))
+    _library = State(initialValue: LibraryModel(api: api, seriesCollapse: session.seriesCollapse))
     _savedViews = State(
       initialValue: SavedViewModel(serverURL: session.serverURL, userID: session.user?.id ?? 0))
     let preferences = TablePresentationModel(
@@ -84,8 +90,20 @@ struct LibraryView: View {
       NavigationStack {
         VStack(spacing: 0) {
           LibrarySearchField(text: $library.search) { Task { await library.searchBooks() } }
+          SeriesCollapseControls(
+            model: library.seriesCollapse, scope: library.location.seriesCollapseScope)
+          if let moveNotice {
+            Text(moveNotice).font(.body).fixedSize(horizontal: false, vertical: true)
+              .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal)
+              .accessibilityIdentifier("libraryMoveNotice")
+          }
           HStack {
-            LibraryBookCountView(total: library.total)
+            if library.collapseSeries {
+              Text("\(library.total.formatted()) books and series groups")
+                .font(.subheadline).fixedSize(horizontal: false, vertical: true)
+            } else {
+              LibraryBookCountView(total: library.total)
+            }
             Spacer()
             Picker(
               "Sort books",
@@ -114,17 +132,29 @@ struct LibraryView: View {
           }
           .padding()
           .background(Color(uiColor: .systemBackground))
+          if let deletionResult {
+            Text(deletionResult).font(.body).fixedSize(horizontal: false, vertical: true)
+              .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal)
+              .accessibilityIdentifier("libraryDeletionResult")
+          }
           if let error = library.error {
             ContentUnavailableView {
               Label("Could not load books", systemImage: "wifi.exclamationmark")
             } description: {
               Text(error)
             } actions: {
-              Button("Try again") { Task { await library.searchBooks() } }
+              Button("Try again", action: retryPage)
             }
           } else if presentation == "grid" {
-            BookGrid(api: library.api, books: library.books) { selectedBook = $0 }
-              .id("\(session.serverURL).user.\(session.user?.id ?? 0)")
+            BookGrid(
+              api: library.api, books: library.books, openSeries: openSeries,
+              canDeleteBooks: session.user?.hasPermission(.libraryDeleteBooks) == true
+                && !library.isBusy,
+              delete: promptDelete,
+              canMove: session.user?.hasPermission(.libraryEditMetadata) == true && !library.isBusy,
+              move: promptMove
+            ) { selectedBook = $0 }
+            .id("\(session.serverURL).user.\(session.user?.id ?? 0)")
           } else if presentation == "table" {
             if !BookTableLayout.unavailable(tableLayout, customFields: library.tableCustomFields)
               .isEmpty
@@ -136,7 +166,8 @@ struct LibraryView: View {
               .accessibilityIdentifier("tableUnavailableColumns")
             }
             BookTableInteractionHost(
-              library: library, user: session.user, select: { selectedBook = $0 }
+              library: library, user: session.user, select: { selectedBook = $0 },
+              openSeriesGroup: openSeries, bookUnavailable: bookBecameUnavailable
             ) { renderer in
               BookTableView(
                 books: library.books, layout: tableLayout, renderer: renderer, density: tableDensity
@@ -144,18 +175,32 @@ struct LibraryView: View {
             }
           } else {
             List(library.books) { book in
-              Button {
-                selectedBook = book.id
-              } label: {
-                VStack(alignment: .leading, spacing: 5) {
-                  Text(book.title ?? "Untitled book").font(.headline)
-                  Text(book.authors.joined(separator: ", ")).font(.subheadline).foregroundStyle(
-                    .secondary)
-                }
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-              }.buttonStyle(.plain)
+              if book.collapsedSeries != nil {
+                SeriesGroupRow(
+                  api: library.api, book: book, openSeries: openSeries, openBook: openBook)
+              } else {
+                Button {
+                  selectedBook = book.id
+                } label: {
+                  VStack(alignment: .leading, spacing: 5) {
+                    Text(book.title ?? "Untitled book").font(.headline)
+                    Text(book.authors.joined(separator: ", ")).font(.subheadline).foregroundStyle(
+                      .secondary)
+                  }
+                  .padding(.vertical, 8)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                  .contextMenu {
+                    if session.user?.hasPermission(.libraryEditMetadata) == true {
+                      Button("Move to library") { promptMove(book) }.disabled(library.isBusy)
+                    }
+                    if session.user?.hasPermission(.libraryDeleteBooks) == true {
+                      Button("Delete book", role: .destructive) { promptDelete(book.id) }
+                        .disabled(library.isBusy)
+                    }
+                  }
+              }
             }
           }
           if library.isBusy { ProgressView("Loading books…").padding() }
@@ -208,7 +253,7 @@ struct LibraryView: View {
             get: { selectedBook.map(BookSelection.init) }, set: { selectedBook = $0?.id }),
           onDismiss: {
             Task {
-              await library.refreshBooks()
+              await library.refreshAfterTableMutation()
               await library.collections.refresh()
             }
           }
@@ -216,11 +261,44 @@ struct LibraryView: View {
           BookDetailView(
             api: library.api, bookID: selection.id,
             canEditMetadata: session.user?.hasPermission(.libraryEditMetadata) == true,
-            canRead: session.user?.hasPermission(.libraryDownload) == true)
+            canRead: session.user?.hasPermission(.libraryDownload) == true,
+            canDeleteBooks: session.user?.hasPermission(.libraryDeleteBooks) == true,
+            userID: session.user?.id ?? 0, bookUnavailable: bookBecameUnavailable)
         }
       }
     }
     .task { await library.load() }
+    .onChange(of: library.collapseSeries) { Task { await library.seriesCollapseChanged() } }
+    .sheet(item: $selectedSeries, onDismiss: { Task { await library.refreshAfterTableMutation() } })
+    { group in
+      SeriesGroupContentsView(
+        api: library.api, group: group,
+        canEditMetadata: session.user?.hasPermission(.libraryEditMetadata) == true,
+        canRead: session.user?.hasPermission(.libraryDownload) == true,
+        seriesCollapse: library.seriesCollapse,
+        canDeleteBooks: session.user?.hasPermission(.libraryDeleteBooks) == true,
+        userID: session.user?.id ?? 0)
+    }
+    .sheet(item: $deletion) { deletion in
+      BookDeletionView(
+        model: deletion,
+        resolved: { outcome in
+          bookBecameUnavailable(deletion.bookID, outcome)
+          self.deletion = nil
+        }, closed: deletionClosed)
+    }
+    .onChange(of: session.user?.id) {
+      deletion?.detach()
+      deletion = nil
+      deletionResult = nil
+      movement?.detach()
+      movement = nil
+      moveNotice = nil
+      moveRefresh = nil
+    }
+    .sheet(item: $movement) { movement in
+      BookMoveView(model: movement, closed: moveClosed)
+    }
     .onChange(of: library.location.storageKey) { _, location in
       tableLayout = tablePreferences.layout(at: location)
     }
@@ -266,7 +344,10 @@ struct LibraryView: View {
       OrganizationDirectoryView(
         api: library.api, kind: kind, libraries: library.libraries,
         canEditMetadata: session.user?.hasPermission(.libraryEditMetadata) == true,
-        canRead: session.user?.hasPermission(.libraryDownload) == true)
+        canRead: session.user?.hasPermission(.libraryDownload) == true,
+        seriesCollapse: library.seriesCollapse,
+        canDeleteBooks: session.user?.hasPermission(.libraryDeleteBooks) == true,
+        userID: session.user?.id ?? 0)
     }
     .sheet(isPresented: $isCreatingCollection) {
       CreateCollectionView(collections: library.collections) { collection in
@@ -286,6 +367,71 @@ struct LibraryView: View {
       Button("OK") { session.error = nil }
     } message: {
       Text(session.error ?? "")
+    }
+  }
+
+  private func openSeries(_ book: BookCard) {
+    selectedSeries = SeriesGroupSelection(book: book, libraryID: library.location.seriesLibraryID)
+  }
+
+  private func openBook(_ id: Int) { selectedBook = id }
+
+  private func promptDelete(_ bookID: Int) {
+    guard let user = session.user, user.hasPermission(.libraryDeleteBooks), !library.isBusy,
+      library.books.contains(where: { $0.id == bookID && $0.collapsedSeries == nil })
+    else { return }
+    deletion = BookDeletionModel(api: library.api, bookID: bookID, userID: user.id)
+  }
+
+  private func bookBecameUnavailable(_ bookID: Int, _ outcome: BookDeletionOutcome) {
+    library.discardUnavailableBook(bookID)
+    if selectedBook == bookID { selectedBook = nil }
+    deletionResult = outcome.message
+  }
+
+  private func deletionClosed(_ deletion: BookDeletionModel) {
+    guard deletion.didAttemptDeletion || deletion.outcome != nil else { return }
+    Task {
+      guard await deletion.belongsToCurrentSession() else { return }
+      deletionResult =
+        deletion.outcome?.message
+        ?? "The deletion was not confirmed. Reload this book's status before trying again."
+      await library.refreshAfterTableMutation(session: deletion.session)
+      if library.error != nil {
+        deletionResult = "Books could not be reloaded. Reload to reconcile the current page."
+      }
+    }
+  }
+
+  private func promptMove(_ book: BookCard) {
+    guard let user = session.user, user.hasPermission(.libraryEditMetadata), !library.isBusy,
+      book.collapsedSeries == nil,
+      library.books.contains(where: { $0.id == book.id && $0.collapsedSeries == nil })
+    else { return }
+    movement = BookMoveModel(api: library.api, bookID: book.id, userID: user.id)
+  }
+
+  private func moveClosed(_ movement: BookMoveModel) {
+    guard movement.needsStatusRefresh, let session = movement.session else { return }
+    let notice =
+      movement.message ?? "The move is unconfirmed. Reload the current page to check this book."
+    Task {
+      guard await movement.belongsToCurrentSession() else { return }
+      moveNotice = notice
+      moveRefresh = (movement.bookID, session)
+      await library.refreshAfterMove(bookID: movement.bookID, session: session)
+      if library.error == nil { moveRefresh = nil }
+    }
+  }
+
+  private func retryPage() {
+    Task {
+      if let moveRefresh {
+        await library.refreshAfterMove(bookID: moveRefresh.bookID, session: moveRefresh.session)
+        if library.error == nil { self.moveRefresh = nil }
+      } else {
+        await library.refreshAfterTableMutation()
+      }
     }
   }
 
@@ -509,13 +655,28 @@ private struct LibraryBookCountView: UIViewRepresentable {
 private struct BookGrid: View {
   let api: BookOrbitAPI
   let books: [BookCard]
+  let openSeries: (BookCard) -> Void
+  var canDeleteBooks = false
+  var delete: (Int) -> Void = { _ in }
+  let canMove: Bool
+  let move: (BookCard) -> Void
   let select: (Int) -> Void
 
   var body: some View {
     ScrollView {
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .top)], spacing: 16) {
         ForEach(books) { book in
-          LibraryBookCoverView(api: api, book: book, select: select)
+          if book.collapsedSeries != nil {
+            SeriesGroupCard(api: api, book: book, openSeries: openSeries, openBook: select)
+          } else {
+            LibraryBookCoverView(api: api, book: book, select: select)
+              .contextMenu {
+                if canMove { Button("Move to library") { move(book) } }
+                if canDeleteBooks {
+                  Button("Delete book", role: .destructive) { delete(book.id) }
+                }
+              }
+          }
         }
       }.padding()
     }
