@@ -10,6 +10,7 @@ final class NativeAnnotationRepository {
   private let store: NativeAnnotationStore
   private var active = true
   @ObservationIgnored private var syncTasks: [Int: Task<Void, Error>] = [:]
+  @ObservationIgnored private var privateRefreshTasks: [Int: Task<Void, Error>] = [:]
   @ObservationIgnored private var autosave: [Int: Task<Void, Never>] = [:]
   private(set) var pendingCount = 0
   private(set) var isSynchronizing = false
@@ -73,6 +74,19 @@ final class NativeAnnotationRepository {
     try await pull(bookID: bookID, fileID: fileID)
     try await synchronize(bookID: bookID)
     try await pull(bookID: bookID, fileID: fileID)
+  }
+
+  func refreshPrivatePassages(bookID: Int) async throws {
+    try await checkAccount()
+    guard syncTasks[bookID] == nil else { return }
+    if let task = privateRefreshTasks[bookID] { return try await task.value }
+    let task = Task {
+      try await self.pull(bookID: bookID, maximumPages: 4)
+      try await self.checkAccount()
+    }
+    privateRefreshTasks[bookID] = task
+    defer { privateRefreshTasks.removeValue(forKey: bookID) }
+    try await task.value
   }
 
   func refreshSourceInk(bookID: Int, fileID: Int) async throws {
@@ -422,6 +436,7 @@ final class NativeAnnotationRepository {
 
   private func stop() {
     active = false
+    for task in privateRefreshTasks.values { task.cancel() }
     for task in autosave.values { task.cancel() }
     for task in syncTasks.values { task.cancel() }
     autosave.removeAll()

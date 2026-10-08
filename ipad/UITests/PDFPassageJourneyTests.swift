@@ -35,7 +35,12 @@ final class PDFPassageJourneyTests: XCTestCase {
 
   @MainActor
   func testIPADE02A01PDFPrivatePassagesCreateEditRetainDeleteUndoAndKeepSourceBytes() async throws {
-    let token = try await login("ipad-owner")
+    let administrator = try await login("ipad-owner")
+    let account = try await createPassageAccount(administrator: administrator)
+    let token = try await login(account.username)
+    let user = try await object("auth/me", token: token)
+    XCTAssertEqual(user["id"] as? Int, account.id)
+    XCTAssertTrue((user["permissions"] as? [String] ?? []).contains("annotation_manage_own"))
     let book = try await object("books/1", token: token)
     let title = try XCTUnwrap(book["title"] as? String)
     let files = try XCTUnwrap(book["files"] as? [[String: Any]])
@@ -43,7 +48,7 @@ final class PDFPassageJourneyTests: XCTestCase {
     let source = try await request("books/files/\(fileID)/serve", token: token)
     let baseline = try await annotations(token)
     var known = Set(baseline.compactMap { $0["id"] as? Int })
-    let app = launchAndSignIn("ipad-owner")
+    let app = launchAndSignIn(account.username)
     openPDF(title: title, fileID: fileID, app: app)
     var created: [[String: Any]] = []
     for (kind, label) in [
@@ -132,8 +137,8 @@ final class PDFPassageJourneyTests: XCTestCase {
           && ($0["version"] as? Int ?? 0) > deletedVersion
       }
     }
-    let restoredDrawing = try XCTUnwrap(
-      restored.first { $0["id"] as? Int == id }?["drawing"] as? [String: Any])
+    let restoredItem = try XCTUnwrap(restored.first { $0["id"] as? Int == id })
+    let restoredDrawing = try XCTUnwrap(restoredItem["drawing"] as? [String: Any])
     XCTAssertEqual(restoredDrawing["nativeData"] as? String, editedDrawing["nativeData"] as? String)
     let delivered = try await request("books/files/\(fileID)/serve", token: token)
     XCTAssertEqual(delivered, source)
@@ -144,30 +149,93 @@ final class PDFPassageJourneyTests: XCTestCase {
     tap("pdfCloseReader", app)
     tap("signOut", app)
     app.terminate()
-    let reader = launchAndSignIn("ipad-reader")
+    try await setPassagePermission(account.id, allowed: false, administrator: administrator)
+    let readerToken = try await login(account.username)
+    let deniedUser = try await object("auth/me", token: readerToken)
+    XCTAssertEqual(deniedUser["id"] as? Int, account.id)
+    XCTAssertFalse((deniedUser["permissions"] as? [String] ?? []).contains("annotation_manage_own"))
+    XCTAssertTrue((deniedUser["permissions"] as? [String] ?? []).contains("library_download"))
+    let privateRows = try await annotations(readerToken)
+    let owned = try XCTUnwrap(privateRows.first { $0["id"] as? Int == id })
+    XCTAssertEqual(owned["clientId"] as? String, restoredItem["clientId"] as? String)
+    XCTAssertEqual(owned["version"] as? Int, restoredItem["version"] as? Int)
+    let reader = launchAndSignIn(account.username)
     openPDF(title: title, fileID: fileID, app: reader)
     XCTAssertTrue(reader.buttons["pdfPassagePreview"].waitForExistence(timeout: 15))
     XCTAssertFalse(reader.buttons["pdfPassagePreview"].isEnabled)
     XCTAssertFalse(reader.buttons["pdfPassageUndo"].isEnabled)
     XCTAssertFalse(reader.buttons["pdfPassageFixtureSelection"].isEnabled)
-    capture("IPAD-E02-A01-PDF-private-denied-controls")
-    let readerToken = try await login("ipad-reader")
-    let privateRows = try await annotations(readerToken)
-    let createdIDs = Set(created.compactMap { $0["id"] as? Int })
-    XCTAssertTrue(privateRows.allSatisfy { !createdIDs.contains($0["id"] as? Int ?? -1) })
+    openNote(id, reader)
+    XCTAssertTrue(reader.staticTexts["2 retained strokes"].waitForExistence(timeout: 10))
+    XCTAssertFalse(reader.buttons["pdfPassageSave"].isEnabled)
+    XCTAssertFalse(reader.buttons["pdfPassageDelete"].isEnabled)
+    XCTAssertFalse(reader.buttons["pdfPassageFixtureStroke"].isEnabled)
+    capture("IPAD-E02-A01-PDF-owned-private-note-denied-controls")
+    tap("pdfPassageCancel", reader)
     _ = try await request(
       "annotations/native/operations", method: "POST", token: readerToken,
       body: [
         "deviceId": UUID().uuidString,
         "operations": [
           [
-            "operationId": UUID().uuidString, "clientId": handwritten["clientId"]!,
-            "annotationId": id, "bookId": 1, "baseVersion": deletedVersion + 1, "action": "delete",
+            "operationId": UUID().uuidString,
+            "clientId": try XCTUnwrap(owned["clientId"] as? String),
+            "annotationId": id, "bookId": 1,
+            "baseVersion": try XCTUnwrap(owned["version"] as? Int), "action": "delete",
           ]
         ],
       ], expected: 403)
-    let finalSource = try await request("books/files/\(fileID)/serve", token: token)
+    let afterDenial = try await annotations(readerToken)
+    XCTAssertEqual(
+      try JSONSerialization.data(withJSONObject: afterDenial, options: [.sortedKeys]),
+      try JSONSerialization.data(withJSONObject: privateRows, options: [.sortedKeys]))
+    let finalSource = try await request("books/files/\(fileID)/serve", token: readerToken)
     XCTAssertEqual(finalSource, source)
+    try await setPassagePermission(account.id, allowed: true, administrator: administrator)
+    let restoredToken = try await login(account.username)
+    let restoredUser = try await object("auth/me", token: restoredToken)
+    XCTAssertTrue(
+      (restoredUser["permissions"] as? [String] ?? []).contains("annotation_manage_own"))
+  }
+
+  @MainActor private func createPassageAccount(administrator: String) async throws
+    -> (username: String, id: Int)
+  {
+    let username = "ipad-pdf-passage-\(UUID().uuidString.lowercased())"
+    let data = try await request(
+      "users", method: "POST", token: administrator,
+      body: [
+        "username": username, "name": "PDF passage UI journey",
+        "email": "\(username)@example.test",
+        "permissionNames": ["library_download", "annotation_manage_own"],
+      ])
+    let user = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let userID = try XCTUnwrap(user["id"] as? Int)
+    let endpoint = try XCTUnwrap(URL(string: "\(Self.serverURL)/api/v1/users/\(userID)"))
+    addTeardownBlock {
+      var request = URLRequest(url: endpoint)
+      request.httpMethod = "DELETE"
+      request.timeoutInterval = 5
+      request.setValue("Bearer \(administrator)", forHTTPHeaderField: "Authorization")
+      let (_, response) = try await Self.network.data(for: request)
+      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 204)
+    }
+    let resetURL = try XCTUnwrap(user["resetUrl"] as? String)
+    let resetToken = try XCTUnwrap(
+      URLComponents(string: resetURL)?.queryItems?.first { $0.name == "token" }?.value)
+    _ = try await request(
+      "auth/reset-password", method: "POST",
+      body: ["token": resetToken, "newPassword": "IpadFixture123"])
+    return (username, userID)
+  }
+
+  @MainActor private func setPassagePermission(
+    _ userID: Int, allowed: Bool, administrator: String
+  ) async throws {
+    let permissions = ["library_download"] + (allowed ? ["annotation_manage_own"] : [])
+    _ = try await request(
+      "users/\(userID)/permissions", method: "PUT", token: administrator,
+      body: ["permissionNames": permissions], expected: 204)
   }
 
   @MainActor private func preview(_ app: XCUIApplication) {

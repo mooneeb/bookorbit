@@ -203,6 +203,24 @@ async function startWeb() {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
+
+async function runAdditionalAnnotationBrowserTests() {
+  if (!annotationsProof) return;
+  const suites = [
+    { config: "scripts/ipad/annotations-collection.config.mjs", cases: ["A01", "A03"], artifactSuffix: "collection" },
+    { config: "scripts/ipad/source-ink-window-web.config.mjs", cases: ["A03"], artifactSuffix: "source-window" },
+  ];
+  for (const suite of suites) {
+    if (annotationCase && !suite.cases.includes(annotationCase)) continue;
+    await command(
+      "pnpm",
+      ["exec", "playwright", "test", "--config", suite.config, ...(annotationCase ? ["--grep", `IPAD-E02-${annotationCase}`] : [])],
+      {
+        env: { ...env, IPAD_TEST_RUN: `${runID}-${suite.artifactSuffix}` },
+      },
+    );
+  }
+}
 async function stop(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   if (stops.has(child)) return stops.get(child);
@@ -523,10 +541,10 @@ try {
       }
     });
   });
+  if (annotationsProof) stopFaultProxy = await startFaultProxy();
   if (process.argv.includes("--serve")) {
     const servingAt = Date.now();
     console.log(`[ipad.harness_serve] [start] runId=${runID} - retaining isolated test surfaces`);
-    if (annotationsProof) stopFaultProxy = await startFaultProxy();
     if (process.argv.includes("--web")) await startWeb();
     console.log(
       `[ipad.harness_serve] [end] runId=${runID} apiPort=16482 durationMs=${Date.now() - servingAt} web=${Boolean(web)} ready=true - isolated test surfaces retained until interruption`,
@@ -545,6 +563,7 @@ try {
         "scripts/ipad/pdf-ink-http.test.mjs",
         "scripts/ipad/offline-delivery-http.test.mjs",
         "scripts/ipad/source-ink-http.test.mjs",
+        "scripts/ipad/source-ink-window-http.test.mjs",
         "scripts/ipad/bookmark-retry-http.test.mjs",
         "scripts/ipad/source-pdf-cache-http.test.mjs",
       ]);
@@ -553,7 +572,7 @@ try {
     if (organizationProof || crossClient) await command(process.execPath, ["--test", "scripts/ipad/organization-http.test.mjs"]);
     if (!annotationsProof) await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);
     if (comicProof) await command(process.execPath, ["--test", "scripts/ipad/comic-http.test.mjs"]);
-    if (process.argv.includes("--ui")) stopFaultProxy = await startFaultProxy();
+    if (process.argv.includes("--ui") && !stopFaultProxy) stopFaultProxy = await startFaultProxy();
     if (annotationConcurrent) {
       await startWeb();
       const outcomes = await Promise.allSettled([
@@ -566,6 +585,7 @@ try {
           failed.map((outcome) => outcome.reason),
           "Concurrent native/browser A05 failed",
         );
+      await runAdditionalAnnotationBrowserTests();
     }
     if (process.argv.includes("--ui") && !annotationConcurrent) await runNativeTests();
     if (process.argv.includes("--web") && !annotationConcurrent) {
@@ -579,6 +599,7 @@ try {
         );
       } else {
         await command("pnpm", ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"]);
+        await runAdditionalAnnotationBrowserTests();
       }
     }
   }

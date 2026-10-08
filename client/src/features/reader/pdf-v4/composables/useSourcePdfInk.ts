@@ -6,6 +6,7 @@ import {
   type NativeAnnotationOperationsResponse,
   type NativePdfPageSource,
   type NativePdfPageSourceBatch,
+  type NativeSourceInkWindowResponse,
 } from '@bookorbit/types'
 import { api } from '@/lib/api'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
@@ -26,8 +27,18 @@ export function useSourcePdfInk(bookId: number, fileId: number) {
   const committed = ref(false)
   const undoRequested = ref(false)
   const publicationFailed = ref(false)
+  const pageWindow = ref(1)
+  const pageTotals = ref(new Map<number, number>())
+  const loadingWindow = ref(false)
+  const pinnedItem = ref<AnnotationItem | null>(null)
+  const windowCount = computed(() => Math.max(1, ...[...pageTotals.value.values()].map((total) => Math.ceil(total / 100))))
+  const hasPrevious = computed(() => pageWindow.value > 1)
+  const hasMore = computed(() => pageWindow.value < windowCount.value)
   const items = computed(() =>
-    annotations.value.filter(
+    [
+      ...annotations.value,
+      ...(pinnedItem.value && !annotations.value.some((item) => item.id === pinnedItem.value?.id) ? [pinnedItem.value] : []),
+    ].filter(
       (item) =>
         item.kind === 'pdf_ink' &&
         item.pdf &&
@@ -51,9 +62,73 @@ export function useSourcePdfInk(bookId: number, fileId: number) {
   let catchupTimer: ReturnType<typeof setTimeout> | null = null
   const cursors = new Map<number, string>()
   const versions = new Map<number, number>()
+  let snapshotRequest = 0
+
+  async function loadWindow(): Promise<boolean> {
+    if (disposed || document.visibilityState === 'hidden') return false
+    const request = ++snapshotRequest
+    const generation = scopeGeneration
+    const ordinal = pageWindow.value
+    const pages = [...visiblePages]
+    loadingWindow.value = true
+    try {
+      const rows: AnnotationItem[] = []
+      const totals = new Map<number, number>()
+      for (const page of pages) {
+        const query = new URLSearchParams({
+          bookId: String(bookId),
+          bookFileId: String(fileId),
+          page: String(page),
+          window: String(ordinal),
+          limit: '100',
+        })
+        const response = await api(`/api/v1/annotations/native/source-ink/window?${query}`)
+        if (!response.ok) throw new Error('Source ink window unavailable')
+        const snapshot: NativeSourceInkWindowResponse = await response.json()
+        if (disposed || generation !== scopeGeneration || request !== snapshotRequest) return false
+        totals.set(page, snapshot.total)
+        rows.push(...snapshot.items.filter((item) => (versions.get(item.id) ?? 0) <= item.version).map((item) => ({ ...item, drawing: null })))
+      }
+      pageTotals.value = totals
+      if (ordinal > windowCount.value) {
+        pageWindow.value = windowCount.value
+        return await loadWindow()
+      }
+      annotations.value = rows
+      const retainedIds = new Set(rows.map((item) => item.id))
+      for (const item of rows) versions.set(item.id, item.version ?? 1)
+      for (const id of versions.keys()) {
+        if (!retainedIds.has(id) && id !== undoItem.value?.id && id !== pinnedItem.value?.id) versions.delete(id)
+      }
+      if (!undoItem.value) failed.value = false
+      return true
+    } catch {
+      if (generation === scopeGeneration && request === snapshotRequest) failed.value = true
+      return false
+    } finally {
+      if (request === snapshotRequest) loadingWindow.value = false
+    }
+  }
+
+  async function changeWindow(ordinal: number) {
+    if (loadingWindow.value || ordinal < 1 || ordinal > windowCount.value) return
+    scopeGeneration += 1
+    pageWindow.value = ordinal
+    annotations.value = []
+    dismiss()
+    await loadWindow()
+  }
+
+  function loadNextWindow() {
+    return changeWindow(pageWindow.value + 1)
+  }
+
+  function loadPreviousWindow() {
+    return changeWindow(pageWindow.value - 1)
+  }
 
   async function synchronize() {
-    if (synchronizing || disposed || document.visibilityState === 'hidden') return
+    if (synchronizing || loadingWindow.value || disposed || document.visibilityState === 'hidden') return
     synchronizing = true
     const generation = scopeGeneration
     let hasMore = false
@@ -73,17 +148,12 @@ export function useSourcePdfInk(bookId: number, fileId: number) {
         }
         if (disposed || generation !== scopeGeneration) return
         const delta: NativeAnnotationDelta = await response.json()
-        const rows = new Map(annotations.value.map((item) => [item.id, item]))
+        if (delta.items.length && !(await loadWindow())) return
+        if (disposed || generation !== scopeGeneration) return
         for (const item of delta.items) {
-          if ((versions.get(item.id) ?? rows.get(item.id)?.version ?? 0) > item.version) continue
-          versions.set(item.id, item.version)
-          if (item.deletedAt) rows.delete(item.id)
-          else rows.set(item.id, { ...item, drawing: null })
-        }
-        annotations.value = [...rows.values()].slice(-1000)
-        const retainedIds = new Set(annotations.value.map((item) => item.id))
-        for (const id of versions.keys()) {
-          if (!retainedIds.has(id) && id !== undoItem.value?.id) versions.delete(id)
+          if (item.id === pinnedItem.value?.id && item.version >= (pinnedItem.value.version ?? 0)) {
+            pinnedItem.value = item.deletedAt ? null : { ...item, drawing: null }
+          }
         }
         cursors.set(page, delta.nextCursor)
         hasMore ||= delta.hasMore
@@ -105,9 +175,12 @@ export function useSourcePdfInk(bookId: number, fileId: number) {
     cursors.clear()
     versions.clear()
     annotations.value = []
+    pageWindow.value = 1
+    pageTotals.value = new Map()
     pageSources.value = new Map()
     dismiss()
     void inspectSource()
+    void loadWindow()
     void synchronize()
   }
 
@@ -124,8 +197,7 @@ export function useSourcePdfInk(bookId: number, fileId: number) {
         const next = batch?.pages[0] ?? null
         if (next && source.value && next.sourceRevision !== source.value.sourceRevision) {
           scopeGeneration += 1
-          cursors.clear()
-          annotations.value = []
+          void loadWindow()
           void synchronize()
         }
         pageSources.value = new Map(batch?.pages.map((page) => [page.page, page]))
@@ -148,6 +220,7 @@ export function useSourcePdfInk(bookId: number, fileId: number) {
   function dismiss() {
     selectedId.value = null
     menu.value = null
+    pinnedItem.value = null
   }
 
   async function operation(item: AnnotationItem, action: 'delete' | 'restore', operationId: string) {
@@ -188,7 +261,9 @@ export function useSourcePdfInk(bookId: number, fileId: number) {
       undoItem.value = deleted
       committed.value = true
       annotations.value = annotations.value.filter((entry) => entry.id !== item.id)
+      if (pinnedItem.value?.id === item.id) pinnedItem.value = null
       hiddenId.value = null
+      void loadWindow()
     } catch {
       failed.value = true
       hiddenId.value = null
@@ -242,8 +317,9 @@ export function useSourcePdfInk(bookId: number, fileId: number) {
         failed.value = true
         return
       }
-      annotations.value = [...annotations.value.filter((entry) => entry.id !== restored.id), restored]
+      pinnedItem.value = { ...restored, drawing: null }
       selectedId.value = restored.id
+      void loadWindow()
       if (publicationFailed.value) return
       undoItem.value = null
       pendingOperationId = null
@@ -264,6 +340,7 @@ export function useSourcePdfInk(bookId: number, fileId: number) {
     else if (pendingOperationId) void publishDelete()
     else {
       void inspectSource()
+      void loadWindow()
       void synchronize()
     }
   }
@@ -282,6 +359,7 @@ export function useSourcePdfInk(bookId: number, fileId: number) {
     void synchronize()
   }, 3000)
   void inspectSource()
+  void loadWindow()
   void synchronize()
   return {
     items,
@@ -300,5 +378,12 @@ export function useSourcePdfInk(bookId: number, fileId: number) {
     undo,
     retry,
     setVisiblePages,
+    pageWindow,
+    windowCount,
+    hasPrevious,
+    hasMore,
+    loadingWindow,
+    loadNextWindow,
+    loadPreviousWindow,
   }
 }

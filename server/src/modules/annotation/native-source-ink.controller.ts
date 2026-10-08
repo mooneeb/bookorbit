@@ -4,7 +4,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { NativeAnnotationOperationsDto } from './dto/native-annotation.dto';
-import { NativeSourceInkQueryDto, NativeSourceInkScopeDto } from './dto/native-source-ink.dto';
+import { NativeSourceInkQueryDto, NativeSourceInkScopeDto, NativeSourceInkWindowQueryDto } from './dto/native-source-ink.dto';
 import { NativeSourceInkService } from './native-source-ink.service';
 
 @Controller('annotations/native/source-ink')
@@ -14,6 +14,12 @@ export class NativeSourceInkController {
   @Get()
   delta(@CurrentUser() user: RequestUser, @Query() query: NativeSourceInkQueryDto) {
     return this.service.delta(user, query);
+  }
+
+  @Get('window')
+  @RequirePermission(Permission.LibraryDownload)
+  window(@CurrentUser() user: RequestUser, @Query() query: NativeSourceInkWindowQueryDto) {
+    return this.service.window(user, query);
   }
 
   @Post(':bookId/:bookFileId/operations')

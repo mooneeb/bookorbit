@@ -189,11 +189,20 @@ struct EPUBReaderView: View {
       .onChange(of: model.isReady) { _, ready in
         if ready { rebuildContents() } else { selectionTools.detach() }
       }
+      .task(id: scenePhase) {
+        guard scenePhase == .active else { return }
+        while !Task.isCancelled {
+          if let repository = annotations.repository {
+            do { try await repository.refreshPrivatePassages(bookID: model.bookID) }
+            catch is CancellationError { return } catch {}
+          }
+          do { try await Task.sleep(for: .seconds(3)) } catch { return }
+        }
+      }
       .onChange(of: scenePhase) { _, phase in
         if phase == .active {
           Task {
             await model.refreshPosition()
-            await annotations.synchronize()
             await speech.foreground()
             await recorded.foreground()
           }

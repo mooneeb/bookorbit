@@ -11,7 +11,7 @@ final class ActivePDFSyncJourneyTests: XCTestCase {
   }()
 
   @MainActor
-  func testIPADE02ActivePDFRemoteMoveAndDeleteWithoutRetry() async throws {
+  func testIPADE02A05ActivePDFRemoteMoveAndDeleteWithoutRetry() async throws {
     let owner = try await login("ipad-owner")
     let editor = try await login("ipad-editor")
     let original = try await request("books/files/1/serve", token: owner)
@@ -49,7 +49,8 @@ final class ActivePDFSyncJourneyTests: XCTestCase {
     XCTAssertEqual(XCTWaiter.wait(for: [moved], timeout: 25), .completed)
     XCTAssertTrue(app.staticTexts["Page 1 of 3"].exists)
     let afterMove = try await request("books/files/1/serve", token: owner)
-    assertArtifact(afterMove, differsFrom: original, name: "remote-move-blue-current-source")
+    assertArtifact(
+      afterMove, differsFrom: original, name: "IPAD-E02-A05-remote-move-blue-current-source")
     _ = try await mutate(id: id, clientID: identity, version: 2, action: "delete", token: editor)
     try await fault("offline")
     try await fault("online")
@@ -65,12 +66,13 @@ final class ActivePDFSyncJourneyTests: XCTestCase {
     XCTAssertEqual(
       deletedPDF.page(at: 0)?.annotations.filter { $0.type == "Ink" }.count,
       (movedPDF.page(at: 0)?.annotations.filter { $0.type == "Ink" }.count ?? 0) - 1)
-    assertArtifact(deleted, differsFrom: afterMove, name: "remote-delete-current-source")
-    capture("active-reader-automatic-move-delete-no-retry")
+    assertArtifact(
+      deleted, differsFrom: afterMove, name: "IPAD-E02-A05-remote-delete-current-source")
+    capture("IPAD-E02-A05-active-reader-automatic-move-delete-no-retry")
   }
 
   @MainActor
-  func testIPADE02ActivePDFQueuedPencilDraftAndPageSurviveKnownPublication() async throws {
+  func testIPADE02A05ActivePDFQueuedPencilDraftAndPageSurviveKnownPublication() async throws {
     let editor = try await login("ipad-editor")
     try await resetFaults()
     let app = openPDF()
@@ -88,7 +90,8 @@ final class ActivePDFSyncJourneyTests: XCTestCase {
     let remote = try await createInk(token: editor)
     let remoteIdentity = try XCTUnwrap(remote["clientId"] as? String)
     let after = try await request("books/files/1/serve", token: editor)
-    assertArtifact(after, differsFrom: before, name: "known-publication-with-offline-pencil-draft")
+    assertArtifact(
+      after, differsFrom: before, name: "IPAD-E02-A05-known-publication-with-offline-pencil-draft")
     try await fault("online")
     XCUIDevice.shared.press(.home)
     app.activate()
@@ -102,11 +105,11 @@ final class ActivePDFSyncJourneyTests: XCTestCase {
       PDFDocument(data: delivered)?.page(at: 0)?.annotations.filter {
         $0.type == "Ink"
       }.count ?? 0, 2)
-    capture("active-reader-retained-tagged-pencil-input-and-page")
+    capture("IPAD-E02-A05-active-reader-retained-tagged-pencil-input-and-page")
   }
 
   @MainActor
-  func testIPADE02ActivePDFUnknownDeletionRetainsCompleteOriginal() async throws {
+  func testIPADE02A06ActivePDFUnknownDeletionRetainsCompleteOriginal() async throws {
     let owner = try await login("ipad-owner")
     _ = try await request("__faults/source-pdf/source/1/snapshot", method: "POST", token: owner)
     let original = try await request("books/files/1/serve", token: owner)
@@ -125,7 +128,7 @@ final class ActivePDFSyncJourneyTests: XCTestCase {
     XCTAssertTrue(app.buttons["pdfInkDraw"].wait(for: \.exists, toEqual: false, timeout: 25))
     XCTAssertTrue(app.staticTexts["Page 1 of 3"].exists)
     XCTAssertFalse(app.buttons["pdfInkDraw"].exists)
-    capture("active-reader-unknown-deletion-keeps-old-visible-pdf")
+    capture("IPAD-E02-A06-active-reader-unknown-deletion-keeps-old-visible-pdf")
     app.buttons["Close reader"].tap()
     app.buttons["offlineLibrary"].tap()
     app.buttons["offlineSourceRecovery"].tap()
@@ -139,8 +142,110 @@ final class ActivePDFSyncJourneyTests: XCTestCase {
     XCTAssertTrue(prepare.wait(for: \.isHittable, toEqual: true, timeout: 10))
     prepare.tap()
     XCTAssertTrue(app.staticTexts["sourceRecoveryExportReady"].waitForExistence(timeout: 15))
-    attach(original, name: "unknown-deletion-original-complete-pdf", type: "com.adobe.pdf")
-    capture("unknown-deletion-verified-complete-original-export")
+    attach(
+      original, name: "IPAD-E02-A06-unknown-deletion-original-complete-pdf", type: "com.adobe.pdf")
+    capture("IPAD-E02-A06-unknown-deletion-verified-complete-original-export")
+  }
+
+  @MainActor
+  func testIPADE02A05ActivePDFPrivateRemoteNotesPreserveDirtyPopoverAndSource() async throws {
+    let owner = try await login("ipad-owner")
+    let editor = try await login("ipad-editor")
+    try await resetFaults()
+    let baseline = try await request("books/files/1/serve", token: owner)
+    let descriptor = try await source(token: owner)
+    let app = openPDF()
+    let clientID = UUID().uuidString.lowercased()
+    let initial: [String: Any] = [
+      "kind": "text_note", "bookFileId": 1,
+      "text": "Remote private passage initial", "note": "Remote note initial",
+      "pdf": ["page": 0, "rect": ["x": 76, "y": 196, "width": 108, "height": 18], "rects": []],
+      "sourceRevision": try XCTUnwrap(descriptor["sourceRevision"]),
+      "pageFingerprint": try XCTUnwrap(descriptor["pageFingerprint"]),
+    ]
+    let created = try await privateMutation(
+      clientID: clientID, version: 0, action: "create",
+      payload: initial, token: owner)
+    let id = try XCTUnwrap(created["id"] as? Int)
+    let target = app.buttons["pdfPrivateAnnotation\(id)"]
+    XCTAssertTrue(target.waitForExistence(timeout: 25))
+    let originalFrame = target.frame
+    XCTAssertTrue(target.label.contains("Remote private passage initial"))
+    let afterPrivateCreate = try await request("books/files/1/serve", token: owner)
+    XCTAssertEqual(afterPrivateCreate, baseline)
+    target.tap()
+    let note = app.textViews["passageNoteText"]
+    XCTAssertTrue(note.waitForExistence(timeout: 10))
+    note.tap()
+    note.typeText(" local unsaved suffix")
+    let dirtyValue = note.value as? String
+    var updated = initial
+    updated["text"] = "Remote private passage updated"
+    updated["note"] = "Remote note updated"
+    updated["pdf"] = [
+      "page": 0, "rect": ["x": 276, "y": 236, "width": 108, "height": 18], "rects": [],
+    ]
+    _ = try await privateMutation(
+      id: id, clientID: clientID, version: 1, action: "update",
+      payload: updated, token: owner)
+    XCUIDevice.shared.press(.home)
+    app.activate()
+    XCTAssertTrue(app.buttons["pdfPassageCancel"].waitForExistence(timeout: 10))
+    XCTAssertEqual(note.value as? String, dirtyValue)
+    app.buttons["pdfPassageCancel"].tap()
+    let remapped = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        target.exists && target.label.contains("Remote private passage updated")
+          && target.frame != originalFrame
+      }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [remapped], timeout: 25), .completed)
+    XCTAssertTrue(app.staticTexts["Page 1 of 3"].exists)
+    let foreign = try await privateMutation(
+      clientID: UUID().uuidString.lowercased(), version: 0,
+      action: "create", payload: initial, token: editor)
+    let foreignID = try XCTUnwrap(foreign["id"] as? Int)
+    _ = try await privateMutation(
+      id: id, clientID: clientID, version: 2, action: "delete", token: owner)
+    try await fault("offline")
+    try await fault("online")
+    XCTAssertTrue(target.wait(for: \.exists, toEqual: false, timeout: 25))
+    XCTAssertFalse(app.buttons["pdfPrivateAnnotation\(foreignID)"].exists)
+    let foreignOperation: [String: Any] = [
+      "operationId": UUID().uuidString,
+      "clientId": clientID, "annotationId": id, "bookId": 1, "baseVersion": 3, "action": "delete",
+    ]
+    _ = try await request(
+      "annotations/native/operations", method: "POST", token: editor,
+      body: ["deviceId": "active-pdf-private-denied", "operations": [foreignOperation]],
+      expected: 403)
+    _ = try await privateMutation(
+      id: foreignID, clientID: try XCTUnwrap(foreign["clientId"] as? String),
+      version: 1, action: "delete", token: editor)
+    let current = try await request("books/files/1/serve", token: owner)
+    XCTAssertEqual(
+      current, baseline, "Private edits must leave the ordinary source PDF byte-identical")
+    attach(current, name: "A05-private-ledger-source-unchanged", type: "com.adobe.pdf")
+    capture("IPAD-E02-A05-active-private-create-update-delete-dirty-popover-preserved")
+  }
+
+  @MainActor
+  private func privateMutation(
+    id: Int? = nil, clientID: String, version: Int, action: String,
+    payload: [String: Any]? = nil, token: String
+  ) async throws -> [String: Any] {
+    var operation: [String: Any] = [
+      "operationId": UUID().uuidString, "clientId": clientID,
+      "bookId": 1, "baseVersion": version, "action": action,
+    ]
+    if let id { operation["annotationId"] = id }
+    if let payload { operation["payload"] = payload }
+    let data = try await request(
+      "annotations/native/operations", method: "POST", token: token,
+      body: ["deviceId": "active-pdf-private-public-ui", "operations": [operation]])
+    let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let result = try XCTUnwrap((envelope["results"] as? [[String: Any]])?.first)
+    XCTAssertEqual(result["status"] as? String, "applied")
+    return try XCTUnwrap(result["annotation"] as? [String: Any])
   }
 
   private var apiBase: URL {
@@ -181,7 +286,7 @@ final class ActivePDFSyncJourneyTests: XCTestCase {
   @MainActor
   private func request(
     _ path: String, method: String = "GET", token: String? = nil,
-    body: [String: Any]? = nil
+    body: [String: Any]? = nil, expected: Int? = nil
   ) async throws -> Data {
     var request = URLRequest(url: apiBase.appendingPathComponent(path))
     request.httpMethod = method
@@ -192,7 +297,11 @@ final class ActivePDFSyncJourneyTests: XCTestCase {
       request.httpBody = try JSONSerialization.data(withJSONObject: body)
     }
     let (data, response) = try await transport.data(for: request)
-    XCTAssertTrue((200..<300).contains((response as? HTTPURLResponse)?.statusCode ?? 0), path)
+    if let expected {
+      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, expected, path)
+    } else {
+      XCTAssertTrue((200..<300).contains((response as? HTTPURLResponse)?.statusCode ?? 0), path)
+    }
     return data
   }
 

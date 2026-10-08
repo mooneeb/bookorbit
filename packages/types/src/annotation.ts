@@ -187,6 +187,12 @@ export interface NativeAnnotationDelta {
   nextCursor: string;
   hasMore: boolean;
 }
+export interface NativeSourceInkWindowResponse {
+  items: NativeAnnotationItem[];
+  total: number;
+  window: number;
+  limit: number;
+}
 export interface NativeAnnotationAck {
   deviceId: string;
   bookId: number;

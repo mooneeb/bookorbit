@@ -7,6 +7,7 @@ Use Node 24 or newer, pnpm 11.22.0, Xcode 27, an iOS 26 iPad simulator, PostgreS
 ```sh
 node scripts/ipad/run-harness.mjs --list-annotations
 node scripts/ipad/run-harness.mjs --annotations
+node scripts/ipad/run-harness.mjs --annotations --web
 node scripts/ipad/run-harness.mjs --annotations --ui --web --case=A01
 node scripts/ipad/run-harness.mjs --annotations --ui --web --case=A05
 node scripts/ipad/run-harness.mjs --annotations --serve --web
@@ -20,6 +21,8 @@ node scripts/ipad/run-bookmark-retirement.mjs
 `run-bookmark-retirement.mjs` prepares and migrates its own uniquely named database, invokes only the two public A05 bookmark-retirement protocol tests in `server/test/ipad/bookmark-retirement.http.test.ts`, and drops that database in cleanup. It leaves the retained native/API fixture untouched and writes a separate `test-results/ipad/bookmark-retirement-*` report.
 
 The focused A05 command starts the browser before running native and browser tests concurrently. Test-only transport checkpoints coordinate `native-offline-ready`, `browser-delete-done`, and `native-reconciled`; assertions still use actual UI, authenticated routes, and PDF bytes. Run all other affected journeys as their independent cases so each run has a fresh database and source artifacts. No failure receives an automatic retry.
+
+The self-contained `--annotations --web` command starts the real fault proxy before annotation HTTP checks, runs all annotation HTTP drivers serially, then runs the six main browser journeys, the two collection journeys, and the dense shared-source window journey in that order. Collection and dense-window reports use separate `-collection` and `-source-window` artifact directories so the main report is retained. The actual additional case titles are A01 for the EPUB collection and A03 for both the PDF collection and dense source window. Focused runs invoke only matching additional configs/tests; A02 retains the main source-PDF alias journey. The proxy starts once and normal cleanup stops it, web/API processes and the isolated database. Existing retained fixtures must release ports before this fresh command is run.
 
 The retained server exposes the API at `http://localhost:16482/api/v1`, web at `http://localhost:16484`, and fault transport at `http://localhost:16485`. Use `ipad-owner`, `ipad-reader`, `ipad-editor`, or `ipad-restricted`, password `IpadFixture123`. The owner is a superuser; the reader has viewer library access; the editor has metadata permission and editor library access; the restricted account has no library access. Tests create annotations through public routes rather than inserting expected canonical rows.
 
@@ -38,6 +41,10 @@ The temporary library has 50,000 books inserted in batches of 500. Book 1/file 1
 | IPAD-E02-A07 | Bounded hub search/filter/group/deep links/export/trash/restore/repair/device state stays user scoped and converges                                                      | `AnnotationHubJourneyTests`, `AnnotationJourneyTests`, `annotation-hub-http.test.mjs`, `annotations-cross-client.test.mjs` | Integrated human walkthrough                                                                                          |
 
 The issue criteria map as follows: Pencil passage contracts/search to A01/A07; preview/page stability/gestures to A01/A03; complete chosen offline content to A04; transfer/outbox/revisions/account/storage to A04/A05/A06; safe source publication to A02/A03/A06; shared editing and Undo to A03; authoritative deletion/conflicts/source changes to A05/A06; the hub to A07. The integrated human walkthrough spans A01-A07. Permission/failure/retry/scale and accessibility checks belong to their corresponding journeys. A named mapping is a plan, not a passing result; the exported reports and independently executed test evidence determine coverage.
+
+`ActivePDFSyncJourneyTests` adds two A05 journeys for active-reader remote move/delete and queued Pencil/page preservation across a known publication, plus one A06 journey for authoritative source deletion and retained complete-original recovery/export. Their method and capture names use the A05/A06 prefixes, so the default native run and focused `--case=A05` or `--case=A06` runs discover them and the visual helper processes their screenshots.
+
+`PassageEditingJourneyTests` is supplementary A01 coverage: the default and focused A01 method scanner include its P2 journey. Native captures prefixed `IPAD-E02-P2` map to A01 visual reports with distinct `supplemental-P2-*` states, retaining the original source identifier in metadata. Other case selections do not include this supplementary journey.
 
 ## Controlled faults
 

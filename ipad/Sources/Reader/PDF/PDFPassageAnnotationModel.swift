@@ -36,6 +36,8 @@ final class PDFPassageAnnotationModel {
   private var fingerprints: [Int: String] = [:]
   private var visiblePages: Set<Int> = []
   private var lastOperationID: UUID?
+  private var isRefreshingRemote = false
+  private var bindingGeneration = 0
 
   init(api: BookOrbitAPI, bookID: Int, fileID: Int) {
     self.api = api
@@ -64,6 +66,7 @@ final class PDFPassageAnnotationModel {
   }
 
   func bind(document: PDFDocument, source: PDFSourceInkEditor) {
+    bindingGeneration += 1
     self.document = document
     self.source = source
   }
@@ -80,15 +83,35 @@ final class PDFPassageAnnotationModel {
     } catch { self.error = error.localizedDescription }
   }
 
+  func refreshRemote() async {
+    guard let repository, !isRefreshingRemote else { return }
+    isRefreshingRemote = true
+    let generation = bindingGeneration
+    defer { isRefreshingRemote = false }
+    do {
+      try await repository.refreshPrivatePassages(bookID: bookID)
+      try Task.checkCancellation()
+      guard generation == bindingGeneration, self.repository === repository else { return }
+      await reloadItems()
+    } catch is CancellationError {
+      return
+    } catch {
+      guard generation == bindingGeneration, self.repository === repository else { return }
+      self.error = error.localizedDescription
+    }
+  }
+
   func reloadItems() async {
     guard let repository else { return }
     do {
       let pages = visiblePages
+      let generation = bindingGeneration
       var loaded: [NativeAnnotationItem] = []
       for page in pages.sorted().prefix(4) {
         loaded += try await repository.loadPDFPassages(bookID: bookID, fileID: fileID, page: page)
       }
-      guard pages == visiblePages else { return }
+      guard pages == visiblePages, generation == bindingGeneration, self.repository === repository
+      else { return }
       items = loaded.filter { $0.deletedAt == nil && $0.positionStatus != "failed" }
       if let syncError = repository.error { error = syncError }
     } catch { self.error = error.localizedDescription }

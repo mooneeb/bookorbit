@@ -121,18 +121,19 @@ export async function compareNativeAnnotationVisuals(artifacts, profile) {
   for (const entry of entries) {
     for (const attachment of entry.attachments) {
       const name = attachment.suggestedHumanReadableName?.replace(/_\d+_[A-Fa-f0-9-]+\.png$/, "");
-      const match = name?.match(/^(IPAD-E02-A0[1-7])-(.+)$/);
+      const match = name?.match(/^(IPAD-E02-(?:A0[1-7]|P2))-(.+)$/);
       if (!match || !attachment.exportedFileName.endsWith(".png")) continue;
       reports.push(
         await compareAnnotationVisual({
           actualPath: join(artifacts, "native-attachments", attachment.exportedFileName),
           outputDir: join(artifacts, "native-visual"),
-          testId: match[1],
-          state: match[2],
+          testId: match[1] === "IPAD-E02-P2" ? "IPAD-E02-A01" : match[1],
+          state: match[1] === "IPAD-E02-P2" ? `supplemental-P2-${match[2]}` : match[2],
           surface: "native",
           profile,
           metadata: {
             testIdentifier: entry.testIdentifier,
+            sourceTestId: match[1],
             deviceName: attachment.deviceName,
             deviceId: attachment.deviceId,
             configurationName: attachment.configurationName,

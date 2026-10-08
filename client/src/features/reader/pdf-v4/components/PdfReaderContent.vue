@@ -238,6 +238,14 @@ function handleRetryInk() {
   props.sourceInk?.retry()
 }
 
+function handleNextInkWindow() {
+  void props.sourceInk?.loadNextWindow()
+}
+
+function handlePreviousInkWindow() {
+  void props.sourceInk?.loadPreviousWindow()
+}
+
 function handleRetryHighlights() {
   void highlights.retryLoad()
 }
@@ -669,6 +677,31 @@ onUnmounted(() => {
         class="rounded-md border border-border px-3 py-2 text-xs disabled:opacity-50"
         :disabled="!highlights.visibleHasMore.value || highlights.loadingVisible.value"
         @click="handleLoadMoreVisibleAnnotations"
+      >
+        {{ t('annotations.pagination.nextPage') }}
+      </button>
+    </div>
+
+    <div
+      v-if="props.sourceInk?.hasMore.value || props.sourceInk?.hasPrevious.value"
+      class="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border bg-card px-3 py-2"
+      data-testid="source-ink-pagination"
+    >
+      <span class="text-xs text-muted-foreground"
+        >{{ t('annotations.hub.title') }}:
+        {{ t('annotations.pagination.pageOf', { page: props.sourceInk.pageWindow.value, totalPages: props.sourceInk.windowCount.value }) }}</span
+      >
+      <button
+        class="rounded-md border border-border px-3 py-2 text-xs disabled:opacity-50"
+        :disabled="!props.sourceInk.hasPrevious.value || props.sourceInk.loadingWindow.value"
+        @click="handlePreviousInkWindow"
+      >
+        {{ t('annotations.pagination.previousPage') }}
+      </button>
+      <button
+        class="rounded-md border border-border px-3 py-2 text-xs disabled:opacity-50"
+        :disabled="!props.sourceInk.hasMore.value || props.sourceInk.loadingWindow.value"
+        @click="handleNextInkWindow"
       >
         {{ t('annotations.pagination.nextPage') }}
       </button>

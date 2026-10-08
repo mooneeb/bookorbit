@@ -86,6 +86,7 @@ struct PDFReaderView: View {
       guard scenePhase == .active else { return }
       await model.refreshPosition()
       while !Task.isCancelled {
+        await passages.refreshRemote()
         if let proof = await ink.refreshRemote() {
           await model.refreshPublishedSource(
             bookID: bookID, proof: proof,
