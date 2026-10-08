@@ -261,6 +261,9 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     XCTAssertTrue(server.waitForExistence(timeout: 10))
     replaceText(server, with: Self.serverURL)
     app.buttons["connectServer"].tap()
+    guard E02ProfileSupport.ensureSignInForm(app: app, serverURL: Self.serverURL) else {
+      return app
+    }
     let username = app.textFields["username"]
     XCTAssertTrue(username.wait(for: \.isHittable, toEqual: true, timeout: 10))
     username.tap()

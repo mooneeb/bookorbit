@@ -497,6 +497,9 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
     XCTAssertTrue(server.waitForExistence(timeout: 10))
     replaceText(server, with: "http://127.0.0.1:16485")
     app.buttons["connectServer"].tap()
+    guard E02ProfileSupport.ensureSignInForm(app: app, serverURL: "http://127.0.0.1:16485") else {
+      return app
+    }
     let username = app.textFields["username"]
     XCTAssertTrue(username.wait(for: \.isHittable, toEqual: true, timeout: 10))
     username.tap()

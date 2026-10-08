@@ -418,6 +418,9 @@ final class ActivePDFSyncJourneyTests: XCTestCase {
         repeating: XCUIKeyboardKey.delete.rawValue, count: (server.value as? String ?? "").count))
     server.typeText(proxyBase.absoluteString)
     app.buttons["connectServer"].tap()
+    guard E02ProfileSupport.ensureSignInForm(app: app, serverURL: proxyBase.absoluteString) else {
+      return app
+    }
     XCTAssertTrue(app.textFields["username"].waitForExistence(timeout: 10))
     app.textFields["username"].tap()
     app.textFields["username"].typeText("ipad-owner")

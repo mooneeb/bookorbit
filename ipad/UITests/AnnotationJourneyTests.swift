@@ -1089,6 +1089,10 @@ final class AnnotationJourneyTests: XCTestCase {
     replaceText(server, with: serverURL.map(Self.loopbackURL) ?? Self.fixtureServerURL)
     app.buttons["connectServer"].tap()
     let username = app.textFields["username"]
+    guard
+      E02ProfileSupport.ensureSignInForm(
+        app: app, serverURL: serverURL.map(Self.loopbackURL) ?? Self.fixtureServerURL)
+    else { return app }
     XCTAssertTrue(username.wait(for: \.isHittable, toEqual: true, timeout: 10))
     username.tap()
     username.typeText("ipad-owner")

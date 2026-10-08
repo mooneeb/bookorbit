@@ -42,6 +42,9 @@ final class AnnotationHubJourneyTests: XCTestCase {
       server.typeText("http://localhost:16482")
     }
     app.buttons["connectServer"].tap()
+    guard E02ProfileSupport.ensureSignInForm(app: app, serverURL: "http://localhost:16482") else {
+      return
+    }
     let username = app.textFields["username"]
     XCTAssertTrue(username.waitForExistence(timeout: 10))
     username.tap()

@@ -35,6 +35,46 @@ enum E02ProfileSupport {
     app.launchArguments = arguments
   }
 
+  static func ensureSignInForm(app: XCUIApplication, serverURL: String) -> Bool {
+    let username = app.textFields["username"]
+    let connectionReady = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated {
+          username.isHittable || app.buttons["signOut"].isHittable
+        }
+      }, object: nil)
+    guard XCTWaiter.wait(for: [connectionReady], timeout: 15) == .completed else {
+      XCTFail("Connecting must show the sign-in form or a session that can be signed out.")
+      return false
+    }
+    let signOuts = app.buttons.matching(identifier: "signOut")
+    if signOuts.count > 0 {
+      guard signOuts.count == 1,
+        signOuts.element.wait(for: \.isHittable, toEqual: true, timeout: 5),
+        signOuts.element.wait(for: \.isEnabled, toEqual: true, timeout: 10)
+      else {
+        XCTFail("Expected one available Sign out control for the restored session.")
+        return false
+      }
+      signOuts.element.tap()
+      let server = app.textFields["serverURL"]
+      guard server.wait(for: \.isHittable, toEqual: true, timeout: 10) else {
+        XCTFail("Signing out the restored session must return to the server connection form.")
+        return false
+      }
+      server.tap()
+      let existing = server.value as? String ?? ""
+      server.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count))
+      server.typeText(serverURL)
+      app.buttons["connectServer"].tap()
+    }
+    guard username.wait(for: \.isHittable, toEqual: true, timeout: 10) else {
+      XCTFail("The requested server must show the sign-in form after removing a restored session.")
+      return false
+    }
+    return true
+  }
+
   static func applyMotionInSettings(_ test: XCTestCase) {
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
     settings.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]

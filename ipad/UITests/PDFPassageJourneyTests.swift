@@ -277,6 +277,9 @@ final class PDFPassageJourneyTests: XCTestCase {
     XCTAssertTrue(server.waitForExistence(timeout: 10))
     replace(server, Self.serverURL)
     tap("connectServer", app)
+    guard E02ProfileSupport.ensureSignInForm(app: app, serverURL: Self.serverURL) else {
+      return app
+    }
     XCTAssertTrue(app.textFields["username"].waitForExistence(timeout: 10))
     replace(app.textFields["username"], user)
     replace(app.secureTextFields["password"], "IpadFixture123")

@@ -147,14 +147,15 @@ final class AnnotationProfilePerformanceTests: XCTestCase {
     app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
     E02ProfileSupport.configure(app)
     app.launch()
-    if app.buttons["openAnnotationHub"].waitForExistence(timeout: 5) {
-      E02ProfileSupport.assertSystemProfile(app: app)
-      return app
-    }
+    if app.buttons["signOut"].waitForExistence(timeout: 3) { app.buttons["signOut"].tap() }
+    if app.buttons["Change server"].exists { app.buttons["Change server"].tap() }
     let server = app.textFields["serverURL"]
     XCTAssertTrue(server.waitForExistence(timeout: 10))
     replace(server, "http://localhost:16482")
     app.buttons["connectServer"].tap()
+    guard E02ProfileSupport.ensureSignInForm(app: app, serverURL: "http://localhost:16482") else {
+      return app
+    }
     XCTAssertTrue(app.textFields["username"].waitForExistence(timeout: 10))
     replace(app.textFields["username"], "ipad-owner")
     replace(app.secureTextFields["password"], "IpadFixture123")
