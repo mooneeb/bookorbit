@@ -93,9 +93,25 @@ struct AnnotationHubView: View {
             "annotationHubDone")
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
-          Button("Filters", action: openFilters).accessibilityIdentifier("annotationHubFilters")
+          Button(action: openFilters) {
+            Text("Filters")
+              .font(.body)
+              .fixedSize(horizontal: false, vertical: true)
+              .frame(minWidth: 44, minHeight: 44)
+              .contentShape(Rectangle())
+          }
+          .accessibilityShowsLargeContentViewer()
+          .accessibilityIdentifier("annotationHubFilters")
           if canManage {
-            Button("Devices", action: openDevices).accessibilityIdentifier("annotationHubDevices")
+            Button(action: openDevices) {
+              Text("Devices")
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .accessibilityShowsLargeContentViewer()
+            .accessibilityIdentifier("annotationHubDevices")
           }
         }
       }
