@@ -51,7 +51,11 @@ final class AnnotationHubJourneyTests: XCTestCase {
     app.buttons["signIn"].tap()
     XCTAssertTrue(app.buttons["openAnnotationHub"].waitForExistence(timeout: 20))
     app.buttons["openAnnotationHub"].tap()
-    XCTAssertTrue(app.searchFields["annotationHubSearch"].waitForExistence(timeout: 15))
+    let searchFields = app.textFields.matching(identifier: "annotationHubSearch")
+    let search = searchFields.element
+    XCTAssertTrue(search.waitForExistence(timeout: 15))
+    XCTAssertEqual(searchFields.count, 1)
+    XCTAssertTrue(search.wait(for: \.isHittable, toEqual: true, timeout: 5))
     XCTAssertTrue(app.buttons["annotationHubFilters"].exists)
     XCTAssertTrue(app.buttons["annotationHubDevices"].exists)
     XCTAssertLessThanOrEqual(
@@ -59,8 +63,10 @@ final class AnnotationHubJourneyTests: XCTestCase {
         .count, 40)
     capture("IPAD-E02-A07-hub-entry")
     try app.performAccessibilityAudit()
-    app.searchFields["annotationHubSearch"].tap()
-    app.searchFields["annotationHubSearch"].typeText("NoSuchConvertedPassageFixture\n")
+    XCTAssertEqual(searchFields.count, 1)
+    XCTAssertTrue(search.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    search.tap()
+    search.typeText("NoSuchConvertedPassageFixture\n")
     XCTAssertTrue(app.staticTexts["annotationHubEmpty"].waitForExistence(timeout: 15))
     XCTAssertEqual(
       app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "annotationHubItem"))

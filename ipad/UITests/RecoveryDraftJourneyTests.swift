@@ -127,17 +127,7 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     reattach.tap()
     XCTAssertTrue(edition.wait(for: \.isHittable, toEqual: true, timeout: 10))
     edition.tap()
-    let previous = app.buttons["epubPreviousSection"]
-    XCTAssertTrue(previous.waitForExistence(timeout: 25))
-    for _ in 0..<3 where previous.isEnabled {
-      previous.tap()
-      XCTAssertTrue(
-        app.buttons["epubNextSection"].wait(for: \.isEnabled, toEqual: true, timeout: 15))
-    }
-    XCTAssertFalse(previous.isEnabled, "The fixture has two chapters; begin from the first")
-    let next = app.buttons["epubNextSection"]
-    XCTAssertTrue(next.wait(for: \.isEnabled, toEqual: true, timeout: 25))
-    next.tap()
+    goToSecondChapter(app)
     let select = app.buttons["epubFixtureSelectPassage"]
     XCTAssertTrue(select.wait(for: \.isHittable, toEqual: true, timeout: 15))
     select.tap()
@@ -174,6 +164,44 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     reveal(reattach, app: app)
     capture("IPAD-E02-A06-recovery-draft-retained-after-explicit-attachment")
     app.buttons["Done"].tap()
+  }
+
+  @MainActor
+  private func goToSecondChapter(_ app: XCUIApplication) {
+    let tools = app.descendants(matching: .any).matching(identifier: "epubReaderTools")
+    let previous = app.descendants(matching: .any).matching(identifier: "epubPreviousSection")
+    let next = app.descendants(matching: .any).matching(identifier: "epubNextSection")
+    let firstChapter = app.webViews.staticTexts.matching(
+      NSPredicate(format: "label == %@", "First chapter ends here."))
+    let secondChapter = app.webViews.staticTexts.matching(
+      NSPredicate(format: "label == %@", "Second chapter begins here."))
+    XCTAssertTrue(tools.element.wait(for: \.isHittable, toEqual: true, timeout: 25))
+    XCTAssertEqual(tools.count, 1)
+    XCTAssertTrue(tools.element.isEnabled)
+    tools.element.tap()
+    XCTAssertTrue(previous.element.waitForExistence(timeout: 10))
+    XCTAssertEqual(previous.count, 1)
+    XCTAssertTrue(previous.element.isHittable)
+    if previous.element.isEnabled {
+      previous.element.tap()
+      XCTAssertTrue(previous.element.wait(for: \.isHittable, toEqual: false, timeout: 10))
+      XCTAssertTrue(firstChapter.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+      XCTAssertEqual(firstChapter.count, 1)
+      XCTAssertTrue(tools.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
+      XCTAssertEqual(tools.count, 1)
+      XCTAssertTrue(tools.element.isEnabled)
+      tools.element.tap()
+      XCTAssertTrue(previous.element.waitForExistence(timeout: 10))
+      XCTAssertEqual(previous.count, 1)
+    }
+    XCTAssertFalse(previous.element.isEnabled, "The fixture has two chapters; begin from the first")
+    XCTAssertTrue(next.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertEqual(next.count, 1)
+    XCTAssertTrue(next.element.isEnabled)
+    next.element.tap()
+    XCTAssertTrue(next.element.wait(for: \.isHittable, toEqual: false, timeout: 10))
+    XCTAssertTrue(secondChapter.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    XCTAssertEqual(secondChapter.count, 1)
   }
 
   @MainActor

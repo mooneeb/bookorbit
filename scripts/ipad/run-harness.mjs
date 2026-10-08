@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { createWriteStream } from "node:fs";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { constants, createWriteStream } from "node:fs";
+import { lstat, mkdir, open, opendir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { basename } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sanitizeLogValue } from "../../server/src/common/utils/log-sanitize.utils.ts";
 import { startFaultProxy } from "./fault-proxy.mjs";
@@ -120,13 +120,22 @@ const env = {
   NATIVE_ADDITIONAL_REDIRECT_URIS: "bookorbit-private://oauth2-callback",
 };
 
-async function command(cmd, args, { capture = false, ...options } = {}) {
+async function command(cmd, args, { capture = false, timeoutMs, ...options } = {}) {
   if (interrupted) throw new Error("iPad harness interrupted");
   await mkdir(`${artifactsRoot}/logs`, { recursive: true });
   const log = createWriteStream(`${artifactsRoot}/logs/${String(++commandNumber).padStart(3, "0")}-${basename(cmd)}.log`);
   return new Promise((resolve, reject) => {
     let output = "";
     const child = launch(cmd, args, { stdio: ["ignore", "pipe", "pipe"], ...options });
+    let timedOut = false;
+    let killTimeout;
+    const timeout =
+      timeoutMs &&
+      setTimeout(() => {
+        timedOut = true;
+        signalGroup(child, "SIGTERM");
+        killTimeout = setTimeout(() => signalGroup(child, "SIGKILL"), 5_000);
+      }, timeoutMs);
     child.stdout.pipe(log, { end: false });
     child.stderr.pipe(log, { end: false });
     child.stderr.pipe(process.stderr, { end: false });
@@ -142,17 +151,89 @@ async function command(cmd, args, { capture = false, ...options } = {}) {
       });
     }
     child.once("error", (error) => {
+      clearTimeout(timeout);
+      clearTimeout(killTimeout);
       log.end();
       reject(error);
     });
     child.once("close", (code, signal) => {
+      clearTimeout(timeout);
+      clearTimeout(killTimeout);
       children.delete(child);
       log.end(() => {
-        if (code === 0) resolve(output);
+        if (timedOut) reject(new Error(`${cmd} exceeded ${timeoutMs}ms`));
+        else if (code === 0) resolve(output);
         else reject(new Error(`${cmd} failed (${code ?? signal})`));
       });
     });
   });
+}
+
+async function publicExportDirectory(deviceID) {
+  const container = (
+    await command("xcrun", ["simctl", "get_app_container", deviceID, "com.mooneeb.bookorbit.private", "data"], {
+      capture: true,
+      timeoutMs: 15_000,
+    })
+  ).trim();
+  if (!isAbsolute(container) || container.includes("\n") || !/\/Containers\/Data\/Application\/[A-Fa-f0-9-]+$/.test(container))
+    throw new Error("Installed production app did not resolve to a simulator data container");
+  const canonicalContainer = await realpath(container);
+  const directory = join(canonicalContainer, "Documents");
+  const information = await lstat(directory);
+  if (!information.isDirectory() || information.isSymbolicLink() || dirname(await realpath(directory)) !== canonicalContainer)
+    throw new Error("Native export directory must be the installed app's public Documents directory");
+  return directory;
+}
+
+async function collectNativeFiles(directory, artifacts, requireRecovery) {
+  const collectionStartedAt = Date.now();
+  console.log(`[ipad.ui_exports] [start] runId=${runID} requireRecovery=${requireRecovery} - collecting public Files exports`);
+  const destination = join(artifacts, "native-files");
+  await mkdir(destination, { recursive: true });
+  const manifest = [];
+  let examined = 0;
+  let totalBytes = 0;
+  for await (const entry of await opendir(directory)) {
+    if (++examined > 256) throw new Error("Public Documents export scan exceeded 256 entries");
+    if (!/^RecoveryUI-[A-Fa-f0-9-]+-recovery\.json$/.test(entry.name) && !/^BookOrbit annotations.*\.json$/.test(entry.name)) continue;
+    const source = join(directory, entry.name);
+    const information = await lstat(source);
+    if (!information.isFile() || information.isSymbolicLink() || dirname(await realpath(source)) !== directory)
+      throw new Error("Native Files export must be a regular public Documents file");
+    if (information.size > 16 * 1024 * 1024 || totalBytes + information.size > 64 * 1024 * 1024)
+      throw new Error("Native Files exports exceeded the bounded artifact size");
+    const file = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
+    let bytes;
+    try {
+      const buffer = Buffer.alloc(information.size + 1);
+      let offset = 0;
+      while (offset < buffer.length) {
+        const { bytesRead } = await file.read(buffer, offset, buffer.length - offset, null);
+        if (!bytesRead) break;
+        offset += bytesRead;
+      }
+      if (offset > information.size) throw new Error("Native Files export changed during bounded collection");
+      bytes = buffer.subarray(0, offset);
+    } finally {
+      await file.close();
+    }
+    totalBytes += bytes.length;
+    if (bytes.length > 16 * 1024 * 1024 || totalBytes > 64 * 1024 * 1024) throw new Error("Native Files exports exceeded the bounded artifact size");
+    await writeFile(join(destination, entry.name), bytes);
+    const record = { filename: entry.name, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
+    manifest.push(record);
+    await writeFile(join(destination, "manifest.json"), JSON.stringify(manifest, null, 2));
+    const value = JSON.parse(bytes.toString("utf8"));
+    record.identity = value.id ?? value.format ?? null;
+    await writeFile(join(destination, "manifest.json"), JSON.stringify(manifest, null, 2));
+  }
+  await writeFile(join(destination, "manifest.json"), JSON.stringify(manifest, null, 2));
+  if (requireRecovery && !manifest.some((record) => /^RecoveryUI-/.test(record.filename)))
+    throw new Error("Passing recovery journey must save its actual JSON export in public Documents");
+  console.log(
+    `[ipad.ui_exports] [end] runId=${runID} durationMs=${Date.now() - collectionStartedAt} files=${manifest.length} bytes=${totalBytes} - public Files exports collected`,
+  );
 }
 
 const children = new Set();
@@ -380,6 +461,9 @@ async function runNativeTests() {
       if (!nativeTests.length) throw new Error(`No implemented native ${annotationCase ?? "E02"} journey exists`);
     }
     let nativeFailure;
+    let exportedArtifactDirectory;
+    let nativeJourneyStarted = false;
+    const nativeEnvironment = { ...env, IPAD_E02_PROFILE: nativeVisualProfile.name };
     try {
       const commonArguments = [
         "-project",
@@ -400,7 +484,6 @@ async function runNativeTests() {
       ];
       if (annotationsProof) {
         const preflight = "BookOrbitUITests/AnnotationProfilePerformanceTests/testIPADE02A01ApplySystemProfile";
-        const nativeEnvironment = { ...env, IPAD_E02_PROFILE: nativeVisualProfile.name };
         await command(
           "xcodebuild",
           ["test", ...commonArguments, "-resultBundlePath", `${artifacts}/profile.xcresult`, `-only-testing:${preflight}`],
@@ -428,6 +511,9 @@ async function runNativeTests() {
         nativeTests = nativeTests.filter((name) => name !== preflight);
         if (!nativeTests.length)
           throw new Error("Profile preflight completed; select an acceptance journey or performance method for native verification");
+        exportedArtifactDirectory = await publicExportDirectory(selectedDevice.udid);
+        nativeEnvironment.IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
+        nativeEnvironment.TEST_RUNNER_IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
         await command("xcrun", [
           "xcresulttool",
           "export",
@@ -438,6 +524,7 @@ async function runNativeTests() {
           `${artifacts}/profile-attachments`,
         ]);
       }
+      nativeJourneyStarted = true;
       await command(
         "xcodebuild",
         [
@@ -455,10 +542,25 @@ async function runNativeTests() {
                   ? ["-only-testing:BookOrbitReaderProofUITests/PDFReaderProofTests"]
                   : []),
         ],
-        { env: { ...env, IPAD_E02_PROFILE: nativeVisualProfile.name } },
+        { env: nativeEnvironment },
       );
     } catch (error) {
       nativeFailure = error;
+    }
+    if (exportedArtifactDirectory && nativeJourneyStarted) {
+      try {
+        const recoverySelected = nativeTests.some(
+          (name) =>
+            name === "BookOrbitUITests/RecoveryDraftJourneyTests" ||
+            name === "BookOrbitUITests/RecoveryDraftJourneyTests/testIPADE02A06RecoveryDraftExportAndExplicitReattachmentPreserveDeletedOriginal",
+        );
+        await collectNativeFiles(exportedArtifactDirectory, artifacts, recoverySelected && !nativeFailure && !interrupted);
+      } catch (error) {
+        console.error(
+          `[ipad.ui_exports] [fail] runId=${runID} durationMs=${Date.now() - startedAt} errorClass=${error.name} error="${sanitizeLogValue(error.message)}" - public Files artifact collection failed`,
+        );
+        nativeFailure ??= error;
+      }
     }
     if (!interrupted) {
       try {

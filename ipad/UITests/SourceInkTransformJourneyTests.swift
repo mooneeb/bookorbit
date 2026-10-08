@@ -638,19 +638,52 @@ final class SourceInkTransformJourneyTests: XCTestCase {
 
   @MainActor
   private func tapInk(_ id: String, app: XCUIApplication) {
-    let button = app.buttons[id]
-    XCTAssertTrue(button.waitForExistence(timeout: 10))
-    let toolbar = app.scrollViews["pdfInkToolbar"]
-    for _ in 0..<6 where !button.isHittable {
-      if button.frame.midX < toolbar.frame.minX {
-        toolbar.swipeRight()
-      } else {
-        toolbar.swipeLeft()
+    let controls = app.buttons.matching(identifier: id)
+    let toolbars = app.scrollViews.matching(identifier: "pdfInkToolbar")
+    let windows = app.windows.containing(.scrollView, identifier: "pdfInkToolbar")
+    let pages = app.staticTexts.matching(
+      NSPredicate(format: "label MATCHES %@", "Page [0-9]+ of [0-9]+"))
+    guard controls.element.waitForExistence(timeout: 10), controls.count == 1,
+      toolbars.count == 1, windows.count == 1, pages.count == 1
+    else {
+      XCTFail("Expected unique ink control, toolbar, reader window and logical page: \(id).")
+      return
+    }
+    let control = controls.element
+    let toolbar = toolbars.element
+    let window = windows.element
+    let windowFrame = window.frame
+    let pageLabel = pages.element.label
+    let visible = toolbar.frame.intersection(windowFrame)
+    for _ in 0..<6 {
+      if control.isHittable && visible.contains(control.frame) { break }
+      let rowY = control.frame.midY
+      guard rowY > visible.minY, rowY < visible.maxY else {
+        XCTFail("Ink control row is outside the visible toolbar: \(id).")
+        return
+      }
+      let revealLeft = control.frame.minX < visible.minX
+      let startX = visible.minX + visible.width * (revealLeft ? 0.3 : 0.7)
+      let endX = visible.minX + visible.width * (revealLeft ? 0.65 : 0.35)
+      // The scroll view frame includes window chrome above the actual control row.
+      let start = toolbar.coordinate(
+        withNormalizedOffset: CGVector(
+          dx: (startX - toolbar.frame.minX) / toolbar.frame.width,
+          dy: (rowY - toolbar.frame.minY) / toolbar.frame.height))
+      let end = start.withOffset(CGVector(dx: endX - startX, dy: 0))
+      start.press(forDuration: 0.01, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+      guard window.frame == windowFrame, pages.element.label == pageLabel else {
+        XCTFail("Revealing ink control moved the reader window or changed its logical page: \(id).")
+        return
       }
     }
-    XCTAssertTrue(button.wait(for: \.isHittable, toEqual: true, timeout: 5))
-    XCTAssertTrue(button.wait(for: \.isEnabled, toEqual: true, timeout: 10))
-    button.tap()
+    guard control.wait(for: \.isHittable, toEqual: true, timeout: 5),
+      visible.contains(control.frame), control.wait(for: \.isEnabled, toEqual: true, timeout: 10)
+    else {
+      XCTFail("Ink control is not fully visible, hittable and enabled: \(id).")
+      return
+    }
+    control.tap()
   }
 
   @MainActor

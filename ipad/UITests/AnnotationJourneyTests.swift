@@ -230,8 +230,11 @@ final class AnnotationJourneyTests: XCTestCase {
     app.buttons["epubCloseReader"].tap()
     app.buttons["Done"].tap()
     app.buttons["openAnnotationHub"].tap()
-    let search = app.searchFields["annotationHubSearch"]
+    let searchFields = app.textFields.matching(identifier: "annotationHubSearch")
+    let search = searchFields.element
     XCTAssertTrue(search.waitForExistence(timeout: 15))
+    XCTAssertEqual(searchFields.count, 1)
+    XCTAssertTrue(search.wait(for: \.isHittable, toEqual: true, timeout: 5))
     replaceText(search, with: "Converted English passage fixture\n")
     XCTAssertTrue(app.buttons["annotationHubItem\(textID)"].waitForExistence(timeout: 10))
     XCTAssertFalse(app.buttons["annotationHubItem\(handwritingID)"].exists)
@@ -522,7 +525,9 @@ final class AnnotationJourneyTests: XCTestCase {
     app.buttons["Close reader"].tap()
     app.buttons["Done"].tap()
     app.buttons["openAnnotationHub"].tap()
-    XCTAssertTrue(app.searchFields["annotationHubSearch"].waitForExistence(timeout: 15))
+    let searchFields = app.textFields.matching(identifier: "annotationHubSearch")
+    XCTAssertTrue(searchFields.element.waitForExistence(timeout: 15))
+    XCTAssertEqual(searchFields.count, 1)
     tapHubControl("annotationHubSynchronize", app: app)
     tapHubControl("annotationHubRecovery", app: app)
     XCTAssertTrue(
@@ -534,7 +539,8 @@ final class AnnotationJourneyTests: XCTestCase {
     app.launch()
     XCTAssertTrue(app.buttons["openAnnotationHub"].waitForExistence(timeout: 25))
     app.buttons["openAnnotationHub"].tap()
-    XCTAssertTrue(app.searchFields["annotationHubSearch"].waitForExistence(timeout: 15))
+    XCTAssertTrue(searchFields.element.waitForExistence(timeout: 15))
+    XCTAssertEqual(searchFields.count, 1)
     tapHubControl("annotationHubRecovery", app: app)
     XCTAssertTrue(
       app.staticTexts["The annotation was deleted in another reader"].waitForExistence(timeout: 15))
@@ -646,12 +652,23 @@ final class AnnotationJourneyTests: XCTestCase {
 
   @MainActor
   func testIPADE02A07HubDeepLinkExportTrashRestoreAndExplicitRepair() async throws {
+    let marker = "A07-\(UUID().uuidString)"
     let token = try await loginAPI()
     let initial = try await annotations(bookID: 2, token: token)
     let existingIDs = Set(initial.compactMap { $0["id"] as? Int })
+    let originalItems = try JSONSerialization.data(withJSONObject: initial, options: [.sortedKeys])
     let app = launchAndSignIn()
     openBook("Native renderer proof", fileID: 2, app: app)
-    previewPassage(app)
+    selectA07Chapter(second: true, app: app)
+    let selection = app.buttons["epubFixtureSelectPassage"]
+    XCTAssertTrue(selection.wait(for: \.isHittable, toEqual: true, timeout: 20))
+    selection.tap()
+    XCTAssertFalse(app.buttons["passageCancel"].exists, "A07 must select an unowned passage")
+    let mark = app.buttons["epubMarkPassage"]
+    XCTAssertTrue(mark.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    mark.tap()
+    XCTAssertTrue(app.staticTexts["passageSelectionPreview"].waitForExistence(timeout: 10))
+    XCTAssertEqual(app.staticTexts["passageSelectionPreview"].label, "Second chapter begins here.")
     app.buttons["Handwriting"].tap()
     app.buttons["passageFixtureStroke"].tap()
     XCTAssertTrue(app.staticTexts["1 retained strokes"].waitForExistence(timeout: 5))
@@ -661,15 +678,27 @@ final class AnnotationJourneyTests: XCTestCase {
         !existingIDs.contains($0["id"] as? Int ?? -1) && $0["kind"] as? String == "handwriting"
       }
     }
-    let item = try XCTUnwrap(saved.first { !existingIDs.contains($0["id"] as? Int ?? -1) })
+    let owned = saved.filter { !existingIDs.contains($0["id"] as? Int ?? -1) }
+    XCTAssertEqual(owned.count, 1)
+    let item = try XCTUnwrap(owned.first)
     let id = try XCTUnwrap(item["id"] as? Int)
+    XCTAssertEqual(item["kind"] as? String, "handwriting")
+    XCTAssertEqual(item["text"] as? String, "Second chapter begins here.")
     let originalDrawing = try XCTUnwrap(item["drawing"] as? [String: Any])
+    try assertA07Preserved(initialIDs: existingIDs, original: originalItems, items: saved)
+    attach(
+      try JSONSerialization.data(
+        withJSONObject: ["marker": marker, "canonicalID": id, "item": item], options: [.sortedKeys]),
+      name: "IPAD-E02-A07-owned-native-note-cleanup-identity", type: "public.json")
     app.buttons["epubCloseReader"].tap()
     app.buttons["Done"].tap()
     app.buttons["openAnnotationHub"].tap()
-    let search = app.searchFields["annotationHubSearch"]
+    let searchFields = app.textFields.matching(identifier: "annotationHubSearch")
+    let search = searchFields.element
     XCTAssertTrue(search.waitForExistence(timeout: 15))
-    replaceText(search, with: "Alpha\n")
+    XCTAssertEqual(searchFields.count, 1)
+    XCTAssertTrue(search.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    replaceText(search, with: "Second chapter begins here.\n")
     app.buttons["annotationHubFilters"].tap()
     chooseHubPicker("annotationHubKind", option: "Handwritten notes", app: app)
     chooseHubPicker("annotationHubGrouping", option: "Month", app: app)
@@ -687,7 +716,7 @@ final class AnnotationJourneyTests: XCTestCase {
     XCTAssertTrue(app.buttons["epubPassageNotes"].waitForExistence(timeout: 20))
     reopenPassage(id, app: app)
     XCTAssertTrue(app.staticTexts["1 retained strokes"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["passageSelectionPreview"].label.contains("Alpha"))
+    XCTAssertEqual(app.staticTexts["passageSelectionPreview"].label, "Second chapter begins here.")
     capture("IPAD-E02-A07-hub-deep-link-known-passage")
     app.buttons["passageCancel"].tap()
     app.buttons["epubCloseReader"].tap()
@@ -745,20 +774,70 @@ final class AnnotationJourneyTests: XCTestCase {
     row.tap()
     app.buttons["annotationHubRepair"].tap()
     app.buttons["annotationHubRepairFile2"].tap()
-    XCTAssertTrue(app.buttons["epubNextSection"].wait(for: \.isEnabled, toEqual: true, timeout: 20))
-    app.buttons["epubNextSection"].tap()
-    app.buttons["epubFixtureSelectPassage"].tap()
-    app.buttons["passageRepairHere"].tap()
+    selectA07Chapter(second: false, app: app)
+    let repairSelection = app.buttons["epubFixtureSelectPassage"]
+    XCTAssertTrue(repairSelection.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    repairSelection.tap()
+    let confirmation = app.buttons["passageRepairHere"]
+    XCTAssertTrue(confirmation.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    let beforeRepair = try await annotations(bookID: 2, token: token)
+    let unchanged = try XCTUnwrap(beforeRepair.first { $0["id"] as? Int == id })
+    XCTAssertEqual(unchanged["version"] as? Int, restoredItem["version"] as? Int)
+    XCTAssertEqual(unchanged["cfi"] as? String, item["cfi"] as? String)
+    confirmation.tap()
     let repaired = try await waitForAnnotations(bookID: 2, token: token) { items in
       items.contains { $0["id"] as? Int == id && $0["positionStatus"] as? String == "repaired" }
     }
     let repairedItem = try XCTUnwrap(repaired.first { $0["id"] as? Int == id })
     XCTAssertNotEqual(repairedItem["cfi"] as? String, item["cfi"] as? String)
-    XCTAssertEqual(repairedItem["text"] as? String, "Second chapter begins here.")
+    XCTAssertTrue((repairedItem["text"] as? String ?? "").contains("Alpha"))
+    XCTAssertGreaterThan(repairedItem["version"] as? Int ?? 0, restoredItem["version"] as? Int ?? 0)
+    try assertA07Preserved(initialIDs: existingIDs, original: originalItems, items: repaired)
     let repairedDrawing = try XCTUnwrap(repairedItem["drawing"] as? [String: Any])
     XCTAssertEqual(
       repairedDrawing["nativeData"] as? String, originalDrawing["nativeData"] as? String)
     capture("IPAD-E02-A07-explicit-anchor-repair-preserves-drawing")
+  }
+
+  @MainActor
+  private func selectA07Chapter(second: Bool, app: XCUIApplication) {
+    let tools = app.buttons["epubReaderTools"]
+    for _ in 0..<3 {
+      XCTAssertTrue(tools.wait(for: \.isHittable, toEqual: true, timeout: 20))
+      tools.tap()
+      let previous = app.buttons["epubPreviousSection"]
+      XCTAssertTrue(previous.waitForExistence(timeout: 10))
+      if !previous.isEnabled {
+        if second {
+          let next = app.buttons["epubNextSection"]
+          XCTAssertTrue(next.wait(for: \.isHittable, toEqual: true, timeout: 10))
+          XCTAssertTrue(next.isEnabled)
+          next.tap()
+        } else {
+          XCTAssertTrue(tools.isHittable, "Dismiss the native Reader tools menu visibly")
+          tools.tap()
+        }
+        XCTAssertTrue(tools.wait(for: \.isEnabled, toEqual: true, timeout: 20))
+        XCTAssertTrue(
+          app.buttons["epubFixtureSelectPassage"].wait(
+            for: \.isHittable, toEqual: true, timeout: 20))
+        return
+      }
+      XCTAssertTrue(previous.isHittable)
+      previous.tap()
+      XCTAssertTrue(tools.wait(for: \.isEnabled, toEqual: true, timeout: 20))
+    }
+    XCTFail("The two-chapter A07 fixture could not reach its first chapter")
+  }
+
+  @MainActor
+  private func assertA07Preserved(initialIDs: Set<Int>, original: Data, items: [[String: Any]])
+    throws
+  {
+    let retained = items.filter { initialIDs.contains($0["id"] as? Int ?? -1) }
+    XCTAssertEqual(retained.count, initialIDs.count)
+    XCTAssertEqual(
+      try JSONSerialization.data(withJSONObject: retained, options: [.sortedKeys]), original)
   }
 
   @MainActor
@@ -917,18 +996,51 @@ final class AnnotationJourneyTests: XCTestCase {
 
   @MainActor
   private func tapInkControl(_ id: String, app: XCUIApplication) {
-    let control = app.buttons[id]
-    XCTAssertTrue(control.waitForExistence(timeout: 10))
-    let toolbar = app.scrollViews["pdfInkToolbar"]
-    for _ in 0..<5 where !control.isHittable {
-      if id == "pdfInkDraw" || id == "pdfInkSelect" || id == "pdfInkLasso" {
-        toolbar.swipeRight()
-      } else {
-        toolbar.swipeLeft()
+    let controls = app.buttons.matching(identifier: id)
+    let toolbars = app.scrollViews.matching(identifier: "pdfInkToolbar")
+    let windows = app.windows.containing(.scrollView, identifier: "pdfInkToolbar")
+    let pages = app.staticTexts.matching(
+      NSPredicate(format: "label MATCHES %@", "Page [0-9]+ of [0-9]+"))
+    guard controls.element.waitForExistence(timeout: 10), controls.count == 1,
+      toolbars.count == 1, windows.count == 1, pages.count == 1
+    else {
+      XCTFail("Expected unique ink control, toolbar, reader window and logical page: \(id).")
+      return
+    }
+    let control = controls.element
+    let toolbar = toolbars.element
+    let window = windows.element
+    let windowFrame = window.frame
+    let pageLabel = pages.element.label
+    let visible = toolbar.frame.intersection(windowFrame)
+    for _ in 0..<6 {
+      if control.isHittable && visible.contains(control.frame) { break }
+      let rowY = control.frame.midY
+      guard rowY > visible.minY, rowY < visible.maxY else {
+        XCTFail("Ink control row is outside the visible toolbar: \(id).")
+        return
+      }
+      let revealLeft = control.frame.minX < visible.minX
+      let startX = visible.minX + visible.width * (revealLeft ? 0.3 : 0.7)
+      let endX = visible.minX + visible.width * (revealLeft ? 0.65 : 0.35)
+      // The scroll view frame includes window chrome above the actual control row.
+      let start = toolbar.coordinate(
+        withNormalizedOffset: CGVector(
+          dx: (startX - toolbar.frame.minX) / toolbar.frame.width,
+          dy: (rowY - toolbar.frame.minY) / toolbar.frame.height))
+      let end = start.withOffset(CGVector(dx: endX - startX, dy: 0))
+      start.press(forDuration: 0.01, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+      guard window.frame == windowFrame, pages.element.label == pageLabel else {
+        XCTFail("Revealing ink control moved the reader window or changed its logical page: \(id).")
+        return
       }
     }
-    XCTAssertTrue(control.wait(for: \.isHittable, toEqual: true, timeout: 5))
-    XCTAssertTrue(control.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    guard control.wait(for: \.isHittable, toEqual: true, timeout: 5),
+      visible.contains(control.frame), control.wait(for: \.isEnabled, toEqual: true, timeout: 10)
+    else {
+      XCTFail("Ink control is not fully visible, hittable and enabled: \(id).")
+      return
+    }
     control.tap()
   }
 
