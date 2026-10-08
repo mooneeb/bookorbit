@@ -30,7 +30,7 @@ struct SeriesCollapseControls: View {
         }
       }
       Text(scopeDescription)
-        .font(.caption)
+        .font(.subheadline)
         .fixedSize(horizontal: false, vertical: true)
       if scope.canInherit && scope.hasOverride(model.preferences) {
         Button("Use inherited setting") {

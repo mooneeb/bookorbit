@@ -66,7 +66,9 @@ struct ResetPasswordView: View {
           }
         } footer: {
           Text(
-            "Use 8 to 1024 characters with an uppercase letter, a lowercase letter, and a digit.")
+            "Use 8 to 1024 characters with an uppercase letter, a lowercase letter, and a digit."
+          )
+          .foregroundStyle(Color(uiColor: .label))
         }
         .disabled(model.isBusy)
         Section {
