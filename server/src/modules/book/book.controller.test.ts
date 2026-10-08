@@ -208,7 +208,7 @@ describe('BookController', () => {
     expect(bookService.updatePersonalNote).toHaveBeenCalledWith(7, { note: 'private note' }, user);
   });
 
-  it('returns 304 when cover etag matches (unversioned → 24h private cache)', async () => {
+  it('returns 304 with private no-store when cover etag matches without ?t=', async () => {
     const { controller, bookService } = makeController();
     const { reply, headers } = makeReply();
     bookService.getCoverPath.mockResolvedValue('/tmp/cover.jpg');
@@ -217,13 +217,13 @@ describe('BookController', () => {
     await controller.getCover(7, makeUser(), reply, undefined, '"1234"');
 
     expect(reply.status).toHaveBeenCalledWith(304);
-    expect(headers['Cache-Control']).toBe('private, max-age=86400');
+    expect(headers['Cache-Control']).toBe('private, no-store');
     expect(headers['ETag']).toBe('"1234"');
     expect(reply.send).toHaveBeenCalled();
     expect(mockCreateReadStream).not.toHaveBeenCalled();
   });
 
-  it('returns 304 with immutable cache when cover etag matches and ?t= present', async () => {
+  it('returns 304 with private no-store when cover etag matches and ?t= is present', async () => {
     const { controller, bookService } = makeController();
     const { reply, headers } = makeReply();
     bookService.getCoverPath.mockResolvedValue('/tmp/cover.jpg');
@@ -232,10 +232,10 @@ describe('BookController', () => {
     await controller.getCover(7, makeUser(), reply, { t: '1234567890' }, '"1234"');
 
     expect(reply.status).toHaveBeenCalledWith(304);
-    expect(headers['Cache-Control']).toBe('public, max-age=31536000, immutable');
+    expect(headers['Cache-Control']).toBe('private, no-store');
   });
 
-  it('streams cover with 24h private cache when no ?t= param', async () => {
+  it('streams cover with private no-store for 200 responses without ?t=', async () => {
     const { controller, bookService } = makeController();
     const { reply, headers } = makeReply();
     bookService.getCoverPath.mockResolvedValue('/tmp/cover.png');
@@ -243,14 +243,14 @@ describe('BookController', () => {
 
     await controller.getCover(7, makeUser(), reply, undefined, undefined);
 
-    expect(headers['Cache-Control']).toBe('private, max-age=86400');
+    expect(headers['Cache-Control']).toBe('private, no-store');
     expect(headers['ETag']).toBe('"4321"');
     expect(reply.type).toHaveBeenCalledWith('image/png');
     expect(mockCreateReadStream).toHaveBeenCalledWith('/tmp/cover.png');
     expect(reply.send).toHaveBeenCalled();
   });
 
-  it('streams cover with immutable cache when ?t= param present', async () => {
+  it('streams cover with private no-store for 200 responses when ?t= is present', async () => {
     const { controller, bookService } = makeController();
     const { reply, headers } = makeReply();
     bookService.getCoverPath.mockResolvedValue('/tmp/cover.jpg');
@@ -258,7 +258,7 @@ describe('BookController', () => {
 
     await controller.getCover(7, makeUser(), reply, { t: '1234567890' }, undefined);
 
-    expect(headers['Cache-Control']).toBe('public, max-age=31536000, immutable');
+    expect(headers['Cache-Control']).toBe('private, no-store');
     expect(reply.type).toHaveBeenCalledWith('image/jpeg');
   });
 
@@ -791,7 +791,9 @@ describe('BookController', () => {
       koreaderProgress: null,
       narrationPercentage: null,
       narrationUpdatedAt: null,
+      narrationVersion: '1ead86811291ba068a09b16d3a77363a947ad9d9b5a40dea3b4a23d1aa913e0a',
       textUpdatedAt: null,
+      textVersion: 'bc3082fc23b15d9c108663c712ead87c5129ed196bd0147666f6c0eab1655b27',
     });
     expect(bookService.getProgress).toHaveBeenCalledWith(user.id, 9, user);
   });
