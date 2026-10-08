@@ -30,6 +30,7 @@ struct PasswordRecoveryView: View {
             .accessibilityIdentifier("passwordResetRequestAccepted")
             Button("Request another link", action: model.prepareAnotherRequest)
               .frame(minHeight: 44)
+              .foregroundStyle(Color(uiColor: .label))
           }
         } else {
           Section {
@@ -43,6 +44,7 @@ struct PasswordRecoveryView: View {
               .accessibilityIdentifier("requestPasswordReset")
           } footer: {
             Text("Use the email address associated with your BookOrbit account.")
+              .font(.footnote).fixedSize(horizontal: false, vertical: true)
           }
         }
         Section {

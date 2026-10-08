@@ -12,6 +12,7 @@ struct ResetPasswordView: View {
             .font(.body).fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("passwordResetCompleted")
           Button("Return to sign in", action: returnToSignIn)
+            .foregroundStyle(Color.primary)
             .frame(minHeight: 44)
             .accessibilityIdentifier("resetReturnToSignIn")
         }
@@ -86,12 +87,24 @@ struct ResetPasswordView: View {
     }
     .navigationTitle("Reset password")
     .navigationBarBackButtonHidden(model.isBusy || model.resetCompleted)
-    .toolbar {
+    .safeAreaInset(edge: .top) {
       if !model.resetCompleted {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel", action: returnToSignIn)
-            .accessibilityIdentifier("cancelPasswordReset")
+        HStack {
+          Button(action: returnToSignIn) {
+            Text("Cancel")
+              .font(.body)
+              .fixedSize(horizontal: false, vertical: true)
+              .padding(.horizontal, 16)
+              .frame(minWidth: 44, minHeight: 44)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .foregroundStyle(Color(uiColor: .label))
+          .accessibilityIdentifier("cancelPasswordReset")
+          Spacer()
         }
+        .padding(.horizontal)
+        .background(Color(uiColor: .systemBackground))
       }
     }
     .onDisappear(perform: model.leaveReset)
