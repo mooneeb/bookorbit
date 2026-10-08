@@ -37,11 +37,16 @@ struct PencilModeControls: View {
   let mode: PencilReaderMode
 
   var body: some View {
-    Button(
-      mode.isWriting ? "Writing mode" : "Navigation mode",
-      systemImage: mode.isWriting ? "pencil.tip" : "hand.draw", action: mode.toggleWriting
-    )
-    .frame(minHeight: 44)
+    Button(action: mode.toggleWriting) {
+      Label(
+        mode.isWriting ? "Writing mode" : "Navigation mode",
+        systemImage: mode.isWriting ? "pencil.tip" : "hand.draw"
+      )
+      .font(.body)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+      .contentShape(Rectangle())
+    }
     .accessibilityIdentifier("pencilWritingMode")
     .accessibilityValue(mode.isWriting ? "Writing" : "Navigation")
     .accessibilityHint("Switch between marking passages and turning pages.")
