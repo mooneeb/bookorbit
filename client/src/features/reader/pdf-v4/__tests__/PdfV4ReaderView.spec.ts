@@ -13,13 +13,20 @@ const mockRoute = {
   query: {} as Record<string, string>,
 }
 
-vi.mock('vue-router', () => ({
-  useRoute: () => mockRoute,
-  useRouter: () => ({ back: mockRouterBack, replace: mockRouterReplace }),
-}))
+vi.mock('vue-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-router')>()
+  return {
+    ...actual,
+    useRoute: () => mockRoute,
+    useRouter: () => ({ back: mockRouterBack, replace: mockRouterReplace }),
+  }
+})
 
 const mockApi = vi.hoisted(() => vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>())
-vi.mock('@/lib/api', () => ({ api: mockApi }))
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return { ...actual, api: mockApi }
+})
 
 const mockSettingsLoad = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
 const mockUpdateBookSettings = vi.fn<(patch: Partial<PdfReaderSettings>) => void>()

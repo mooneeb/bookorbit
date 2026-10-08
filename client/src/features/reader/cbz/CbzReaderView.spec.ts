@@ -29,11 +29,15 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
-vi.mock('vue-router', () => ({
-  useRoute: () => ({ params: { bookId: '11', fileId: '22' }, query: {} }),
-  useRouter: () => ({ back: vi.fn<() => void>(), push: mocks.routerPush, replace: vi.fn<() => Promise<void>>().mockResolvedValue(undefined) }),
-  onBeforeRouteLeave: mocks.onBeforeRouteLeave,
-}))
+vi.mock('vue-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-router')>()
+  return {
+    ...actual,
+    useRoute: () => ({ params: { bookId: '11', fileId: '22' }, query: {} }),
+    useRouter: () => ({ back: vi.fn<() => void>(), push: mocks.routerPush, replace: vi.fn<() => Promise<void>>().mockResolvedValue(undefined) }),
+    onBeforeRouteLeave: mocks.onBeforeRouteLeave,
+  }
+})
 
 vi.mock('@tanstack/vue-virtual', () => ({
   useVirtualizer: (options: { value: { count: number } }) => {

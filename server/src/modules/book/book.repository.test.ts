@@ -1204,7 +1204,8 @@ describe('BookRepository', () => {
   });
 
   it('upserts reading progress with an idempotent conflict update', async () => {
-    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const returning = vi.fn().mockResolvedValue([{ userId: 5, bookFileId: 9 }]);
+    const onConflictDoUpdate = vi.fn().mockReturnValue({ returning });
     const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
     const insert = vi.fn().mockReturnValue({ values });
     const resetWhere = vi.fn().mockResolvedValue(undefined);
@@ -1671,7 +1672,7 @@ describe('BookRepository', () => {
     // A Kobo bookmark only wins on a strictly newer timestamp, so the reset has to advance past
     // whatever the device last reported rather than stamping wall clock over it.
     expect(String(patch.lastModifiedKobo) > '2026-01-01T00:00:00Z').toBe(true);
-    expect(executed).toHaveLength(1);
+    expect(executed).toHaveLength(3);
   });
 
   it('records a reset for every file of a book', async () => {
@@ -1702,7 +1703,8 @@ describe('BookRepository', () => {
   });
 
   it('retires a pending reset when the web reader writes progress back', async () => {
-    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const returning = vi.fn().mockResolvedValue([{ userId: 5, bookFileId: 9 }]);
+    const onConflictDoUpdate = vi.fn().mockReturnValue({ returning });
     const insert = vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ onConflictDoUpdate }) });
     const resetWhere = vi.fn().mockResolvedValue(undefined);
     const del = vi.fn().mockReturnValue({ where: resetWhere });
