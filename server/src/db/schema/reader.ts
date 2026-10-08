@@ -649,6 +649,9 @@ export const annotationPositions = pgTable(
     index('annotation_positions_user_idx').on(t.userId),
     index('annotation_positions_book_file_id_idx').on(t.bookFileId),
     index('annotation_positions_file_annotation_idx').on(t.bookFileId, t.annotationId),
+    index('annotation_positions_user_file_pdf_page_idx')
+      .on(t.userId, t.bookFileId, sql`(${t.extras}->>'pageno')`, t.annotationId)
+      .where(sql`${t.format} = 'pdf'`),
     index('annotation_positions_format_status_idx').on(t.format, t.status),
     check('annotation_positions_format_chk', sql`${t.format} in ('cfi', 'xpointer', 'pdf', 'kobo_span')`),
     check('annotation_positions_status_chk', sql`${t.status} in ('exact', 'repaired', 'failed', 'pending')`),

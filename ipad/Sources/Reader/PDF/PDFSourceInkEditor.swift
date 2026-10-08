@@ -18,6 +18,9 @@ final class PDFSourceInkEditor {
   private(set) var repository: NativeAnnotationRepository?
   private(set) var items: [NativeAnnotationItem] = []
   private(set) var selectedIdentity: String?
+  private(set) var selectedStrokeIDs: Set<String> = []
+  private var strokeSelectionIdentity: String?
+  private(set) var isTransformingSelection = false
   private(set) var draft = PKDrawing()
   private(set) var draftPage: Int?
   private(set) var canEdit = false
@@ -29,9 +32,12 @@ final class PDFSourceInkEditor {
   private var sources: [Int: NativePdfPageSource] = [:]
   private var autosave: Task<Void, Never>?
   private var undoOperations: [UUID] = []
-  private var copy: NativeAnnotationItem?
+  private var copy: NativeAnnotationDrawing?
   private var strokeActive = false
   private var loaded = false
+  private var isRefreshingRemote = false
+  private var sourceRecoveryRequired = false
+  private var retainedSourceReason = "source_replaced"
 
   init(api: BookOrbitAPI, bookID: Int, fileID: Int) {
     self.api = api
@@ -45,11 +51,22 @@ final class PDFSourceInkEditor {
   var canUndo: Bool { !draft.strokes.isEmpty || !undoOperations.isEmpty }
   var canPaste: Bool {
     canEdit && !isSaving
-      && (copy?.drawing != nil
+      && (copy != nil
         || UIPasteboard.general.contains(pasteboardTypes: ["com.bookorbit.source-ink"]))
   }
   var pendingCount: Int { repository?.pendingCount ?? 0 }
   var repositoryGeneration: Int { repository?.generation ?? 0 }
+  var hasUncommittedDrawing: Bool {
+    strokeActive || isTransformingSelection || !draft.strokes.isEmpty || isSaving
+  }
+  var isDrawingStroke: Bool { strokeActive }
+  var selectedStrokeCount: Int {
+    guard let selected, let retained = selected.drawing else { return 0 }
+    return strokeSelectionIdentity == identity(selected)
+      ? retained.strokes.filter { selectedStrokeIDs.contains($0.id) }.count : retained.strokes.count
+  }
+  var selectedGroupStrokeCount: Int { selected?.drawing?.strokes.count ?? 0 }
+  var sourceRecoveryReason: String? { sourceRecoveryRequired ? retainedSourceReason : nil }
 
   func identity(_ item: NativeAnnotationItem) -> String { item.clientId ?? String(item.id) }
 
@@ -84,6 +101,31 @@ final class PDFSourceInkEditor {
     } catch { self.error = error.localizedDescription }
   }
 
+  func refreshRemote() async -> NativePdfPageSource? {
+    guard loaded, !isRefreshingRemote, let repository else { return nil }
+    isRefreshingRemote = true
+    defer { isRefreshingRemote = false }
+    do {
+      try await refreshSource(page: currentPage)
+      try Task.checkCancellation()
+      try await repository.refreshSourceInk(bookID: bookID, fileID: fileID)
+      await refreshItems()
+      return sources[currentPage]
+    } catch is CancellationError {
+      return nil
+    } catch {
+      if case ConnectionError.http(404) = error {
+        sourceRecoveryRequired = true
+        retainedSourceReason = "source_deleted"
+        canEdit = false
+        try? await repository.retainSourceRecovery(
+          bookID: bookID, fileID: fileID, reason: "source_deleted")
+      }
+      self.error = error.localizedDescription
+      return nil
+    }
+  }
+
   private func refreshSource(page: Int) async throws {
     guard let loadedSourceRevision else { throw ConnectionError.invalidResponse }
     let path = "annotations/native/files/\(fileID)/source"
@@ -104,6 +146,7 @@ final class PDFSourceInkEditor {
       source.sourceRevision == loadedSourceRevision
         || source.matchedSourceRevision == loadedSourceRevision
     else {
+      sourceRecoveryRequired = true
       canEdit = false
       status = "The source PDF changed. Reopen it before creating new ink."
       try await repository?.retainSourceRecovery(
@@ -151,8 +194,17 @@ final class PDFSourceInkEditor {
     return item.pageFingerprint == descriptor.pageFingerprint
   }
 
-  func select(identity: String?) {
+  func select(identity: String?, strokeIndices: Set<Int>? = nil) {
     selectedIdentity = identity
+    strokeSelectionIdentity = identity
+    if let retained = selected?.drawing {
+      selectedStrokeIDs = Set(
+        retained.strokes.enumerated().compactMap { index, stroke in
+          strokeIndices == nil || strokeIndices?.contains(index) == true ? stroke.id : nil
+        })
+    } else {
+      selectedStrokeIDs = []
+    }
     tool = .select
   }
 
@@ -163,7 +215,7 @@ final class PDFSourceInkEditor {
       return
     }
     currentPage = item.pdf?.page ?? currentPage
-    selectedIdentity = identity(item)
+    select(identity: identity(item))
     mode.isWriting = true
     tool = .select
   }
@@ -181,6 +233,9 @@ final class PDFSourceInkEditor {
     mode.isWriting = true
   }
 
+  func beginSelectionTransform() { isTransformingSelection = true }
+  func endSelectionTransform() { isTransformingSelection = false }
+
   func beginStroke() {
     strokeActive = true
     if !isSaving { autosave?.cancel() }
@@ -191,7 +246,7 @@ final class PDFSourceInkEditor {
   }
 
   func preview(_ drawing: PKDrawing, page: Int) {
-    guard canEdit else { return }
+    guard canEdit || sourceRecoveryRequired else { return }
     guard draftPage == nil || draftPage == page else { return }
     draft = drawing
     draftPage = page
@@ -214,7 +269,8 @@ final class PDFSourceInkEditor {
   }
 
   func saveDraft() async {
-    guard canEdit, !isSaving, !strokeActive, let page = draftPage, let repository,
+    guard canEdit || sourceRecoveryRequired, !isSaving, !strokeActive, let page = draftPage,
+      let repository,
       let payload = payload(for: draft, page: page)
     else { return }
     isSaving = true
@@ -226,6 +282,10 @@ final class PDFSourceInkEditor {
     }
     do {
       let item = try await repository.create(bookID: bookID, payload: payload)
+      if sourceRecoveryRequired {
+        try await repository.retainSourceRecovery(
+          bookID: bookID, fileID: fileID, reason: retainedSourceReason)
+      }
       saved = true
       rememberOperation()
       selectedIdentity = identity(item)
@@ -235,7 +295,7 @@ final class PDFSourceInkEditor {
       } else if draft.strokes.count >= savingDrawing.strokes.count {
         draft = PKDrawing(strokes: Array(draft.strokes.dropFirst(savingDrawing.strokes.count)))
       }
-      status = "Ink saved locally"
+      status = sourceRecoveryRequired ? "Ink retained for source recovery" : "Ink saved locally"
       await refreshItems()
     } catch { self.error = error.localizedDescription }
   }
@@ -279,16 +339,87 @@ final class PDFSourceInkEditor {
     return payload
   }
 
-  func replaceSelected(with drawing: PKDrawing) {
-    guard canEdit, !isSaving, let selected, let page = selected.pdf?.page,
-      let payload = payload(for: drawing, page: page, previous: selected.drawing)
+  func replaceSelected(
+    with drawing: PKDrawing, expectedIdentity: String? = nil, expectedVersion: Int? = nil
+  ) {
+    if let expectedIdentity, selectedIdentity != expectedIdentity {
+      error = "The selected ink changed. Select it again before editing."
+      return
+    }
+    if let expectedVersion, selected?.version != expectedVersion {
+      error = "The selected ink changed. Select it again before editing."
+      return
+    }
+    guard canEdit, !isSaving, let selected, let retained = selected.drawing,
+      let original = PDFSourceInkDrawing.decode(retained), let page = selected.pdf?.page,
+      original.strokes.count == drawing.strokes.count
     else { return }
-    mutate(selected, action: "update", payload: payload)
+    let indices = selectedStrokeIndices(in: original)
+    guard !indices.isEmpty else { return }
+    let combined = PKDrawing(
+      strokes: original.strokes.enumerated().map { index, stroke in
+        indices.contains(index) ? drawing.strokes[index] : stroke
+      })
+    guard var replacement = payload(for: combined, page: page, previous: retained),
+      var encoded = replacement.drawing
+    else { return }
+    for index in retained.strokes.indices where !indices.contains(index) {
+      encoded.strokes[index] = retained.strokes[index]
+    }
+    replacement.drawing = encoded
+    mutate(selected, action: "update", payload: replacement)
   }
 
   func deleteSelected() {
-    guard canEdit, let selected else { return }
-    mutate(selected, action: "delete")
+    guard canEdit, !isSaving, let selected, let retained = selected.drawing,
+      let drawing = PDFSourceInkDrawing.decode(retained), let page = selected.pdf?.page
+    else { return }
+    let indices = selectedStrokeIndices(in: drawing)
+    guard !indices.isEmpty else { return }
+    if indices.count == drawing.strokes.count {
+      mutate(selected, action: "delete")
+      return
+    }
+    let survivors = drawing.strokes.indices.filter { !indices.contains($0) }
+    let remaining = PKDrawing(strokes: survivors.map { drawing.strokes[$0] })
+    var previous = retained
+    previous.strokes = survivors.map { retained.strokes[$0] }
+    guard var replacement = payload(for: remaining, page: page, previous: previous),
+      var encoded = replacement.drawing
+    else { return }
+    encoded.strokes = previous.strokes
+    replacement.drawing = encoded
+    mutate(selected, action: "update", payload: replacement)
+  }
+
+  func selectedStrokeIndices(in drawing: PKDrawing) -> Set<Int> {
+    guard let selected, let retained = selected.drawing,
+      retained.strokes.count == drawing.strokes.count
+    else { return [] }
+    return Set(
+      retained.strokes.indices.filter {
+        strokeSelectionIdentity != identity(selected)
+          || selectedStrokeIDs.contains(retained.strokes[$0].id)
+      })
+  }
+
+  func selectedDrawing(in drawing: PKDrawing) -> PKDrawing {
+    let indices = selectedStrokeIndices(in: drawing)
+    return PKDrawing(
+      strokes: drawing.strokes.enumerated().compactMap { index, stroke in
+        indices.contains(index) ? stroke : nil
+      })
+  }
+
+  func transformingSelectedStrokes(in drawing: PKDrawing, using transform: CGAffineTransform)
+    -> PKDrawing
+  {
+    let indices = selectedStrokeIndices(in: drawing)
+    return PKDrawing(
+      strokes: drawing.strokes.enumerated().map { index, stroke in
+        indices.contains(index)
+          ? PKDrawing(strokes: [stroke]).transformed(using: transform).strokes[0] : stroke
+      })
   }
 
   private func mutate(
@@ -310,9 +441,27 @@ final class PDFSourceInkEditor {
   }
 
   func copySelected() {
-    guard let selected else { return }
-    copy = selected
-    if let drawing = selected.drawing, let data = try? JSONEncoder().encode(drawing) {
+    guard let selected, let retained = selected.drawing,
+      let drawing = PDFSourceInkDrawing.decode(retained)
+    else { return }
+    let indices = selectedStrokeIndices(in: drawing)
+    guard !indices.isEmpty else { return }
+    var previous = retained
+    previous.strokes = retained.strokes.enumerated().compactMap { index, stroke in
+      indices.contains(index) ? stroke : nil
+    }
+    do {
+      guard
+        var copied = try PDFSourceInkDrawing.encode(
+          selectedDrawing(in: drawing), preserving: previous)
+      else { return }
+      copied.strokes = previous.strokes
+      copy = copied
+    } catch {
+      self.error = error.localizedDescription
+      return
+    }
+    if let copy, let data = try? JSONEncoder().encode(copy) {
       UIPasteboard.general.setData(data, forPasteboardType: "com.bookorbit.source-ink")
     }
     status = "Ink copied"
@@ -320,7 +469,7 @@ final class PDFSourceInkEditor {
 
   func paste() {
     let pasted: NativeAnnotationDrawing?
-    if let retained = copy?.drawing {
+    if let retained = copy {
       pasted = retained
     } else if let data = UIPasteboard.general.data(forPasteboardType: "com.bookorbit.source-ink"),
       data.count <= 4 * 1024 * 1024
@@ -351,16 +500,20 @@ final class PDFSourceInkEditor {
 
   func moveRight() {
     guard let drawing = selected?.drawing.flatMap(PDFSourceInkDrawing.decode) else { return }
-    replaceSelected(with: drawing.transformed(using: CGAffineTransform(translationX: 12, y: 0)))
+    replaceSelected(
+      with: transformingSelectedStrokes(
+        in: drawing, using: CGAffineTransform(translationX: 12, y: 0)))
   }
 
   func grow() {
     guard let drawing = selected?.drawing.flatMap(PDFSourceInkDrawing.decode) else { return }
-    let center = CGPoint(x: drawing.bounds.midX, y: drawing.bounds.midY)
+    let bounds = selectedDrawing(in: drawing).bounds
+    guard !bounds.isNull else { return }
+    let center = CGPoint(x: bounds.midX, y: bounds.midY)
     let transform = CGAffineTransform(translationX: -center.x, y: -center.y)
       .concatenating(CGAffineTransform(scaleX: 1.1, y: 1.1))
       .concatenating(CGAffineTransform(translationX: center.x, y: center.y))
-    replaceSelected(with: drawing.transformed(using: transform))
+    replaceSelected(with: transformingSelectedStrokes(in: drawing, using: transform))
   }
 
   func undo() {

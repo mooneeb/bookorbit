@@ -165,12 +165,12 @@ describe('usePdfAnnotations', () => {
     expect(store.annotations.value).toHaveLength(1)
   })
 
-  it('loads additional bounded pages without duplicating rows', async () => {
+  it('loads the next bounded annotation window', async () => {
     fetchMock
       .mockResolvedValueOnce(
         response(true, {
-          items: [makeAnnotation(1)],
-          total: 2,
+          items: Array.from({ length: 100 }, (_, index) => makeAnnotation(index + 1)),
+          total: 101,
           page: 1,
           pageSize: 100,
           stats: {},
@@ -178,8 +178,8 @@ describe('usePdfAnnotations', () => {
       )
       .mockResolvedValueOnce(
         response(true, {
-          items: [makeAnnotation(1), makeAnnotation(2)],
-          total: 2,
+          items: [makeAnnotation(101)],
+          total: 101,
           page: 2,
           pageSize: 100,
           stats: {},
@@ -195,7 +195,7 @@ describe('usePdfAnnotations', () => {
       '/api/v1/books/9/annotations?page=2&pageSize=100&sortBy=position&sortDir=asc&bookFileId=33&excludeSourceInk=true',
       expect.objectContaining({ credentials: 'include' }),
     )
-    expect(store.annotations.value.map((annotation) => annotation.id)).toEqual([1, 2])
+    expect(store.annotations.value.map((annotation) => annotation.id)).toEqual([101])
     expect(store.hasMore.value).toBe(false)
   })
 

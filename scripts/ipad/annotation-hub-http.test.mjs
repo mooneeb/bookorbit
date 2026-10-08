@@ -277,3 +277,65 @@ test("IPAD-E02-A07-hub-permission: administrators can revoke own-annotation acti
     await logout(owner);
   }
 });
+
+test("IPAD-E02-A07-hub-compatibility: bounded mixed legacy and native mutations preserve public response shapes", async () => {
+  const reader = await login("ipad-reader");
+  const marker = `hub-compatibility-${randomUUID()}`;
+  const token = reader.accessToken;
+  let ids = [];
+  async function bulk(action) {
+    const response = await request("annotations/bulk", { token, body: { ids, action } });
+    assert.equal(response.status, 200, await response.clone().text());
+    return response.json();
+  }
+  try {
+    const legacyResponse = await request("books/2/annotations", {
+      token,
+      body: { cfi: "epubcfi(/6/2!/4/2:0)", text: `${marker}-legacy`, note: "Legacy private note" },
+    });
+    assert.equal(legacyResponse.status, 201, await legacyResponse.clone().text());
+    const legacy = await legacyResponse.json();
+    const nativeResponse = await request("annotations/native/operations", {
+      token,
+      body: {
+        deviceId: "hub-compatibility",
+        operations: [
+          {
+            operationId: randomUUID(),
+            clientId: randomUUID(),
+            bookId: 2,
+            baseVersion: 0,
+            action: "create",
+            payload: { cfi: "epubcfi(/6/2!/4/4:0)", text: `${marker}-native`, note: "Versioned private note", kind: "text_note" },
+          },
+        ],
+      },
+    });
+    assert.equal(nativeResponse.status, 201, await nativeResponse.clone().text());
+    const native = (await nativeResponse.json()).results[0].annotation;
+    ids = [native.id, ...Array.from({ length: 100 }, (_, index) => 1_000_000_000 + index), legacy.id];
+    assert.equal((await request("annotations/bulk", { body: { ids, action: "trash" } })).status, 401);
+    assert.deepEqual(await bulk("trash"), { affected: 2 });
+    const trashed = await record(`annotations/native/hub?search=${marker}&status=trashed`, token);
+    assert.deepEqual(
+      trashed.items.map((item) => item.id).sort((a, b) => a - b),
+      [native.id, legacy.id].sort((a, b) => a - b),
+    );
+    assert.deepEqual(await bulk("restore"), { affected: 2 });
+    assert.deepEqual(await bulk("trash"), { affected: 2 });
+    for (const annotation of [legacy, native]) {
+      const response = await request(`annotations/${annotation.id}/restore`, { token, method: "POST" });
+      assert.equal(response.status, 200, await response.clone().text());
+      const restored = await response.json();
+      assert.equal(restored.id, annotation.id);
+      assert.equal(restored.bookId, 2);
+      assert.equal(restored.deletedAt, null);
+      const retry = await request(`annotations/${annotation.id}/positions/retry`, { token, body: { format: "cfi" } });
+      assert.equal(retry.status, 200, await retry.clone().text());
+      assert.equal((await retry.json()).annotationId, annotation.id);
+    }
+  } finally {
+    if (ids.length) await bulk("trash");
+    await logout(reader);
+  }
+});

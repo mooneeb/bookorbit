@@ -21,32 +21,48 @@ export function useAnnotations() {
   const page = ref(1)
   let loadedBookId: number | null = null
   let loadedFileId: number | null = null
+  let loadGeneration = 0
   const hasMore = computed(() => page.value * 100 < total.value)
   const { synchronize, invalidate } = useReaderAnnotationSync(
     annotations,
     () => loadedBookId,
     () => loadedFileId,
+    100,
+    refreshCollection,
   )
 
-  async function load(bookId: number, bookFileId?: number, pageNumber = 1) {
+  async function refreshCollection() {
+    if (loadedBookId === null) return false
+    return load(loadedBookId, loadedFileId ?? undefined, page.value, true)
+  }
+
+  async function load(bookId: number, bookFileId?: number, pageNumber = 1, refreshing = false) {
+    const generation = ++loadGeneration
     loadError.value = null
     loadedBookId = bookId
     loadedFileId = bookFileId ?? null
+    if (!refreshing) invalidate()
     const query = new URLSearchParams({ page: String(pageNumber), pageSize: '100', sortBy: 'position', sortDir: 'asc' })
     if (bookFileId) query.set('bookFileId', String(bookFileId))
     try {
       const res = await api(`/api/v1/books/${bookId}/annotations?${query}`)
       if (!res.ok) {
         loadError.value = 'Failed to load'
-        return
+        return false
       }
       const result: AnnotationListResponse = await res.json()
+      if (generation !== loadGeneration) return false
+      if (pageNumber > 1 && result.items.length === 0) {
+        return load(bookId, bookFileId, Math.max(1, Math.ceil(result.total / 100)), refreshing)
+      }
       annotations.value = result.items
       total.value = result.total
       page.value = result.page
-      void synchronize()
+      if (!refreshing) void synchronize()
+      return true
     } catch {
       loadError.value = 'Failed to load'
+      return false
     }
   }
 
@@ -73,7 +89,9 @@ export function useAnnotations() {
     if (!res.ok) return null
     invalidate()
     const created: Annotation = await res.json()
-    annotations.value = [...annotations.value, created]
+    if (annotations.value.length < 100) annotations.value = [...annotations.value, created]
+    total.value += 1
+    if (annotations.value.length >= 100) void refreshCollection()
     return created
   }
 
@@ -112,6 +130,7 @@ export function useAnnotations() {
       if (removed) {
         invalidate()
         annotations.value = annotations.value.filter((item) => item.id !== id)
+        total.value = Math.max(0, total.value - 1)
       }
       return
     }
@@ -121,6 +140,7 @@ export function useAnnotations() {
     if (res.ok) {
       invalidate()
       annotations.value = annotations.value.filter((a) => a.id !== id)
+      total.value = Math.max(0, total.value - 1)
     }
   }
 

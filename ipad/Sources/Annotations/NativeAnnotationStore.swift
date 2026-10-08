@@ -70,6 +70,84 @@ actor NativeAnnotationStore {
       }
     }
     sqlite3_finalize(probe)
+    guard
+      sqlite3_create_function_v2(
+        db, "bookorbit_lower", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, nil,
+        { context, _, arguments in
+          guard let value = arguments?[0], let bytes = sqlite3_value_text(value) else {
+            sqlite3_result_null(context)
+            return
+          }
+          let lowered = String(cString: bytes).lowercased()
+          sqlite3_result_text(
+            context, lowered, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+        }, nil, nil, nil) == SQLITE_OK
+    else {
+      sqlite3_close(db)
+      database = nil
+      throw NativeAnnotationStorageError.unavailable
+    }
+    let visiblePath =
+      "CASE WHEN json_extract(CAST(NEW.data AS TEXT),'$.undoOperationId') IS NULL THEN '$.after' ELSE '$.before' END"
+    let field: (String) -> String = {
+      "json_extract(CAST(NEW.data AS TEXT),(\(visiblePath)) || '.\($0)')"
+    }
+    let projection = """
+      INSERT INTO hub_pending(operationId,sequence,bookId,clientId,recordKey,itemId,visiblePath,kind,fileId,deleted,search)
+      SELECT NEW.operationId,NEW.sequence,NEW.bookId,NEW.clientId,
+        CASE WHEN json_extract(CAST(NEW.data AS TEXT),'$.after.id')>0
+          THEN 'id:' || json_extract(CAST(NEW.data AS TEXT),'$.after.id')
+          ELSE 'client:' || NEW.clientId END,
+        json_extract(CAST(NEW.data AS TEXT),'$.after.id'),\(visiblePath),
+        \(field("kind")),\(field("jumpFileId")),
+        CASE WHEN \(field("id")) IS NULL THEN NULL WHEN \(field("deletedAt")) IS NULL THEN 0 ELSE 1 END,
+        bookorbit_lower(COALESCE(\(field("text")),'') || ' ' || COALESCE(\(field("note")),''))
+      WHERE NEW.status='pending';
+      """
+    let hubSchema = """
+      CREATE TABLE IF NOT EXISTS hub_pending (
+        operationId TEXT PRIMARY KEY,sequence INTEGER NOT NULL,bookId INTEGER NOT NULL,
+        clientId TEXT NOT NULL,recordKey TEXT NOT NULL,itemId INTEGER NOT NULL,
+        visiblePath TEXT NOT NULL,kind TEXT,fileId INTEGER,deleted INTEGER,search TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS hub_pending_client ON hub_pending(clientId,sequence DESC);
+      CREATE INDEX IF NOT EXISTS hub_pending_record ON hub_pending(recordKey,sequence DESC);
+      CREATE INDEX IF NOT EXISTS hub_pending_filter ON hub_pending(deleted,bookId,kind,fileId,sequence DESC);
+      CREATE TRIGGER IF NOT EXISTS changes_hub_insert AFTER INSERT ON changes BEGIN
+        \(projection)
+      END;
+      CREATE TRIGGER IF NOT EXISTS changes_hub_update AFTER UPDATE ON changes BEGIN
+        DELETE FROM hub_pending WHERE operationId=OLD.operationId;
+        \(projection)
+      END;
+      CREATE TRIGGER IF NOT EXISTS changes_hub_delete AFTER DELETE ON changes BEGIN
+        DELETE FROM hub_pending WHERE operationId=OLD.operationId;
+      END;
+      """
+    guard sqlite3_exec(db, hubSchema, nil, nil, nil) == SQLITE_OK else {
+      sqlite3_close(db)
+      database = nil
+      throw NativeAnnotationStorageError.unavailable
+    }
+    var installed: OpaquePointer?
+    sqlite3_prepare_v2(
+      db, "SELECT value FROM metadata WHERE key='hubProjectionVersion'", -1, &installed, nil)
+    let needsBackfill = sqlite3_step(installed) != SQLITE_ROW
+    sqlite3_finalize(installed)
+    if needsBackfill {
+      let backfill = """
+        BEGIN IMMEDIATE;
+        UPDATE changes SET status=status WHERE status='pending';
+        INSERT OR REPLACE INTO metadata(key,value) VALUES('hubProjectionVersion','1');
+        COMMIT;
+        """
+      guard sqlite3_exec(db, backfill, nil, nil, nil) == SQLITE_OK else {
+        sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
+        sqlite3_close(db)
+        database = nil
+        throw NativeAnnotationStorageError.unavailable
+      }
+    }
   }
 
   func deviceID() throws -> String {
@@ -84,6 +162,51 @@ actor NativeAnnotationStore {
     sqlite3_wal_checkpoint_v2(database, nil, SQLITE_CHECKPOINT_TRUNCATE, nil, nil)
     sqlite3_close(database)
     self.database = nil
+  }
+
+  nonisolated static func withOfflineBookRemovalProtection<T>(
+    namespace: String, bookID: Int, remove: () throws -> T
+  ) throws -> T {
+    guard !namespace.isEmpty, bookID > 0 else { throw OfflineStorageError.unverifiedDownload }
+    let root = try FileManager.default.url(
+      for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false
+    ).appendingPathComponent("BookOrbitAnnotations", isDirectory: true)
+      .appendingPathComponent(OfflineResourceStore.hash(Data(namespace.utf8)), isDirectory: true)
+    let file = root.appendingPathComponent("annotations.sqlite")
+    guard FileManager.default.fileExists(atPath: file.path) else {
+      throw OfflineStorageError.unverifiedDownload
+    }
+    var database: OpaquePointer?
+    guard
+      sqlite3_open_v2(file.path, &database, SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nil)
+        == SQLITE_OK, let database
+    else {
+      if let database { sqlite3_close(database) }
+      throw OfflineStorageError.unverifiedDownload
+    }
+    defer { sqlite3_close(database) }
+    sqlite3_busy_timeout(database, 5000)
+    guard sqlite3_exec(database, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else {
+      throw OfflineStorageError.unverifiedDownload
+    }
+    defer { sqlite3_exec(database, "ROLLBACK", nil, nil, nil) }
+    var statement: OpaquePointer?
+    let sql = """
+      SELECT 1 FROM changes WHERE bookId=? AND status='pending'
+      UNION ALL SELECT 1 FROM recovery WHERE bookId=? LIMIT 1
+      """
+    guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+      throw OfflineStorageError.unverifiedDownload
+    }
+    defer { sqlite3_finalize(statement) }
+    guard sqlite3_bind_int64(statement, 1, Int64(bookID)) == SQLITE_OK,
+      sqlite3_bind_int64(statement, 2, Int64(bookID)) == SQLITE_OK
+    else { throw OfflineStorageError.unverifiedDownload }
+    switch sqlite3_step(statement) {
+    case SQLITE_ROW: throw OfflineStorageError.protectedDownload
+    case SQLITE_DONE: return try remove()
+    default: throw OfflineStorageError.unverifiedDownload
+    }
   }
 
   func cursor(bookID: Int, fileID: Int? = nil) throws -> String {
@@ -155,6 +278,32 @@ actor NativeAnnotationStore {
       }
     }
     return items
+  }
+
+  func loadPDFPassages(bookID: Int, fileID: Int, page: Int) throws -> [NativeAnnotationItem] {
+    var items: [NativeAnnotationItem] = try decodeRows(
+      """
+      SELECT data FROM records WHERE bookId=? AND owned=1 AND kind!='pdf_ink'
+      AND json_extract(CAST(data AS TEXT),'$.jumpFileId')=?
+      AND json_extract(CAST(data AS TEXT),'$.pdf.page')=? ORDER BY key LIMIT 500
+      """, [.integer(bookID), .integer(fileID), .integer(page)])
+    let pending: [NativeAnnotationQueuedChange] = try decodeRows(
+      """
+      SELECT data FROM changes WHERE bookId=? AND status='pending'
+      AND json_extract(CAST(data AS TEXT),'$.after.kind')!='pdf_ink'
+      AND (json_extract(CAST(data AS TEXT),'$.after.jumpFileId')=?
+        OR json_extract(CAST(data AS TEXT),'$.before.jumpFileId')=?)
+      ORDER BY sequence LIMIT 1000
+      """, [.integer(bookID), .integer(fileID), .integer(fileID)])
+    for change in pending {
+      items.removeAll { same($0, change.after) }
+      if let visible = change.undoOperationId == nil ? change.after : change.before,
+        visible.jumpFileId == fileID, visible.pdf?.page == page
+      {
+        items.insert(visible, at: 0)
+      }
+    }
+    return Array(items.prefix(500))
   }
 
   func knownBooks() throws -> [Int] {
@@ -477,80 +626,111 @@ actor NativeAnnotationStore {
       rows = try recoveryDrafts(bookID: values["bookId"].flatMap(Int.init), limit: limit + 1)
         .compactMap(\.item)
     } else {
-      var sql = "SELECT data FROM records WHERE owned=1 AND deleted=?"
+      let source = """
+        records r LEFT JOIN hub_pending p ON p.operationId=(
+          SELECT pending.operationId FROM hub_pending pending
+          WHERE pending.recordKey=r.key OR (r.clientId<>'' AND pending.clientId=r.clientId)
+          ORDER BY pending.sequence DESC LIMIT 1)
+        """
+      let deleted = "CASE WHEN p.operationId IS NULL THEN r.deleted ELSE p.deleted END"
+      let kind = "CASE WHEN p.operationId IS NULL THEN r.kind ELSE p.kind END"
+      let searchable = "CASE WHEN p.operationId IS NULL THEN r.search ELSE p.search END"
+      var sql =
+        "SELECT r.key,r.rowid AS cursor,p.operationId,p.visiblePath FROM \(source) WHERE r.owned=1 AND \(deleted)=?"
       var bindings: [Binding] = [.integer(status == "trashed" ? 1 : 0)]
       if let bookID = values["bookId"].flatMap(Int.init) {
-        sql += " AND bookId=?"
+        sql += " AND r.bookId=?"
         bindings.append(.integer(bookID))
       }
-      if let kind = values["kind"], !kind.isEmpty {
-        sql += " AND kind=?"
-        bindings.append(.text(kind))
+      if let fileID = values["fileId"].flatMap(Int.init) {
+        sql +=
+          " AND CASE WHEN p.operationId IS NULL THEN json_extract(CAST(r.data AS TEXT),'$.jumpFileId') ELSE p.fileId END=?"
+        bindings.append(.integer(fileID))
+      }
+      if let requestedKind = values["kind"], !requestedKind.isEmpty {
+        sql += " AND \(kind)=?"
+        bindings.append(.text(requestedKind))
       }
       if !search.isEmpty {
-        sql += " AND instr(search,?)>0"
+        sql += " AND instr(\(searchable),?)>0"
         bindings.append(.text(search))
       }
       let group: String?
       switch values["groupBy"] {
-      case "book": group = "bookId"
-      case "kind": group = "kind"
-      case "month": group = "substr(json_extract(CAST(data AS TEXT),'$.createdAt'),1,7)"
-      case "source": group = "json_extract(CAST(data AS TEXT),'$.origin')"
+      case "book": group = "r.bookId"
+      case "kind": group = kind
+      case "month": group = "substr(json_extract(CAST(r.data AS TEXT),'$.createdAt'),1,7)"
+      case "source": group = "json_extract(CAST(r.data AS TEXT),'$.origin')"
       default: group = nil
       }
       if cursor > 0 {
         if let group {
           guard
             let anchor = try scalar(
-              "SELECT \(group) FROM records WHERE rowid=?", [.integer(cursor)])
+              "SELECT \(group) FROM \(source) WHERE r.rowid=?", [.integer(cursor)])
           else {
             throw NativeAnnotationStorageError.paginationChanged
           }
           let direction = values["groupBy"] == "month" ? "<" : ">"
-          sql += " AND (\(group)\(direction)? OR (\(group)=? AND rowid<?))"
+          sql += " AND (\(group)\(direction)? OR (\(group)=? AND r.rowid<?))"
           bindings.append(contentsOf: [.text(anchor), .text(anchor), .integer(cursor)])
         } else {
-          sql += " AND rowid<?"
+          sql += " AND r.rowid<?"
           bindings.append(.integer(cursor))
         }
       }
       if let group {
         sql +=
-          " ORDER BY \(group) \(values["groupBy"] == "month" ? "DESC" : "ASC"),rowid DESC LIMIT ?"
+          " ORDER BY \(group) \(values["groupBy"] == "month" ? "DESC" : "ASC"),r.rowid DESC LIMIT ?"
       } else {
-        sql += " ORDER BY rowid DESC LIMIT ?"
+        sql += " ORDER BY r.rowid DESC LIMIT ?"
       }
       bindings.append(.integer(limit + 1))
-      rows = try decodeRows(sql, bindings)
-      if rows.count > limit {
-        rows.removeLast()
-        if let last = rows.last {
-          nextCursor = try scalar("SELECT rowid FROM records WHERE key=?", [.text(key(last))])
-            .flatMap(Int.init).map { -$0 }
+      let projected = """
+        WITH candidates AS MATERIALIZED (\(sql))
+        SELECT json_object('cursor',page.cursor,'item',
+          CASE WHEN page.operationId IS NULL THEN json(CAST(r.data AS TEXT))
+            ELSE json_extract(CAST(c.data AS TEXT),page.visiblePath) END)
+        FROM candidates page JOIN records r ON r.key=page.key
+        LEFT JOIN changes c ON c.operationId=page.operationId
+        """
+      var localRows: [HubLocalRow] = try decodeRows(projected, bindings)
+      if localRows.count > limit {
+        localRows.removeLast()
+        nextCursor = localRows.last.map { -$0.cursor }
+      }
+      rows = localRows.map(\.item)
+    }
+    if status != "recovery", remote != nil {
+      let overlays = try hubPendingRows(page: rows, values: values, limit: limit, pageOnly: true)
+      for overlay in overlays {
+        if let index = rows.firstIndex(where: {
+          $0.id == overlay.itemId || $0.clientId == overlay.clientId
+        }) {
+          if let visible = overlay.visible, matches(visible) {
+            rows[index] = visible
+          } else {
+            rows.remove(at: index)
+          }
         }
       }
-    }
-    if status != "recovery" {
-      let pending: [NativeAnnotationQueuedChange] = try decodeRows(
-        "SELECT data FROM changes WHERE status='pending' ORDER BY sequence LIMIT 1000")
-      for change in pending {
-        guard try isOwned(change.after) else { continue }
-        let visible = change.undoOperationId == nil ? change.after : change.before
-        if let index = rows.firstIndex(where: { same($0, change.after) }) {
-          if let visible, matches(visible) { rows[index] = visible } else { rows.remove(at: index) }
-        } else if let visible, matches(visible), cursor == 0, rows.count < limit {
-          rows.append(visible)
+      if cursor == 0, rows.count < limit {
+        let additions = try hubPendingRows(
+          page: rows, values: values, limit: limit - rows.count, pageOnly: false)
+        for addition in additions {
+          if let visible = addition.visible, matches(visible) { rows.append(visible) }
         }
       }
     }
     rows = rows.filter(matches)
     let metadata = Dictionary(
       (remote?.items ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-    let items = try rows.prefix(limit).map { item -> NativeAnnotationHubItem in
+    let visibleRows = Array(rows.prefix(limit))
+    let titles = try hubBookTitles(bookIDs: Set(visibleRows.map(\.bookId)))
+    let items = try visibleRows.map { item -> NativeAnnotationHubItem in
       var object =
         try JSONSerialization.jsonObject(with: encoder.encode(item)) as? [String: Any] ?? [:]
-      let title = try bookTitle(item.bookId)
+      let title = titles[item.bookId]
       object["bookTitle"] = metadata[item.id]?.bookTitle ?? title ?? "Book \(item.bookId)"
       object["author"] = metadata[item.id]?.author ?? NSNull()
       object["fileFormat"] = metadata[item.id]?.fileFormat ?? NSNull()
@@ -566,6 +746,90 @@ actor NativeAnnotationStore {
         NativeAnnotationHubItem.self, from: JSONSerialization.data(withJSONObject: object))
     }
     return NativeAnnotationHubResponse(items: items, nextCursor: nextCursor)
+  }
+
+  private struct HubPendingRow: Decodable {
+    var itemId: Int
+    var clientId: String
+    var visible: NativeAnnotationItem?
+  }
+
+  private struct HubLocalRow: Decodable {
+    var cursor: Int
+    var item: NativeAnnotationItem
+  }
+
+  private struct HubBookTitle: Decodable {
+    var bookId: Int
+    var title: String
+  }
+
+  private func hubBookTitles(bookIDs: Set<Int>) throws -> [Int: String] {
+    guard !bookIDs.isEmpty else { return [:] }
+    let keys = bookIDs.map { "bookTitle:\($0)" }
+    let placeholders = Array(repeating: "?", count: keys.count).joined(separator: ",")
+    let titles: [HubBookTitle] = try decodeRows(
+      "SELECT json_object('bookId',CAST(substr(key,11) AS INTEGER),'title',value) FROM metadata WHERE key IN (\(placeholders))",
+      keys.map(Binding.text))
+    return Dictionary(titles.map { ($0.bookId, $0.title) }, uniquingKeysWith: { first, _ in first })
+  }
+
+  private func hubPendingRows(
+    page: [NativeAnnotationItem], values: [String: String], limit: Int, pageOnly: Bool
+  ) throws -> [HubPendingRow] {
+    guard limit > 0, !pageOnly || !page.isEmpty else { return [] }
+    var conditions = [
+      "NOT EXISTS (SELECT 1 FROM hub_pending newer WHERE newer.clientId=p.clientId AND newer.sequence>p.sequence)",
+      "EXISTS (SELECT 1 FROM records r WHERE r.owned=1 AND (r.key=p.recordKey OR (r.clientId<>'' AND r.clientId=p.clientId)))",
+    ]
+    var bindings: [Binding] = []
+    let keys = page.map(key)
+    let clients = page.compactMap(\.clientId)
+    var identities: [String] = []
+    if !keys.isEmpty {
+      identities.append(
+        "p.recordKey IN (\(Array(repeating: "?", count: keys.count).joined(separator: ",")))")
+      bindings.append(contentsOf: keys.map(Binding.text))
+    }
+    if !clients.isEmpty {
+      identities.append(
+        "p.clientId IN (\(Array(repeating: "?", count: clients.count).joined(separator: ",")))")
+      bindings.append(contentsOf: clients.map(Binding.text))
+    }
+    if !identities.isEmpty {
+      conditions.append("\(pageOnly ? "" : "NOT ")(\(identities.joined(separator: " OR ")))")
+    }
+    if !pageOnly {
+      conditions.append("p.deleted=?")
+      bindings.append(.integer(values["status"] == "trashed" ? 1 : 0))
+      if let bookID = values["bookId"].flatMap(Int.init) {
+        conditions.append("p.bookId=?")
+        bindings.append(.integer(bookID))
+      }
+      if let fileID = values["fileId"].flatMap(Int.init) {
+        conditions.append("p.fileId=?")
+        bindings.append(.integer(fileID))
+      }
+      if let kind = values["kind"], !kind.isEmpty {
+        conditions.append("p.kind=?")
+        bindings.append(.text(kind))
+      }
+      if let search = values["search"], !search.isEmpty {
+        conditions.append("instr(p.search,?)>0")
+        bindings.append(.text(search.lowercased()))
+      }
+    }
+    bindings.append(.integer(min(limit, 100)))
+    let sql = """
+      WITH candidates AS MATERIALIZED (
+        SELECT p.operationId,p.itemId,p.clientId,p.visiblePath FROM hub_pending p
+        WHERE \(conditions.joined(separator: " AND ")) ORDER BY p.sequence DESC LIMIT ?
+      )
+      SELECT json_object('itemId',p.itemId,'clientId',p.clientId,'visible',
+        json_extract(CAST(c.data AS TEXT),p.visiblePath))
+      FROM candidates p JOIN changes c ON c.operationId=p.operationId
+      """
+    return try decodeRows(sql, bindings)
   }
 
   private func recover(

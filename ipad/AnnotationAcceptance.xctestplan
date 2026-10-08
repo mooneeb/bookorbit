@@ -29,10 +29,10 @@
     },
     {
       "id": "10E02001-0000-4000-8000-000000000004",
-      "name": "pro13-narrow-dark",
+      "name": "pro13-landscape-dark-large",
       "options": {
         "environmentVariableEntries": [
-          { "key": "IPAD_E02_PROFILE", "value": "pro13-narrow-dark" }
+          { "key": "IPAD_E02_PROFILE", "value": "pro13-landscape-dark-large" }
         ]
       }
     }

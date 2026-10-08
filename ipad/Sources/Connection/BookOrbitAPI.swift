@@ -311,6 +311,15 @@ actor BookOrbitAPI {
     }
   }
 
+  func retainOpenedPdfSource(
+    book: BookDetail, fileID: Int, source: URL, revision: String, reason: String, session: UUID
+  ) async throws {
+    try ensureSession(session)
+    try await offlineStore().retainOpenedPdfSource(
+      book: book, fileID: fileID, source: source, revision: revision, reason: reason)
+    try ensureSession(session)
+  }
+
   func reconciledSourceRevision(fileID: Int, previous: String, session: UUID) async throws
     -> String
   {
@@ -492,6 +501,18 @@ actor BookOrbitAPI {
     }
     try ensureSession(generation)
     try await offlineStore().removeSourceVersion(id: id)
+  }
+
+  func removeOfflineBook(bookID: Int, namespace: String) async throws {
+    let generation = try authenticatedSessionGeneration()
+    guard bookID > 0, try storageNamespace() == namespace else {
+      throw ConnectionError.expiredSession
+    }
+    let resources = try offlineStore()
+    _ = try await NativeAnnotationRepository.shared(api: self)
+    try ensureSession(generation)
+    try await resources.removeBook(bookID: bookID)
+    try ensureSession(generation)
   }
 
   private func networkBytes(for request: URLRequest) async throws -> (

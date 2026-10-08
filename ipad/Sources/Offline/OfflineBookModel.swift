@@ -12,6 +12,8 @@ final class OfflineBookModel {
   private(set) var status =
     "Choose the complete files, media, and companion documents to keep on this iPad."
   private(set) var error: String?
+  var confirmsRemoval = false
+  private var namespace: String?
   private var task: Task<Void, Never>?
   private var pauseRequested = false
   private var resourceIndices: [String: Int] = [:]
@@ -29,6 +31,7 @@ final class OfflineBookModel {
 
   func load() async {
     do {
+      namespace = try await api.storageNamespace()
       snapshot = try await api.offlineStore().snapshot(bookID: book.id)
       if let snapshot {
         selectedFileIDs = Set(snapshot.selectedFileIDs).intersection(Set(book.files.map(\.id)))
@@ -78,13 +81,42 @@ final class OfflineBookModel {
     task?.cancel()
   }
 
+  func requestRemoval() {
+    guard !isBusy, snapshot != nil else { return }
+    confirmsRemoval = true
+  }
+
+  func removeDownload() {
+    guard !isBusy, snapshot != nil, let namespace else { return }
+    isBusy = true
+    error = nil
+    task = Task {
+      defer {
+        isBusy = false
+        task = nil
+      }
+      do {
+        try await api.removeOfflineBook(bookID: book.id, namespace: namespace)
+        snapshot = nil
+        selectedFileIDs = []
+        status =
+          "Downloaded content removed from this iPad. Your server book and saved reading work are retained."
+      } catch {
+        self.error = error.localizedDescription
+      }
+    }
+  }
+
   private func run() async {
+    var transferStore: OfflineResourceStore?
     defer {
       isBusy = false
       task = nil
     }
     do {
       let store = try await api.offlineStore()
+      try await store.beginBookTransfer(bookID: book.id)
+      transferStore = store
       if snapshot == nil || Set(snapshot!.selectedFileIDs) != selectedFileIDs
         || snapshot?.book.files != book.files || snapshot?.state == "recovery"
       {
@@ -201,6 +233,7 @@ final class OfflineBookModel {
       self.error = pauseRequested ? nil : error.localizedDescription
       try? await persist()
     }
+    if let transferStore { await transferStore.endBookTransfer(bookID: book.id) }
   }
 
   private func prepare() async throws {

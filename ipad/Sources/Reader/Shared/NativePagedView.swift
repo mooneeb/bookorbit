@@ -13,6 +13,7 @@ struct NativePagedView: UIViewControllerRepresentable {
   var rightToLeft = false
   var onBeyondLast: (() -> Void)?
   var allowsNavigation = true
+  var allowsPencilNavigation = true
 
   func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -51,14 +52,26 @@ struct NativePagedView: UIViewControllerRepresentable {
   }
 
   private func applyNavigation(to controller: UIViewController) {
+    let touchTypes =
+      [UITouch.TouchType.direct, .indirect, .indirectPointer]
+      + (allowsPencilNavigation ? [.pencil] : [])
     if let pager = controller as? UIPageViewController {
-      for gesture in pager.gestureRecognizers { gesture.isEnabled = allowsNavigation }
+      for gesture in pager.gestureRecognizers {
+        gesture.isEnabled = allowsNavigation
+        gesture.allowedTouchTypes = touchTypes.map { NSNumber(value: $0.rawValue) }
+      }
       for subview in pager.view.subviews {
-        (subview as? UIScrollView)?.isScrollEnabled = allowsNavigation
+        if let scroll = subview as? UIScrollView {
+          scroll.isScrollEnabled = allowsNavigation
+          scroll.panGestureRecognizer.allowedTouchTypes = touchTypes.map {
+            NSNumber(value: $0.rawValue)
+          }
+        }
       }
     } else {
       for gesture in controller.view.gestureRecognizers ?? [] {
         gesture.isEnabled = allowsNavigation
+        gesture.allowedTouchTypes = touchTypes.map { NSNumber(value: $0.rawValue) }
       }
     }
   }

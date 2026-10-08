@@ -98,16 +98,19 @@ final class NativeFilePositionModel {
     try persist()
   }
 
-  func bindSourceRevision(_ revision: String?) async throws {
+  func bindSourceRevision(_ revision: String?, matchedRevision: String? = nil) async throws {
     guard let revision else { return }
     let digest = revision.replacingOccurrences(of: "sha256:", with: "")
     if let sourceRevision, sourceRevision.replacingOccurrences(of: "sha256:", with: "") != digest,
       pending != nil || localCandidate != nil
     {
-      guard let session,
-        try await api.reconciledSourceRevision(
-          fileID: fileID, previous: sourceRevision, session: session) == digest
-      else { throw ConnectionError.fileChanged }
+      let previous = sourceRevision.replacingOccurrences(of: "sha256:", with: "")
+      if matchedRevision != "sha256:\(previous)" {
+        guard let session,
+          try await api.reconciledSourceRevision(
+            fileID: fileID, previous: sourceRevision, session: session) == digest
+        else { throw ConnectionError.fileChanged }
+      }
     }
     sourceRevision = digest
     try persist()

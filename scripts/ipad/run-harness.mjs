@@ -11,6 +11,13 @@ import { createCoverFixture } from "./cover-fixture.mjs";
 import { annotationProfile } from "./annotation-matrix.mjs";
 import { compareNativeAnnotationVisuals } from "./annotation-visual.mjs";
 
+const startedAt = Date.now();
+process.on("uncaughtExceptionMonitor", (error) => {
+  console.error(
+    `[ipad.harness] [fail] runId=${process.pid} durationMs=${Date.now() - startedAt} errorClass=${error.name} error="${sanitizeLogValue(error.message)}" - isolated acceptance run failed`,
+  );
+});
+
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(new URL("../../server/package.json", import.meta.url));
 const { Client } = require("pg");
@@ -21,6 +28,7 @@ const artifactsRoot = `${root}/test-results/ipad/${runID}`;
 let commandNumber = 0;
 const annotationsProof = process.argv.includes("--annotations");
 const annotationVisualProfile = annotationProfile(process.argv.find((argument) => argument.startsWith("--profile="))?.slice(10));
+const nativeVisualProfile = annotationProfile(annotationVisualProfile.nativeProfile ?? annotationVisualProfile.name);
 const nativeOnly = process.argv.includes("--native-only");
 if (nativeOnly && (!annotationsProof || !process.argv.includes("--ui") || process.argv.includes("--web"))) {
   throw new Error("--native-only requires --annotations --ui and runs a focused native seam");
@@ -254,26 +262,51 @@ async function runNativeTests() {
   try {
     const artifacts = `${root}/test-results/ipad/${runID}`;
     await mkdir(artifacts, { recursive: true });
-    if (!process.env.IPAD_TEST_DESTINATION) {
-      const devices = JSON.parse(await command("xcrun", ["simctl", "list", "devices", "available", "--json"], { capture: true }));
-      const matches = Object.values(devices.devices)
-        .flat()
-        .filter((device) => device.name === "BookOrbit Test iPad");
-      if (matches.length !== 1) throw new Error("Select exactly one test simulator with IPAD_TEST_DESTINATION");
-      const device = matches[0];
-      if (device.state === "Shutdown") await command("xcrun", ["simctl", "boot", device.udid]);
-      await command("xcrun", ["simctl", "bootstatus", device.udid, "-b"]);
-    } else {
-      const explicitID = process.env.IPAD_TEST_DESTINATION.match(/(?:^|,)id=([A-Fa-f0-9-]+)/)?.[1];
-      if (explicitID) {
-        const devices = JSON.parse(await command("xcrun", ["simctl", "list", "devices", "available", "--json"], { capture: true }));
-        const device = Object.values(devices.devices)
-          .flat()
-          .find((candidate) => candidate.udid === explicitID);
-        if (!device) throw new Error("The explicit native test simulator is unavailable");
-        if (device.state === "Shutdown") await command("xcrun", ["simctl", "boot", explicitID]);
-        await command("xcrun", ["simctl", "bootstatus", explicitID, "-b"]);
-      }
+    const devices = JSON.parse(await command("xcrun", ["simctl", "list", "devices", "available", "--json"], { capture: true }));
+    const explicitID = process.env.IPAD_TEST_DESTINATION?.match(/(?:^|,)id=([A-Fa-f0-9-]+)/)?.[1];
+    const explicitName = process.env.IPAD_TEST_DESTINATION?.match(/(?:^|,)name=([^,]+)/)?.[1] ?? "BookOrbit Test iPad";
+    const matches = Object.values(devices.devices)
+      .flat()
+      .filter((device) => (explicitID ? device.udid === explicitID : device.name === explicitName));
+    if (matches.length !== 1) throw new Error("Select exactly one available test simulator with IPAD_TEST_DESTINATION");
+    const selectedDevice = matches[0];
+    if (selectedDevice.state === "Shutdown") await command("xcrun", ["simctl", "boot", selectedDevice.udid]);
+    await command("xcrun", ["simctl", "bootstatus", selectedDevice.udid, "-b"]);
+    if (annotationsProof) {
+      const size = nativeVisualProfile.nativeDevice.includes("11") ? "11-inch" : "13-inch";
+      if (!selectedDevice.deviceTypeIdentifier?.includes(size)) throw new Error(`Native profile requires an actual ${size} iPad simulator`);
+      const contentSize =
+        nativeVisualProfile.dynamicType === "accessibilityExtraExtraExtraLarge"
+          ? "accessibility-extra-extra-extra-large"
+          : nativeVisualProfile.dynamicType === "extraExtraExtraLarge"
+            ? "extra-extra-extra-large"
+            : "large";
+      await command("xcrun", ["simctl", "ui", selectedDevice.udid, "appearance", nativeVisualProfile.colorScheme]);
+      await command("xcrun", ["simctl", "ui", selectedDevice.udid, "content_size", contentSize]);
+      const appearance = (await command("xcrun", ["simctl", "ui", selectedDevice.udid, "appearance"], { capture: true })).trim();
+      const actualContentSize = (await command("xcrun", ["simctl", "ui", selectedDevice.udid, "content_size"], { capture: true })).trim();
+      if (appearance !== nativeVisualProfile.colorScheme || actualContentSize !== contentSize)
+        throw new Error("Actual simulator appearance or content size differs from the requested profile");
+      await writeFile(
+        `${artifacts}/native-profile.json`,
+        JSON.stringify(
+          {
+            requestedProfile: annotationVisualProfile.name,
+            appliedProfile: nativeVisualProfile.name,
+            deviceID: selectedDevice.udid,
+            appearance,
+            contentSize: actualContentSize,
+            reduceMotion: { expected: nativeVisualProfile.reducedMotion === "reduce", verified: false },
+            nativeWindow: "full",
+            narrowWindowCoverage:
+              annotationVisualProfile.window === "narrow"
+                ? "residual: simctl has no window sizing command; native full-window counterpart is run"
+                : "not-requested",
+          },
+          null,
+          2,
+        ),
+      );
     }
     if (!readerProof && !annotationsProof) {
       const destination = process.env.IPAD_TEST_DESTINATION;
@@ -287,7 +320,7 @@ async function runNativeTests() {
       ]);
     }
     if (annotationsProof) {
-      const device = process.env.IPAD_TEST_DESTINATION?.match(/(?:^|,)id=([A-Fa-f0-9-]+)/)?.[1] ?? "BookOrbit Test iPad";
+      const device = selectedDevice.udid;
       let installed = false;
       try {
         await command("xcrun", ["simctl", "get_app_container", device, "com.mooneeb.bookorbit.private", "data"], { capture: true });
@@ -321,7 +354,8 @@ async function runNativeTests() {
         const source = await readFile(`${root}/ipad/UITests/${file}`, "utf8");
         const className = source.match(/class\s+([A-Za-z_][A-Za-z_0-9]*)\s*:\s*XCTestCase/)?.[1];
         if (!className) continue;
-        for (const match of source.matchAll(new RegExp(`func (testIPADE02${annotationCase ?? "A0[1-7]"}[A-Za-z_0-9]*)\\(`, "g"))) {
+        const prefix = annotationCase === "A01" ? "(?:A01|P2)" : (annotationCase ?? "(?:A0[1-7]|P2)");
+        for (const match of source.matchAll(new RegExp(`func (testIPADE02${prefix}[A-Za-z_0-9]*)\\(`, "g"))) {
           nativeTests.push(`BookOrbitUITests/${className}/${match[1]}`);
         }
       }
@@ -329,13 +363,12 @@ async function runNativeTests() {
     }
     let nativeFailure;
     try {
-      await command("xcodebuild", [
-        "test",
+      const commonArguments = [
         "-project",
         "ipad/BookOrbit.xcodeproj",
         "-scheme",
         nativeScheme,
-        ...(annotationsProof ? ["-testPlan", "AnnotationAcceptance", "-only-test-configuration", annotationVisualProfile.name] : []),
+        ...(annotationsProof ? ["-testPlan", "AnnotationAcceptance", "-only-test-configuration", nativeVisualProfile.name] : []),
         "-parallel-testing-enabled",
         "NO",
         "-collect-test-diagnostics",
@@ -344,20 +377,68 @@ async function runNativeTests() {
         process.env.IPAD_TEST_DESTINATION ?? "platform=iOS Simulator,name=BookOrbit Test iPad",
         "-derivedDataPath",
         "ipad/DerivedData",
-        "-resultBundlePath",
-        `${artifacts}/native.xcresult`,
         "CODE_SIGNING_ALLOWED=YES",
         "CODE_SIGN_IDENTITY=-",
-        ...(nativeTests.length
-          ? nativeTests.map((name) => `-only-testing:${name}`)
-          : comicProof
-            ? ["-only-testing:BookOrbitReaderProofUITests/ComicReaderProofTests"]
-            : pdfReader
-              ? ["-only-testing:BookOrbitUITests/EntryJourneyTests/testIPADE01A03ProductionPDFCurlAndResume"]
-              : readerProof && !epubProof
-                ? ["-only-testing:BookOrbitReaderProofUITests/PDFReaderProofTests"]
-                : []),
-      ]);
+      ];
+      if (annotationsProof) {
+        const preflight = "BookOrbitUITests/AnnotationProfilePerformanceTests/testIPADE02A01ApplySystemProfile";
+        const nativeEnvironment = { ...env, IPAD_E02_PROFILE: nativeVisualProfile.name };
+        await command(
+          "xcodebuild",
+          ["test", ...commonArguments, "-resultBundlePath", `${artifacts}/profile.xcresult`, `-only-testing:${preflight}`],
+          { env: nativeEnvironment },
+        );
+        const profileSummaryText = await command(
+          "xcrun",
+          ["xcresulttool", "get", "test-results", "summary", "--path", `${artifacts}/profile.xcresult`, "--format", "json"],
+          { capture: true },
+        );
+        await writeFile(`${artifacts}/profile-summary.json`, profileSummaryText);
+        const profileSummary = JSON.parse(profileSummaryText);
+        if (
+          profileSummary.totalTestCount !== 1 ||
+          profileSummary.passedTests !== 1 ||
+          profileSummary.failedTests !== 0 ||
+          profileSummary.skippedTests !== 0 ||
+          profileSummary.expectedFailures !== 0
+        )
+          throw new Error("Native system profile requires its actual Settings/UI preflight to execute and pass without skips");
+        const profileRecord = JSON.parse(await readFile(`${artifacts}/native-profile.json`, "utf8"));
+        profileRecord.reduceMotion.verified = true;
+        profileRecord.profileEvidence = "profile.xcresult";
+        await writeFile(`${artifacts}/native-profile.json`, JSON.stringify(profileRecord, null, 2));
+        nativeTests = nativeTests.filter((name) => name !== preflight);
+        if (!nativeTests.length)
+          throw new Error("Profile preflight completed; select an acceptance journey or performance method for native verification");
+        await command("xcrun", [
+          "xcresulttool",
+          "export",
+          "attachments",
+          "--path",
+          `${artifacts}/profile.xcresult`,
+          "--output-path",
+          `${artifacts}/profile-attachments`,
+        ]);
+      }
+      await command(
+        "xcodebuild",
+        [
+          annotationsProof ? "test-without-building" : "test",
+          ...commonArguments,
+          "-resultBundlePath",
+          `${artifacts}/native.xcresult`,
+          ...(nativeTests.length
+            ? nativeTests.map((name) => `-only-testing:${name}`)
+            : comicProof
+              ? ["-only-testing:BookOrbitReaderProofUITests/ComicReaderProofTests"]
+              : pdfReader
+                ? ["-only-testing:BookOrbitUITests/EntryJourneyTests/testIPADE01A03ProductionPDFCurlAndResume"]
+                : readerProof && !epubProof
+                  ? ["-only-testing:BookOrbitReaderProofUITests/PDFReaderProofTests"]
+                  : []),
+        ],
+        { env: { ...env, IPAD_E02_PROFILE: nativeVisualProfile.name } },
+      );
     } catch (error) {
       nativeFailure = error;
     }
@@ -375,7 +456,7 @@ async function runNativeTests() {
           { capture: true },
         );
         await writeFile(`${artifacts}/native-attachments.log`, exported);
-        if (annotationsProof) await compareNativeAnnotationVisuals(artifacts, annotationVisualProfile.name);
+        if (annotationsProof) await compareNativeAnnotationVisuals(artifacts, nativeVisualProfile.name);
         const summary = JSON.parse(summaryText);
         if (
           summary.totalTestCount < 1 ||
@@ -406,6 +487,7 @@ async function runNativeTests() {
 }
 
 try {
+  console.log(`[ipad.harness] [start] runId=${runID} annotations=${annotationsProof} - isolated acceptance run starting`);
   await mkdir(artifactsRoot, { recursive: true });
   await writeFile(
     `${artifactsRoot}/environment.json`,
@@ -442,9 +524,13 @@ try {
     });
   });
   if (process.argv.includes("--serve")) {
+    const servingAt = Date.now();
+    console.log(`[ipad.harness_serve] [start] runId=${runID} - retaining isolated test surfaces`);
     if (annotationsProof) stopFaultProxy = await startFaultProxy();
     if (process.argv.includes("--web")) await startWeb();
-    console.log(`[ipad.harness_serve] [end] runId=${runID} apiPort=16482 web=${Boolean(web)} - isolated test surfaces retained until interruption`);
+    console.log(
+      `[ipad.harness_serve] [end] runId=${runID} apiPort=16482 durationMs=${Date.now() - servingAt} web=${Boolean(web)} ready=true - isolated test surfaces retained until interruption`,
+    );
     await interrupt;
   } else {
     if (annotationsProof && !nativeOnly) {
@@ -455,6 +541,7 @@ try {
         "scripts/ipad/annotation-http.test.mjs",
         "scripts/ipad/annotation-hub-http.test.mjs",
         "scripts/ipad/annotation-recovery-http.test.mjs",
+        "scripts/ipad/pdf-annotation-page-http.test.mjs",
         "scripts/ipad/pdf-ink-http.test.mjs",
         "scripts/ipad/offline-delivery-http.test.mjs",
         "scripts/ipad/source-ink-http.test.mjs",
@@ -484,8 +571,12 @@ try {
     if (process.argv.includes("--web") && !annotationConcurrent) {
       await startWeb();
       if (inspectWeb) {
+        const inspectionAt = Date.now();
         console.log(`[ipad.browser_inspection] [start] runId=${runID} - isolated native result and web server retained until interruption`);
         await interrupt;
+        console.log(
+          `[ipad.browser_inspection] [end] runId=${runID} durationMs=${Date.now() - inspectionAt} closed=true - retained browser inspection finished`,
+        );
       } else {
         await command("pnpm", ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"]);
       }
@@ -494,3 +585,4 @@ try {
 } finally {
   await cleanup();
 }
+console.log(`[ipad.harness] [end] runId=${runID} durationMs=${Date.now() - startedAt} cleaned=true - isolated acceptance run completed`);

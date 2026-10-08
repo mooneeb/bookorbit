@@ -17,6 +17,8 @@ final class PDFSourceInkCanvas: UIView, PKCanvasViewDelegate, UIGestureRecognize
   private var gestureStart = CGPoint.zero
   private var lassoPoints: [CGPoint] = []
   private var preview: PKDrawing?
+  private var gestureIdentity: String?
+  private var gestureVersion: Int?
   private var fixtureGeneration = 0
   private var pencilInteraction: UIPencilInteraction?
   private let picker = PKToolPicker()
@@ -50,11 +52,23 @@ final class PDFSourceInkCanvas: UIView, PKCanvasViewDelegate, UIGestureRecognize
       recognizer.delegate = self
       addGestureRecognizer(recognizer)
     }
+    tap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+    drag.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
     tap.require(toFail: drag)
     accessibilityIdentifier = "pdfSourceInkCanvas"
   }
 
   required init?(coder: NSCoder) { nil }
+
+  override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+    if editor?.tool == .draw, editor?.isDrawingStroke != true,
+      let touches = event?.allTouches, touches.contains(where: { $0.type == .direct }),
+      !touches.contains(where: { $0.type == .pencil })
+    {
+      return nil
+    }
+    return super.hitTest(point, with: event)
+  }
 
   override func layoutSubviews() {
     super.layoutSubviews()
@@ -163,11 +177,17 @@ final class PDFSourceInkCanvas: UIView, PKCanvasViewDelegate, UIGestureRecognize
   }
 
   private func updateSelection() {
-    guard let key = editor?.selectedIdentity, let drawing = preview ?? drawings[key] else {
+    guard let editor, let key = editor.selectedIdentity, let drawing = preview ?? drawings[key]
+    else {
       selection.path = nil
       return
     }
-    selection.path = UIBezierPath(rect: drawing.bounds.insetBy(dx: -5, dy: -5)).cgPath
+    let selected = editor.selectedDrawing(in: drawing)
+    guard !selected.strokes.isEmpty else {
+      selection.path = nil
+      return
+    }
+    selection.path = UIBezierPath(rect: selected.bounds.insetBy(dx: -5, dy: -5)).cgPath
     selection.strokeColor = tintColor.cgColor
   }
 
@@ -187,22 +207,42 @@ final class PDFSourceInkCanvas: UIView, PKCanvasViewDelegate, UIGestureRecognize
       handleLasso(sender.state, point: point)
       return
     }
-    guard let key = editor.selectedIdentity, let drawing = drawings[key] else { return }
+    guard let key = editor.selectedIdentity, let drawing = drawings[key],
+      !editor.selectedStrokeIndices(in: drawing).isEmpty
+    else {
+      if [.ended, .cancelled, .failed].contains(sender.state) { editor.endSelectionTransform() }
+      return
+    }
     switch sender.state {
     case .began:
+      editor.beginSelectionTransform()
       gestureStart = point
+      gestureIdentity = editor.selectedIdentity
+      gestureVersion = editor.selected?.version
       preview = drawing
     case .changed:
-      preview = drawing.transformed(
+      preview = editor.transformingSelectedStrokes(
+        in: drawing,
         using:
           CGAffineTransform(translationX: point.x - gestureStart.x, y: point.y - gestureStart.y))
       if let preview, let image = images[key] { render(preview, in: image) }
       updateSelection()
     case .ended:
-      if let preview { editor.replaceSelected(with: preview) }
+      if let preview {
+        editor.replaceSelected(
+          with: preview, expectedIdentity: gestureIdentity, expectedVersion: gestureVersion)
+      }
       preview = nil
+      editor.endSelectionTransform()
+      gestureIdentity = nil
+      gestureVersion = nil
+      if let image = images[key] { render(drawing, in: image) }
+      updateSelection()
     case .cancelled, .failed:
       preview = nil
+      editor.endSelectionTransform()
+      gestureIdentity = nil
+      gestureVersion = nil
       if let image = images[key] { render(drawing, in: image) }
       updateSelection()
     default: break
@@ -211,7 +251,9 @@ final class PDFSourceInkCanvas: UIView, PKCanvasViewDelegate, UIGestureRecognize
 
   private func handleLasso(_ state: UIGestureRecognizer.State, point: CGPoint) {
     switch state {
-    case .began: lassoPoints = [point]
+    case .began:
+      editor?.beginSelectionTransform()
+      lassoPoints = [point]
     case .changed:
       guard lassoPoints.count < 2_000 else { return }
       lassoPoints.append(point)
@@ -220,21 +262,31 @@ final class PDFSourceInkCanvas: UIView, PKCanvasViewDelegate, UIGestureRecognize
       for value in lassoPoints.dropFirst() { path.addLine(to: value) }
       lasso.path = path.cgPath
     case .ended:
+      lassoPoints.append(point)
       let path = UIBezierPath()
       if let first = lassoPoints.first { path.move(to: first) }
       for value in lassoPoints.dropFirst() { path.addLine(to: value) }
       path.close()
-      let match = drawings.keys.sorted().last { key in
-        guard let drawing = drawings[key] else { return false }
-        return drawing.strokes.contains { stroke in
-          stroke.path.contains { path.contains($0.location.applying(stroke.transform)) }
-        }
+      var matches: [String: Set<Int>] = [:]
+      for key in drawings.keys.sorted() {
+        guard let drawing = drawings[key] else { continue }
+        let indices = Set(
+          drawing.strokes.indices.filter { index in
+            let stroke = drawing.strokes[index]
+            return stroke.path.interpolatedPoints(by: .distance(2)).prefix(10_001).contains {
+              path.contains($0.location.applying(stroke.transform))
+            }
+          })
+        if !indices.isEmpty { matches[key] = indices }
       }
-      editor?.select(identity: match)
+      let match = matches.keys.sorted().last
+      editor?.select(identity: match, strokeIndices: match.flatMap { matches[$0] })
+      editor?.endSelectionTransform()
       lasso.path = nil
       lassoPoints = []
       updateSelection()
     case .cancelled, .failed:
+      editor?.endSelectionTransform()
       lasso.path = nil
       lassoPoints = []
     default: break
@@ -253,22 +305,43 @@ final class PDFSourceInkCanvas: UIView, PKCanvasViewDelegate, UIGestureRecognize
   }
 
   @objc private func resizeItem(_ sender: UIPinchGestureRecognizer) {
-    guard let editor, let key = editor.selectedIdentity, let drawing = drawings[key] else { return }
-    let center = CGPoint(x: drawing.bounds.midX, y: drawing.bounds.midY)
+    guard let editor else { return }
+    guard let key = editor.selectedIdentity, let drawing = drawings[key] else {
+      if [.ended, .cancelled, .failed].contains(sender.state) { editor.endSelectionTransform() }
+      return
+    }
+    let bounds = editor.selectedDrawing(in: drawing).bounds
+    guard !bounds.isNull else { return }
+    let center = CGPoint(x: bounds.midX, y: bounds.midY)
     let scale = min(4, max(0.25, sender.scale))
     let transform = CGAffineTransform(translationX: -center.x, y: -center.y)
       .concatenating(CGAffineTransform(scaleX: scale, y: scale))
       .concatenating(CGAffineTransform(translationX: center.x, y: center.y))
     switch sender.state {
     case .began, .changed:
-      preview = drawing.transformed(using: transform)
+      if sender.state == .began {
+        editor.beginSelectionTransform()
+        gestureIdentity = editor.selectedIdentity
+        gestureVersion = editor.selected?.version
+      }
+      preview = editor.transformingSelectedStrokes(in: drawing, using: transform)
       if let preview, let image = images[key] { render(preview, in: image) }
       updateSelection()
     case .ended:
-      editor.replaceSelected(with: drawing.transformed(using: transform))
+      editor.replaceSelected(
+        with: editor.transformingSelectedStrokes(in: drawing, using: transform),
+        expectedIdentity: gestureIdentity, expectedVersion: gestureVersion)
       preview = nil
+      editor.endSelectionTransform()
+      gestureIdentity = nil
+      gestureVersion = nil
+      if let image = images[key] { render(drawing, in: image) }
+      updateSelection()
     case .cancelled, .failed:
       preview = nil
+      editor.endSelectionTransform()
+      gestureIdentity = nil
+      gestureVersion = nil
       if let image = images[key] { render(drawing, in: image) }
       updateSelection()
     default: break

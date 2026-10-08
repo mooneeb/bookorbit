@@ -25,6 +25,7 @@ struct FixedReaderSurface: View {
   var facingLayout: FixedPageLayout?
   var usesVirtualBlanks = false
   var allowsNavigation = true
+  var allowsPencilNavigation = true
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
@@ -59,7 +60,7 @@ struct FixedReaderSurface: View {
             refreshPage: refreshUnit,
             onTurn: { unit in if let page = layout.pages(in: unit).first { onTurn(page) } },
             onVisible: { units in onVisible(Set(units.flatMap { layout.pages(in: $0) })) },
-            allowsNavigation: allowsNavigation)
+            allowsNavigation: allowsNavigation, allowsPencilNavigation: allowsPencilNavigation)
         } else {
           NativePagedView(
             pageCount: layout.unitCount, pageIndex: layout.unit(for: pageIndex),
@@ -67,7 +68,7 @@ struct FixedReaderSurface: View {
             makePage: { unit in makeUnit(layout: layout, unit: unit) }, refreshPage: refreshUnit,
             onTurn: { unit in if let page = layout.pages(in: unit).first { onTurn(page) } },
             onTransition: onTransition, rightToLeft: rightToLeft, onBeyondLast: onBeyondLast,
-            allowsNavigation: allowsNavigation)
+            allowsNavigation: allowsNavigation, allowsPencilNavigation: allowsPencilNavigation)
         }
       }
       .id(

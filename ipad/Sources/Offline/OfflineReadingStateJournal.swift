@@ -150,6 +150,67 @@ final class OfflineReadingStateJournal {
     return try remove()
   }
 
+  nonisolated static func withBookRemovalProtection<T>(
+    namespace: String, fileIDs: Set<Int>, remove: () throws -> T
+  ) throws -> T {
+    protectionLock.lock()
+    defer { protectionLock.unlock() }
+    do {
+      guard !namespace.isEmpty, fileIDs.allSatisfy({ $0 > 0 }) else {
+        throw OfflineStorageError.unverifiedDownload
+      }
+      let root = try FileManager.default.url(
+        for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false
+      ).appendingPathComponent("BookOrbitReadingState", isDirectory: true)
+        .appendingPathComponent(OfflineResourceStore.hash(Data(namespace.utf8)), isDirectory: true)
+      if FileManager.default.fileExists(atPath: root.path) {
+        let files = try FileManager.default.contentsOfDirectory(
+          at: root, includingPropertiesForKeys: [.fileSizeKey])
+        guard files.count <= entryLimit else { throw OfflineStorageError.unverifiedDownload }
+        var scannedBytes = 0
+        for file in files {
+          guard let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+            size <= 256 * 1024
+          else { throw OfflineStorageError.unverifiedDownload }
+          scannedBytes += size
+          guard scannedBytes <= 32 * 1024 * 1024 else {
+            throw OfflineStorageError.unverifiedDownload
+          }
+          let data = try Data(contentsOf: file)
+          guard let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw OfflineStorageError.unverifiedDownload
+          }
+          if value["fileID"] != nil {
+            let progress = try JSONDecoder().decode(ProtectedProgress.self, from: data)
+            if fileIDs.contains(progress.fileID), progress.pending != nil || progress.local != nil {
+              throw OfflineStorageError.protectedDownload
+            }
+          } else {
+            guard value["operations"] != nil || value["recoveryOperations"] != nil else {
+              throw OfflineStorageError.unverifiedDownload
+            }
+            let bookmarks = try JSONDecoder().decode(OfflineBookmarkState.self, from: data)
+            if !bookmarks.operations.isEmpty || !bookmarks.recoveryOperations.isEmpty {
+              guard !bookmarks.sourceRevisions.isEmpty,
+                bookmarks.sourceRevisions.keys.allSatisfy({ Int($0).map { $0 > 0 } == true })
+              else { throw OfflineStorageError.unverifiedDownload }
+              if bookmarks.sourceRevisions.keys.compactMap({ Int($0) }).contains(
+                where: fileIDs.contains)
+              {
+                throw OfflineStorageError.protectedDownload
+              }
+            }
+          }
+        }
+      }
+    } catch let error as OfflineStorageError {
+      throw error
+    } catch {
+      throw OfflineStorageError.unverifiedDownload
+    }
+    return try remove()
+  }
+
   func remove() throws {
     Self.protectionLock.lock()
     defer { Self.protectionLock.unlock() }

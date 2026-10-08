@@ -22,7 +22,7 @@ import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { BookService } from '../book/book.service';
 import { FileLockService } from '../file-write/file-lock.service';
 import { FileWriteRepository } from '../file-write/file-write.repository';
-import { replaceFileAtomically } from '../file-write/formats/shared/atomic-file-replace';
+import { replaceFileAtomically } from '../../common/utils/atomic-file-replace';
 import {
   applySourcePdfInk,
   assertWritableSourcePdf,

@@ -21,8 +21,9 @@ struct PassageAnnotationView: View {
           if model.kind == "text_note" {
             Text("Type or use English Scribble in the note field.").font(.caption)
             EnglishScribbleTextView(
-              text: $model.note, fixtureGeneration: model.scribbleFixtureGeneration
-            ).frame(minHeight: 180)
+              text: $model.note, fixtureGeneration: model.scribbleFixtureGeneration,
+              canEdit: model.canManage
+            ).frame(minHeight: 180).disabled(!model.canManage)
             if annotationInputFixture {
               Button("Complete fixture English Scribble", action: model.completeFixtureScribble)
                 .accessibilityIdentifier("passageFixtureScribble")
@@ -34,21 +35,24 @@ struct PassageAnnotationView: View {
             ScrollView(.horizontal) {
               PencilPassageCanvas(
                 drawing: $model.drawing, mode: model.mode,
-                fixtureGeneration: model.fixtureGeneration
+                fixtureGeneration: model.fixtureGeneration, usesBlueFixture: model.usesBlueFixture,
+                canEdit: model.canManage
               )
-              .frame(width: 640, height: 360).fixedSize()
+              .frame(width: 640, height: 360).fixedSize().disabled(!model.canManage)
             }
             Text("\(model.drawing.strokes.count) retained strokes").font(.caption)
               .accessibilityIdentifier("passageRetainedStrokeCount")
             if annotationInputFixture {
               Button("Add fixture Pencil stroke", action: model.addFixtureStroke)
                 .accessibilityIdentifier("passageFixtureStroke")
+              Button("Add blue transformed fixture stroke", action: model.addBlueFixtureStroke)
+                .accessibilityIdentifier("passageFixtureBlueStroke")
             }
           }
           if let error = model.error {
             Text(error).foregroundStyle(.red).accessibilityIdentifier("passageError")
           }
-          if model.presentation?.item != nil {
+          if model.canManage, model.presentation?.item != nil {
             Button("Delete annotation", role: .destructive, action: model.delete)
               .disabled(model.isSaving).accessibilityIdentifier("passageDelete")
           }
@@ -62,8 +66,10 @@ struct PassageAnnotationView: View {
             "passageCancel")
         }
         ToolbarItem(placement: .confirmationAction) {
-          Button("Save", action: model.save).disabled(!model.canSave).accessibilityIdentifier(
-            "passageSave")
+          if model.canManage {
+            Button("Save", action: model.save).disabled(!model.canSave).accessibilityIdentifier(
+              "passageSave")
+          }
         }
       }
     }

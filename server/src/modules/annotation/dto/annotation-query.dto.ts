@@ -16,6 +16,13 @@ export class AnnotationQueryDto {
   bookFileId?: number;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? (value.trim() === '' ? Number.NaN : Number(value)) : value))
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER - 1)
+  pdfPage?: number;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)

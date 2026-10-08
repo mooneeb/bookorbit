@@ -30,6 +30,9 @@ const props = withDefaults(
     loading?: boolean
     loadingMore?: boolean
     hasMore?: boolean
+    hasPrevious?: boolean
+    annotationPage?: number
+    annotationTotal?: number
   }>(),
   { open: true, layout: 'dock', width: 304 },
 )
@@ -42,6 +45,7 @@ const emit = defineEmits<{
   deleteHighlight: [id: number]
   retryHighlights: []
   loadMoreHighlights: []
+  loadPreviousHighlights: []
 }>()
 
 const { t } = useI18n()
@@ -76,7 +80,8 @@ function tabLabel(tab: PdfSidebarTab) {
 
 const panelCount = computed(() => {
   if (props.activeTab === 'thumbnails') return scrollState.value.totalPages ? String(scrollState.value.totalPages) : ''
-  if (props.activeTab === 'highlights') return props.annotations.length ? String(props.annotations.length) : ''
+  if (props.activeTab === 'highlights')
+    return (props.annotationTotal ?? props.annotations.length) ? String(props.annotationTotal ?? props.annotations.length) : ''
   return ''
 })
 
@@ -134,6 +139,10 @@ function handleRetryHighlights() {
 
 function handleLoadMoreHighlights() {
   emit('loadMoreHighlights')
+}
+
+function handleLoadPreviousHighlights() {
+  emit('loadPreviousHighlights')
 }
 
 function loadBookmarks() {
@@ -208,7 +217,7 @@ function handleResizeKeydown(event: KeyboardEvent) {
     v-if="props.layout !== 'sheet'"
     :active-tab="props.activeTab"
     :open="props.open"
-    :highlight-count="props.annotations.length"
+    :highlight-count="props.annotationTotal ?? props.annotations.length"
     :tab-ids="tabIds"
     :panel-ids="panelIds"
     @select="selectTab"
@@ -245,12 +254,16 @@ function handleResizeKeydown(event: KeyboardEvent) {
         :loading="props.loading"
         :loading-more="props.loadingMore"
         :has-more="props.hasMore"
+        :has-previous="props.hasPrevious"
+        :annotation-page="props.annotationPage"
+        :annotation-total="props.annotationTotal"
         @select-page="handleThumbnail"
         @navigate-bookmark="handleBookmark"
         @navigate-highlight="handleNavigateHighlight"
         @delete-highlight="handleDeleteHighlight"
         @retry-highlights="handleRetryHighlights"
         @load-more-highlights="handleLoadMoreHighlights"
+        @load-previous-highlights="handleLoadPreviousHighlights"
       />
     </div>
 
@@ -328,12 +341,16 @@ function handleResizeKeydown(event: KeyboardEvent) {
         :loading="props.loading"
         :loading-more="props.loadingMore"
         :has-more="props.hasMore"
+        :has-previous="props.hasPrevious"
+        :annotation-page="props.annotationPage"
+        :annotation-total="props.annotationTotal"
         @select-page="handleThumbnail"
         @navigate-bookmark="handleBookmark"
         @navigate-highlight="handleNavigateHighlight"
         @delete-highlight="handleDeleteHighlight"
         @retry-highlights="handleRetryHighlights"
         @load-more-highlights="handleLoadMoreHighlights"
+        @load-previous-highlights="handleLoadPreviousHighlights"
       />
     </div>
   </ReaderBottomSheet>

@@ -61,6 +61,13 @@ final class NativeAnnotationRepository {
     return try await store.loadSourceInk(bookID: bookID, fileID: fileID, page: page)
   }
 
+  func loadPDFPassages(bookID: Int, fileID: Int, page: Int) async throws -> [NativeAnnotationItem] {
+    try await checkAccount()
+    let items = try await store.loadPDFPassages(bookID: bookID, fileID: fileID, page: page)
+    try await checkAccount()
+    return items
+  }
+
   func synchronizeSourceInk(bookID: Int, fileID: Int, page: Int? = nil) async throws {
     try await checkAccount()
     try await pull(bookID: bookID, fileID: fileID)
@@ -68,13 +75,25 @@ final class NativeAnnotationRepository {
     try await pull(bookID: bookID, fileID: fileID)
   }
 
-  func create(bookID: Int, payload: NativeAnnotationPayload) async throws -> NativeAnnotationItem {
+  func refreshSourceInk(bookID: Int, fileID: Int) async throws {
+    try await checkAccount()
+    try await pull(bookID: bookID, fileID: fileID, maximumPages: 4)
+  }
+
+  func create(
+    bookID: Int, payload: NativeAnnotationPayload, operationID: UUID = UUID()
+  ) async throws -> NativeAnnotationItem {
     try await checkAccount()
     guard bookID > 0, payload.cfi != nil || payload.pdf != nil else {
       throw ConnectionError.invalidResponse
     }
-    let operationID = UUID()
-    let clientID = UUID().uuidString.lowercased()
+    if let existing = try await store.change(operationID: operationID) {
+      guard existing.operation.bookId == bookID, existing.operation.action == "create",
+        existing.operation.payload == payload
+      else { throw ConnectionError.invalidResponse }
+      return existing.acknowledged ?? existing.after
+    }
+    let clientID = operationID.uuidString.lowercased()
     let now = Date().ISO8601Format()
     let item = NativeAnnotationItem(
       clientId: clientID, kind: payload.kind ?? "highlight", drawing: payload.drawing,
@@ -343,8 +362,9 @@ final class NativeAnnotationRepository {
     pendingCount = try await store.pendingCount()
   }
 
-  private func pull(bookID: Int, fileID: Int? = nil) async throws {
+  private func pull(bookID: Int, fileID: Int? = nil, maximumPages: Int? = nil) async throws {
     var cursor = try await store.cursor(bookID: bookID, fileID: fileID)
+    var receivedPages = 0
     while true {
       try Task.checkCancellation()
       try await checkAccount()
@@ -368,7 +388,8 @@ final class NativeAnnotationRepository {
       try await store.applyDelta(delta, bookID: bookID, fileID: fileID)
       if !delta.items.isEmpty { generation += 1 }
       cursor = delta.nextCursor
-      if !delta.hasMore { return }
+      receivedPages += 1
+      if !delta.hasMore || maximumPages.map({ receivedPages >= $0 }) ?? false { return }
     }
   }
 

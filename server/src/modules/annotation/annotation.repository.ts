@@ -39,7 +39,7 @@ import {
 
 type Db = NodePgDatabase<typeof schema>;
 
-export type AnnotationWithCfi = AnnotationRow & {
+export type AnnotationWithCfi = Omit<AnnotationRow, 'userId' | 'changeSequence' | 'deviceCreatedAt' | 'deviceUpdatedAt'> & {
   cfi: string | null;
   cfiStatus: string | null;
   cfiExtras: Record<string, unknown> | null;
@@ -87,6 +87,7 @@ export interface HubSort {
 export interface AnnotationFilters {
   excludeSourceInk?: boolean;
   bookFileId?: number;
+  pdfPage?: number;
   colors?: string[];
   search?: string;
   chapter?: string;
@@ -166,7 +167,25 @@ export class AnnotationRepository {
   private selectWithCfi() {
     return this.db
       .select({
-        ...getTableColumns(annotations),
+        id: annotations.id,
+        clientId: annotations.clientId,
+        kind: annotations.kind,
+        drawing: annotations.drawing,
+        sourceRevision: annotations.sourceRevision,
+        pageFingerprint: annotations.pageFingerprint,
+        bookId: annotations.bookId,
+        text: annotations.text,
+        color: annotations.color,
+        style: annotations.style,
+        note: annotations.note,
+        chapterTitle: annotations.chapterTitle,
+        origin: annotations.origin,
+        version: annotations.version,
+        deletedAt: annotations.deletedAt,
+        sourceCreatedAt: annotations.sourceCreatedAt,
+        starredAt: annotations.starredAt,
+        createdAt: annotations.createdAt,
+        updatedAt: annotations.updatedAt,
         cfi: annotationPositions.pos0,
         cfiStatus: annotationPositions.status,
         cfiExtras: annotationPositions.extras,
@@ -790,6 +809,17 @@ export class AnnotationRepository {
       conditions.push(
         sql`exists (select 1 from ${annotationPositions} ap_file where ap_file.annotation_id = ${annotations.id} and ap_file.book_file_id = ${filters.bookFileId})`,
       );
+    }
+
+    if (filters.pdfPage !== undefined) {
+      conditions.push(sql`exists (
+        select 1 from ${annotationPositions} ap_pdf
+        where ap_pdf.annotation_id = ${annotations.id}
+          and ap_pdf.user_id = ${userId}
+          and ap_pdf.format = 'pdf'
+          and ap_pdf.extras ->> 'pageno' = ${String(filters.pdfPage + 1)}
+          ${filters.bookFileId !== undefined ? sql`and ap_pdf.book_file_id = ${filters.bookFileId}` : sql``}
+      )`);
     }
 
     if (filters.colors && filters.colors.length > 0) {

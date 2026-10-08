@@ -175,7 +175,12 @@ struct EPUBReaderView: View {
     readerInteractionLifecycle
       .onChange(of: model.error) { _, error in if error != nil { showControls() } }
       .onChange(of: reduceMotion) { _, value in model.setReduceMotion(value) }
-      .onChange(of: annotations.mode.isWriting) { _, value in model.setAnnotationWriting(value) }
+      .onChange(of: annotations.mode.isWriting) { _, value in
+        model.setAnnotationWriting(value && annotations.canManage)
+      }
+      .onChange(of: annotations.canManage) { _, allowed in
+        model.setAnnotationWriting(annotations.mode.isWriting && allowed)
+      }
       .onChange(of: annotations.repository?.generation) { _, _ in
         Task { await annotations.load() }
       }
@@ -442,10 +447,12 @@ struct EPUBReaderView: View {
 
   private var selectionActions: some View {
     Group {
-      Button("Mark selected passage", action: markPassage).frame(minHeight: 44)
-        .accessibilityIdentifier("epubMarkPassage")
-        .disabled(!model.canNavigate || isReaderAction || bridge.isPresented)
-      if repairAnnotation != nil {
+      if annotations.canManage {
+        Button("Mark selected passage", action: markPassage).frame(minHeight: 44)
+          .accessibilityIdentifier("epubMarkPassage")
+          .disabled(!model.canNavigate || isReaderAction || bridge.isPresented)
+      }
+      if annotations.canManage, repairAnnotation != nil {
         Button("Repair here", action: repairHere).frame(minHeight: 44)
           .accessibilityIdentifier("passageRepairHere")
       }
@@ -468,8 +475,11 @@ struct EPUBReaderView: View {
 
   @ViewBuilder private var annotationActions: some View {
     PencilModeControls(mode: annotations.mode)
+      .disabled(!annotations.canManage)
     Button("Undo annotation", action: annotations.undo).frame(minHeight: 44)
-      .disabled(annotations.lastOperationID == nil || annotations.isSaving)
+      .disabled(
+        !annotations.canManage || annotations.lastOperationID == nil || annotations.isSaving
+      )
       .accessibilityIdentifier("passageUndo")
     Menu("Recent passage notes", systemImage: "note.text") {
       ForEach(annotations.items.prefix(50)) { item in
@@ -490,6 +500,12 @@ struct EPUBReaderView: View {
     if annotationInputFixture {
       Button("Select fixture passage", action: model.selectFixturePassage).frame(minHeight: 44)
         .accessibilityIdentifier("epubFixtureSelectPassage")
+      if annotations.canManage {
+        Button("Release fixture Pencil range", action: model.releaseFixturePencil)
+          .accessibilityIdentifier("epubFixturePencilRelease")
+        Button("Repeat fixture Pencil release", action: model.repeatFixturePencil)
+          .accessibilityIdentifier("epubFixtureRepeatPencilRelease")
+      }
     }
     if let error = annotations.error {
       Text(error).font(.caption).accessibilityIdentifier("passageReaderError")
@@ -565,7 +581,7 @@ struct EPUBReaderView: View {
   @ViewBuilder private var navigationButtons: some View {
     Button("Previous page", action: previousPage).frame(minWidth: 44, minHeight: 44)
       .disabled(
-        !model.canNavigate || model.annotationWriting || isReaderAction || bridge.isPresented
+        !model.canNavigate || model.isPencilMarking || isReaderAction || bridge.isPresented
       ).accessibilityIdentifier(
         "epubPreviousPage"
       )
@@ -584,7 +600,7 @@ struct EPUBReaderView: View {
     Spacer(minLength: 12)
     Button("Next page", action: nextPage).frame(minWidth: 44, minHeight: 44)
       .disabled(
-        !model.canNavigate || model.annotationWriting || isReaderAction || bridge.isPresented
+        !model.canNavigate || model.isPencilMarking || isReaderAction || bridge.isPresented
       ).accessibilityIdentifier(
         "epubNextPage"
       )
@@ -628,6 +644,10 @@ struct EPUBReaderView: View {
     rebuildContents()
     if model.isReady {
       await annotations.load()
+      model.setAnnotationWriting(annotations.mode.isWriting && annotations.canManage)
+      model.commitPencilHighlight = { [weak annotations] passage, operation in
+        annotations?.commitPencilHighlight(passage, operationID: operation)
+      }
       model.openPassageAnnotation = { [weak annotations] id in
         guard let annotations, let item = annotations.items.first(where: { $0.id == id }) else {
           return

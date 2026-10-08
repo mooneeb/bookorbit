@@ -50,6 +50,10 @@ final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
     let gesture = UIPanGestureRecognizer(target: self, action: #selector(didPan(_:)))
     gesture.delegate = self
     gesture.maximumNumberOfTouches = 1
+    gesture.allowedTouchTypes = [
+      NSNumber(value: UITouch.TouchType.direct.rawValue),
+      NSNumber(value: UITouch.TouchType.pencil.rawValue),
+    ]
     gesture.cancelsTouchesInView = false
     view.addGestureRecognizer(gesture)
     pan = gesture
@@ -197,14 +201,20 @@ final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
   }
 
   func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-    guard gestureRecognizer === pan, model.canNavigate, !model.annotationWriting,
-      model.selectionCFI == nil,
+    guard gestureRecognizer === pan, model.canNavigate, !model.isPencilMarking,
+      model.annotationWriting || model.selectionCFI == nil,
       !model.isContinuous, let pan
     else { return false }
     let velocity = pan.velocity(in: view)
     return model.preferences.value.pageAnimation == .verticalSlide
       ? abs(velocity.y) > abs(velocity.x) * 1.2
       : abs(velocity.x) > abs(velocity.y) * 1.2
+  }
+
+  func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch)
+    -> Bool
+  {
+    gestureRecognizer !== pan || touch.type != .pencil || !model.annotationWriting
   }
 
   func gestureRecognizer(
@@ -215,8 +225,8 @@ final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
   }
 
   @objc private func didPan(_ gesture: UIPanGestureRecognizer) {
-    guard gesture.state == .ended, model.canNavigate, !model.annotationWriting,
-      model.selectionCFI == nil
+    guard gesture.state == .ended, model.canNavigate, !model.isPencilMarking,
+      model.annotationWriting || model.selectionCFI == nil
     else { return }
     let movement = gesture.translation(in: view)
     let vertical = model.preferences.value.pageAnimation == .verticalSlide

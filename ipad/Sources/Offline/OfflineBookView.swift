@@ -70,12 +70,26 @@ struct OfflineBookView: View {
             "Downloads use at most 4 GB and 500 selected books. Pending annotations stay protected in separate account storage."
           )
           .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+          if model.snapshot != nil {
+            Button("Remove downloaded content", role: .destructive, action: model.requestRemoval)
+              .frame(minHeight: 44).disabled(model.isBusy)
+              .accessibilityIdentifier("offlineRemoveDownload")
+          }
         }
       }
       .navigationTitle("Offline resources")
       .toolbar { Button("Done", action: dismiss.callAsFunction).disabled(model.isBusy) }
     }
     .interactiveDismissDisabled(model.isBusy)
+    .alert("Remove this download from the iPad?", isPresented: $model.confirmsRemoval) {
+      Button("Remove downloaded content", role: .destructive, action: model.removeDownload)
+        .accessibilityIdentifier("offlineConfirmRemoveDownload")
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text(
+        "Your server book, annotations, bookmarks, progress, and retained recovery versions are kept. Pending work must be synchronized or resolved before removing its downloaded content."
+      )
+    }
     .task { await model.load() }
   }
 }
@@ -88,6 +102,10 @@ struct OfflineLibraryView: View {
   @State private var selected: OfflineBookSummary?
   @State private var reviewingRecovery = false
   @State private var error: String?
+  @State private var namespace: String?
+  @State private var removal: OfflineBookSummary?
+  @State private var confirmsRemoval = false
+  @State private var isRemoving = false
 
   var body: some View {
     NavigationStack {
@@ -113,6 +131,12 @@ struct OfflineLibraryView: View {
                 .foregroundStyle(.secondary)
             }.frame(minHeight: 44)
           }.accessibilityIdentifier("offlineBook\(snapshot.id)")
+            .swipeActions {
+              Button("Remove download", role: .destructive) {
+                removal = snapshot
+                confirmsRemoval = true
+              }.disabled(isRemoving).accessibilityIdentifier("offlineRemoveBook\(snapshot.id)")
+            }
         }
       }
       .navigationTitle("Offline books")
@@ -125,15 +149,43 @@ struct OfflineLibraryView: View {
       }
     }
     .task {
-      do { books = try await api.offlineStore().summaries() } catch {
+      do {
+        namespace = try await api.storageNamespace()
+        books = try await api.offlineStore().summaries()
+      } catch {
         self.error = error.localizedDescription
       }
+    }
+    .alert("Remove this download from the iPad?", isPresented: $confirmsRemoval) {
+      Button("Remove downloaded content", role: .destructive, action: removeDownload)
+        .accessibilityIdentifier("offlineConfirmRemoveDownload")
+      Button("Cancel", role: .cancel) { removal = nil }
+    } message: {
+      Text(
+        "The server book and your saved reading work are kept. Retained recovery versions remain available for export."
+      )
     }
     .sheet(isPresented: $reviewingRecovery) { SourceRecoveryView(api: api) }
     .sheet(item: $selected) { snapshot in
       BookDetailView(
         api: api, bookID: snapshot.id, canEditMetadata: false,
         canRead: user?.hasPermission(.libraryDownload) == true, userID: user?.id ?? 0)
+    }
+  }
+
+  private func removeDownload() {
+    guard !isRemoving, let removal, let namespace else { return }
+    isRemoving = true
+    error = nil
+    Task {
+      defer {
+        isRemoving = false
+        self.removal = nil
+      }
+      do {
+        try await api.removeOfflineBook(bookID: removal.id, namespace: namespace)
+        books.removeAll { $0.id == removal.id }
+      } catch { self.error = error.localizedDescription }
     }
   }
 }

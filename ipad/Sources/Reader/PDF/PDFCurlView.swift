@@ -13,6 +13,7 @@ struct PDFCurlView: View {
   var onTransition: (Bool) -> Void = { _ in }
   var inkEditor: PDFSourceInkEditor?
   var passageRepair: PDFPassageRepairModel?
+  var passages: PDFPassageAnnotationModel?
 
   var body: some View {
     FixedReaderSurface(
@@ -39,11 +40,12 @@ struct PDFCurlView: View {
       refreshPage: { controller, _ in
         (controller as? PDFPageController)?.update(
           settings: settings, selection: selection, inkEditor: inkEditor,
-          passageRepair: passageRepair)
+          passageRepair: passageRepair, passages: passages)
       },
       onTurn: onTurn, onLayout: onLayout, onTransition: onTransition,
       onVisible: { pages in Task { await inkEditor?.preparePages(pages) } },
-      allowsNavigation: inkEditor?.mode.isWriting != true && passageRepair?.locksPage != true
+      allowsNavigation: inkEditor?.isDrawingStroke != true && passageRepair?.locksPage != true,
+      allowsPencilNavigation: inkEditor?.mode.isWriting != true
     )
   }
 }
@@ -57,6 +59,9 @@ private final class PDFPageController: UIViewController {
   private let inkCanvas = PDFSourceInkCanvas()
   private var passageRepair: PDFPassageRepairModel?
   private var repairFixtureGeneration = 0
+  private var passages: PDFPassageAnnotationModel?
+  private let privatePassages = PDFPassageAnnotationOverlay()
+  private var passageFixtureGeneration = 0
 
   init(document: PDFDocument, index: Int) {
     self.document = document
@@ -76,6 +81,7 @@ private final class PDFPageController: UIViewController {
     if let page = document.page(at: index) { pdf.go(to: page) }
     view.addSubview(pdf)
     view.addSubview(inkCanvas)
+    view.addSubview(privatePassages)
     NotificationCenter.default.addObserver(
       self, selector: #selector(selectionChanged),
       name: .PDFViewSelectionChanged, object: pdf)
@@ -106,6 +112,7 @@ private final class PDFPageController: UIViewController {
     pdf.layoutDocumentView()
     pdf.layoutIfNeeded()
     layoutInk()
+    layoutPrivatePassages()
   }
 
   private func layoutInk() {
@@ -157,18 +164,48 @@ private final class PDFPageController: UIViewController {
     }
   }
 
+  private func layoutPrivatePassages() {
+    privatePassages.frame = view.bounds
+    guard let passages, let page = document.page(at: index) else { return }
+    let crop = page.bounds(for: .cropBox)
+    let rotation = ((page.rotation % 360) + 360) % 360
+    func point(_ value: CGPoint) -> CGPoint {
+      switch rotation {
+      case 90: return CGPoint(x: crop.minX + value.y, y: crop.minY + value.x)
+      case 180: return CGPoint(x: crop.maxX - value.x, y: crop.minY + value.y)
+      case 270: return CGPoint(x: crop.maxX - value.y, y: crop.maxY - value.x)
+      default: return CGPoint(x: crop.minX + value.x, y: crop.maxY - value.y)
+      }
+    }
+    privatePassages.update(
+      items: passages.items(on: index),
+      frameForRect: { rect in
+        let corners = [
+          CGPoint(x: rect.x, y: rect.y),
+          CGPoint(x: rect.x + rect.width, y: rect.y + rect.height),
+        ].map {
+          self.view.convert(self.pdf.convert(point($0), from: page), from: self.pdf)
+        }
+        return CGRect(
+          x: min(corners[0].x, corners[1].x), y: min(corners[0].y, corners[1].y),
+          width: abs(corners[1].x - corners[0].x), height: abs(corners[1].y - corners[0].y))
+      }, open: passages.open)
+  }
+
   @objc private func selectionChanged() {
     passageRepair?.selected(pdf.currentSelection)
+    passages?.selected(pdf.currentSelection)
   }
 
   func update(
     settings: PdfReaderSettings, selection: PDFSelection?, inkEditor: PDFSourceInkEditor?,
-    passageRepair: PDFPassageRepairModel?
+    passageRepair: PDFPassageRepairModel?, passages: PDFPassageAnnotationModel?
   ) {
     loadViewIfNeeded()
     self.settings = settings
     self.inkEditor = inkEditor
     self.passageRepair = passageRepair
+    self.passages = passages
     if let passageRepair {
       inkEditor?.mode.isWriting = false
       if passageRepair.fixtureGeneration != repairFixtureGeneration,
@@ -185,8 +222,24 @@ private final class PDFPageController: UIViewController {
         selectionChanged()
       }
     }
+    if let passages, passages.selectionFixtureGeneration != passageFixtureGeneration,
+      index == inkEditor?.currentPage, let page = document.page(at: index), let text = page.string
+    {
+      passageFixtureGeneration = passages.selectionFixtureGeneration
+      let text = text as NSString
+      let phrase = text.range(of: "Orbit fixture: passage \(index + 1)")
+      let range =
+        phrase.location == NSNotFound
+        ? NSRange(location: 0, length: min(128, text.length)) : phrase
+      pdf.currentSelection = page.selection(for: range)
+      selectionChanged()
+    }
     selection?.color = pdf.tintColor.withAlphaComponent(0.25)
-    pdf.highlightedSelections = (passageRepair?.preview?.selection ?? selection).map { [$0] }
+    let privatePreview = passages?.presentation.flatMap {
+      $0.item == nil ? $0.preview.selection : nil
+    }
+    pdf.highlightedSelections = (passageRepair?.preview?.selection ?? privatePreview ?? selection)
+      .map { [$0] }
     layoutPage()
   }
 }

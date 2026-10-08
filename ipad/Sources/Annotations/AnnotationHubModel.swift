@@ -16,6 +16,19 @@ struct AnnotationHubGroup: Identifiable {
   var items: [NativeAnnotationHubItem]
 }
 
+enum AnnotationHubRepairFormat {
+  case pdf
+  case reflowable
+
+  func supports(_ file: BookDetailFile) -> Bool {
+    let format = file.format?.lowercased() ?? ""
+    switch self {
+    case .pdf: return format == "pdf"
+    case .reflowable: return NativeEbookVocabulary.mimeTypes[format] != nil
+    }
+  }
+}
+
 @MainActor @Observable
 final class AnnotationHubModel {
   let api: BookOrbitAPI
@@ -53,10 +66,16 @@ final class AnnotationHubModel {
   var repairKind: String {
     repairDraft?.operation.payload?.kind ?? repairDraft?.item?.kind ?? detail?.kind ?? "text_note"
   }
-  var repairFormat: String {
-    repairKind == "pdf_ink" || repairDraft?.operation.payload?.pdf != nil
-      || repairDraft?.item?.pdf != nil || detail?.pdf != nil
-      || detail?.fileFormat?.lowercased() == "pdf" ? "pdf" : "epub"
+  var repairFormat: AnnotationHubRepairFormat {
+    if let draft = repairDraft {
+      let payload = draft.operation.payload
+      let fileID = payload?.bookFileId ?? draft.item?.jumpFileId
+      let fileFormat = repairBook?.files.first { $0.id == fileID }?.format
+      return repairKind == "pdf_ink" || payload?.pdf != nil || draft.item?.pdf != nil
+        || fileFormat?.lowercased() == "pdf" ? .pdf : .reflowable
+    }
+    return repairKind == "pdf_ink" || detail?.pdf != nil
+      || detail?.fileFormat?.lowercased() == "pdf" ? .pdf : .reflowable
   }
   var selectedItems: [NativeAnnotationHubItem] { items.filter { selected.contains($0.id) } }
   var groups: [AnnotationHubGroup] {
@@ -280,7 +299,7 @@ final class AnnotationHubModel {
 
   func chooseRepairFile(_ file: BookDetailFile) {
     guard let book = repairBook,
-      book.files.contains(where: { $0.id == file.id })
+      let file = book.files.first(where: { $0.id == file.id }), repairFormat.supports(file)
     else { return }
     do {
       if let draft = repairDraft {

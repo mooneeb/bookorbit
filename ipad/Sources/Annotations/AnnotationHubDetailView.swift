@@ -159,12 +159,12 @@ private struct AnnotationHubDrawingView: View {
 
 struct AnnotationHubRepairView: View {
   let book: BookDetail
-  let format: String
+  let format: AnnotationHubRepairFormat
   let choose: (BookDetailFile) -> Void
   @Environment(\.dismiss) private var dismiss
 
   private var files: [BookDetailFile] {
-    book.files.filter { $0.format?.lowercased() == format }
+    book.files.filter(format.supports)
   }
 
   var body: some View {

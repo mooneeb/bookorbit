@@ -51,6 +51,9 @@ export function usePdfHighlights({ bookId, fileId, documentId, getSurface, getPo
   // Only this file's PDF highlights: a book may hold several files (e.g. an EPUB
   // and a PDF, or two PDFs), and their annotations share one book-scoped list.
   const fileAnnotations = computed(() =>
+    store.renderAnnotations.value.filter((annotation) => annotation.kind !== 'pdf_ink' && annotation.pdf != null && annotation.jumpFileId === fileId),
+  )
+  const sidebarAnnotations = computed(() =>
     store.annotations.value.filter((annotation) => annotation.kind !== 'pdf_ink' && annotation.pdf != null && annotation.jumpFileId === fileId),
   )
 
@@ -198,7 +201,7 @@ export function usePdfHighlights({ bookId, fileId, documentId, getSurface, getPo
   function selectedAnnotation(): AnnotationItem | null {
     const id = overlappingAnnotationId.value
     if (id === null) return null
-    return fileAnnotations.value.find((annotation) => annotation.id === id) ?? null
+    return [...fileAnnotations.value, ...sidebarAnnotations.value].find((annotation) => annotation.id === id) ?? null
   }
 
   async function restyleExisting(id: number, patch: PdfAnnotationPatch): Promise<boolean> {
@@ -308,7 +311,7 @@ export function usePdfHighlights({ bookId, fileId, documentId, getSurface, getPo
   }
 
   async function deleteAnnotation(id: number): Promise<boolean> {
-    const annotation = store.annotations.value.find((entry) => entry.id === id) ?? null
+    const annotation = [...fileAnnotations.value, ...sidebarAnnotations.value].find((entry) => entry.id === id) ?? null
     const removed = await store.remove(id)
     if (removed && annotation) unrenderAnnotation(annotation)
     if (!removed) return false
@@ -379,7 +382,8 @@ export function usePdfHighlights({ bookId, fileId, documentId, getSurface, getPo
   void retryLoad()
 
   return {
-    annotations: fileAnnotations,
+    annotations: sidebarAnnotations,
+    activeAnnotations: fileAnnotations,
     loadError: store.loadError,
     popupVisible,
     popupPosition,
@@ -392,6 +396,14 @@ export function usePdfHighlights({ bookId, fileId, documentId, getSurface, getPo
     loading: store.loading,
     loadingMore: store.loadingMore,
     hasMore: store.hasMore,
+    hasPrevious: store.hasPrevious,
+    page: store.page,
+    total: store.total,
+    visibleWindow: store.visibleWindow,
+    visibleWindowCount: store.visibleWindowCount,
+    visibleHasMore: store.visibleHasMore,
+    visibleHasPrevious: store.visibleHasPrevious,
+    loadingVisible: store.loadingVisible,
     applyHighlight,
     openNoteDialog,
     saveNote,
@@ -400,6 +412,10 @@ export function usePdfHighlights({ bookId, fileId, documentId, getSurface, getPo
     repositionPopup,
     retryLoad,
     loadMore,
+    loadPrevious: store.loadPrevious,
+    setVisiblePages: store.setVisiblePages,
+    loadMoreVisible: store.loadMoreVisible,
+    loadPreviousVisible: store.loadPreviousVisible,
     renderAll,
     navigateTo,
     deleteAnnotation,

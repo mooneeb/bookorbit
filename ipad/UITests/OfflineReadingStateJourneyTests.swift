@@ -472,6 +472,7 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
       "-UIPreferredContentSizeCategoryName",
       profile.contains("large") ? "UICTContentSizeCategoryXXXL" : "UICTContentSizeCategoryL",
     ]
+    E02ProfileSupport.configure(app)
     app.launch()
     if !app.textFields["serverURL"].waitForExistence(timeout: 3) {
       for _ in 0..<6 where !app.buttons["signOut"].exists {

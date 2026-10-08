@@ -6,19 +6,26 @@ import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import { ANNOTATION_HIGHLIGHT_COLORS, type AnnotationItem } from '@bookorbit/types'
 import PdfNoteCard from './PdfNoteCard.vue'
 
-const props = defineProps<{
-  annotations: AnnotationItem[]
-  loadError?: boolean
-  loading?: boolean
-  loadingMore?: boolean
-  hasMore?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    annotations: AnnotationItem[]
+    loadError?: boolean
+    loading?: boolean
+    loadingMore?: boolean
+    hasMore?: boolean
+    hasPrevious?: boolean
+    page?: number
+    total?: number
+  }>(),
+  { page: 1 },
+)
 
 const emit = defineEmits<{
   navigate: [annotation: AnnotationItem]
   delete: [id: number]
   retry: []
   loadMore: []
+  loadPrevious: []
 }>()
 
 const { t } = useI18n()
@@ -90,6 +97,12 @@ function handleRetry() {
 function handleLoadMore() {
   emit('loadMore')
 }
+
+function handleLoadPrevious() {
+  emit('loadPrevious')
+}
+
+const pageCount = computed(() => Math.max(1, Math.ceil((props.total ?? props.annotations.length) / 100)))
 </script>
 
 <template>
@@ -185,15 +198,29 @@ function handleLoadMore() {
       </DynamicScrollerItem>
     </DynamicScroller>
 
-    <button
-      v-if="props.hasMore && !props.loadError"
-      type="button"
-      class="m-2 shrink-0 rounded-md border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50"
-      :disabled="props.loadingMore"
-      @click="handleLoadMore"
-    >
-      {{ props.loadingMore ? t('reader.pdf.loadingMoreAnnotations') : t('reader.pdf.loadMoreAnnotations') }}
-    </button>
+    <div v-if="props.hasMore || props.hasPrevious" class="shrink-0 space-y-2 border-t border-border p-2" data-testid="pdf-notes-pagination">
+      <p class="text-center text-xs text-muted-foreground" role="status">
+        {{ t('annotations.pagination.pageOf', { page: props.page, totalPages: pageCount }) }}
+      </p>
+      <div class="flex gap-2">
+        <button
+          type="button"
+          class="flex-1 rounded-md border border-border px-3 py-2 text-xs text-foreground disabled:opacity-50"
+          :disabled="!props.hasPrevious || props.loadingMore"
+          @click="handleLoadPrevious"
+        >
+          {{ t('annotations.pagination.previousPage') }}
+        </button>
+        <button
+          type="button"
+          class="flex-1 rounded-md border border-border px-3 py-2 text-xs text-foreground disabled:opacity-50"
+          :disabled="!props.hasMore || props.loadingMore"
+          @click="handleLoadMore"
+        >
+          {{ t('annotations.pagination.nextPage') }}
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 

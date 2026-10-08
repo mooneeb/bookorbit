@@ -20,6 +20,9 @@ defineProps<{
   loading?: boolean
   loadingMore?: boolean
   hasMore?: boolean
+  hasPrevious?: boolean
+  annotationPage?: number
+  annotationTotal?: number
 }>()
 
 const emit = defineEmits<{
@@ -29,6 +32,7 @@ const emit = defineEmits<{
   deleteHighlight: [id: number]
   retryHighlights: []
   loadMoreHighlights: []
+  loadPreviousHighlights: []
 }>()
 
 function handleSelectPage(pageIndex: number) {
@@ -53,6 +57,10 @@ function handleRetryHighlights() {
 
 function handleLoadMoreHighlights() {
   emit('loadMoreHighlights')
+}
+
+function handleLoadPreviousHighlights() {
+  emit('loadPreviousHighlights')
 }
 </script>
 
@@ -79,9 +87,13 @@ function handleLoadMoreHighlights() {
     :loading="loading"
     :loading-more="loadingMore"
     :has-more="hasMore"
+    :has-previous="hasPrevious"
+    :page="annotationPage"
+    :total="annotationTotal"
     @navigate="handleNavigateHighlight"
     @delete="handleDeleteHighlight"
     @retry="handleRetryHighlights"
     @load-more="handleLoadMoreHighlights"
+    @load-previous="handleLoadPreviousHighlights"
   />
 </template>

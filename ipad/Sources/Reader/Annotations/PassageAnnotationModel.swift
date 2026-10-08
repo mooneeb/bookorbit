@@ -17,17 +17,22 @@ final class PassageAnnotationModel {
   var note = ""
   var drawing = PKDrawing()
   var fixtureGeneration = 0
+  var usesBlueFixture = false
   var scribbleFixtureGeneration = 0
   private(set) var repository: NativeAnnotationRepository?
   private(set) var items: [NativeAnnotationItem] = []
   private(set) var isSaving = false
   private(set) var lastOperationID: UUID?
   private(set) var error: String?
+  private(set) var canManage = false
+  private var releaseOperations: Set<UUID> = []
 
   init(reader: EPUBReaderModel) { self.reader = reader }
 
   func load() async {
     do {
+      let user: AuthUser = try await reader.api.boundedJSON("auth/me")
+      canManage = user.hasPermission(.annotationManageOwn)
       let repository = try await NativeAnnotationRepository.shared(api: reader.api)
       if self.repository == nil {
         do { try await repository.synchronize(bookID: reader.bookID) } catch {
@@ -39,11 +44,14 @@ final class PassageAnnotationModel {
         $0.jumpFileId == reader.file.id && $0.deletedAt == nil && $0.kind != "pdf_ink"
       }
       await refreshHighlights()
-    } catch { self.error = error.localizedDescription }
+    } catch {
+      canManage = false
+      self.error = error.localizedDescription
+    }
   }
 
   func preview(language: String?) {
-    guard let passage = reader.selectedPassage(language: language) else { return }
+    guard canManage, let passage = reader.selectedPassage(language: language) else { return }
     open(passage, item: nil)
   }
 
@@ -65,19 +73,19 @@ final class PassageAnnotationModel {
     scribbleFixtureGeneration = 0
     error = nil
     mode.isWriting = true
-    reader.setAnnotationWriting(true)
+    reader.setAnnotationWriting(canManage)
     presentation = .init(passage: passage, item: item)
   }
 
   func cancel() {
     guard !isSaving else { return }
     presentation = nil
-    reader.setAnnotationWriting(mode.isWriting)
+    reader.setAnnotationWriting(mode.isWriting && canManage)
   }
 
   var canSave: Bool {
     guard let presentation else { return false }
-    return repository != nil && !isSaving
+    return canManage && repository != nil && !isSaving
       && reader.publicationID == presentation.passage.publicationID
       && (kind != "text_note" || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
       && (kind != "handwriting" || !drawing.strokes.isEmpty)
@@ -91,6 +99,7 @@ final class PassageAnnotationModel {
       isSaving = true
       defer { isSaving = false }
       do {
+        try await requirePermission()
         var payload = NativeAnnotationPayload()
         payload.cfi = presentation.passage.cfi
         payload.bookFileId = reader.file.id
@@ -115,10 +124,11 @@ final class PassageAnnotationModel {
 
   func delete() {
     Task {
-      guard let item = presentation?.item, let repository, !isSaving else { return }
+      guard canManage, let item = presentation?.item, let repository, !isSaving else { return }
       isSaving = true
       defer { isSaving = false }
       do {
+        try await requirePermission()
         lastOperationID = try await repository.mutate(item, action: "delete")
         presentation = nil
         await load()
@@ -128,8 +138,9 @@ final class PassageAnnotationModel {
 
   func undo() {
     Task {
-      guard let repository, let operation = lastOperationID, !isSaving else { return }
+      guard canManage, let repository, let operation = lastOperationID, !isSaving else { return }
       do {
+        try await requirePermission()
         let outcome = try await repository.undo(operationID: operation)
         if case .queued = outcome { self.error = outcome.message }
         lastOperationID = nil
@@ -138,24 +149,53 @@ final class PassageAnnotationModel {
     }
   }
 
-  func addFixtureStroke() { fixtureGeneration += 1 }
+  func addFixtureStroke() {
+    usesBlueFixture = false
+    fixtureGeneration += 1
+  }
+  func addBlueFixtureStroke() {
+    usesBlueFixture = true
+    fixtureGeneration += 1
+  }
   func completeFixtureScribble() { scribbleFixtureGeneration += 1 }
 
   private func serializedDrawing() throws -> NativeAnnotationDrawing {
-    let oldIDs = presentation?.item?.drawing?.strokes.map(\.id) ?? []
-    let strokes = drawing.strokes.enumerated().map { index, stroke in
-      NativeInkStroke(
-        id: index < oldIDs.count ? oldIDs[index] : UUID().uuidString,
-        points: stroke.path.map { point in
-          let transformed = point.location.applying(stroke.transform)
-          return NativeInkPoint(
-            x: Double(transformed.x), y: Double(transformed.y),
-            pressure: min(1, max(0, Double(point.force))))
-        }, color: "#111111", width: min(100, max(0.01, Double(stroke.path.first?.size.width ?? 3))))
+    try NativeDrawingEncoding.encode(drawing, prior: presentation?.item?.drawing)
+  }
+
+  func commitPencilHighlight(_ passage: EPUBSelectedPassage, operationID: UUID) {
+    guard canManage, !releaseOperations.contains(operationID),
+      reader.publicationID == passage.publicationID
+    else { return }
+    releaseOperations.insert(operationID)
+    Task {
+      do {
+        try await requirePermission()
+        guard let repository, reader.publicationID == passage.publicationID else { return }
+        var payload = NativeAnnotationPayload()
+        payload.cfi = passage.cfi
+        payload.bookFileId = reader.file.id
+        payload.text = passage.text
+        payload.kind = "highlight"
+        payload.color = "#FACC15"
+        payload.style = "highlight"
+        _ = try await repository.create(
+          bookID: reader.bookID, payload: payload, operationID: operationID)
+        lastOperationID = operationID
+        if releaseOperations.count > 256 { releaseOperations = [operationID] }
+        await load()
+      } catch {
+        releaseOperations.remove(operationID)
+        self.error = error.localizedDescription
+      }
     }
-    return NativeAnnotationDrawing(
-      format: "bookorbit-ink-v1", strokes: strokes,
-      nativeData: drawing.dataRepresentation().base64EncodedString())
+  }
+
+  private func requirePermission() async throws {
+    let session = try await reader.api.authenticatedSessionGeneration()
+    let user: AuthUser = try await reader.api.boundedJSON("auth/me", session: session)
+    canManage = user.hasPermission(.annotationManageOwn)
+    guard canManage else { throw ConnectionError.http(403) }
   }
 
   func refreshHighlights() async {

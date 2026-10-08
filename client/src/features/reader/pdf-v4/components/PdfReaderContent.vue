@@ -117,7 +117,21 @@ const highlights = usePdfHighlights({
   getPopup: () => selectionPopup.value?.getElement() ?? null,
 })
 
-watch(pageRange, (range) => props.sourceInk?.setVisiblePages(range.start - 1, range.end - 1), { immediate: true })
+watch(
+  pageRange,
+  (range) => {
+    props.sourceInk?.setVisiblePages(range.start - 1, range.end - 1)
+    highlights.setVisiblePages(range.start - 1, range.end - 1)
+  },
+  { immediate: true },
+)
+
+const noteDrawing = computed(
+  () =>
+    [...highlights.activeAnnotations.value, ...highlights.annotations.value].find(
+      (annotation) => annotation.id === highlights.overlappingAnnotationId.value,
+    )?.drawing,
+)
 
 function handleBack() {
   emit('back')
@@ -230,6 +244,18 @@ function handleRetryHighlights() {
 
 function handleLoadMoreHighlights() {
   void highlights.loadMore()
+}
+
+function handleLoadPreviousHighlights() {
+  void highlights.loadPrevious()
+}
+
+function handleLoadMoreVisibleAnnotations() {
+  void highlights.loadMoreVisible()
+}
+
+function handleLoadPreviousVisibleAnnotations() {
+  void highlights.loadPreviousVisible()
 }
 
 function handleSelectionPopupResize() {
@@ -525,6 +551,9 @@ onUnmounted(() => {
         :loading="highlights.loading.value"
         :loading-more="highlights.loadingMore.value"
         :has-more="highlights.hasMore.value"
+        :has-previous="highlights.hasPrevious.value"
+        :annotation-page="highlights.page.value"
+        :annotation-total="highlights.total.value"
         @close="handleSidebarClose"
         @update:active-tab="handleSidebarTab"
         @update:width="handleSidebarWidth"
@@ -532,6 +561,7 @@ onUnmounted(() => {
         @delete-highlight="handleDeleteHighlight"
         @retry-highlights="handleRetryHighlights"
         @load-more-highlights="handleLoadMoreHighlights"
+        @load-previous-highlights="handleLoadPreviousHighlights"
       />
 
       <div
@@ -620,6 +650,31 @@ onUnmounted(() => {
     </div>
 
     <div
+      v-if="highlights.visibleHasMore.value || highlights.visibleHasPrevious.value"
+      class="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-card px-3 py-2"
+      data-testid="pdf-visible-annotations-pagination"
+    >
+      <span class="text-xs text-muted-foreground"
+        >{{ t('reader.sidebar.tabs.notesShort') }}:
+        {{ t('annotations.pagination.pageOf', { page: highlights.visibleWindow.value, totalPages: highlights.visibleWindowCount.value }) }}</span
+      >
+      <button
+        class="rounded-md border border-border px-3 py-2 text-xs disabled:opacity-50"
+        :disabled="!highlights.visibleHasPrevious.value || highlights.loadingVisible.value"
+        @click="handleLoadPreviousVisibleAnnotations"
+      >
+        {{ t('annotations.pagination.previousPage') }}
+      </button>
+      <button
+        class="rounded-md border border-border px-3 py-2 text-xs disabled:opacity-50"
+        :disabled="!highlights.visibleHasMore.value || highlights.loadingVisible.value"
+        @click="handleLoadMoreVisibleAnnotations"
+      >
+        {{ t('annotations.pagination.nextPage') }}
+      </button>
+    </div>
+
+    <div
       v-if="props.sourceInk?.selected.value || props.sourceInk?.undoItem.value || props.sourceInk?.failed.value"
       class="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-card px-3 py-2"
       role="status"
@@ -686,7 +741,7 @@ onUnmounted(() => {
       :selectedText="highlights.selectedText.value"
       :modelValue="highlights.noteText.value"
       :saving="highlights.isSaving.value"
-      :drawing="highlights.annotations.value.find((annotation) => annotation.id === highlights.overlappingAnnotationId.value)?.drawing"
+      :drawing="noteDrawing"
       :readonly="!canManageAnnotations"
       @update:modelValue="handleHighlightNoteText"
       @save="handleHighlightSaveNote"

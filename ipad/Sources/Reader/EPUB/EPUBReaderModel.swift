@@ -69,6 +69,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   @ObservationIgnored var commitTurn: (@MainActor (Bool, ReaderTurnAnimation) async -> Void)?
   @ObservationIgnored var cancelTurn: (@MainActor () -> Void)?
   @ObservationIgnored var openPassageAnnotation: (@MainActor (Int) -> Void)?
+  @ObservationIgnored var commitPencilHighlight: (@MainActor (EPUBSelectedPassage, UUID) -> Void)?
   private var navigationWait: CheckedContinuation<Void, any Error>?
   private var expectedNavigation: WKNavigation?
   private var navigationTimeout: Task<Void, Never>?
@@ -80,6 +81,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   private var isClosed = false
   private var reduceMotion = false
   private(set) var annotationWriting = false
+  private(set) var isPencilMarking = false
   private var revealingAnnotation = false
   private var annotationRevealOrigin: EPUBReadingLocation?
   private let openedAt = Date()
@@ -115,6 +117,8 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     configuration.userContentController.add(self, name: "location")
     configuration.userContentController.add(self, name: "selection")
     configuration.userContentController.add(self, name: "passageAnnotation")
+    configuration.userContentController.add(self, name: "pencilRelease")
+    configuration.userContentController.add(self, name: "pencilMarking")
     configuration.userContentController.add(self, name: "readerError")
     preferences.validateFont = { [weak self] requested in
       guard let self, self.isReady, !self.isClosed else { throw EPUBFontError.loadFailed }
@@ -473,7 +477,12 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
   func setAnnotationWriting(_ enabled: Bool) {
     annotationWriting = enabled
-    webView.scrollView.isScrollEnabled = !enabled
+    webView.scrollView.isScrollEnabled = !isPencilMarking
+    let touchTypes =
+      [UITouch.TouchType.direct, .indirect, .indirectPointer] + (enabled ? [] : [.pencil])
+    webView.scrollView.panGestureRecognizer.allowedTouchTypes = touchTypes.map {
+      NSNumber(value: $0.rawValue)
+    }
     guard isReady else { return }
     Task {
       _ = try? await webView.callAsyncJavaScript(
@@ -490,11 +499,22 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     }
   }
 
+  func releaseFixturePencil() { fixturePencil(repeating: false) }
+  func repeatFixturePencil() { fixturePencil(repeating: true) }
+  private func fixturePencil(repeating: Bool) {
+    guard annotationInputFixture, isReady else { return }
+    Task {
+      _ = try? await webView.callAsyncJavaScript(
+        "window.epubFixturePencilRelease(repeating)", arguments: ["repeating": repeating], in: nil,
+        contentWorld: .page)
+    }
+  }
+
   func setPassageAnnotations(_ annotations: [NativeAnnotationItem]) async {
     guard isReady else { return }
     let items = annotations.compactMap { item -> [String: Any]? in
       guard let cfi = item.cfi else { return nil }
-      return ["id": item.id, "cfi": cfi]
+      return ["id": item.id, "cfi": cfi, "kind": item.kind]
     }
     _ = try? await webView.callAsyncJavaScript(
       "window.epubSetPassageAnnotations(items)", arguments: ["items": items], in: nil,
@@ -760,6 +780,17 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       if let message = message.body as? String, !message.isEmpty, message.utf16.count <= 500 {
         error = message
       }
+    } else if message.name == "pencilMarking", let marking = message.body as? Bool {
+      isPencilMarking = marking
+      webView.scrollView.isScrollEnabled = !marking
+    } else if message.name == "pencilRelease", let value = message.body as? [String: Any],
+      let identifier = value["operationId"] as? String,
+      let operation = UUID(uuidString: identifier),
+      let cfi = value["cfi"] as? String, cfi.hasPrefix("epubcfi("), cfi.utf16.count <= 2000,
+      let text = value["text"] as? String, !text.isEmpty, text.utf16.count <= 16000
+    {
+      commitPencilHighlight?(
+        .init(publicationID: publicationID, cfi: cfi, text: text, language: "en"), operation)
     } else if message.name == "passageAnnotation", let id = message.body as? Int {
       openPassageAnnotation?(id)
     } else if message.name == "selection" {
@@ -945,6 +976,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   private func clearContent() {
+    isPencilMarking = false
     publicationID = UUID()
     selectionLanguage = nil
     saveTask?.cancel()

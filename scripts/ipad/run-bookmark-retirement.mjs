@@ -5,6 +5,14 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { sanitizeLogValue } from "../../server/src/common/utils/log-sanitize.utils.ts";
+
+const startedAt = Date.now();
+process.on("uncaughtExceptionMonitor", (error) => {
+  console.error(
+    `[ipad.bookmark_retirement] [fail] runId=${process.pid} durationMs=${Date.now() - startedAt} errorClass=${error.name} error="${sanitizeLogValue(error.message)}" - retirement protocol run failed`,
+  );
+});
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(new URL("../../server/package.json", import.meta.url));
@@ -52,10 +60,10 @@ async function command(args) {
   });
 }
 try {
+  console.log(`[ipad.bookmark_retirement] [start] runId=${runID} - running isolated retirement protocol checks`);
   await command(["--filter", "server", "e2e:db:prepare"]);
   await command(["--filter", "server", "db:migrate"]);
   await command(["--filter", "server", "exec", "vitest", "run", "--config", "vitest.config.bookmark-retirement.ts"]);
-  console.log(`[ipad.bookmark_retirement] [end] runId=${runID} - public protocol checks completed`);
 } finally {
   const admin = new Client({ connectionString: "postgres://bookorbit:bookorbit@localhost:5432/postgres" });
   await admin.connect();
@@ -66,3 +74,6 @@ try {
     log.end();
   }
 }
+console.log(
+  `[ipad.bookmark_retirement] [end] runId=${runID} durationMs=${Date.now() - startedAt} tests=2 cleaned=true - public protocol checks completed`,
+);

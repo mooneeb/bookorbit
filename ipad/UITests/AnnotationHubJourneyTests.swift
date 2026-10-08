@@ -29,6 +29,7 @@ final class AnnotationHubJourneyTests: XCTestCase {
       profile.contains("large") ? "UICTContentSizeCategoryXXXL" : "UICTContentSizeCategoryL",
     ]
     XCUIDevice.shared.orientation = profile.contains("landscape") ? .landscapeLeft : .portrait
+    E02ProfileSupport.configure(app)
     app.launch()
     if app.buttons["signOut"].waitForExistence(timeout: 3) { app.buttons["signOut"].tap() }
     if app.buttons["Change server"].exists { app.buttons["Change server"].tap() }

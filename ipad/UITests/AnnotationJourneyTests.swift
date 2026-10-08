@@ -772,6 +772,7 @@ final class AnnotationJourneyTests: XCTestCase {
         ? "UICTContentSizeCategoryXXXL" : "UICTContentSizeCategoryL",
     ]
     app.launchEnvironment["BOOKORBIT_ANNOTATION_INPUT_FIXTURE"] = "1"
+    E02ProfileSupport.configure(app)
     app.launch()
     if !app.textFields["serverURL"].waitForExistence(timeout: 3) {
       for _ in 0..<5 where !app.buttons["signOut"].exists {

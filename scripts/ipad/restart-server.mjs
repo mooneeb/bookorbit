@@ -7,6 +7,14 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { sanitizeLogValue } from "../../server/src/common/utils/log-sanitize.utils.ts";
+
+const startedAt = Date.now();
+process.on("uncaughtExceptionMonitor", (error) => {
+  console.error(
+    `[ipad.harness_restart] [fail] runtimePid=${process.pid} durationMs=${Date.now() - startedAt} errorClass=${error.name} error="${sanitizeLogValue(error.message)}" - retained API restart failed`,
+  );
+});
 
 const execute = promisify(execFile);
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -144,3 +152,6 @@ const exitCode = await new Promise((resolve, reject) => {
 log.end();
 await recordRuntime("stopped", exitCode);
 if (exitCode !== 0) throw new Error(`Restarted isolated server exited (${exitCode})`);
+console.log(
+  `[ipad.harness_restart] [end] runId=${runID} runtimePid=${child.pid} durationMs=${Date.now() - startedAt} closed=true - retained API runtime stopped`,
+);

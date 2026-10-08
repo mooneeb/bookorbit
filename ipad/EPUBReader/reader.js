@@ -23,6 +23,46 @@ let searchState;
 let resourceBytes = 0;
 let annotationWriting = false;
 let passageAnnotations = [];
+let pencilMarking = false;
+let lastPencilRelease;
+const pencilOperationID = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 15) | 64;
+  bytes[8] = (bytes[8] & 63) | 128;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
+const setPencilMarking = (marking) => {
+  pencilMarking = marking;
+  view.renderer.style.touchAction = marking ? "none" : "";
+  window.webkit.messageHandlers.pencilMarking.postMessage(marking);
+};
+const matchedPassageAnnotation = (doc, index, selectedRange) => {
+  const matches = [];
+  for (const item of passageAnnotations) {
+    try {
+      const resolved = view.resolveNavigation(item.cfi);
+      if (resolved?.index !== index) continue;
+      const range = resolved.anchor(doc);
+      const overlaps = selectedRange.collapsed
+        ? range.isPointInRange(selectedRange.startContainer, selectedRange.startOffset)
+        : range.comparePoint(selectedRange.startContainer, selectedRange.startOffset) <= 0 &&
+          range.comparePoint(selectedRange.endContainer, selectedRange.endOffset) >= 0;
+      if (overlaps) matches.push(item);
+    } catch {}
+  }
+  return matches.find((item) => item.kind === "handwriting") ?? matches.find((item) => item.kind === "text_note") ?? matches[0];
+};
+const releasePencilPassage = (doc, index, operationId) => {
+  const passage = selection(doc, index);
+  setPencilMarking(false);
+  if (!passage) return;
+  lastPencilRelease = { ...passage, operationId };
+  window.webkit.messageHandlers.selection.postMessage(passage);
+  window.webkit.messageHandlers.pencilRelease.postMessage(lastPencilRelease);
+  const item = matchedPassageAnnotation(doc, index, doc.getSelection().getRangeAt(0));
+  if (item?.kind === "handwriting") window.webkit.messageHandlers.passageAnnotation.postMessage(item.id);
+};
 const renderPassageAnnotations = (doc, index) => {
   const ranges = [];
   for (const item of passageAnnotations) {
@@ -43,8 +83,7 @@ window.epubSetPassageAnnotations = (items) => {
 };
 window.epubAnnotationWriting = (enabled) => {
   annotationWriting = enabled;
-  view.renderer.style.touchAction = enabled ? "none" : "";
-  for (const { doc } of view.renderer.getContents()) doc.documentElement.style.touchAction = enabled ? "none" : "";
+  if (!enabled) setPencilMarking(false);
 };
 window.epubFixtureSelectPassage = () => {
   for (const { doc, index } of view.renderer.getContents()) {
@@ -56,6 +95,19 @@ window.epubFixtureSelectPassage = () => {
     selected.removeAllRanges();
     selected.addRange(range);
     window.webkit.messageHandlers.selection.postMessage(selection(doc, index));
+    return;
+  }
+};
+window.epubFixturePencilRelease = (repeating) => {
+  if (repeating && lastPencilRelease) {
+    window.webkit.messageHandlers.pencilRelease.postMessage(lastPencilRelease);
+    return;
+  }
+  window.epubFixtureSelectPassage();
+  for (const { doc, index } of view.renderer.getContents()) {
+    if (!selection(doc, index)) continue;
+    setPencilMarking(true);
+    releasePencilPassage(doc, index, pencilOperationID());
     return;
   }
 };
@@ -162,7 +214,6 @@ const applyDocumentStyles = (doc) => {
 view.addEventListener("load", ({ detail: { doc, index } }) => {
   if (view.isFixedLayout) applyDocumentStyles(doc);
   renderPassageAnnotations(doc, index);
-  doc.documentElement.style.touchAction = annotationWriting ? "none" : "";
   let pencilStart;
   doc.addEventListener(
     "pointerdown",
@@ -170,7 +221,8 @@ view.addEventListener("load", ({ detail: { doc, index } }) => {
       if (!annotationWriting || event.pointerType !== "pen") return;
       const caret = doc.caretRangeFromPoint(event.clientX, event.clientY);
       if (!caret) return;
-      pencilStart = { node: caret.startContainer, offset: caret.startOffset };
+      pencilStart = { node: caret.startContainer, offset: caret.startOffset, operationId: pencilOperationID() };
+      setPencilMarking(true);
       event.preventDefault();
     },
     { passive: false },
@@ -190,31 +242,30 @@ view.addEventListener("load", ({ detail: { doc, index } }) => {
     "pointerup",
     (event) => {
       if (!pencilStart || event.pointerType !== "pen") return;
+      const operationId = pencilStart.operationId;
       pencilStart = null;
-      window.webkit.messageHandlers.selection.postMessage(selection(doc, index));
+      releasePencilPassage(doc, index, operationId);
       event.preventDefault();
     },
     { passive: false },
   );
   doc.addEventListener("pointercancel", () => {
     pencilStart = null;
+    setPencilMarking(false);
   });
   doc.addEventListener("click", (event) => {
     if (closed || pencilStart || !doc.getSelection()?.isCollapsed) return;
     const caret = doc.caretRangeFromPoint(event.clientX, event.clientY);
     if (!caret) return;
-    for (const item of passageAnnotations) {
-      try {
-        const resolved = view.resolveNavigation(item.cfi);
-        if (resolved?.index !== index) continue;
-        if (!resolved.anchor(doc).isPointInRange(caret.startContainer, caret.startOffset)) continue;
-        window.webkit.messageHandlers.passageAnnotation.postMessage(item.id);
-        return;
-      } catch {}
-    }
+    const item = matchedPassageAnnotation(doc, index, caret);
+    if (item) window.webkit.messageHandlers.passageAnnotation.postMessage(item.id);
   });
   doc.addEventListener("selectionchange", () => {
     if (!closed) window.webkit.messageHandlers.selection.postMessage(selection(doc, index));
+    const selected = doc.getSelection();
+    if (closed || pencilMarking || !selected?.rangeCount || selected.isCollapsed) return;
+    const item = matchedPassageAnnotation(doc, index, selected.getRangeAt(0));
+    if (item?.kind === "handwriting") window.webkit.messageHandlers.passageAnnotation.postMessage(item.id);
   });
 });
 view.addEventListener("relocate", notify);
@@ -437,6 +488,8 @@ window.epubSearchCancel = () => {
   searchState = null;
 };
 window.epubClose = () => {
+  pencilMarking = false;
+  lastPencilRelease = undefined;
   passageAnnotations = [];
   annotationWriting = false;
   closed = true;

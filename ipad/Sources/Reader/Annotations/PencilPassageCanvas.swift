@@ -5,6 +5,8 @@ struct PencilPassageCanvas: UIViewRepresentable {
   @Binding var drawing: PKDrawing
   let mode: PencilReaderMode
   let fixtureGeneration: Int
+  var usesBlueFixture = false
+  var canEdit = true
 
   func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -34,7 +36,7 @@ struct PencilPassageCanvas: UIViewRepresentable {
       canvas.tool =
         mode.usesEraser ? PKEraserTool(.bitmap) : PKInkingTool(.pen, color: .label, width: 3)
     }
-    canvas.isDrawingEnabled = mode.isWriting
+    canvas.isDrawingEnabled = mode.isWriting && canEdit
     context.coordinator.picker.setVisible(mode.showsPalette, forFirstResponder: canvas)
     if mode.showsPalette { canvas.becomeFirstResponder() }
     if context.coordinator.fixtureGeneration != fixtureGeneration {
@@ -47,12 +49,16 @@ struct PencilPassageCanvas: UIViewRepresentable {
       let path = PKStrokePath(
         controlPoints: points.enumerated().map { index, point in
           PKStrokePoint(
-            location: point, timeOffset: Double(index) * 0.05, size: CGSize(width: 3, height: 3),
+            location: point, timeOffset: Double(index) * 0.05,
+            size: CGSize(width: usesBlueFixture ? 6 : 3, height: usesBlueFixture ? 6 : 3),
             opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
         }, creationDate: Date(timeIntervalSince1970: 0))
       Task { @MainActor in
+        let stroke = PKStroke(
+          ink: PKInk(.pen, color: usesBlueFixture ? .blue : .label), path: path,
+          transform: usesBlueFixture ? CGAffineTransform(scaleX: 2, y: 2) : .identity)
         canvas.drawing = PKDrawing(
-          strokes: canvas.drawing.strokes + [PKStroke(ink: PKInk(.pen, color: .label), path: path)])
+          strokes: canvas.drawing.strokes + [stroke])
       }
     }
     canvas.accessibilityValue = "\(canvas.drawing.strokes.count) retained strokes"
@@ -78,6 +84,7 @@ struct PencilPassageCanvas: UIViewRepresentable {
 struct EnglishScribbleTextView: UIViewRepresentable {
   @Binding var text: String
   var fixtureGeneration = 0
+  var canEdit = true
 
   func makeCoordinator() -> Coordinator { Coordinator(self) }
   func makeUIView(context: Context) -> UITextView {
@@ -94,6 +101,7 @@ struct EnglishScribbleTextView: UIViewRepresentable {
   }
   func updateUIView(_ view: UITextView, context: Context) {
     context.coordinator.parent = self
+    view.isEditable = canEdit
     if view.text != text { view.text = text }
     if context.coordinator.fixtureGeneration != fixtureGeneration {
       context.coordinator.fixtureGeneration = fixtureGeneration

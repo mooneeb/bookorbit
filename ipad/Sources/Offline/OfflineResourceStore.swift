@@ -41,6 +41,7 @@ actor OfflineResourceStore {
   private var verified: [String: Date] = [:]
   private var sizes: [String: Int64]?
   private var usedBytes: Int64 = 0
+  private var activeBookTransfers: Set<Int> = []
 
   init(namespace: String) throws {
     self.namespace = namespace
@@ -335,6 +336,50 @@ actor OfflineResourceStore {
     try save(snapshot)
   }
 
+  func retainOpenedPdfSource(
+    book: BookDetail, fileID: Int, source: URL, revision: String, reason: String
+  ) throws {
+    let digest = revision.replacingOccurrences(of: "sha256:", with: "")
+    guard digest.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil,
+      book.files.contains(where: { $0.id == fileID && $0.format?.lowercased() == "pdf" }),
+      try checksum(source) == digest,
+      let size = try source.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+      (1...(100 * 1024 * 1024)).contains(size)
+    else { throw ConnectionError.invalidResponse }
+    var retained =
+      try snapshot(bookID: book.id)
+      ?? OfflineBookSnapshot(book: book, selectedFileIDs: [])
+    if !retained.book.files.contains(where: { $0.id == fileID }),
+      let file = book.files.first(where: { $0.id == fileID })
+    {
+      retained.book.files.append(file)
+    }
+    retained.state = "recovery"
+    retained.message =
+      "The source changed. The complete PDF you were reading is retained for review."
+    try save(retained)
+    let resource = OfflineResource(
+      path: "books/files/\(fileID)/serve", expectedBytes: Int64(size), receivedBytes: Int64(size),
+      digest: digest, validator: "\"\(digest)\"", sourceDigest: digest, bookID: book.id,
+      fileID: fileID)
+    let id = "recovery-\(resource.id)-\(digest)"
+    if FileManager.default.fileExists(atPath: root.appendingPathComponent(id + ".version").path) {
+      return
+    }
+    try reserve(Int64(size))
+    let copy = root.appendingPathComponent("open-pdf-\(UUID().uuidString).resource")
+    try FileManager.default.copyItem(at: source, to: copy)
+    recordUsage(copy, size: Int64(size))
+    do {
+      try retainVersion(
+        resource, source: copy, receiptData: JSONEncoder().encode(resource), reason: reason)
+    } catch {
+      try? FileManager.default.removeItem(at: copy)
+      recordUsage(copy, size: 0)
+      throw error
+    }
+  }
+
   func sourceVersions(bookID: Int? = nil, fileID: Int? = nil, after: String? = nil, limit: Int = 40)
     throws -> OfflineSourceVersionsPage
   {
@@ -519,6 +564,125 @@ actor OfflineResourceStore {
     }
   }
 
+  func beginBookTransfer(bookID: Int) throws {
+    guard !activeBookTransfers.contains(bookID) else { throw OfflineStorageError.activeDownload }
+    activeBookTransfers.insert(bookID)
+  }
+
+  func endBookTransfer(bookID: Int) { activeBookTransfers.remove(bookID) }
+
+  func removeBook(bookID: Int) throws {
+    do {
+      try removeBookResources(bookID: bookID)
+    } catch let error as OfflineStorageError {
+      throw error
+    } catch {
+      throw OfflineStorageError.unverifiedDownload
+    }
+  }
+
+  private func removeBookResources(bookID: Int) throws {
+    guard bookID > 0, let snapshot = try snapshot(bookID: bookID), snapshot.id == bookID,
+      snapshot.book.files.count <= 4096, snapshot.resources.count <= 100_000
+    else { throw OfflineStorageError.unverifiedDownload }
+    guard !activeBookTransfers.contains(bookID) else { throw OfflineStorageError.activeDownload }
+    var candidates = Set(snapshot.resources.map(\.id))
+    var fileIDs = Set(snapshot.book.files.map(\.id))
+    guard
+      let enumerator = FileManager.default.enumerator(
+        at: root, includingPropertiesForKeys: [.fileSizeKey],
+        options: [.skipsSubdirectoryDescendants])
+    else { throw OfflineStorageError.unverifiedDownload }
+    var scanned = 0
+    for case let file as URL in enumerator {
+      scanned += 1
+      guard scanned <= Self.resourceFileLimit else { throw OfflineStorageError.unverifiedDownload }
+      guard !file.lastPathComponent.hasPrefix("recovery-") else { continue }
+      guard
+        file.lastPathComponent.hasSuffix(".resource.receipt")
+          || file.lastPathComponent.hasSuffix(".resource.transfer")
+      else { continue }
+      guard (try file.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? Int.max <= 64 * 1024
+      else { throw OfflineStorageError.unverifiedDownload }
+      let resource = try JSONDecoder().decode(OfflineResource.self, from: Data(contentsOf: file))
+      guard file.lastPathComponent == resource.id + ".resource." + file.pathExtension else {
+        throw OfflineStorageError.unverifiedDownload
+      }
+      if resource.bookID == bookID || belongsToBook(resource, bookID: bookID, fileIDs: fileIDs) {
+        candidates.insert(resource.id)
+        if let fileID = resource.fileID { fileIDs.insert(fileID) }
+      }
+      guard candidates.count <= Self.resourceFileLimit else {
+        throw OfflineStorageError.unverifiedDownload
+      }
+    }
+    // A shared font or metadata receipt may serve several explicit downloads.
+    for otherID in try bookIDs() where otherID != bookID {
+      guard let other = try self.snapshot(bookID: otherID), other.id == otherID,
+        other.resources.count <= 100_000
+      else { throw OfflineStorageError.unverifiedDownload }
+      for resource in other.resources { candidates.remove(resource.id) }
+    }
+    var sourceIndexes: [URL] = []
+    for fileID in fileIDs {
+      if let indexed = try sourceIndex(fileID: fileID), indexed.bookID == bookID,
+        candidates.contains(indexed.id)
+      {
+        sourceIndexes.append(root.appendingPathComponent("source-file-\(fileID).json"))
+      }
+    }
+    try NativeAnnotationStore.withOfflineBookRemovalProtection(namespace: namespace, bookID: bookID)
+    {
+      try OfflineReadingStateJournal.withBookRemovalProtection(
+        namespace: namespace, fileIDs: fileIDs
+      ) {
+        for id in candidates {
+          let file = root.appendingPathComponent(id + ".resource")
+          for item in [
+            file, file.appendingPathExtension("receipt"),
+            file.appendingPathExtension("partial"), file.appendingPathExtension("transfer"),
+          ] {
+            try removeLocalFile(item)
+          }
+          verified[file.lastPathComponent] = nil
+        }
+        for index in sourceIndexes { try removeLocalFile(index) }
+        try removeLocalFile(root.appendingPathComponent("book-\(bookID).json"))
+        try removeLocalFile(root.appendingPathComponent("summary-\(bookID).json"))
+      }
+    }
+  }
+
+  private func belongsToBook(_ resource: OfflineResource, bookID: Int, fileIDs: Set<Int>) -> Bool {
+    let parts = resource.path.split(separator: "/")
+    guard parts.count >= 2 else { return false }
+    if ["epub", "audiobooks"].contains(parts[0]), Int(parts[1]) == bookID { return true }
+    if parts[0] == "books", Int(parts[1]) == bookID { return true }
+    if parts.count >= 3, parts[1] == "files", ["books", "cbz"].contains(parts[0]),
+      let fileID = Int(parts[2]), fileIDs.contains(fileID)
+    {
+      return true
+    }
+    if parts.count >= 4, parts[0] == "annotations", parts[1] == "native", parts[2] == "files",
+      let fileID = Int(parts[3]), fileIDs.contains(fileID)
+    {
+      return true
+    }
+    if parts.count == 3, parts[0] == "reader", parts[1] == "preferences",
+      let fileID = Int(parts[2]), fileIDs.contains(fileID)
+    {
+      return true
+    }
+    return false
+  }
+
+  private func removeLocalFile(_ file: URL) throws {
+    if FileManager.default.fileExists(atPath: file.path) {
+      try FileManager.default.removeItem(at: file)
+    }
+    recordUsage(file, size: 0)
+  }
+
   private func bookIDs() throws -> [Int] {
     guard
       let enumerator = FileManager.default.enumerator(
@@ -616,15 +780,23 @@ actor OfflineResourceStore {
 
 enum OfflineStorageError: LocalizedError {
   case storageLimit, bookLimit, corruptResource, protectedVersion, unverifiedProtection
+  case protectedDownload, unverifiedDownload, activeDownload
   var errorDescription: String? {
     switch self {
+    case .protectedDownload:
+      "This download is needed by pending notes, bookmarks, reading progress, or recovery work. Keep or export the content, then synchronize or resolve that work before removing the download."
+    case .unverifiedDownload:
+      "Saved work or download references could not be checked safely. The download is retained. Restore the saved work or reconnect and retry removal."
+    case .activeDownload:
+      "This book is downloading in another view. Pause the download before removing its content."
     case .protectedVersion:
       "This version is required by pending annotations, bookmarks, reading progress, or a recovery draft. Export it and resolve the saved work before removing it."
     case .unverifiedProtection:
       "Saved reading work could not be checked. This version remains protected. Export it and restore the saved work before retrying removal."
     case .storageLimit:
-      "Offline storage has reached its 4 GB limit. Your pending work remains protected."
-    case .bookLimit: "This iPad supports up to 500 explicitly selected offline books."
+      "Offline storage has reached its 4 GB limit. Remove another download or an unprotected retained version, then retry. Your pending work remains protected."
+    case .bookLimit:
+      "This iPad supports up to 500 explicitly selected offline books. Remove another download before adding this book."
     case .corruptResource:
       "A downloaded resource failed verification. Connect and retry its download."
     }

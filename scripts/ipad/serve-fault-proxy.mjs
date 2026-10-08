@@ -6,6 +6,13 @@ import { promisify } from "node:util";
 import { sanitizeLogValue } from "../../server/src/common/utils/log-sanitize.utils.ts";
 import { startFaultProxy } from "./fault-proxy.mjs";
 
+const startedAt = Date.now();
+process.on("uncaughtExceptionMonitor", (error) => {
+  console.error(
+    `[ipad.fault_proxy] [fail] proxyPid=${process.pid} durationMs=${Date.now() - startedAt} errorClass=${error.name} error="${sanitizeLogValue(error.message)}" - proxy refresh failed`,
+  );
+});
+
 const execute = promisify(execFile);
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const runID = process.argv[2];
@@ -14,6 +21,7 @@ if (!match || process.argv.slice(3).some((argument) => argument !== "--replace-o
   throw new Error("Supply the retained isolated run ID and optional --replace-outer");
 }
 const outerPID = Number(match[1]);
+console.log(`[ipad.fault_proxy] [start] runId=${runID} proxyPid=${process.pid} - refreshing retained transport controls`);
 const artifacts = join(root, "test-results/ipad", runID);
 const environment = JSON.parse(await readFile(join(artifacts, "environment.json"), "utf8"));
 if (environment.runID !== runID || environment.apiURL !== "http://localhost:16482/api/v1") {
@@ -72,18 +80,25 @@ async function record(state) {
 }
 await record("running");
 console.log(
-  `[ipad.fault_proxy] [end] runId=${runID} proxyPid=${process.pid} apiPid=${apiPID} - refreshed transport controls ready; retained fixture cleanup belongs to root`,
+  `[ipad.fault_proxy] [end] runId=${runID} proxyPid=${process.pid} apiPid=${apiPID} durationMs=${Date.now() - startedAt} ready=true - refreshed transport controls ready; retained fixture cleanup belongs to root`,
 );
 let stopping = false;
 async function stop() {
   if (stopping) return;
   stopping = true;
+  const stoppingAt = Date.now();
+  console.log(`[ipad.fault_proxy_shutdown] [start] runId=${runID} proxyPid=${process.pid} - stopping transport proxy`);
   try {
     await stopProxy();
     await record("stopped");
+    console.log(
+      `[ipad.fault_proxy_shutdown] [end] runId=${runID} proxyPid=${process.pid} durationMs=${Date.now() - stoppingAt} closed=true - transport proxy stopped`,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[ipad.fault_proxy] [fail] runId=${runID} error="${sanitizeLogValue(message)}" - proxy shutdown failed`);
+    console.error(
+      `[ipad.fault_proxy_shutdown] [fail] runId=${runID} proxyPid=${process.pid} durationMs=${Date.now() - stoppingAt} errorClass=${error instanceof Error ? error.name : "Error"} error="${sanitizeLogValue(message)}" - proxy shutdown failed`,
+    );
     process.exitCode = 1;
   }
 }

@@ -37,6 +37,9 @@ export class AnnotationService {
     if (query.bookFileId != null) {
       const file = await this.bookService.verifyFileAccess(query.bookFileId, user);
       if (file.bookId !== bookId) throw new BadRequestException('The selected file does not belong to this book');
+      if (query.pdfPage !== undefined && file.format?.toLowerCase() !== 'pdf') {
+        throw new BadRequestException('PDF page filters require a PDF book file');
+      }
     }
 
     const filters = this.buildFilters(query);
@@ -176,6 +179,7 @@ export class AnnotationService {
       hasNote: query.hasNote || undefined,
       needsReview: query.needsReview || undefined,
       bookFileId: query.bookFileId,
+      pdfPage: query.pdfPage,
     };
   }
 

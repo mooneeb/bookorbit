@@ -7,6 +7,7 @@ export function useReaderAnnotationSync(
   bookId: () => number | null,
   fileId: () => number | null,
   maxLoaded = 100,
+  refreshCollection?: () => Promise<boolean | void>,
 ) {
   let cursor = '0'
   let busy = false
@@ -14,6 +15,7 @@ export function useReaderAnnotationSync(
   let scope: number | null = null
   let catchupTimer: ReturnType<typeof setTimeout> | null = null
   let mutationGeneration = 0
+  let refreshPending = false
 
   function invalidate() {
     mutationGeneration += 1
@@ -25,6 +27,7 @@ export function useReaderAnnotationSync(
     if (scope !== book) {
       scope = book
       cursor = '0'
+      refreshPending = false
     }
     busy = true
     const generation = mutationGeneration
@@ -37,11 +40,19 @@ export function useReaderAnnotationSync(
       const rows = new Map(annotations.value.map((item) => [item.id, item]))
       for (const item of delta.items) {
         const previous = rows.get(item.id)
-        if (previous && (previous.version ?? 0) > item.version) continue
-        if (item.deletedAt || item.kind === 'pdf_ink') rows.delete(item.id)
-        else if ((fileId() === null || item.jumpFileId === fileId()) && (previous || rows.size < maxLoaded)) rows.set(item.id, item)
+        if (previous && (previous.version ?? 0) >= item.version) continue
+        const belongsToFile = fileId() === null || item.jumpFileId === fileId()
+        if (item.kind === 'pdf_ink') continue
+        if (previous || belongsToFile) refreshPending = true
+        if (item.deletedAt || !belongsToFile) rows.delete(item.id)
+        else if (previous || rows.size < maxLoaded) rows.set(item.id, item)
       }
       annotations.value = [...rows.values()]
+      if (!delta.hasMore && refreshPending) {
+        if (!refreshCollection || (await refreshCollection()) === false) return
+        refreshPending = false
+      }
+      if (generation !== mutationGeneration) return
       cursor = delta.nextCursor
       if (delta.hasMore) catchupTimer = setTimeout(() => void synchronize(), 0)
     } catch {

@@ -28,8 +28,11 @@ final class SourceInkTransformJourneyTests: XCTestCase {
   func testIPADE02A03LassoTransformsAndPublishedInversePreserveNewerSeparateInk() async throws {
     try await fault("reset")
     let token = try await loginAPI()
-    let selected = try await seedInk(token: token, x: 80, y: 200, color: "#ff0000")
-    let separate = try await seedInk(token: token, x: 350, y: 200, color: "#00ff00")
+    let selected = try await seedInkGroup(token: token)
+    let selectedStrokeID = try XCTUnwrap(strokeIDs(selected).first)
+    let untouchedStrokeID = try XCTUnwrap(strokeIDs(selected).last)
+    let untouchedStroke = try stroke(selected, id: untouchedStrokeID)
+    let separate = try await seedInk(token: token, x: 350, y: 350, color: "#aa00ff")
     let selectedID = try id(selected)
     let separateID = try id(separate)
     let selectedIdentity = try identity(selected)
@@ -48,26 +51,55 @@ final class SourceInkTransformJourneyTests: XCTestCase {
       app.buttons["pdfInkSelectItem\(selectedIdentity)"].wait(
         for: \.isSelected, toEqual: true, timeout: 10))
     XCTAssertFalse(app.buttons["pdfInkSelectItem\(separateIdentity)"].isSelected)
-    capture("IPAD-E02-A03-tagged-lasso-polygon-selects-red-excludes-green")
+    XCTAssertEqual(app.staticTexts["pdfInkSelectedStrokeCount"].label, "1 of 2 strokes selected")
+    capture("IPAD-E02-A03-tagged-lasso-selects-red-stroke-excludes-green-in-same-group")
     tapInk("pdfInkMoveRight", app: app)
     let moved = try await waitForItem(selectedID, token: token) {
-      guard let current = try? self.rect($0), let original = try? self.rect(selected) else {
+      guard let current = try? self.strokeBounds($0, id: selectedStrokeID),
+        let original = try? self.strokeBounds(selected, id: selectedStrokeID)
+      else {
         return false
       }
       return current.minX > original.minX
     }
     XCTAssertEqual(try strokeIDs(moved), try strokeIDs(selected))
-    let movedRect = try rect(moved)
+    XCTAssertEqual(try identity(moved), selectedIdentity)
+    XCTAssertEqual(try json(stroke(moved, id: untouchedStrokeID)), try json(untouchedStroke))
+    let movedRect = try strokeBounds(moved, id: selectedStrokeID)
     let separateAfterMove = try await item(separateID, token: token)
     XCTAssertEqual(try rect(separateAfterMove), try rect(separate))
     tapInk("pdfInkGrow", app: app)
     let resized = try await waitForItem(selectedID, token: token) {
-      guard let value = try? self.rect($0) else { return false }
+      guard let value = try? self.strokeBounds($0, id: selectedStrokeID) else { return false }
       return value.width > movedRect.width && value.height > movedRect.height
     }
     XCTAssertEqual(try strokeIDs(resized), try strokeIDs(selected))
+    XCTAssertEqual(try json(stroke(resized, id: untouchedStrokeID)), try json(untouchedStroke))
     XCTAssertFalse((try drawing(resized)["nativeData"] as? String ?? "").isEmpty)
-    capture("IPAD-E02-A03-lasso-selected-group-moved-and-resized")
+    let resizedPDF = try await artifact(
+      token: token, name: "stroke-subset-transformed", present: [selectedID, separateID])
+    try assertPublishedStroke(untouchedStroke, itemID: selectedID, in: resizedPDF)
+    capture("IPAD-E02-A03-lasso-selected-stroke-moved-resized-green-preserved")
+    tapInk("pdfInkDelete", app: app)
+    let partiallyDeleted = try await waitForItem(selectedID, token: token) {
+      (try? self.strokeIDs($0)) == [untouchedStrokeID] && $0["deletedAt"] is NSNull
+    }
+    XCTAssertEqual(try identity(partiallyDeleted), selectedIdentity)
+    XCTAssertEqual(
+      try json(stroke(partiallyDeleted, id: untouchedStrokeID)), try json(untouchedStroke))
+    let partialPDF = try await artifact(
+      token: token, name: "selected-stroke-deleted-group-retained",
+      present: [selectedID, separateID])
+    try assertPublishedStroke(untouchedStroke, itemID: selectedID, in: partialPDF)
+    tapInk("pdfInkUndo", app: app)
+    let restoredGroup = try await waitForItem(selectedID, token: token) {
+      (try? self.strokeIDs($0)) == (try? self.strokeIDs(resized))
+        && ($0["version"] as? Int ?? 0) > (partiallyDeleted["version"] as? Int ?? 0)
+    }
+    XCTAssertEqual(try json(drawing(restoredGroup)), try json(drawing(resized)))
+    XCTAssertEqual(try identity(restoredGroup), selectedIdentity)
+    XCTAssertEqual(app.staticTexts["pdfInkSelectedStrokeCount"].label, "1 of 2 strokes selected")
+    capture("IPAD-E02-A03-one-versioned-undo-restores-deleted-stroke-within-group")
     let beforeCopy = Set(try await sourceInk(token: token).compactMap { $0["id"] as? Int })
     tapInk("pdfInkCopy", app: app)
     XCTAssertTrue(app.staticTexts["Ink copied"].waitForExistence(timeout: 10))
@@ -79,9 +111,13 @@ final class SourceInkTransformJourneyTests: XCTestCase {
     let copyID = try id(copied)
     let copyIdentity = try identity(copied)
     XCTAssertNotEqual(copyIdentity, selectedIdentity)
-    XCTAssertEqual(try strokeIDs(copied).count, try strokeIDs(resized).count)
-    XCTAssertEqual(try rect(copied).width, try rect(resized).width, accuracy: 0.1)
-    XCTAssertGreaterThan(try rect(copied).minX, try rect(resized).minX)
+    XCTAssertEqual(try strokeIDs(copied).count, 1)
+    XCTAssertFalse(try strokeIDs(copied).contains(selectedStrokeID))
+    XCTAssertFalse(try strokeIDs(copied).contains(untouchedStrokeID))
+    XCTAssertEqual(
+      try rect(copied).width, try strokeBounds(resized, id: selectedStrokeID).width, accuracy: 0.1)
+    XCTAssertGreaterThan(
+      try rect(copied).minX, try strokeBounds(resized, id: selectedStrokeID).minX)
     XCTAssertTrue(app.images["pdfInkItem\(copyIdentity)"].waitForExistence(timeout: 15))
     let copiedPDF = try await artifact(
       token: token, name: "copied", present: [selectedID, separateID, copyID])
@@ -106,6 +142,8 @@ final class SourceInkTransformJourneyTests: XCTestCase {
     XCTAssertEqual(try json(drawing(inverse)), try json(drawing(copied)))
     let preservedNewer = try await item(newerID, token: token)
     let preservedSeparate = try await item(separateID, token: token)
+    let preservedOriginalGroup = try await item(selectedID, token: token)
+    XCTAssertEqual(try json(drawing(preservedOriginalGroup)), try json(drawing(resized)))
     XCTAssertEqual(try json(drawing(preservedNewer)), try json(newerDrawing))
     XCTAssertEqual(try rect(preservedSeparate), try rect(separate))
     XCTAssertTrue(app.images["pdfInkItem\(copyIdentity)"].waitForExistence(timeout: 15))
@@ -114,6 +152,7 @@ final class SourceInkTransformJourneyTests: XCTestCase {
       token: token, name: "explicit-inverse-preserves-newer",
       present: [selectedID, separateID, copyID, newerID])
     XCTAssertNotEqual(deletedPDF, restoredPDF)
+    try assertPublishedStroke(untouchedStroke, itemID: selectedID, in: restoredPDF)
     try assertUnrelatedPages(originalBytes, restoredPDF)
     capture("IPAD-E02-A03-postcommit-inverse-keeps-newer-separate-group")
   }
@@ -262,6 +301,81 @@ final class SourceInkTransformJourneyTests: XCTestCase {
     XCTAssertEqual(preservedPDF, protectedPDF)
     XCTAssertTrue(app.images["pdfInkItem\(createdIdentity)"].exists)
     capture("IPAD-E02-A03-newer-same-item-edit-blocks-stale-undo")
+  }
+
+  @MainActor
+  private func seedInkGroup(token: String) async throws -> [String: Any] {
+    let source = try await pageSource(token: token)
+    let clientID = UUID().uuidString
+    var payload = try inkPayload(
+      source: source, x: 80, y: 200, color: "#ff0000", strokeID: "\(clientID)-red")
+    payload["pdf"] = [
+      "page": 0, "rect": ["x": 76, "y": 196, "width": 378, "height": 8], "rects": [],
+    ]
+    payload["drawing"] = [
+      "format": "bookorbit-ink-v1",
+      "strokes": [
+        [
+          "id": "\(clientID)-red", "color": "#ff0000", "width": 8,
+          "points": [["x": 80, "y": 200], ["x": 180, "y": 200]],
+        ],
+        [
+          "id": "\(clientID)-green", "color": "#00ff00", "width": 8,
+          "points": [["x": 350, "y": 200], ["x": 450, "y": 200]],
+        ],
+      ],
+    ]
+    let results = try await operations(
+      token: token,
+      changes: [
+        [
+          "operationId": UUID().uuidString, "clientId": clientID, "bookId": 1,
+          "baseVersion": 0, "action": "create", "payload": payload,
+        ]
+      ])
+    return try XCTUnwrap(results.first?["annotation"] as? [String: Any])
+  }
+
+  private func stroke(_ item: [String: Any], id: String) throws -> [String: Any] {
+    let strokes = try XCTUnwrap(drawing(item)["strokes"] as? [[String: Any]])
+    return try XCTUnwrap(strokes.first { $0["id"] as? String == id })
+  }
+
+  private func strokeBounds(_ item: [String: Any], id: String) throws -> CGRect {
+    let value = try stroke(item, id: id)
+    let points = try XCTUnwrap(value["points"] as? [[String: Any]])
+    let xs = try points.map { try XCTUnwrap($0["x"] as? Double) }
+    let ys = try points.map { try XCTUnwrap($0["y"] as? Double) }
+    let width = try XCTUnwrap(value["width"] as? Double)
+    let minimumX = try XCTUnwrap(xs.min())
+    let minimumY = try XCTUnwrap(ys.min())
+    return CGRect(
+      x: minimumX - width / 2, y: minimumY - width / 2,
+      width: try XCTUnwrap(xs.max()) - minimumX + width,
+      height: try XCTUnwrap(ys.max()) - minimumY + width)
+  }
+
+  @MainActor
+  private func assertPublishedStroke(_ expected: [String: Any], itemID: Int, in bytes: Data) throws
+  {
+    let document = try XCTUnwrap(PDFDocument(data: bytes))
+    let page = try XCTUnwrap(document.page(at: 0))
+    let annotation = try XCTUnwrap(
+      page.annotations.first {
+        $0.value(forAnnotationKey: .name) as? String == "bookorbit:\(itemID)"
+      })
+    let retained = annotation.value(
+      forAnnotationKey: PDFAnnotationKey(rawValue: "/BookOrbitDrawing"))
+    let data: Data
+    if let string = retained as? String {
+      data = Data(string.utf8)
+    } else {
+      data = try XCTUnwrap(retained as? Data)
+    }
+    let drawing = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let strokes = try XCTUnwrap(drawing["strokes"] as? [[String: Any]])
+    let actual = try XCTUnwrap(strokes.first { $0["id"] as? String == expected["id"] as? String })
+    XCTAssertEqual(try json(actual), try json(expected))
   }
 
   @MainActor
@@ -446,6 +560,7 @@ final class SourceInkTransformJourneyTests: XCTestCase {
     ]
     app.launchEnvironment["BOOKORBIT_ANNOTATION_INPUT_FIXTURE"] = "1"
     if precommitFixture { app.launchEnvironment["BOOKORBIT_ANNOTATION_PRECOMMIT_FIXTURE"] = "1" }
+    E02ProfileSupport.configure(app)
     app.launch()
     if !app.textFields["serverURL"].waitForExistence(timeout: 3) {
       for _ in 0..<7 where !app.buttons["signOut"].exists {

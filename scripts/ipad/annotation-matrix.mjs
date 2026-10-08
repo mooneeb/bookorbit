@@ -30,10 +30,20 @@ export const annotationProfiles = {
     viewport: { width: 600, height: 1024 },
     orientation: "landscape",
     colorScheme: "dark",
-    dynamicType: "large",
+    dynamicType: "extraExtraExtraLarge",
     reducedMotion: "reduce",
     nativeDevice: "iPad Pro 13-inch",
     window: "narrow",
+    nativeProfile: "pro13-landscape-dark-large",
+  },
+  "pro13-landscape-dark-large": {
+    viewport: { width: 1366, height: 1024 },
+    orientation: "landscape",
+    colorScheme: "dark",
+    dynamicType: "extraExtraExtraLarge",
+    reducedMotion: "reduce",
+    nativeDevice: "iPad Pro 13-inch",
+    window: "full",
   },
 };
 

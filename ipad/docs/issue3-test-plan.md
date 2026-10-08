@@ -69,20 +69,38 @@ Await visible progress, authenticated canonical state, a held/checkpoint state, 
 
 `--profile=<name>` selects `annotation-matrix.mjs` and the native `AnnotationAcceptance` test-plan configuration. Choose the corresponding actual simulator using `IPAD_TEST_DESTINATION`.
 
-| Profile              | Device/viewport               | Appearance and text      | Motion/layout          |
-| -------------------- | ----------------------------- | ------------------------ | ---------------------- |
-| pro13-portrait-light | Pro 13-inch, web 1024 by 1366 | Light/default            | Animation enabled/full |
-| pro11-landscape-dark | Pro 11-inch, web 1194 by 834  | Dark/default             | Animation enabled/full |
-| pro11-portrait-large | Pro 11-inch, web 834 by 1194  | Light/large Dynamic Type | Reduce Motion/full     |
-| pro13-narrow-dark    | Pro 13-inch, web 600 by 1024  | Dark/large text          | Reduce Motion/narrow   |
+| Profile                    | Device/viewport               | Appearance and text      | Motion/layout                     |
+| -------------------------- | ----------------------------- | ------------------------ | --------------------------------- |
+| pro13-portrait-light       | Pro 13-inch, web 1024 by 1366 | Light/default            | Animation enabled/full            |
+| pro11-landscape-dark       | Pro 11-inch, web 1194 by 834  | Dark/default             | Animation enabled/full            |
+| pro11-portrait-large       | Pro 11-inch, web 834 by 1194  | Light/large Dynamic Type | Reduce Motion/full                |
+| pro13-landscape-dark-large | Pro 13-inch, web 1366 by 1024 | Dark/standard XXXL text  | Reduce Motion/full                |
+| pro13-narrow-dark          | Web 600 by 1024               | Dark/large text          | Reduce Motion/narrow browser only |
 
-Browser viewport/appearance/motion are applied directly. Native tests must verify the actual selected orientation, appearance, Dynamic Type and system motion state. A narrow browser viewport cannot prove native window resizing. Automated native narrow-window resizing and verified native Reduce Motion configuration remain explicit automation gaps until the test driver demonstrates them.
+Browser viewport/appearance/motion are applied directly. Before any selected native journey, the harness boots the exact simulator, verifies its actual 11-inch or 13-inch device type, applies appearance and content size with `simctl ui`, and reads both settings back. The large 11-inch profile uses the actual `accessibility-extra-extra-extra-large` category. The native Settings UI preflight toggles the real Reduce Motion switch, checks its visible value and the public `UIAccessibility` state, verifies actual orientation/window geometry and preferred content category, and captures Settings and BookOrbit. Existing native journey helpers inherit these system settings through `E02ProfileSupport.configure(app)`; font and appearance launch overrides are removed. The preflight must execute exactly once and pass without skips before journeys run. The app is built once, then journeys use `test-without-building`.
 
-Each run writes `test-results/ipad/<run>/environment.json`, subprocess logs, server log, `native.xcresult`, exported native summary/attachments, native visual reports, browser report, screenshots, diffs and retained failure traces. The helper copies actual/expected/diff images for a reviewed baseline comparison and fails on meaningful differences. The native status bar is pinned; animations remain enabled. Screenshot masks are accepted only in a human-reviewed entry with a concrete reason and never cover an entire image.
+The installed Xcode 27 SDK's `simctl ui help` exposes only `appearance`, `increase_contrast` and `content_size`; `simctl help` has no native window sizing command. A narrow browser viewport does not resize the iPad app. Therefore `pro13-narrow-dark` runs the actual narrow browser and the separately named native `pro13-landscape-dark-large` full-window counterpart. `native-profile.json` records this difference and the uncovered native window state explicitly. The native test plan contains only supported full-window profiles. The remaining user check is to resize the actual BookOrbit window using iPad multitasking controls, inspect clipping/reachability and reader/popover transitions, and retain screenshots with the actual window bounds. This residual does not hold implementation or automated testing.
+
+Each run writes `test-results/ipad/<run>/environment.json`, subprocess logs, server log, `profile.xcresult`, `profile-summary.json`, `profile-attachments`, `native-profile.json`, `native.xcresult`, exported native summary/attachments, native visual reports, browser report, screenshots, diffs and retained failure traces. The helper copies actual/expected/diff images for a reviewed baseline comparison and fails on meaningful differences. The native status bar is pinned; normal-motion profiles retain animations and reduced-motion profiles use the verified system setting. Screenshot masks are accepted only in a human-reviewed entry with a concrete reason and never cover an entire image.
 
 Human-reviewed files belong under `ipad/VisualBaselines/E02`; `reviews.json` entries identify test ID, state, surface, profile, file checksum, reviewer/date, masks and reviewed pixel budget. No command updates or accepts them. Missing baselines are recorded as `pending-human-baseline`, so functional implementation/testing can continue; this status is never reported as a passing visual comparison. A human completion record is similarly a residual evidence item, not a blocker for automated work.
 
 For each captured image, record an actual image inspection with test ID/state/profile/device or viewport/artifact path. Inspect clipping, control reachability, typography/contrast, safe areas, passage/ink placement, popovers, errors/conflicts and layout transitions. On a regression inspect expected, actual and diff; screenshot existence alone is insufficient. Accessibility audits and animation destination/stable-position assertions require executed reports. Performance budgets require explicit reviewed values and recorded XCTest measurements; no performance pass is implied by this harness setup.
+
+## XCTest performance gates
+
+`AnnotationProfilePerformanceTests` measures real app launch, visible navigation, PDF page transitions and bounded hub search. Two measured iterations plus XCTest's one discarded warmup keep these checks small. Setup, login and return navigation are outside the measurement interval; operation waits and real UI/network work are inside it. `XCTApplicationLaunchMetric(waitUntilResponsive: true)` records launch responsiveness, and `XCTClockMetric` records elapsed time. Every sample, including warmup, also has an absolute uptime-based guard and a retained text attachment containing all observed durations, profile and budget. No XCTest baseline is generated or accepted.
+
+The initial budgets below were reviewed by the orchestrator as reasonable acceptance limits; final review and executed evidence remain required. They are absolute simulator acceptance limits, not claims about physical-device performance or comparisons with a historical baseline.
+
+| Named method                                       | Measured visible result                                                              | Maximum seconds per sample |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------- |
+| `testIPADE02A01LaunchToUsableLibraryPerformance`   | Relaunch authenticated app until the hub action is usable                            | 8                          |
+| `testIPADE02A01BookDetailNavigationPerformance`    | Title action to named Book details content                                           | 5                          |
+| `testIPADE02A02ReaderPageTransitionPerformance`    | PDF page 1 to stable page 2 with previous action enabled                             | 2                          |
+| `testIPADE02A07BoundedHubOpenAndSearchPerformance` | Open hub, submit text search and reach empty result; rendered rows remain at most 40 | 5                          |
+
+Use `--case=A01`, `A02` or `A07` with `--annotations --ui` to include the corresponding methods. To run only the four metrics after profile preflight, set `IPAD_TEST_ONLY` to their comma-separated `BookOrbitUITests/AnnotationProfilePerformanceTests/<method>` identifiers. Choose the actual simulator matching each profile using `IPAD_TEST_DESTINATION`. The representative native matrix combines device size, orientation, appearance, text size and motion in four profiles; it is not a Cartesian product. All metric values, system-profile screenshots and layout outcomes still need execution and inspection by the final Tester. A host/CoreSimulator failure is reported separately from product performance and does not pause implementation.
 
 ## Builder validation status
 

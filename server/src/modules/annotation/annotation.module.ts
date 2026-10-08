@@ -9,6 +9,7 @@ import { AnnotationController } from './annotation.controller';
 import { AnnotationExportService } from './annotation-export.service';
 import { AnnotationHubController } from './annotation-hub.controller';
 import { AnnotationHubService } from './annotation-hub.service';
+import { AnnotationHubMutationService } from './annotation-hub-mutation.service';
 import { AnnotationConversionService } from './annotation-conversion.service';
 import { AnnotationPositionRepository } from './annotation-position.repository';
 import { AnnotationRepository } from './annotation.repository';
@@ -41,9 +42,10 @@ import { NativeSourceInkService } from './native-source-ink.service';
     AnnotationConversionService,
     AnnotationExportService,
     AnnotationHubService,
+    AnnotationHubMutationService,
     DevicePositionRebuilderRegistry,
   ],
-  exports: [AnnotationSyncService, AnnotationHubService, DevicePositionRebuilderRegistry, NativeAnnotationService],
+  exports: [AnnotationSyncService, AnnotationHubService, AnnotationHubMutationService, DevicePositionRebuilderRegistry, NativeAnnotationService],
 })
 export class AnnotationModule {
   constructor(adapterHost: HttpAdapterHost) {

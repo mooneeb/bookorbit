@@ -29,6 +29,9 @@ final class PDFReaderModel {
   private var saveTask: Task<Void, Never>?
   private var isClosed = false
   private var isLoading = false
+  private var isRefreshingSource = false
+  private var sourceBook: BookDetail?
+  private var sourceRecoveryRetained = false
 
   init(api: BookOrbitAPI, file: BookDetailFile) {
     self.api = api
@@ -38,7 +41,7 @@ final class PDFReaderModel {
       sourceIdentity: file.absolutePath)
   }
 
-  func load() async {
+  func load(bookID: Int? = nil) async {
     guard document == nil, lockedDocument == nil, !isLoading, !isClosed else { return }
     isLoading = true
     error = nil
@@ -48,6 +51,10 @@ final class PDFReaderModel {
       try Task.checkCancellation()
       guard !isClosed else { return }
       self.session = session
+      if let bookID {
+        sourceBook = try await api.boundedJSON(
+          "books/\(bookID)", byteLimit: 2 * 1024 * 1024, session: session)
+      }
       let progress: FileReadingProgress = try await api.boundedJSON(
         "books/files/\(file.id)/progress", byteLimit: 16 * 1024, session: session)
       try await checkSession()
@@ -233,6 +240,69 @@ final class PDFReaderModel {
       percentage: Double(pageIndex + 1) / Double(document.pageCount) * 100)
     local.pageNumber = Double(pageIndex + 1)
     await position.refresh(local)
+  }
+
+  func refreshPublishedSource(
+    bookID: Int, proof: NativePdfPageSource, canReload: @MainActor () -> Bool
+  ) async {
+    guard !isClosed, !isRefreshingSource, let session, let sourceRevision, let document,
+      proof.sourceRevision != sourceRevision,
+      proof.matchedSourceRevision == sourceRevision, canReload()
+    else { return }
+    isRefreshingSource = true
+    defer { isRefreshingSource = false }
+    var replacement: URL?
+    do {
+      let book: BookDetail = try await api.boundedJSON(
+        "books/\(bookID)", byteLimit: 2 * 1024 * 1024, session: session)
+      try await checkSession()
+      guard let current = book.files.first(where: { $0.id == file.id }),
+        current.absolutePath == file.absolutePath, current.format?.lowercased() == "pdf"
+      else { throw ConnectionError.fileChanged }
+      let url = try await api.deliveredFile(
+        fileID: file.id, expectedSize: current.sizeBytes, mimeType: "application/pdf",
+        maximumSize: 100 * 1024 * 1024, session: session)
+      replacement = url
+      let revision = try await PDFSourceInkSource.revision(of: url)
+      try await checkSession()
+      try Task.checkCancellation()
+      guard !isClosed, revision == proof.sourceRevision,
+        let refreshed = PDFDocument(url: url), !refreshed.isLocked,
+        refreshed.pageCount == document.pageCount
+      else { throw ConnectionError.fileChanged }
+      guard canReload() else {
+        try? FileManager.default.removeItem(at: url)
+        return
+      }
+      try await position.bindSourceRevision(revision, matchedRevision: proof.matchedSourceRevision)
+      try await checkSession()
+      guard canReload() else {
+        try? FileManager.default.removeItem(at: url)
+        return
+      }
+      removeLocalFile()
+      localFile = url
+      replacement = nil
+      self.document = refreshed
+      self.sourceRevision = revision
+      searchSelection = nil
+    } catch is CancellationError {
+    } catch {
+      self.error = error.localizedDescription
+    }
+    if let replacement { try? FileManager.default.removeItem(at: replacement) }
+  }
+
+  func retainChangedSource(reason: String) async {
+    guard !sourceRecoveryRetained, let sourceBook, let localFile, let sourceRevision,
+      let session
+    else { return }
+    do {
+      try await api.retainOpenedPdfSource(
+        book: sourceBook, fileID: file.id, source: localFile,
+        revision: sourceRevision, reason: reason, session: session)
+      sourceRecoveryRetained = true
+    } catch { self.error = error.localizedDescription }
   }
 
   func choosePosition(local: Bool) async {
