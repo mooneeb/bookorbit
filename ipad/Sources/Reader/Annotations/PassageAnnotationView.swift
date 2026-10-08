@@ -25,8 +25,14 @@ struct PassageAnnotationView: View {
               canEdit: model.canManage
             ).frame(minHeight: 180).disabled(!model.canManage)
             if annotationInputFixture {
-              Button("Complete fixture English Scribble", action: model.completeFixtureScribble)
-                .accessibilityIdentifier("passageFixtureScribble")
+              Button(action: model.completeFixtureScribble) {
+                Text("Complete fixture English Scribble")
+                  .font(.body)
+                  .fixedSize(horizontal: false, vertical: true)
+                  .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                  .contentShape(Rectangle())
+              }
+              .accessibilityIdentifier("passageFixtureScribble")
             }
           }
           if model.kind == "handwriting" {
@@ -43,18 +49,36 @@ struct PassageAnnotationView: View {
             Text("\(model.drawing.strokes.count) retained strokes").font(.caption)
               .accessibilityIdentifier("passageRetainedStrokeCount")
             if annotationInputFixture {
-              Button("Add fixture Pencil stroke", action: model.addFixtureStroke)
-                .accessibilityIdentifier("passageFixtureStroke")
-              Button("Add blue transformed fixture stroke", action: model.addBlueFixtureStroke)
-                .accessibilityIdentifier("passageFixtureBlueStroke")
+              Button(action: model.addFixtureStroke) {
+                Text("Add fixture Pencil stroke")
+                  .font(.body)
+                  .fixedSize(horizontal: false, vertical: true)
+                  .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                  .contentShape(Rectangle())
+              }
+              .accessibilityIdentifier("passageFixtureStroke")
+              Button(action: model.addBlueFixtureStroke) {
+                Text("Add blue transformed fixture stroke")
+                  .font(.body)
+                  .fixedSize(horizontal: false, vertical: true)
+                  .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                  .contentShape(Rectangle())
+              }
+              .accessibilityIdentifier("passageFixtureBlueStroke")
             }
           }
           if let error = model.error {
             Text(error).foregroundStyle(.red).accessibilityIdentifier("passageError")
           }
           if model.canManage, model.presentation?.item != nil {
-            Button("Delete annotation", role: .destructive, action: model.delete)
-              .disabled(model.isSaving).accessibilityIdentifier("passageDelete")
+            Button(role: .destructive, action: model.delete) {
+              Text("Delete annotation")
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .disabled(model.isSaving).accessibilityIdentifier("passageDelete")
           }
         }.padding()
       }
@@ -62,13 +86,29 @@ struct PassageAnnotationView: View {
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel", action: model.cancel).disabled(model.isSaving).accessibilityIdentifier(
-            "passageCancel")
+          Button(action: model.cancel) {
+            Text("Cancel")
+              .font(.body)
+              .fixedSize(horizontal: false, vertical: true)
+              .frame(minWidth: 44, minHeight: 44)
+              .contentShape(Rectangle())
+          }
+          .accessibilityShowsLargeContentViewer()
+          .disabled(model.isSaving)
+          .accessibilityIdentifier("passageCancel")
         }
         ToolbarItem(placement: .confirmationAction) {
           if model.canManage {
-            Button("Save", action: model.save).disabled(!model.canSave).accessibilityIdentifier(
-              "passageSave")
+            Button(action: model.save) {
+              Text("Save")
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .accessibilityShowsLargeContentViewer()
+            .disabled(!model.canSave)
+            .accessibilityIdentifier("passageSave")
           }
         }
       }
