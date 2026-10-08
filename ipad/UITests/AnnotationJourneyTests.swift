@@ -833,13 +833,39 @@ final class AnnotationJourneyTests: XCTestCase {
     }
     let matches = content.buttons.matching(identifier: "readFile\(fileID)")
     let read = matches.element
-    for _ in 0..<6 where !read.isHittable {
+    for scroll in 0..<12 {
+      guard matches.count <= 1 else {
+        XCTFail("Expected one Read action for file \(fileID), found \(matches.count).")
+        return
+      }
+      let visibleTop = max(content.frame.minY, app.navigationBars["Book details"].frame.maxY)
+      if read.exists && read.isHittable && read.frame.minY >= visibleTop
+        && read.frame.maxY <= content.frame.maxY
+      {
+        break
+      }
       if content.staticTexts["bookHasNoFiles"].exists { break }
-      content.swipeUp()
+      let scrollDown = read.exists && read.frame.minY < visibleTop
+      print(
+        "IPAD-E02 Read file \(fileID) scroll=\(scroll) matches=\(matches.count) direction=\(scrollDown ? "down" : "up")"
+      )
+      // Short drags keep virtualized file controls from passing between accessibility snapshots.
+      let start = content.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.65))
+      let end = content.coordinate(
+        withNormalizedOffset: CGVector(dx: 0.02, dy: scrollDown ? 0.9 : 0.4))
+      start.press(forDuration: 0.01, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
     }
-    guard read.wait(for: \.isHittable, toEqual: true, timeout: 10) else {
+    guard matches.count == 1,
+      read.wait(for: \.isHittable, toEqual: true, timeout: 10),
+      read.frame.minY >= max(content.frame.minY, app.navigationBars["Book details"].frame.maxY),
+      read.frame.maxY <= content.frame.maxY
+    else {
+      attach(
+        Data(app.debugDescription.utf8), name: "IPAD-E02-unreachable-read-file-\(fileID)-hierarchy",
+        type: "public.plain-text")
       XCTFail(
-        "File \(fileID) is unavailable or unreachable after six Book details content scrolls.")
+        "File \(fileID) is unavailable or unreachable after twelve bounded Book details content scrolls."
+      )
       return
     }
     XCTAssertEqual(matches.count, 1)
