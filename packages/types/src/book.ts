@@ -250,14 +250,17 @@ export type FileReadingProgress = {
   narrationPercentage: number | null;
   narrationUpdatedAt: string | null;
   textUpdatedAt: string | null;
+  textVersion?: string;
+  narrationVersion?: string;
 };
 
 /** Omitted narration locators preserve their stored values; explicit null clears them. */
 export type SaveFileProgressPayload = Partial<
-  Omit<FileReadingProgress, "percentage" | "narrationPercentage" | "narrationUpdatedAt" | "textUpdatedAt">
+  Omit<FileReadingProgress, "percentage" | "narrationPercentage" | "narrationUpdatedAt" | "textUpdatedAt" | "textVersion" | "narrationVersion">
 > & {
   percentage: number;
   source?: FileProgressSource;
+  baseVersion?: string;
 };
 
 export type BookDetailFile = {

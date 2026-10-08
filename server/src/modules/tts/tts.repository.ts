@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
@@ -108,16 +108,31 @@ export class TtsRepository {
     });
   }
 
-  async upsertPosition(userId: number, bookFileId: number, cfi: string, chapterIndex: number | null) {
+  async upsertPosition(
+    userId: number,
+    bookFileId: number,
+    cfi: string,
+    chapterIndex: number | null,
+    condition?: { previous: schema.TtsReadingPosition | null },
+  ) {
     const [row] = await this.db
       .insert(ttsReadingPosition)
       .values({ userId, bookFileId, cfi, chapterIndex: chapterIndex ?? null })
       .onConflictDoUpdate({
         target: [ttsReadingPosition.userId, ttsReadingPosition.bookFileId],
         set: { cfi, chapterIndex: chapterIndex ?? null, updatedAt: new Date() },
+        setWhere: condition
+          ? condition.previous
+            ? and(
+                eq(ttsReadingPosition.cfi, condition.previous.cfi),
+                sql`${ttsReadingPosition.chapterIndex} is not distinct from ${condition.previous.chapterIndex}`,
+                sql`date_trunc('milliseconds', ${ttsReadingPosition.updatedAt}) = ${condition.previous.updatedAt.toISOString()}::timestamptz`,
+              )
+            : sql`false`
+          : undefined,
       })
       .returning();
-    return row!;
+    return row ?? null;
   }
 
   async deletePosition(userId: number, bookFileId: number) {

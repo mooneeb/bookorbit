@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  ConflictException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -15,6 +16,7 @@ import { inArray, type SQL } from 'drizzle-orm';
 
 import { MAX_BOOK_QUERY_OFFSET_ROWS, isBookQueryOffsetWithinLimit } from '../../common/constants/pagination.constants';
 import { compareAudioTracks, coverFetchInputs, resolveIsAudiobook } from '../../common/utils/book-media.utils';
+import { filePositionVersion } from '../../common/utils/reader-position-version.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { selectPrimaryFile } from '../../common/utils/primary-file-selection.utils';
 import { normalizeMetadataText, normalizeMetadataTextKey } from '../../common/utils/metadata-text-normalize.utils';
@@ -2241,9 +2243,31 @@ export class BookService {
   async saveProgress(userId: number, fileId: number, dto: SaveProgressDto, user: RequestUser) {
     const file = await this.verifyFileAccess(fileId, user);
     const previous = await this.bookRepo.findProgress(userId, fileId);
+    const source = dto.source ?? 'text';
+    if (dto.baseVersion) {
+      const same =
+        source === 'narration'
+          ? previous?.mediaOverlayFragment === (dto.mediaOverlayFragment ?? null) &&
+            previous?.mediaOverlaySectionIndex === (dto.mediaOverlaySectionIndex ?? null) &&
+            previous?.positionSeconds === (dto.positionSeconds ?? null) &&
+            Math.abs((previous?.narrationPercentage ?? -1) - dto.percentage) < 0.00001
+          : previous?.cfi === (dto.cfi ?? null) &&
+            previous?.pageNumber === (dto.pageNumber ?? null) &&
+            Math.abs((previous?.percentage ?? -1) - dto.percentage) < 0.00001;
+      if (same) return previous;
+      if (dto.baseVersion !== filePositionVersion(userId, fileId, source, previous)) {
+        throw new ConflictException('Reading position changed in another reader');
+      }
+    }
     const now = new Date();
-    const text = this.resolveTextPosition(dto, previous ?? null);
-    await this.bookRepo.upsertProgress(
+    const text =
+      dto.baseVersion && source === 'narration'
+        ? { percentage: previous?.percentage ?? 0, cfi: previous?.cfi ?? null, pageNumber: previous?.pageNumber ?? null, moved: false }
+        : this.resolveTextPosition(dto, previous ?? null);
+    const conditionArgs: [] | [{ previous: NonNullable<typeof previous> | null; source: 'text' | 'narration' }] = dto.baseVersion
+      ? [{ previous: previous ?? null, source }]
+      : [];
+    const saved = await this.bookRepo.upsertProgress(
       userId,
       fileId,
       text.cfi,
@@ -2259,7 +2283,10 @@ export class BookService {
       dto.koreaderProgress ?? null,
       dto.source === 'narration' ? { percentage: dto.percentage, updatedAt: now } : null,
       text.moved ? now : null,
+      ...conditionArgs,
     );
+    if (dto.baseVersion && !saved) throw new ConflictException('Reading position changed in another reader');
+    if (dto.baseVersion && source === 'narration') return saved;
     // Everything downstream reads the position the file now holds, not the one the client sent.
     // A narration write that did not move the text position must not move a Kobo bookmark, an
     // audiobook position, or a read status either.
@@ -2293,6 +2320,7 @@ export class BookService {
       timeZone: this.resolveUserTimeZone(user),
       strongRereadEvidence,
     });
+    if (dto.baseVersion) return saved;
   }
 
   async syncAudioProgressForExternalEbookProgress(

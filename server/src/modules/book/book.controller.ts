@@ -41,6 +41,7 @@ import { BulkEditMetadataDto } from './dto/bulk-edit-metadata.dto';
 import { DeleteBooksDto } from './dto/delete-books.dto';
 import { ExportBooksDto } from './dto/export-books.dto';
 import { MetadataExportDto } from './dto/metadata-export.dto';
+import { filePositionVersion } from '../../common/utils/reader-position-version.utils';
 import { SaveProgressDto } from './dto/save-progress.dto';
 import { UpsertAudioProgressDto } from './dto/upsert-audio-progress.dto';
 import { UpdateBookMetadataAndLocksDto } from './dto/update-book-metadata-and-locks.dto';
@@ -516,6 +517,8 @@ export class BookController {
     if (progress) {
       return {
         ...progress,
+        textVersion: filePositionVersion(user.id, fileId, 'text', progress),
+        narrationVersion: filePositionVersion(user.id, fileId, 'narration', progress),
         narrationUpdatedAt: progress.narrationUpdatedAt?.toISOString() ?? null,
         textUpdatedAt: progress.textUpdatedAt?.toISOString() ?? null,
       };
@@ -535,12 +538,23 @@ export class BookController {
       narrationPercentage: null,
       narrationUpdatedAt: null,
       textUpdatedAt: null,
+      textVersion: filePositionVersion(user.id, fileId, 'text', null),
+      narrationVersion: filePositionVersion(user.id, fileId, 'narration', null),
     };
   }
 
   @Post('files/:fileId/progress')
   async saveFileProgress(@Param('fileId', ParseIntPipe) fileId: number, @Body() dto: SaveProgressDto, @CurrentUser() user: RequestUser) {
-    await this.bookService.saveProgress(user.id, fileId, dto, user);
+    const saved = await this.bookService.saveProgress(user.id, fileId, dto, user);
+    if (dto.baseVersion && saved) {
+      return {
+        ...saved,
+        narrationUpdatedAt: saved.narrationUpdatedAt?.toISOString() ?? null,
+        textUpdatedAt: saved.textUpdatedAt?.toISOString() ?? null,
+        textVersion: filePositionVersion(user.id, fileId, 'text', saved),
+        narrationVersion: filePositionVersion(user.id, fileId, 'narration', saved),
+      };
+    }
   }
 
   @Delete('files/:fileId/progress')

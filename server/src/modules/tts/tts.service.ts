@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { speechPositionVersion } from '../../common/utils/reader-position-version.utils';
+import { ConflictException, BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import type { TtsCaptionedSpeech, TtsChapterText, TtsEffectivePreferences, TtsUserPreferences, TtsVoice } from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
@@ -175,14 +176,34 @@ export class TtsService {
 
   // ---- TTS position ----
 
-  async getPosition(userId: number, bookFileId: number, user: RequestUser) {
+  async getPosition(userId: number, bookFileId: number, user: RequestUser, withVersion = false) {
     await this.bookService.verifyFileAccess(bookFileId, user);
-    return (await this.ttsRepo.findPosition(userId, bookFileId)) ?? null;
+    const row = await this.ttsRepo.findPosition(userId, bookFileId);
+    if (!withVersion) return row ?? null;
+    const version = speechPositionVersion(userId, bookFileId, row);
+    const position = row ? { ...row, version } : null;
+    return withVersion ? { position, version } : position;
   }
 
   async savePosition(userId: number, bookFileId: number, dto: SaveTtsPositionDto, user: RequestUser) {
     await this.bookService.verifyFileAccess(bookFileId, user);
-    return this.ttsRepo.upsertPosition(userId, bookFileId, dto.cfi, dto.chapterIndex ?? null);
+    if (!dto.baseVersion) return this.ttsRepo.upsertPosition(userId, bookFileId, dto.cfi, dto.chapterIndex ?? null);
+    const previous = await this.ttsRepo.findPosition(userId, bookFileId);
+    if (dto.baseVersion && previous?.cfi === dto.cfi && previous.chapterIndex === (dto.chapterIndex ?? null)) {
+      return { ...previous, version: speechPositionVersion(userId, bookFileId, previous) };
+    }
+    if (dto.baseVersion && dto.baseVersion !== speechPositionVersion(userId, bookFileId, previous)) {
+      throw new ConflictException('Speech position changed in another reader');
+    }
+    const saved = await this.ttsRepo.upsertPosition(
+      userId,
+      bookFileId,
+      dto.cfi,
+      dto.chapterIndex ?? null,
+      dto.baseVersion ? { previous: previous ?? null } : undefined,
+    );
+    if (!saved) throw new ConflictException('Speech position changed in another reader');
+    return { ...saved, version: speechPositionVersion(userId, bookFileId, saved) };
   }
 
   async deletePosition(userId: number, bookFileId: number, user: RequestUser) {

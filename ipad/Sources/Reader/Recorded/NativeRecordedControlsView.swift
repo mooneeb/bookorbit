@@ -49,13 +49,19 @@ struct NativeRecordedControlsView: View {
         Text(error).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("recordedNarrationError")
       }
+      ReaderPositionChoiceView(
+        conflict: model.position.conflict, isSaving: model.position.isSaving,
+        chooseLocal: chooseLocalPosition, chooseRemote: chooseRemotePosition)
       if let message = model.position.message {
         Text(message).fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("recordedSyncError")
         Button("Retry recorded position save", action: retrySave)
-          .disabled(model.isBusy || model.position.isSaving)
+          .disabled(model.isBusy || model.position.isSaving || model.position.conflict.isBlocked)
           .accessibilityIdentifier("recordedRetrySave")
       }
+    }
+    .task(id: model.position.conflict.identity) {
+      await model.reader.describePositionConflict(model.position.canonical)
     }
     .buttonStyle(.bordered).controlSize(.large).padding()
   }
@@ -70,6 +76,9 @@ struct NativeRecordedControlsView: View {
     Button("Stop recording", action: stop).disabled(!model.canControl)
       .accessibilityIdentifier("recordedStop")
   }
+
+  private func chooseLocalPosition() { Task { await model.choosePosition(local: true) } }
+  private func chooseRemotePosition() { Task { await model.choosePosition(local: false) } }
 
   private func startCurrent() { Task { await model.startCurrent() } }
   private func resumeSaved() { Task { await model.resumeSaved() } }

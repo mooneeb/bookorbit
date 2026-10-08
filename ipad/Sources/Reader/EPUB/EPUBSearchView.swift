@@ -5,6 +5,11 @@ struct EPUBSearchView: View {
   @State private var query = ""
   @Environment(\.dismiss) private var dismiss
 
+  init(model: EPUBReaderModel, initialQuery: String = "") {
+    self.model = model
+    _query = State(initialValue: initialQuery)
+  }
+
   var body: some View {
     NavigationStack {
       List {

@@ -330,12 +330,12 @@ watch(
   (capability, _previous, onCleanup) => {
     if (!capability) return
     const unsubscribeLayout = capability.onLayoutReady((event) => {
-      if (event.documentId !== props.documentId || !event.isInitial) return
-      highlights.renderAll()
+      if (event.documentId !== props.documentId || event.totalPages <= 0) return
       if (restoredInitialPage.value) return
-      const page = Math.min(Math.max(props.initialPage, 1), event.totalPages || 1)
+      highlights.renderAll()
+      const page = Math.min(Math.max(props.initialPage, 1), event.totalPages)
+      scroll.value?.scrollToPage({ pageNumber: page, behavior: 'instant' })
       restoredInitialPage.value = true
-      if (page > 1) scroll.value?.scrollToPage({ pageNumber: page })
     })
     const unsubscribePage = capability.onPageChange((event) => {
       if (event.documentId !== props.documentId || !restoredInitialPage.value) return

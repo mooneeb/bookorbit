@@ -68,6 +68,7 @@ export * from "./series-collapse";
 export * from "./entity-manager";
 export * from "./font";
 export * from "./dictionary";
+export * from "./translation";
 export * from "./achievement";
 export * from "./activity";
 export * from "./reading-session";

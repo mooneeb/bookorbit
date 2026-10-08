@@ -6,11 +6,13 @@ import UIKit
 final class AudioPlayerModel {
   let engine: AudioPlaybackModel
   let preferences: AudioPreferencesModel
+  let sleepTimer = AudioSleepTimerModel()
+  private(set) var volumeMemory = AudioVolumeMemory()
   private(set) var isChangingTrack = false
   private(set) var isWriting = false
   private(set) var isClosing = false
   private(set) var isContinuing = false
-  private(set) var activeSleepMinutes: Int?
+  private(set) var isApplyingSleep = false
   private(set) var closeWarning: String?
   @ObservationIgnored private var media: AudioMediaController?
   @ObservationIgnored private var autosave: Task<Void, Never>?
@@ -26,6 +28,7 @@ final class AudioPlayerModel {
   private var lastMediaCanPause = false
   private var saveAfterWrite = false
   private var advanceAfterWrite = false
+  private var sleepPaused = false
 
   init(api: BookOrbitAPI, bookID: Int, fileID: Int, continuation: BookContinuationTarget? = nil) {
     engine = AudioPlaybackModel(
@@ -35,6 +38,7 @@ final class AudioPlayerModel {
 
   var canInteract: Bool {
     !isClosed && !isChangingTrack && !isWriting && !isClosing && !isContinuing
+      && !isApplyingSleep
       && !preferences.isSaving
       && engine.isReady && engine.canSelectTrack && !engine.progressBlocked
   }
@@ -45,8 +49,9 @@ final class AudioPlayerModel {
 
   var canClose: Bool {
     !isClosed && !isChangingTrack && !isWriting && !isClosing && !isContinuing
+      && !isApplyingSleep
       && !preferences.isSaving
-      && !engine.isSaving && !engine.isSeeking
+      && !engine.isSaving && !engine.isSeeking && !engine.isResolvingPosition
   }
 
   var canSave: Bool {
@@ -63,6 +68,15 @@ final class AudioPlayerModel {
     engine.manifest?.assets.allSatisfy { ($0.durationMs ?? 0) > 0 } == true
   }
 
+  var canSetSleepTimer: Bool { canInteract && engine.error == nil }
+  var canCancelSleepTimer: Bool { !isClosed && sleepTimer.isActive }
+  var canExtendSleepTimer: Bool { canCancelSleepTimer && sleepTimer.canExtend }
+  var canAdjustVolume: Bool { canInteract && engine.error == nil && preferences.canSave }
+  var activeSleepMinutes: Int? {
+    if case .minutes(let minutes) = sleepTimer.selection { return minutes }
+    return nil
+  }
+
   func open() async {
     guard !isClosed, autosave == nil else { return }
     engine.updated = { [weak self] in self?.engineUpdated() }
@@ -74,6 +88,7 @@ final class AudioPlayerModel {
     }
     await preferences.load()
     guard !isClosed, !Task.isCancelled else { return }
+    volumeMemory.remember(preferences.value.volume)
     engine.configure(speed: preferences.value.playbackSpeed, volume: preferences.value.volume)
     await engine.open()
     guard !isClosed, !Task.isCancelled else { return }
@@ -84,6 +99,7 @@ final class AudioPlayerModel {
         guard let self, !self.isClosed else { return }
         guard await self.engine.checkSession() else {
           self.wantsPlay = false
+          self.cancelSleepTimer()
           self.refreshMedia()
           return
         }
@@ -98,6 +114,7 @@ final class AudioPlayerModel {
     if engine.isPlaying {
       await pauseAndSave()
     } else {
+      sleepPaused = false
       if engine.positionSeconds >= engine.durationSeconds - 0.05 {
         guard await engine.seek(to: 0) else { return }
       }
@@ -177,39 +194,111 @@ final class AudioPlayerModel {
     guard !isClosed, canClose else { return }
     await preferences.load()
     guard !isClosed else { return }
+    volumeMemory.remember(preferences.value.volume)
     engine.configure(speed: preferences.value.playbackSpeed, volume: preferences.value.volume)
     refreshMedia()
   }
 
-  func saveSettings(_ value: AudioReaderSettings) async -> Bool {
+  func saveSettings(_ value: AudioReaderSettings, restoringVolume: Double? = nil) async -> Bool {
     guard canClose else { return false }
+    let previousVolume = preferences.value.volume
     let saved = await preferences.save(value)
     if saved, !isClosed {
+      volumeMemory.remember(previousVolume)
+      if let restoringVolume { volumeMemory.remember(restoringVolume) }
+      volumeMemory.remember(value.volume)
       engine.configure(speed: value.playbackSpeed, volume: value.volume)
       refreshMedia()
     }
     return saved
   }
 
+  func toggleMute() async {
+    guard canAdjustVolume else { return }
+    var value = preferences.value
+    value.volume = volumeMemory.toggledVolume(value.volume)
+    _ = await saveSettings(value)
+  }
+
   func setSleepTimer(minutes: Int) {
-    guard !isClosed, [0, 1, 15, 30, 45, 60].contains(minutes) else { return }
+    if minutes == 0 {
+      cancelSleepTimer()
+      return
+    }
+    guard canSetSleepTimer, [1, 15, 30, 45, 60].contains(minutes) else { return }
+    cancelSleepTimer()
+    sleepTimer.start(minutes: minutes)
+    startSleepCountdown()
+  }
+
+  func setEndOfChapterSleep() {
+    guard canSetSleepTimer else { return }
+    cancelSleepTimer()
+    sleepTimer.startChapterEnd(
+      manifest: engine.manifest, assetID: engine.currentAsset?.assetId,
+      positionSeconds: engine.positionSeconds)
+    if sleepTimer.canExtend { startSleepCountdown() }
+  }
+
+  func extendSleepTimer() {
+    guard canExtendSleepTimer else { return }
+    if !sleepTimer.extend() { expireSleepTimer() }
+  }
+
+  func cancelSleepTimer() {
     sleepTask?.cancel()
     sleepTask = nil
-    activeSleepMinutes = minutes == 0 ? nil : minutes
-    guard minutes > 0 else { return }
+    sleepTimer.cancel()
+  }
+
+  private func startSleepCountdown() {
     sleepTask = Task { [weak self] in
-      do { try await Task.sleep(for: .seconds(minutes * 60)) } catch { return }
+      while !Task.isCancelled {
+        do { try await Task.sleep(for: .seconds(1)) } catch { return }
+        guard let self, !self.isClosed, !Task.isCancelled else { return }
+        if self.sleepTimer.refreshCountdown() {
+          self.expireSleepTimer()
+          return
+        }
+      }
+    }
+  }
+
+  private func expireSleepTimer() {
+    guard !isClosed, sleepTimer.isActive else { return }
+    cancelSleepTimer()
+    sleepPaused = true
+    wantsPlay = false
+    resumeAfterInterruption = false
+    advanceAfterWrite = false
+    isApplyingSleep = true
+    engine.pause()
+    Task { @MainActor [weak self] in
       guard let self, !self.isClosed else { return }
-      self.activeSleepMinutes = nil
-      self.wantsPlay = false
       await self.pauseAndSave()
+      self.isApplyingSleep = false
       self.refreshMedia()
     }
   }
 
+  func choosePosition(local: Bool) async {
+    guard canClose, engine.positionConflict.isBlocked else { return }
+    wantsPlay = false
+    resumeAfterInterruption = false
+    _ = await engine.choosePosition(local: local)
+    refreshMedia()
+  }
+
   func foreground() async {
     guard !isClosed else { return }
-    if !(await engine.checkSession()) { wantsPlay = false }
+    if !(await engine.checkSession()) {
+      wantsPlay = false
+      cancelSleepTimer()
+    } else {
+      await engine.refreshPosition()
+      if engine.positionConflict.isBlocked { wantsPlay = false }
+      if sleepTimer.refreshCountdown() { expireSleepTimer() }
+    }
     refreshMedia()
   }
 
@@ -271,8 +360,7 @@ final class AudioPlayerModel {
     wantsPlay = false
     autosave?.cancel()
     autosave = nil
-    sleepTask?.cancel()
-    sleepTask = nil
+    cancelSleepTimer()
     backgroundWrite?.cancel()
     backgroundWrite = nil
     media?.close()
@@ -295,7 +383,7 @@ final class AudioPlayerModel {
     refreshMedia()
     let saveAgain = saveAfterWrite && saved && !isClosed
     saveAfterWrite = false
-    let advance = advanceAfterWrite && saved && !isClosed
+    let advance = advanceAfterWrite && saved && !isClosed && !sleepPaused
     advanceAfterWrite = false
     if saveAgain { return await persistPosition() }
     if advance { Task { @MainActor [weak self] in await self?.trackEnded() } }
@@ -322,16 +410,30 @@ final class AudioPlayerModel {
       refreshMedia()
       return false
     }
+    guard !sleepPaused || !autoplay else {
+      isChangingTrack = false
+      refreshMedia()
+      return false
+    }
     let opened = await engine.activate(asset, positionMs: positionMs)
     guard !isClosed else { return false }
-    wantsPlay = opened && autoplay
+    wantsPlay = opened && autoplay && !sleepPaused
     isChangingTrack = false
     engineUpdated()
     return opened
   }
 
   private func trackEnded() async {
-    guard !isClosed, !isChangingTrack, !isClosing else { return }
+    guard !isClosed, !isChangingTrack, !isClosing, !sleepPaused else { return }
+    if sleepTimer.refreshCountdown()
+      || sleepTimer.reachedChapterEnd(
+        assetID: engine.currentAsset?.assetId,
+        positionSeconds: max(engine.positionSeconds, engine.durationSeconds),
+        isPlaying: true)
+    {
+      expireSleepTimer()
+      return
+    }
     if isWriting {
       advanceAfterWrite = true
       return
@@ -341,7 +443,18 @@ final class AudioPlayerModel {
 
   private func engineUpdated() {
     guard !isClosed else { return }
-    if engine.error != nil { wantsPlay = false }
+    if engine.error != nil {
+      wantsPlay = false
+      cancelSleepTimer()
+    }
+    if sleepTimer.refreshCountdown()
+      || sleepTimer.reachedChapterEnd(
+        assetID: engine.currentAsset?.assetId, positionSeconds: engine.positionSeconds,
+        isPlaying: engine.isPlaying)
+    {
+      expireSleepTimer()
+      return
+    }
     if wantsPlay, canInteract {
       wantsPlay = false
       engine.play()

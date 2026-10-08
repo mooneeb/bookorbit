@@ -13,7 +13,6 @@ struct AudiobookReaderView: View {
   @State private var showingCloseWarning = false
   @State private var scrubPosition = 0.0
   @State private var isScrubbing = false
-  @State private var sleepMinutes = 0
 
   init(
     api: BookOrbitAPI, bookID: Int, file: BookDetailFile,
@@ -229,11 +228,35 @@ struct AudiobookReaderView: View {
       buttonLayout(horizontalSpacing: 8) { transportButtons }
         .font(.body)
       Button {
+        Task { await model.toggleMute() }
+      } label: {
+        Label(
+          model.preferences.value.volume > 0 ? "Mute" : "Unmute",
+          systemImage: model.preferences.value.volume > 0 ? "speaker.wave.2" : "speaker.slash"
+        )
+        .font(.body).fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+      }
+      .disabled(!model.canAdjustVolume)
+      .accessibilityValue(
+        model.preferences.value.volume == 0
+          ? "Muted" : "\(Int((model.preferences.value.volume * 100).rounded())) percent"
+      )
+      .accessibilityIdentifier("audiobookMute")
+      Button {
         Task { await model.saveProgress() }
       } label: {
         Text(model.isWriting ? "Saving…" : "Save progress").frame(minHeight: 44)
       }
       .disabled(!model.canSave).accessibilityIdentifier("audiobookSaveProgress")
+      ReaderPositionChoiceView(
+        conflict: model.engine.positionConflict,
+        isSaving: model.engine.isSaving || model.engine.isResolvingPosition,
+        chooseLocal: chooseLocalPosition, chooseRemote: chooseRemotePosition)
+      if model.engine.progressBlocked && !model.engine.positionConflict.isBlocked {
+        Button("Retry loading resume choices", action: retryPositionChoices)
+          .frame(minHeight: 44).accessibilityIdentifier("readerPositionReloadChoices")
+      }
       if let message = model.engine.progressMessage {
         Text(message).fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("audiobookProgressMessage")
@@ -241,17 +264,7 @@ struct AudiobookReaderView: View {
       if !model.engine.isReady {
         ProgressView("Preparing track…").accessibilityIdentifier("audiobookPreparing")
       }
-      Picker("Sleep timer", selection: $sleepMinutes) {
-        Text("Off").tag(0)
-        ForEach([1, 15, 30, 45, 60], id: \.self) { minutes in
-          Text("\(minutes) minutes").tag(minutes)
-        }
-      }
-      .onChange(of: sleepMinutes) { model.setSleepTimer(minutes: sleepMinutes) }
-      .onChange(of: model.activeSleepMinutes) {
-        if model.activeSleepMinutes == nil { sleepMinutes = 0 }
-      }
-      .accessibilityIdentifier("audiobookSleepTimer")
+      AudioSleepControlsView(model: model)
     }
   }
 
@@ -305,6 +318,10 @@ struct AudiobookReaderView: View {
     .disabled(!model.canInteract || !model.hasNextTrack)
     .accessibilityIdentifier("audiobookNextTrack")
   }
+
+  private func retryPositionChoices() { Task { await model.engine.retryPositionChoices() } }
+  private func chooseLocalPosition() { Task { await model.choosePosition(local: true) } }
+  private func chooseRemotePosition() { Task { await model.choosePosition(local: false) } }
 
   private func scrubChanged(_ editing: Bool) {
     isScrubbing = editing

@@ -21,6 +21,7 @@ const entries = [
   "custom-metadata",
   "custom-icon",
   "dashboard",
+  "dictionary",
   "epub",
   "file-delivery",
   "font",
@@ -37,6 +38,7 @@ const entries = [
   "table-layout",
   "table-view-backup",
   "tts",
+  "translation",
 ].map((name) => path.join(root, `packages/types/src/${name}.ts`));
 const program = ts.createProgram(entries, {
   strict: true,
@@ -261,6 +263,7 @@ const requestModels = new Set([
   ...patchRequests,
   "BookMetadataAndLocksUpdatePayload",
   "SaveFileProgressPayload",
+  "SaveTtsPositionPayload",
   "PutAudiobookPlaybackState",
   "CreateAnnotationPayload",
   "UpdateSeriesCollapsePreferencesPayload",
@@ -448,6 +451,9 @@ function generateModel(name, type) {
 }
 
 for (const name of [
+  "DictionaryResult",
+  "TranslationResult",
+  "SupportedLanguage",
   "CreateAnnotationPayload",
   "AnnotationListResponse",
   "AudiobookManifest",
@@ -555,6 +561,8 @@ for (const name of [
   "SetBookReadingStatusPayload",
   "UpdateBookPersonalNotePayload",
   "TtsPosition",
+  "TtsPositionSnapshot",
+  "SaveTtsPositionPayload",
   "TtsUserPreferences",
   "TtsEffectivePreferences",
   "TtsSpeedPreferencesPatch",
@@ -817,6 +825,29 @@ if (!ts.isArrayLiteralExpression(sortDeclaration) || !sortDeclaration.elements.e
 declarations.set(
   "SortVocabulary",
   `enum SortVocabulary {\n    static let fields: [String] = [${sortDeclaration.elements.map((value) => JSON.stringify(value.text)).join(", ")}]\n}`,
+);
+
+const translationLimit = checker.getTypeOfSymbolAtLocation(
+  symbols.get("TRANSLATION_CHAR_LIMIT"),
+  symbols.get("TRANSLATION_CHAR_LIMIT").valueDeclaration,
+);
+if (!(translationLimit.flags & ts.TypeFlags.NumberLiteral)) throw new Error("Translation maximum must remain a literal number");
+const translationLanguages = symbols.get("SUPPORTED_LANGUAGES").valueDeclaration.initializer;
+if (!ts.isArrayLiteralExpression(translationLanguages)) throw new Error("Translation languages must remain a literal array");
+const languageChoices = translationLanguages.elements.map((element) => {
+  if (!ts.isObjectLiteralExpression(element)) throw new Error("Translation language changed");
+  const fields = new Map(
+    element.properties.map((property) => {
+      if (!ts.isPropertyAssignment(property) || !ts.isStringLiteral(property.initializer)) throw new Error("Translation language changed");
+      return [property.name.getText(), property.initializer.text];
+    }),
+  );
+  if (!fields.get("code") || !fields.get("name")) throw new Error("Translation language is incomplete");
+  return `        .init(code: ${JSON.stringify(fields.get("code"))}, name: ${JSON.stringify(fields.get("name"))}),`;
+});
+declarations.set(
+  "NativeTranslationVocabulary",
+  `enum NativeTranslationVocabulary {\n    static let characterLimit = ${translationLimit.value}\n    static let languages: [SupportedLanguage] = [\n${languageChoices.join("\n")}\n    ]\n}`,
 );
 
 const permission = symbols.get("Permission");

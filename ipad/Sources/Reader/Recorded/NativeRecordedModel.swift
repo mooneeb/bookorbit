@@ -42,7 +42,9 @@ final class NativeRecordedModel {
   }
   var isActive: Bool { state == .playing || state == .paused || state == .loading }
   var isPlaying: Bool { state == .playing }
-  var canControl: Bool { !isBusy && !position.isSaving && !isClosed && position.hasLoaded }
+  var canControl: Bool {
+    !isBusy && !position.isSaving && !isClosed && position.hasLoaded && !position.conflict.isBlocked
+  }
   var timeLabel: String {
     "\(elapsed.formatted(.number.precision(.fractionLength(1)))) / \(duration.formatted(.number.precision(.fractionLength(1)))) seconds in segment"
   }
@@ -54,12 +56,13 @@ final class NativeRecordedModel {
     do {
       session = try await reader.api.authenticatedSessionGeneration()
       try await position.load()
+      await reader.describePositionConflict(position.canonical)
     } catch { self.error = error.localizedDescription }
   }
 
   func startCurrent() async {
-    guard canControl, isAvailable, let cfi = reader.selectionCFI ?? reader.location?.cfi,
-      let section = reader.location?.chapterIndex
+    guard canControl, isAvailable, let cfi = reader.selectionCFI ?? reader.visibleLocation?.cfi,
+      let section = reader.visibleLocation?.chapterIndex
     else {
       error = NativeRecordedError.unavailable.localizedDescription
       return
@@ -218,7 +221,38 @@ final class NativeRecordedModel {
   }
 
   func foreground() async {
-    do { try await position.checkSession() } catch { await fail(error) }
+    do {
+      try await position.checkSession()
+      await position.refresh()
+      await reader.describePositionConflict(position.canonical)
+      if position.conflict.isBlocked { await freezeForPositionChoice() }
+    } catch { await fail(error) }
+  }
+
+  func freezeForPositionChoice() async {
+    guard !isClosed else { return }
+    operation = UUID()
+    pendingEnd = false
+    audio.close()
+    sessionTask?.cancel()
+    sessionTask = nil
+    media?.close()
+    media = nil
+    clip = nil
+    segment = nil
+    state = .idle
+    await reader.clearRecordedHighlight()
+    audio.releaseAudioSession()
+  }
+
+  func choosePosition(local: Bool) async {
+    guard !isClosed, !isBusy, position.conflict.isBlocked else { return }
+    await freezeForPositionChoice()
+    guard await position.choosePosition(local: local), !isClosed else {
+      await reader.describePositionConflict(position.canonical)
+      return
+    }
+    await resumeSaved()
   }
 
   func close() {
@@ -326,10 +360,11 @@ final class NativeRecordedModel {
   }
 
   private func capture() throws {
-    guard let clip else { return }
+    guard let clip, !position.conflict.isBlocked else { return }
     elapsed = audio.elapsed
     let seconds = clip.startSeconds.map { $0 + elapsed }
-    let percentage = reader.location?.percentage ?? position.saved?.percentage ?? 0
+    let percentage =
+      segment?.percentage ?? position.saved?.percentage ?? reader.location?.percentage ?? 0
     try position.record(
       .init(
         fragment: Self.fragment(clip), sectionIndex: clip.sectionIndex,
@@ -346,6 +381,10 @@ final class NativeRecordedModel {
         guard let self, !self.isClosed else { return }
         do { try await self.position.checkSession() } catch {
           await self.fail(error)
+          return
+        }
+        if self.position.conflict.isBlocked {
+          await self.freezeForPositionChoice()
           return
         }
         if self.pendingEnd, self.canControl {

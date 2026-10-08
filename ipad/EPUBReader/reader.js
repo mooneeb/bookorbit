@@ -4,12 +4,15 @@ import { searchMatcher } from "../foliate/search.js";
 import { textWalker } from "../foliate/text-walker.js";
 import { themes } from "./themes.js";
 import { getBlocks } from "../foliate/tts.js";
+import { previousSpeechStart } from "./speech-navigation.js";
 import { makeDeliveredBook } from "./delivered-book.js";
+import { describePosition } from "./position-preview.js";
 import { prepareCustomFonts, configureCustomFont, customFontCSS, settleCustomFonts, clearCustomFonts } from "./custom-fonts.js";
 import { publicationPosition, fractionTarget, withProgrammaticMovement } from "./position-navigation.js";
 
 const view = document.querySelector("foliate-view");
 let closed = false;
+let narrationMovement = 0;
 let active = 0;
 let publication;
 let publisherSpread;
@@ -91,7 +94,7 @@ const go = async (target, smooth = false) => {
 const notify = () => {
   if (closed) return;
   try {
-    window.webkit.messageHandlers.location.postMessage(location());
+    window.webkit.messageHandlers.location.postMessage({ ...location(), source: narrationMovement > 0 ? "narration" : "text" });
   } catch {}
 };
 const selection = (doc, index) => {
@@ -101,7 +104,10 @@ const selection = (doc, index) => {
   const text = range.toString();
   const cfi = view.getCFI(index, range);
   if (!text || text.length > 16000 || cfi.length > 2000) return null;
-  return { cfi, text };
+  const metadataLanguage = publication?.metadata?.language;
+  const rawLanguage = Array.isArray(metadataLanguage) ? metadataLanguage[0] : metadataLanguage;
+  const language = typeof rawLanguage === "string" && rawLanguage.length <= 64 ? rawLanguage : (view.language?.canonical ?? "en");
+  return { cfi, text, language };
 };
 const applyDocumentStyles = (doc) => {
   let style = doc.getElementById("bookorbit-reader-style");
@@ -278,6 +284,11 @@ window.epubTurn = async (forward) => {
 };
 window.epubGo = go;
 window.epubGoFraction = (fraction, smooth) => go(fractionTarget(fraction), smooth);
+window.epubPositionPreview = (target) => {
+  const opened = publication;
+  resourceBytes = 0;
+  return describePosition(view, opened, target, () => !closed && opened === publication);
+};
 window.epubSearchStart = async (query) => {
   searchState?.iterator?.return?.();
   searchState = { query, index: 0, iterator: null };
@@ -348,19 +359,26 @@ const speechStart = (doc, anchor) => {
   start.collapse(true);
   return start;
 };
-const speechParts = (doc, start, maximum) => {
-  let block;
-  for (const candidate of getBlocks(doc)) {
-    if (candidate.comparePoint(start.startContainer, start.startOffset) !== 1) {
-      block = candidate;
-      break;
+const speechParts = (doc, start, maximum, knownBlock) => {
+  let block = knownBlock;
+  if (!block) {
+    for (const candidate of getBlocks(doc)) {
+      if (candidate.comparePoint(start.startContainer, start.startOffset) !== 1) {
+        block = candidate;
+        break;
+      }
     }
   }
   const walker = speechNodes(doc);
+  walker.currentNode = start.startContainer;
+  const initialNode =
+    start.startContainer.nodeType === Node.TEXT_NODE && walker.filter.acceptNode(start.startContainer) === NodeFilter.FILTER_ACCEPT
+      ? start.startContainer
+      : walker.nextNode();
   const rawParts = [];
   let length = 0;
   let next;
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+  for (let node = initialNode; node; node = walker.nextNode()) {
     if (start.comparePoint(node, node.nodeValue.length) < 0) continue;
     const offset = node === start.startContainer ? start.startOffset : 0;
     if (offset === node.nodeValue.length) continue;
@@ -501,6 +519,20 @@ window.epubSpeechChunk = async (cfi, maximum) => {
   }
   return null;
 };
+window.epubPreviousSpeechChunk = async (cfi, maximum) => {
+  const generation = speechHighlightGeneration;
+  const checkActive = () => {
+    if (closed || generation !== speechHighlightGeneration) throw new Error("Speech passage loading was cancelled.");
+  };
+  if (!Number.isInteger(maximum) || maximum < 2 || maximum > 2048 || closed) throw new Error("The speech text limit is invalid.");
+  const resolved = view.resolveCFI(cfi);
+  if (!resolved || resolved.index < 0 || resolved.index >= publication.sections.length) throw new Error("The speech passage is unavailable.");
+  const doc = await liveSpeechDocument(resolved.index, cfi);
+  checkActive();
+  const target = await previousSpeechStart(doc, speechStart(doc, resolved.anchor), maximum, getBlocks, speechParts, checkActive);
+  checkActive();
+  return window.epubSpeechChunk(view.getCFI(resolved.index, target), maximum);
+};
 window.epubHighlightSpeech = async (chunkCFI, offset, length) => {
   const generation = speechHighlightGeneration;
   if (!Number.isInteger(offset) || !Number.isInteger(length) || offset < 0 || length < 1 || offset + length > 2048)
@@ -593,9 +625,22 @@ window.epubRecordedHighlight = async (href, follow) => {
     if (!doc.defaultView.CSS.highlights || !doc.defaultView.Highlight) throw new Error("Segment highlighting is unavailable on this device.");
     doc.defaultView.CSS.highlights.set("bookorbit-recorded", new doc.defaultView.Highlight(range));
   }
-  return { cfi, chapterIndex: resolved.index, text: range.toString().slice(0, 500) };
+  return { cfi, chapterIndex: resolved.index, text: range.toString().slice(0, 500), percentage: follow ? location().percentage : null };
 };
 window.epubClearRecordedHighlight = () => {
   recordedGeneration++;
   clearRecordedPaint();
 };
+
+for (const name of ["epubSpeechChunk", "epubPreviousSpeechChunk", "epubHighlightSpeech", "epubRecordedMatch", "epubRecordedHighlight"]) {
+  const operation = window[name];
+  if (typeof operation !== "function") continue;
+  window[name] = async (...arguments_) => {
+    narrationMovement++;
+    try {
+      return await operation(...arguments_);
+    } finally {
+      narrationMovement--;
+    }
+  };
+}

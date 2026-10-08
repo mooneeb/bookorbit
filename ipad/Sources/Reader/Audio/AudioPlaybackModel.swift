@@ -7,6 +7,7 @@ final class AudioPlaybackModel {
   let api: BookOrbitAPI
   let bookID: Int
   let fileID: Int
+  let positionConflict = ReaderPositionConflictState()
   private let continuation: BookContinuationTarget?
   private(set) var manifest: AudiobookManifest?
   private(set) var currentAsset: AudiobookManifestAsset?
@@ -30,6 +31,11 @@ final class AudioPlaybackModel {
   private var pendingSave: PutAudiobookPlaybackState?
   private(set) var progressBlocked = false
   private var isClosed = false
+  private var conflictLocal: PutAudiobookPlaybackState?
+  private var conflictRemote: AudiobookPlaybackState?
+  private var resolutionChoice: Bool?
+  private var pendingSaveBody: Data?
+  private(set) var isResolvingPosition = false
   private(set) var isSeeking = false
   private(set) var playbackSpeed = 1.0
   private(set) var volume = 1.0
@@ -55,8 +61,13 @@ final class AudioPlaybackModel {
   }
 
   var hasPendingSave: Bool { pendingSave != nil }
-  var canSave: Bool { isReady && !isSaving && !isSeeking && !progressBlocked && !isClosed }
-  var canSelectTrack: Bool { !isSaving && !isSeeking && pendingSave == nil && !isClosed }
+  var canSave: Bool {
+    isReady && !isSaving && !isSeeking && !progressBlocked && !isResolvingPosition && !isClosed
+  }
+  var canSelectTrack: Bool {
+    !isSaving && !isSeeking && !isResolvingPosition && pendingSave == nil
+      && !positionConflict.isBlocked && !isClosed
+  }
 
   func open() async {
     guard manifest == nil, !isLoading, !isClosed else { return }
@@ -219,8 +230,10 @@ final class AudioPlaybackModel {
   }
 
   @discardableResult
-  func save() async -> Bool {
-    guard canSave, let manifest, let currentAsset, let sessionGeneration else { return false }
+  func save(resolvingConflict: Bool = false) async -> Bool {
+    guard canSave || (resolvingConflict && isReady && !isSaving && !isSeeking && !isClosed),
+      let manifest, let currentAsset, let sessionGeneration
+    else { return false }
     isSaving = true
     progressMessage = nil
     defer { isSaving = false }
@@ -235,9 +248,11 @@ final class AudioPlaybackModel {
         manifestRevision: manifest.revision)
     pendingSave = pending
     do {
+      let body = try pendingSaveBody ?? JSONEncoder().encode(pending)
+      pendingSaveBody = body
       let saved: AudiobookPlaybackState = try await api.boundedJSON(
         "audiobooks/\(bookID)/playback-state", method: "PUT",
-        body: JSONEncoder().encode(pending), session: sessionGeneration)
+        body: body, session: sessionGeneration)
       guard !isClosed, generation == selectionGeneration else { return false }
       let expectedPosition = min(pending.positionMs, currentAsset.durationMs ?? pending.positionMs)
       guard let savedAt = Self.timestamp(saved.capturedAt),
@@ -248,13 +263,25 @@ final class AudioPlaybackModel {
       else { throw ConnectionError.invalidResponse }
       state = saved
       pendingSave = nil
+      pendingSaveBody = nil
+      progressBlocked = false
+      positionConflict.clear()
+      conflictLocal = nil
+      conflictRemote = nil
+      resolutionChoice = nil
       progressMessage = "Progress saved at \(Self.clock(Double(saved.positionMs) / 1000))."
       return true
     } catch ConnectionError.http(409) {
       guard !isClosed else { return false }
       progressBlocked = true
-      progressMessage =
-        "Progress changed in another reader. Close and reopen to load that position."
+      resolutionChoice = nil
+      pause()
+      do {
+        presentConflict(local: conflictLocal ?? pending, remote: try await remotePosition())
+      } catch {
+        progressMessage =
+          "Progress changed in another reader. Retry loading its position. \(error.localizedDescription)"
+      }
     } catch ConnectionError.http(412) {
       guard !isClosed else { return false }
       progressBlocked = true
@@ -266,6 +293,106 @@ final class AudioPlaybackModel {
         "Progress could not be confirmed. Retry Save to send the same operation. \(error.localizedDescription)"
     }
     return false
+  }
+
+  func retryPositionChoices() async {
+    guard !isClosed, !isSaving, !isResolvingPosition, progressBlocked, let pendingSave else {
+      return
+    }
+    do {
+      presentConflict(local: conflictLocal ?? pendingSave, remote: try await remotePosition())
+    } catch { if !isClosed { progressMessage = error.localizedDescription } }
+  }
+
+  func refreshPosition() async {
+    guard !isClosed, !isSaving, !isSeeking, !isResolvingPosition, !positionConflict.isBlocked,
+      let manifest, let currentAsset
+    else { return }
+    do {
+      let remote = try await remotePosition()
+      if remote?.revision != state?.revision {
+        let local =
+          pendingSave
+          ?? PutAudiobookPlaybackState(
+            assetId: currentAsset.assetId, positionMs: Int((positionSeconds * 1000).rounded()),
+            capturedAt: ISO8601DateFormatter().string(from: Date()), operationId: UUID().uuidString,
+            baseRevision: state?.revision ?? 0, manifestRevision: manifest.revision)
+        pendingSave = local
+        pause()
+        presentConflict(local: local, remote: remote)
+      }
+    } catch { if !isClosed { progressMessage = error.localizedDescription } }
+  }
+
+  func choosePosition(local: Bool) async -> Bool {
+    guard !isClosed, !isSaving, !isSeeking, !isResolvingPosition, positionConflict.isBlocked,
+      let conflictLocal, let manifest
+    else { return false }
+    isResolvingPosition = true
+    pause()
+    defer { isResolvingPosition = false }
+    do {
+      if resolutionChoice == local, pendingSave != nil {
+        return await save(resolvingConflict: true)
+      }
+      let remote = try await remotePosition()
+      guard remote?.revision == conflictRemote?.revision else {
+        presentConflict(local: conflictLocal, remote: remote)
+        progressMessage =
+          "The other reader moved again. Review its new listening position before choosing."
+        return false
+      }
+      let assetID = local ? conflictLocal.assetId : remote?.assetId ?? manifest.assets[0].assetId
+      let offset = local ? conflictLocal.positionMs : remote?.positionMs ?? 0
+      guard let asset = manifest.assets.first(where: { $0.assetId == assetID }) else {
+        throw ConnectionError.fileChanged
+      }
+      let chosen = PutAudiobookPlaybackState(
+        assetId: assetID, positionMs: offset,
+        capturedAt: ISO8601DateFormatter().string(from: Date()), operationId: UUID().uuidString,
+        baseRevision: remote?.revision ?? 0, manifestRevision: manifest.revision)
+      pendingSave = chosen
+      pendingSaveBody = nil
+      resolutionChoice = local
+      begin(asset, positionMs: offset)
+      await preparation?.value
+      guard !isClosed, await checkSession(), isReady else { return false }
+      return await save(resolvingConflict: true)
+    } catch { if !isClosed { progressMessage = error.localizedDescription } }
+    return false
+  }
+
+  private func remotePosition() async throws -> AudiobookPlaybackState? {
+    guard await checkSession(), let manifest else { throw ConnectionError.expiredSession }
+    let remote: AudiobookPlaybackState? = try await api.boundedJSON(
+      "audiobooks/\(bookID)/playback-state", byteLimit: 16 * 1024, session: sessionGeneration)
+    guard await checkSession() else { throw ConnectionError.expiredSession }
+    if let remote {
+      guard remote.manifestRevision == manifest.revision, remote.revision >= 0,
+        remote.positionMs >= 0, remote.percentage.isFinite, (0...100).contains(remote.percentage),
+        let asset = manifest.assets.first(where: { $0.assetId == remote.assetId }),
+        remote.positionMs <= (asset.durationMs ?? Int.max)
+      else { throw ConnectionError.fileChanged }
+    }
+    return remote
+  }
+
+  private func presentConflict(local: PutAudiobookPlaybackState, remote: AudiobookPlaybackState?) {
+    guard !isClosed else { return }
+    conflictLocal = local
+    conflictRemote = remote
+    progressBlocked = true
+    positionConflict.present(
+      local: positionLabel(assetID: local.assetId, offset: local.positionMs),
+      remote: remote.map { positionLabel(assetID: $0.assetId, offset: $0.positionMs) }
+        ?? "Beginning of audiobook")
+    progressMessage = "Progress changed in another reader. Choose a resume position before saving."
+  }
+
+  private func positionLabel(assetID: String, offset: Int) -> String {
+    let track =
+      manifest?.assets.first(where: { $0.assetId == assetID }).map { $0.sequence + 1 } ?? 1
+    return "Track \(track), \(Self.clock(Double(offset) / 1000))"
   }
 
   func close() {

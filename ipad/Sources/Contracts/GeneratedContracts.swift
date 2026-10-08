@@ -2,6 +2,36 @@
 // Regenerate after shared contract changes.
 import Foundation
 
+struct DictionaryResult: Codable, Sendable, Equatable {
+    var `word`: String
+    var `phonetic`: String?
+    var `audioUrl`: String?
+    var `entries`: [DictionaryEntry]
+    var `provider`: String
+}
+
+struct DictionaryEntry: Codable, Sendable, Equatable {
+    var `partOfSpeech`: String
+    var `definitions`: [DictionaryDefinition]
+    var `sourceWord`: String
+}
+
+struct DictionaryDefinition: Codable, Sendable, Equatable {
+    var `definition`: String
+    var `example`: String?
+}
+
+struct TranslationResult: Codable, Sendable, Equatable {
+    var `translatedText`: String
+    var `detectedSourceLang`: String
+    var `provider`: String
+}
+
+struct SupportedLanguage: Codable, Sendable, Equatable {
+    var `code`: String
+    var `name`: String
+}
+
 struct CreateAnnotationPayload: Encodable, Sendable, Equatable {
     var `cfi`: String?
     var `bookFileId`: Int?
@@ -933,6 +963,8 @@ struct FileReadingProgress: Codable, Sendable, Equatable {
     var `narrationPercentage`: Double?
     var `narrationUpdatedAt`: String?
     var `textUpdatedAt`: String?
+    var `textVersion`: String?
+    var `narrationVersion`: String?
 }
 
 struct SaveFileProgressPayload: Encodable, Sendable, Equatable {
@@ -948,6 +980,7 @@ struct SaveFileProgressPayload: Encodable, Sendable, Equatable {
     var `koreaderProgress`: String?
     var `percentage`: Double
     var `source`: String?
+    var `baseVersion`: String?
 }
 
 struct EpubBookInfo: Codable, Sendable, Equatable {
@@ -1878,6 +1911,18 @@ struct UpdateBookPersonalNotePayload: Encodable, Sendable, Equatable {
 struct TtsPosition: Codable, Sendable, Equatable {
     var `cfi`: String
     var `chapterIndex`: Int?
+    var `version`: String?
+}
+
+struct TtsPositionSnapshot: Codable, Sendable, Equatable {
+    var `position`: TtsPosition?
+    var `version`: String
+}
+
+struct SaveTtsPositionPayload: Encodable, Sendable, Equatable {
+    var `cfi`: String
+    var `chapterIndex`: Int?
+    var `baseVersion`: String?
 }
 
 struct TtsUserPreferences: Codable, Sendable, Equatable {
@@ -2108,6 +2153,22 @@ enum NativeViewBackupVocabulary {
 
 enum SortVocabulary {
     static let fields: [String] = ["relevance", "author", "title", "series", "seriesIndex", "addedAt", "updatedAt", "publishedDate", "publishedYear", "pageCount", "rating", "publisher", "fileSize", "readProgress", "readStatus", "format", "lastReadAt", "startedAt", "finishedAt", "random", "language", "metadataScore", "collectionOrder"]
+}
+
+enum NativeTranslationVocabulary {
+    static let characterLimit = 500
+    static let languages: [SupportedLanguage] = [
+        .init(code: "en", name: "English"),
+        .init(code: "es", name: "Spanish"),
+        .init(code: "fr", name: "French"),
+        .init(code: "de", name: "German"),
+        .init(code: "zh", name: "Chinese"),
+        .init(code: "ja", name: "Japanese"),
+        .init(code: "ko", name: "Korean"),
+        .init(code: "ar", name: "Arabic"),
+        .init(code: "hi", name: "Hindi"),
+        .init(code: "pt", name: "Portuguese"),
+    ]
 }
 
 enum CollectionVocabulary {

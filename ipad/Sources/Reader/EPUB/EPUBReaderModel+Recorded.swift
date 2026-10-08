@@ -4,6 +4,7 @@ struct EPUBRecordedSegment: Codable, Sendable {
   let cfi: String
   let chapterIndex: Int
   let text: String
+  let percentage: Double?
 }
 
 extension EPUBReaderModel {
@@ -36,7 +37,8 @@ extension EPUBReaderModel {
     guard data.count <= 16 * 1024 else { throw ConnectionError.invalidResponse }
     let segment = try JSONDecoder().decode(EPUBRecordedSegment.self, from: data)
     guard NativeTTSPositionModel.validCFI(segment.cfi), segment.chapterIndex == clip.sectionIndex,
-      segment.text.utf16.count <= 500
+      segment.text.utf16.count <= 500,
+      segment.percentage.map({ $0.isFinite && (0...100).contains($0) }) != false
     else { throw ConnectionError.invalidResponse }
     return segment
   }

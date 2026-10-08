@@ -18,6 +18,7 @@ final class PDFSearchModel {
   private(set) var error: String?
   private let source: PDFDocument
   private var searchDocument: PDFDocument?
+  private var searchID: UUID?
   private var observers: [NSObjectProtocol] = []
 
   init(document: PDFDocument) { source = document }
@@ -26,11 +27,15 @@ final class PDFSearchModel {
     clear()
     let phrase = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !phrase.isEmpty, phrase.unicodeScalars.prefix(201).count <= 200 else { return }
-    guard let url = source.documentURL, let document = PDFDocument(url: url) else {
+    guard !source.isLocked else {
       error = "Text search is unavailable for this PDF."
       return
     }
+    // Reloading the source URL would discard this reader session's unlock.
+    let document = source
+    let searchID = UUID()
     searchDocument = document
+    self.searchID = searchID
     hasSearched = true
     isSearching = true
     observers.append(
@@ -48,7 +53,9 @@ final class PDFSearchModel {
           ranges: (0..<selection.numberOfTextRanges(on: page)).map {
             selection.range(at: $0, on: page)
           })
-        MainActor.assumeIsolated { self?.receive(match, documentID: documentID) }
+        MainActor.assumeIsolated {
+          self?.receive(match, documentID: documentID, searchID: searchID)
+        }
       })
     observers.append(
       NotificationCenter.default.addObserver(
@@ -57,7 +64,7 @@ final class PDFSearchModel {
         guard let document = notification.object as? PDFDocument else { return }
         let documentID = ObjectIdentifier(document)
         MainActor.assumeIsolated {
-          guard let self, let active = self.searchDocument,
+          guard let self, self.searchID == searchID, let active = self.searchDocument,
             documentID == ObjectIdentifier(active)
           else {
             return
@@ -68,8 +75,8 @@ final class PDFSearchModel {
     document.beginFindString(phrase, withOptions: [.caseInsensitive, .literal])
   }
 
-  private func receive(_ match: PDFSearchMatch, documentID: ObjectIdentifier) {
-    guard isSearching, let document = searchDocument,
+  private func receive(_ match: PDFSearchMatch, documentID: ObjectIdentifier, searchID: UUID) {
+    guard isSearching, self.searchID == searchID, let document = searchDocument,
       documentID == ObjectIdentifier(document), (0..<source.pageCount).contains(match.pageIndex)
     else { return }
     matches.append(
@@ -83,6 +90,7 @@ final class PDFSearchModel {
 
   func stop() {
     isSearching = false
+    searchID = nil
     for observer in observers { NotificationCenter.default.removeObserver(observer) }
     observers.removeAll()
     searchDocument?.cancelFindString()

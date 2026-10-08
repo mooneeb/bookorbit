@@ -20,6 +20,7 @@ struct ComicReaderView: View {
   @State private var isBrowsingBookmarks = false
   @State private var pageLayout = FixedPageLayout(pageCount: 0, facing: false, singlePrefix: 0)
   @ScaledMetric(relativeTo: .body) private var actionWidth = 150.0
+  @Environment(\.scenePhase) private var scenePhase
   @Environment(\.dismiss) private var dismiss
 
   init(
@@ -50,7 +51,8 @@ struct ComicReaderView: View {
             onVisible: model.showContinuousPages, onBeyondLast: beyondLast,
             facingLayout: preferredFacingLayout
           )
-          .allowsHitTesting(!model.isClosing && !isOpeningNext)
+          .allowsHitTesting(
+            !model.isClosing && !isOpeningNext && !model.position.conflict.isBlocked)
         } else if model.error == nil {
           ProgressView("Opening comic…")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -68,9 +70,15 @@ struct ComicReaderView: View {
             Button("Retry page", action: model.retryPages).frame(minHeight: 44)
           }
           if let error = model.error { Text(error) }
+          ReaderPositionChoiceView(
+            conflict: model.position.conflict,
+            isSaving: model.position.isSaving || model.position.isResolving,
+            chooseLocal: chooseLocalPosition, chooseRemote: chooseRemotePosition)
           if !model.status.isEmpty { Text(model.status) }
           if model.hasUnsavedPosition {
-            Button("Retry saving", action: model.retrySaving).frame(minHeight: 44)
+            Button("Retry saving", action: model.retrySaving)
+              .disabled(model.position.conflict.isBlocked || model.position.isResolving).frame(
+                minHeight: 44)
             Button("Close without saving") { confirmsDiscard = true }.frame(minHeight: 44)
           }
           if showsPageControls, model.pageCount > 0 {
@@ -126,6 +134,9 @@ struct ComicReaderView: View {
       .navigationBarTitleDisplayMode(.inline)
     }
     .task { await model.load() }
+    .onChange(of: scenePhase) { _, phase in
+      if phase == .active { Task { await model.refreshPosition() } }
+    }
     .task { if showsPageControls { await preferences.load() } }
     .task { if onOpenNext != nil { await series.load() } }
     .task(id: endArmKey) { await armNext() }
@@ -204,6 +215,9 @@ struct ComicReaderView: View {
       endArmed = true
     } catch {}
   }
+
+  private func chooseLocalPosition() { Task { await model.choosePosition(local: true) } }
+  private func chooseRemotePosition() { Task { await model.choosePosition(local: false) } }
 
   private func closeReader() {
     Task { if await model.prepareToClose() { dismiss() } }

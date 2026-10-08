@@ -6,6 +6,7 @@ import PDFKit
 final class PDFReaderModel {
   let api: BookOrbitAPI
   let file: BookDetailFile
+  let position: NativeFilePositionModel
   private(set) var document: PDFDocument?
   private(set) var pageIndex = 0
   private(set) var searchSelection: PDFSelection?
@@ -15,7 +16,9 @@ final class PDFReaderModel {
   private(set) var isUnlocking = false
   private(set) var passwordError: String?
   var requiresPassword: Bool { lockedDocument != nil }
-  var hasUnsavedPosition: Bool { pendingPage != nil && saveTask == nil }
+  var hasUnsavedPosition: Bool {
+    (pendingPage != nil || position.conflict.isBlocked) && saveTask == nil
+  }
   private var lockedDocument: PDFDocument?
   private var openingPageNumber: Double?
   private var session: UUID?
@@ -28,6 +31,7 @@ final class PDFReaderModel {
   init(api: BookOrbitAPI, file: BookDetailFile) {
     self.api = api
     self.file = file
+    position = NativeFilePositionModel(api: api, fileID: file.id)
   }
 
   func load() async {
@@ -43,6 +47,7 @@ final class PDFReaderModel {
       let progress: FileReadingProgress = try await api.boundedJSON(
         "books/files/\(file.id)/progress", byteLimit: 16 * 1024, session: session)
       try await checkSession()
+      try position.accept(progress, session: session)
       guard let size = file.sizeBytes else { throw ConnectionError.invalidResponse }
       let url = try await api.deliveredFile(
         fileID: file.id, expectedSize: size, mimeType: "application/pdf", session: session)
@@ -99,6 +104,9 @@ final class PDFReaderModel {
       pageIndex = Int(page.rounded(.down)) - 1
     }
     document = pdf
+    var beginning = SaveFileProgressPayload(percentage: 100 / Double(pdf.pageCount))
+    beginning.pageNumber = 1
+    position.setBeginning(beginning)
     lockedDocument = nil
     openingPageNumber = nil
     passwordError = nil
@@ -116,7 +124,8 @@ final class PDFReaderModel {
   }
 
   func didTurn(to index: Int) {
-    guard !isClosed, !isClosing, let document, (0..<document.pageCount).contains(index),
+    guard !isClosed, !isClosing, !position.conflict.isBlocked, let document,
+      (0..<document.pageCount).contains(index),
       index != pageIndex
     else {
       return
@@ -157,8 +166,16 @@ final class PDFReaderModel {
         payload.pageNumber = Double(page)
         try Task.checkCancellation()
         guard !isClosed else { return }
-        try await api.sendEmpty(
-          "books/files/\(file.id)/progress", body: JSONEncoder().encode(payload), session: session)
+        guard let saved = await position.save(payload) else {
+          if pendingPage == nil { pendingPage = page }
+          error = position.message
+          status = "Position could not be saved."
+          return
+        }
+        if saved.pageNumber != Double(page) {
+          if pendingPage == nil { pendingPage = page }
+          continue
+        }
         guard !isClosed else { return }
         if pendingPage == nil {
           status = "Position saved"
@@ -174,17 +191,41 @@ final class PDFReaderModel {
     }
   }
 
+  func refreshPosition() async {
+    guard !isClosed, !isClosing, saveTask == nil, let document, document.pageCount > 0 else {
+      return
+    }
+    var local = SaveFileProgressPayload(
+      percentage: Double(pageIndex + 1) / Double(document.pageCount) * 100)
+    local.pageNumber = Double(pageIndex + 1)
+    await position.refresh(local)
+  }
+
+  func choosePosition(local: Bool) async {
+    guard !isClosed, !isClosing, saveTask == nil, let document,
+      let saved = await position.choose(local: local),
+      let page = saved.pageNumber, page.isFinite, page >= 1, page <= Double(document.pageCount)
+    else { return }
+    pageIndex = Int(page) - 1
+    pendingPage = nil
+    status = "Chosen reading position saved."
+    error = nil
+    searchSelection = nil
+  }
+
   func prepareToClose() async -> Bool {
     guard !isClosing, !isClosed else { return false }
     isClosing = true
     defer { isClosing = false }
     retrySaving()
     await saveTask?.value
-    return pendingPage == nil
+    return pendingPage == nil && !position.conflict.isBlocked
   }
 
   func retrySaving() {
-    guard !isClosed, saveTask == nil, pendingPage != nil else { return }
+    guard !isClosed, saveTask == nil, pendingPage != nil, !position.conflict.isBlocked else {
+      return
+    }
     status = "Saving position…"
     error = nil
     saveTask = Task { await savePendingPosition() }
@@ -192,6 +233,7 @@ final class PDFReaderModel {
 
   func close() {
     isClosed = true
+    position.close()
     saveTask?.cancel()
     searchSelection = nil
     document = nil

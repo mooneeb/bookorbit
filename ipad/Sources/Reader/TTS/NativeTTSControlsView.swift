@@ -18,6 +18,27 @@ struct NativeTTSControlsView: View {
         HStack(spacing: 12) { playbackButtons }
         VStack(alignment: .leading, spacing: 8) { playbackButtons }
       }
+      if model.navigation.isLoading {
+        Text(
+          model.navigation.request?.direction == .previous
+            ? "Loading previous speech block…" : "Loading next speech block…"
+        )
+        .font(.callout).fixedSize(horizontal: false, vertical: true)
+        .accessibilityIdentifier("nativeTTSBlockLoading")
+        Button("Cancel speech block change", action: cancelBlock)
+          .frame(minHeight: 44).disabled(model.isStopping)
+          .accessibilityIdentifier("nativeTTSBlockCancel")
+      }
+      if let message = model.navigation.boundaryMessage {
+        feedback(message, identifier: "nativeTTSBlockBoundary")
+      }
+      if let error = model.navigation.error {
+        feedback(error, identifier: "nativeTTSBlockError")
+        Button("Retry speech block change", action: retryBlock)
+          .frame(minHeight: 44).disabled(!model.canRetryBlock)
+          .accessibilityIdentifier("nativeTTSBlockRetry")
+      }
+      NativeTTSSleepTimerView(model: model)
       if !model.currentWord.isEmpty {
         Text(model.currentWord).font(.body.weight(.semibold))
           .accessibilityLabel("Current spoken word")
@@ -44,17 +65,23 @@ struct NativeTTSControlsView: View {
           .frame(minHeight: 44).accessibilityIdentifier("nativeTTSRefreshVoices")
       }
       if let message = model.rateMessage { feedback(message, identifier: "nativeTTSRateLimit") }
-      if let error = model.error ?? model.preferences.error {
+      if model.navigation.error == nil, let error = model.error ?? model.preferences.error {
         feedback(error, identifier: "nativeTTSError")
         Button("Retry speech", action: retry)
           .frame(minHeight: 44)
           .disabled(model.isClosing || model.isStopping || model.isReaderNavigating)
           .accessibilityIdentifier("nativeTTSRetry")
       }
+      ReaderPositionChoiceView(
+        conflict: model.position.conflict,
+        isSaving: model.position.isSaving || model.position.isResolving,
+        chooseLocal: chooseLocalPosition, chooseRemote: chooseRemotePosition)
       if let message = model.position.message {
         feedback(message, identifier: "nativeTTSSyncError")
         Button("Retry position sync", action: retrySync)
-          .frame(minHeight: 44).disabled(model.position.isSaving)
+          .frame(minHeight: 44).disabled(
+            model.position.isSaving || model.position.conflict.isBlocked
+          )
           .accessibilityIdentifier("nativeTTSSyncRetry")
       }
       if model.position.hasPendingSave {
@@ -73,6 +100,7 @@ struct NativeTTSControlsView: View {
         .animation(reduceMotion ? nil : .default, value: showPassage)
       }
     }
+    .task(id: model.position.conflict.identity) { await model.describePositionConflict() }
     .padding()
     .background(Color(uiColor: .secondarySystemBackground))
     .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -85,6 +113,10 @@ struct NativeTTSControlsView: View {
 
   private var playbackButtons: some View {
     Group {
+      Button("Previous speech block", systemImage: "backward.end", action: previousBlock)
+        .frame(minWidth: 44, minHeight: 44).disabled(!model.canNavigateBlock)
+        .keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
+        .accessibilityIdentifier("nativeTTSPreviousBlock")
       Button(playbackLabel, action: toggle)
         .frame(minWidth: 44, minHeight: 44)
         .disabled(
@@ -93,6 +125,10 @@ struct NativeTTSControlsView: View {
         )
         .keyboardShortcut(.space, modifiers: [.command, .shift])
         .accessibilityIdentifier("nativeTTSToggle")
+      Button("Next speech block", systemImage: "forward.end", action: nextBlock)
+        .frame(minWidth: 44, minHeight: 44).disabled(!model.canNavigateBlock)
+        .keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
+        .accessibilityIdentifier("nativeTTSNextBlock")
       Button("Stop speech", action: stop)
         .frame(minWidth: 44, minHeight: 44).disabled(!model.canStop)
         .keyboardShortcut(".", modifiers: [.command, .shift])
@@ -146,6 +182,13 @@ struct NativeTTSControlsView: View {
       .accessibilityIdentifier(identifier)
   }
 
+  private func chooseLocalPosition() { Task { await model.choosePosition(local: true) } }
+  private func chooseRemotePosition() { Task { await model.choosePosition(local: false) } }
+
+  private func previousBlock() { Task { await model.previousBlock() } }
+  private func nextBlock() { Task { await model.nextBlock() } }
+  private func retryBlock() { Task { await model.retryBlockNavigation() } }
+  private func cancelBlock() { Task { await model.cancelBlockNavigation() } }
   private func toggle() { Task { await model.togglePlayback() } }
   private func stop() { Task { await model.stop() } }
   private func startCurrent() { Task { await model.startFromCurrentPosition() } }

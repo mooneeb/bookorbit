@@ -15,6 +15,7 @@ struct PDFReaderView: View {
   @State private var isTurning = false
   @State private var pageLayout = FixedPageLayout(pageCount: 0, facing: false, singlePrefix: 0)
   @ScaledMetric(relativeTo: .body) private var actionWidth = 150.0
+  @Environment(\.scenePhase) private var scenePhase
   @Environment(\.dismiss) private var dismiss
 
   init(api: BookOrbitAPI, bookID: Int, file: BookDetailFile) {
@@ -39,6 +40,9 @@ struct PDFReaderView: View {
       .navigationBarTitleDisplayMode(.inline)
     }
     .task { await model.load() }
+    .onChange(of: scenePhase) { _, phase in
+      if phase == .active { Task { await model.refreshPosition() } }
+    }
     .task { await preferences.load() }
     .onDisappear {
       if !isNavigating && !isSearching && !isBrowsingContents && !isEditingPreferences
@@ -94,7 +98,7 @@ struct PDFReaderView: View {
           animation: preferences.value.pageAnimation, onLayout: { pageLayout = $0 },
           onTransition: { isTurning = $0 }
         )
-        .allowsHitTesting(!model.isClosing)
+        .allowsHitTesting(!model.isClosing && !model.position.conflict.isBlocked)
       } else if model.error == nil {
         ProgressView("Opening PDF…")
           .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -108,9 +112,14 @@ struct PDFReaderView: View {
         if let document = model.document {
           Text("Page \(model.pageIndex + 1) of \(document.pageCount)")
         }
+        ReaderPositionChoiceView(
+          conflict: model.position.conflict,
+          isSaving: model.position.isSaving || model.position.isResolving,
+          chooseLocal: chooseLocalPosition, chooseRemote: chooseRemotePosition)
         if !model.status.isEmpty { Text(model.status) }
         if model.hasUnsavedPosition {
           Button("Retry saving", action: model.retrySaving)
+            .disabled(model.position.conflict.isBlocked || model.position.isResolving)
             .buttonStyle(.plain)
             .frame(minHeight: 44)
           Button("Close without saving") { confirmsDiscard = true }
@@ -190,6 +199,8 @@ struct PDFReaderView: View {
     preferences.close()
     dismiss()
   }
+  private func chooseLocalPosition() { Task { await model.choosePosition(local: true) } }
+  private func chooseRemotePosition() { Task { await model.choosePosition(local: false) } }
 
   private func closeReader() {
     guard model.document != nil else {

@@ -22,6 +22,8 @@ final class NativeTTSModel {
   let position: NativeTTSPositionModel
   let catalog: NativeTTSCatalogModel
   let server: NativeTTSServerSpeech
+  let navigation = NativeTTSBlockNavigation()
+  let sleepTimer = NativeTTSSleepTimerModel()
   private(set) var state = NativeTTSState.idle
   private(set) var voices: [NativeTTSVoice] = []
   private(set) var currentPassage = ""
@@ -69,10 +71,15 @@ final class NativeTTSModel {
   var canStart: Bool {
     hasLoaded && !isClosed && !isClosing && !isReaderNavigating && !isStopping
       && !preferences.isSaving && !position.isSaving
-      && !position.permissionBlocked
+      && !position.permissionBlocked && !position.conflict.isBlocked
       && state != .loading && !server.isPreviewing && !server.isLoadingPreview
       && (preferences.useServer ? effectiveServerVoice != nil : !voices.isEmpty)
   }
+  var canNavigateBlock: Bool {
+    canStart && (state == .playing || state == .paused) && chunk != nil
+  }
+  var canRetryBlock: Bool { canStart && navigation.canRetry }
+  var canSetSleepTimer: Bool { canStart && isActive }
   var canStop: Bool {
     !isClosed && !isClosing && !isReaderNavigating && !isStopping
       && (isActive || server.isPreviewing || server.isLoadingPreview)
@@ -202,29 +209,141 @@ final class NativeTTSModel {
     await start(fromCFI: saved.cfi)
   }
 
+  func previousBlock() async {
+    guard canNavigateBlock, let chunk else { return }
+    await navigateBlock(
+      NativeTTSBlockRequest(direction: .previous, chunk: chunk),
+      resolved: navigation.previousChunk(from: chunk))
+  }
+
+  func nextBlock() async {
+    guard canNavigateBlock, let chunk else { return }
+    await navigateBlock(NativeTTSBlockRequest(direction: .next, chunk: chunk))
+  }
+
+  func retryBlockNavigation() async {
+    guard canRetryBlock, let request = navigation.request else { return }
+    await navigateBlock(request, resolved: navigation.resolvedChunk)
+  }
+
+  func cancelBlockNavigation() async {
+    guard navigation.isLoading else { return }
+    await stop(preservingSleepTimer: true)
+    guard !isClosed else { return }
+    state = .paused
+  }
+
+  func startSleepTimer(minutes: Int) {
+    guard canSetSleepTimer else { return }
+    sleepTimer.start(minutes: minutes) { [weak self] in await self?.expireSleepTimer() }
+  }
+
+  private func expireSleepTimer() async {
+    guard !isClosed else { return }
+    resumeAfterInterruption = false
+    wantsPlay = false
+    if state == .playing || state == .loading { await pause() }
+  }
+
+  private func navigateBlock(
+    _ request: NativeTTSBlockRequest, resolved: EPUBSpeechChunk? = nil
+  ) async {
+    guard canStart else { return }
+    let expirationCount = sleepTimer.expirationCount
+    let saved = await stopAndSave(preservingSleepTimer: true)
+    guard !isClosed, saved else { return }
+    guard expirationCount == sleepTimer.expirationCount else {
+      state = .paused
+      return
+    }
+    navigation.begin(request, resolved: resolved)
+    reachedEnd = false
+    error = nil
+    state = .loading
+    wantsPlay = true
+    let playbackGeneration = generation
+    preparation = Task { [weak self] in
+      await self?.prepareBlockNavigation(request, generation: playbackGeneration)
+    }
+    await preparation?.value
+  }
+
+  private func prepareBlockNavigation(
+    _ request: NativeTTSBlockRequest, generation playbackGeneration: UUID
+  ) async {
+    do {
+      try await position.checkSession()
+      guard let source else { throw NativeTTSError.readerClosed }
+      let value: EPUBSpeechChunk?
+      if let resolved = navigation.resolvedChunk {
+        value = resolved
+      } else if request.direction == .previous {
+        value = try await source.previousSpeechChunk(
+          fromCFI: request.chunk.cfi, maximumUTF16Length: Self.chunkLimit)
+      } else if let next = request.chunk.nextCFI {
+        value = try await source.speechChunk(
+          fromCFI: next, maximumUTF16Length: Self.chunkLimit)
+      } else {
+        value = nil
+      }
+      try Task.checkCancellation()
+      try await position.checkSession()
+      guard playbackGeneration == generation, !isClosed, wantsPlay else { return }
+      guard let value else {
+        navigation.clearRequest()
+        await finishBook()
+        return
+      }
+      guard value.isValid else { throw ConnectionError.invalidResponse }
+      navigation.resolve(value)
+      try await speakChunk(value, generation: playbackGeneration)
+      guard playbackGeneration == generation, !isClosed, wantsPlay else { return }
+      navigation.completed(
+        atBeginning: request.direction == .previous && value.cfi == request.chunk.cfi)
+    } catch is CancellationError {
+    } catch {
+      if playbackGeneration == generation, !isClosed { await fail(error) }
+    }
+  }
+
   func togglePlayback() async {
     guard !isClosed, !isClosing, !isReaderNavigating, !isStopping else { return }
     resumeAfterInterruption = false
     if state == .playing || state == .loading {
       await pause()
     } else if state == .paused, preferences.useServer, server.isPrepared {
+      let request = generation
+      let expirationCount = sleepTimer.expirationCount
       do {
         try await position.checkSession()
+        guard request == generation, !isClosed,
+          expirationCount == sleepTimer.expirationCount
+        else { return }
         try activateAudioSession()
         try await server.play()
+        guard request == generation, !isClosed else { return }
+        guard expirationCount == sleepTimer.expirationCount else {
+          server.pause()
+          return
+        }
         wantsPlay = true
         state = .playing
-      } catch { await fail(error) }
+      } catch { if request == generation, !isClosed { await fail(error) } }
     } else if state == .paused, utteranceID != nil, synthesizer.isPaused {
+      let request = generation
+      let expirationCount = sleepTimer.expirationCount
       do {
         try await position.checkSession()
+        guard request == generation, !isClosed,
+          expirationCount == sleepTimer.expirationCount
+        else { return }
         try activateAudioSession()
         guard synthesizer.continueSpeaking() else {
           throw NativeTTSError.cannotResume
         }
         wantsPlay = true
         state = .playing
-      } catch { await fail(error) }
+      } catch { if request == generation, !isClosed { await fail(error) } }
     } else if let saved = position.savedPosition {
       await start(fromCFI: saved.cfi)
     } else {
@@ -241,7 +360,7 @@ final class NativeTTSModel {
     resumeAfterInterruption = false
     wantsPlay = false
     if preferences.useServer, state == .loading {
-      await stop()
+      await stop(preservingSleepTimer: true)
       guard !isClosed else { return }
       state = .paused
       return
@@ -250,11 +369,13 @@ final class NativeTTSModel {
       server.pause()
     } else if utteranceID != nil {
       if !synthesizer.pauseSpeaking(at: .immediate) {
-        await stop()
+        await stop(preservingSleepTimer: true)
+        guard !isClosed else { return }
+        state = .paused
         return
       }
     } else {
-      await stop()
+      await stop(preservingSleepTimer: true)
       guard !isClosed else { return }
       state = .paused
       return
@@ -264,31 +385,30 @@ final class NativeTTSModel {
     _ = await position.flush()
   }
 
-  func stop() async {
+  func stop(preservingSleepTimer: Bool = false) async {
     guard !isClosed, !isStopping else { return }
     isStopping = true
     defer { isStopping = false }
     wantsPlay = false
     resumeAfterInterruption = false
-    utteranceID = nil
-    synthesizer.stopSpeaking(at: .immediate)
-    server.stop()
+    if !preservingSleepTimer { sleepTimer.cancel() }
     let preparing = preparation
-    preparing?.cancel()
-    if state == .loading { await source?.clearSpeechHighlight() }
-    await preparing?.value
-    await highlightTask?.value
-    guard !isClosed else { return }
+    let highlighting = highlightTask
     invalidatePlayback()
+    navigation.clearRequest()
+    await source?.clearSpeechHighlight()
+    await preparing?.value
+    await highlighting?.value
+    guard !isClosed else { return }
     state = .idle
     _ = await position.flush()
     await source?.clearSpeechHighlight()
     deactivateAudioSession()
   }
 
-  func stopAndSave() async -> Bool {
+  func stopAndSave(preservingSleepTimer: Bool = false) async -> Bool {
     guard !isClosed, !isStopping else { return false }
-    await stop()
+    await stop(preservingSleepTimer: preservingSleepTimer)
     return !isClosed && !position.hasPendingSave && !position.permissionBlocked
   }
 
@@ -362,6 +482,10 @@ final class NativeTTSModel {
     refreshVoices()
     do {
       try await position.checkSession()
+      await sleepTimer.foreground()
+      await position.refresh()
+      await describePositionConflict()
+      if position.conflict.isBlocked { await stop() }
       if !isActive, !isSettingsPresented {
         await catalog.loadProviders()
         if let provider = preferences.providerID, preferences.useServer {
@@ -373,6 +497,7 @@ final class NativeTTSModel {
 
   func background() {
     guard !isClosed, hasLoaded, backgroundWrite == nil else { return }
+    sleepTimer.background()
     if server.isPreviewing || server.isLoadingPreview { stopPreview() }
     var identifier = UIBackgroundTaskIdentifier.invalid
     identifier = UIApplication.shared.beginBackgroundTask(withName: "Save speech position") {
@@ -402,10 +527,34 @@ final class NativeTTSModel {
     return saved
   }
 
+  func describePositionConflict() async {
+    guard position.conflict.isBlocked, let reader = source as? EPUBReaderModel else { return }
+    let identity = position.conflict.identity
+    var localText: String?
+    var remoteText: String?
+    if let target = position.localTarget { localText = try? await reader.describePosition(target) }
+    if let target = position.remoteTarget {
+      remoteText = try? await reader.describePosition(target)
+    }
+    position.conflict.describe(local: localText, remote: remoteText, identity: identity)
+  }
+
+  func choosePosition(local: Bool) async {
+    guard !isClosed, !isStopping, position.conflict.isBlocked else { return }
+    await stop()
+    guard await position.choosePosition(local: local), !isClosed else {
+      await describePositionConflict()
+      return
+    }
+    await resumeSavedPosition()
+  }
+
   func close() {
     guard !isClosed else { return }
     isClosed = true
     wantsPlay = false
+    sleepTimer.close()
+    navigation.reset()
     invalidatePlayback()
     heartbeat?.cancel()
     heartbeat = nil
@@ -423,7 +572,14 @@ final class NativeTTSModel {
   }
 
   private func start(fromCFI: String?) async {
-    guard canStart, await stopAndSave() else { return }
+    guard canStart else { return }
+    let expirationCount = sleepTimer.expirationCount
+    guard await stopAndSave(preservingSleepTimer: true) else { return }
+    guard expirationCount == sleepTimer.expirationCount else {
+      state = .paused
+      return
+    }
+    navigation.reset()
     wantsPlay = false
     utteranceID = nil
     synthesizer.stopSpeaking(at: .immediate)
@@ -448,45 +604,62 @@ final class NativeTTSModel {
       try await position.checkSession()
       guard request == generation, !isClosed, wantsPlay else { return }
       guard let value else {
-        reachedEnd = true
-        wantsPlay = false
-        state = .idle
-        _ = await position.flush()
-        await source.clearSpeechHighlight()
-        deactivateAudioSession()
+        await finishBook()
         return
       }
       guard value.isValid else { throw ConnectionError.invalidResponse }
-      chunk = value
-      currentPassage = value.text
-      currentWord = ""
-      try await position.record(TtsPosition(cfi: value.cfi, chapterIndex: value.chapterIndex))
-      guard request == generation, !isClosed, wantsPlay else { return }
-      if preferences.useServer {
-        try await prepareServer(value, generation: request)
-        return
-      }
-      refreshVoices()
-      guard let effectiveVoice, let voice = AVSpeechSynthesisVoice(identifier: effectiveVoice.id)
-      else { throw NativeTTSError.noInstalledVoice }
-      try activateAudioSession()
-      let utterance = AVSpeechUtterance(string: value.text)
-      utterance.voice = voice
-      utterance.rate = min(
-        AVSpeechUtteranceMaximumSpeechRate,
-        max(
-          AVSpeechUtteranceMinimumSpeechRate,
-          AVSpeechUtteranceDefaultSpeechRate * Float(preferences.speed)))
-      utteranceID = ObjectIdentifier(utterance)
-      let callbackGeneration = UUID()
-      speechGeneration = callbackGeneration
-      delegate = NativeSpeechDelegate { [weak self] event in
-        Task { @MainActor in self?.receive(event, generation: callbackGeneration) }
-      }
-      synthesizer.delegate = delegate
-      synthesizer.speak(utterance)
+      navigation.clearRequest()
+      try await speakChunk(value, generation: request)
     } catch is CancellationError {
     } catch { if request == generation, !isClosed { await fail(error) } }
+  }
+
+  private func speakChunk(_ value: EPUBSpeechChunk, generation request: UUID) async throws {
+    guard let source, value.isValid else { throw ConnectionError.invalidResponse }
+    chunk = value
+    currentPassage = value.text
+    currentWord = ""
+    navigation.remember(value)
+    let anchor = try await source.highlightSpeech(
+      chunkCFI: value.cfi, utf16Range: NSRange(location: 0, length: value.text.utf16.count))
+    try Task.checkCancellation()
+    try await position.checkSession()
+    guard request == generation, !isClosed, wantsPlay else { return }
+    try await position.record(anchor)
+    guard request == generation, !isClosed, wantsPlay else { return }
+    if preferences.useServer {
+      try await prepareServer(value, generation: request)
+      return
+    }
+    refreshVoices()
+    guard let effectiveVoice, let voice = AVSpeechSynthesisVoice(identifier: effectiveVoice.id)
+    else { throw NativeTTSError.noInstalledVoice }
+    try activateAudioSession()
+    let utterance = AVSpeechUtterance(string: value.text)
+    utterance.voice = voice
+    utterance.rate = min(
+      AVSpeechUtteranceMaximumSpeechRate,
+      max(
+        AVSpeechUtteranceMinimumSpeechRate,
+        AVSpeechUtteranceDefaultSpeechRate * Float(preferences.speed)))
+    utteranceID = ObjectIdentifier(utterance)
+    let callbackGeneration = UUID()
+    speechGeneration = callbackGeneration
+    delegate = NativeSpeechDelegate { [weak self] event in
+      Task { @MainActor in self?.receive(event, generation: callbackGeneration) }
+    }
+    synthesizer.delegate = delegate
+    synthesizer.speak(utterance)
+  }
+
+  private func finishBook() async {
+    reachedEnd = true
+    wantsPlay = false
+    resumeAfterInterruption = false
+    state = .idle
+    _ = await position.flush()
+    await source?.clearSpeechHighlight()
+    deactivateAudioSession()
   }
 
   private func prepareServer(_ value: EPUBSpeechChunk, generation request: UUID) async throws {
@@ -552,14 +725,16 @@ final class NativeTTSModel {
       guard id == utteranceID else { return }
       state = .paused
     case .word(let id, let range):
-      guard id == utteranceID, let chunk, validRange(range, text: chunk.text) else { return }
+      guard id == utteranceID, wantsPlay, state == .playing,
+        let chunk, validRange(range, text: chunk.text)
+      else { return }
       pendingWord = range
       if highlightTask == nil {
         let request = generation
         highlightTask = Task { [weak self] in await self?.processWords(generation: request) }
       }
     case .finished(let id):
-      guard id == utteranceID else { return }
+      guard id == utteranceID, wantsPlay else { return }
       let request = generation
       preparation = Task { [weak self] in await self?.finishedChunk(generation: request) }
     case .cancelled(let id):
@@ -597,9 +772,10 @@ final class NativeTTSModel {
       do {
         try await position.record(TtsPosition(cfi: next, chapterIndex: nil))
       } catch {
-        await fail(error)
+        if request == generation, !isClosed, !Task.isCancelled { await fail(error) }
         return
       }
+      guard request == generation, !isClosed, !Task.isCancelled else { return }
       if wantsPlay {
         state = .loading
         await prepare(fromCFI: next, generation: request)
@@ -607,12 +783,7 @@ final class NativeTTSModel {
         state = .paused
       }
     } else {
-      reachedEnd = true
-      wantsPlay = false
-      state = .idle
-      _ = await position.flush()
-      await source?.clearSpeechHighlight()
-      deactivateAudioSession()
+      await finishBook()
     }
   }
 
@@ -633,11 +804,24 @@ final class NativeTTSModel {
 
   private func fail(_ error: any Error) async {
     wantsPlay = false
+    resumeAfterInterruption = false
+    navigation.failed(error)
+    if let connection = error as? ConnectionError {
+      switch connection {
+      case .expiredSession, .denied:
+        sleepTimer.cancel()
+        navigation.reset()
+      default: break
+      }
+    }
     invalidatePlayback()
+    let request = generation
+    state = .loading
+    deactivateAudioSession()
+    await source?.clearSpeechHighlight()
+    guard request == generation, !isClosed else { return }
     state = .error
     self.error = error.localizedDescription
-    await source?.clearSpeechHighlight()
-    deactivateAudioSession()
   }
 
   private func refreshVoices() {
@@ -679,9 +863,12 @@ final class NativeTTSModel {
           if type == AVAudioSession.InterruptionType.began.rawValue {
             if self.server.isPreviewing || self.server.isLoadingPreview { self.stopPreview() }
             let resume = self.isPlaying
+            let expirationCount = self.sleepTimer.expirationCount
             await self.pause()
-            self.resumeAfterInterruption = resume
+            self.resumeAfterInterruption =
+              resume && expirationCount == self.sleepTimer.expirationCount
           } else if type == AVAudioSession.InterruptionType.ended.rawValue {
+            await self.sleepTimer.refreshElapsed()
             let resume =
               self.resumeAfterInterruption
               && AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume)

@@ -103,10 +103,10 @@ final class EPUBPositionNavigation {
 
 extension EPUBReaderModel {
   var canGoToPreviousSection: Bool {
-    canNavigate && (location?.chapterIndex ?? 0) > 0
+    canNavigate && (visibleLocation?.chapterIndex ?? 0) > 0
   }
 
   var canGoToNextSection: Bool {
-    canNavigate && (location?.chapterIndex ?? chapterCount) < chapterCount - 1
+    canNavigate && (visibleLocation?.chapterIndex ?? chapterCount) < chapterCount - 1
   }
 }

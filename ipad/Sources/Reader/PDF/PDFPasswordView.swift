@@ -41,7 +41,7 @@ struct PDFPasswordView: View {
         }
       } footer: {
         Text("The password is used only on this iPad for this reading session.")
-          .font(.body).foregroundStyle(.primary)
+          .font(.body).foregroundStyle(Color(uiColor: .label))
           .fixedSize(horizontal: false, vertical: true)
       }
       Section {

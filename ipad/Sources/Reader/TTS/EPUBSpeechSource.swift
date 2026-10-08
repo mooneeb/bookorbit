@@ -17,6 +17,8 @@ struct EPUBSpeechChunk: Sendable {
 @MainActor
 protocol EPUBSpeechSource: AnyObject {
   func speechChunk(fromCFI: String?, maximumUTF16Length: Int) async throws -> EPUBSpeechChunk?
+  func previousSpeechChunk(fromCFI: String, maximumUTF16Length: Int) async throws
+    -> EPUBSpeechChunk?
   func highlightSpeech(chunkCFI: String, utf16Range: NSRange) async throws -> TtsPosition
   func clearSpeechHighlight() async
 }

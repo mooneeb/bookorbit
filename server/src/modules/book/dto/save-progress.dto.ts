@@ -1,4 +1,4 @@
-import { IsIn, IsNumber, IsOptional, IsString, Max, Min, ValidateIf } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString, Max, Min, Matches, ValidateIf } from 'class-validator';
 import type { FileProgressSource, SaveFileProgressPayload } from '@bookorbit/types';
 
 /**
@@ -8,6 +8,10 @@ import type { FileProgressSource, SaveFileProgressPayload } from '@bookorbit/typ
 export const PROGRESS_SOURCES = ['text', 'narration'] as const satisfies readonly FileProgressSource[];
 
 export class SaveProgressDto implements SaveFileProgressPayload {
+  @IsOptional()
+  @Matches(/^[a-f0-9]{64}$/)
+  baseVersion?: string;
+
   @IsOptional()
   @IsIn(PROGRESS_SOURCES)
   source?: FileProgressSource;

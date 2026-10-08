@@ -70,7 +70,7 @@ final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
   override func viewWillTransition(
     to size: CGSize, with coordinator: any UIViewControllerTransitionCoordinator
   ) {
-    let cfi = model.location?.cfi
+    let cfi = model.visibleLocation?.cfi
     isRotating = true
     super.viewWillTransition(to: size, with: coordinator)
     coordinator.animate(alongsideTransition: nil) { [weak self] _ in
@@ -87,7 +87,7 @@ final class EPUBPageController: UIViewController, UIGestureRecognizerDelegate {
     guard size != lastSize, size.width > 0, size.height > 0 else { return }
     let hadSize = lastSize != .zero
     lastSize = size
-    guard hadSize, !isRotating, let cfi = model.location?.cfi else { return }
+    guard hadSize, !isRotating, let cfi = model.visibleLocation?.cfi else { return }
     layoutTask?.cancel()
     layoutTask = Task { [weak self] in
       do { try await Task.sleep(for: .milliseconds(150)) } catch { return }

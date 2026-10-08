@@ -16,6 +16,23 @@ extension EPUBReaderModel: EPUBSpeechSource {
       arguments: [
         "cfi": startCFI as Any? ?? NSNull(), "maximum": maximumUTF16Length,
       ])
+    return try decodeSpeechChunk(raw, maximumUTF16Length: maximumUTF16Length)
+  }
+
+  func previousSpeechChunk(fromCFI: String, maximumUTF16Length: Int) async throws
+    -> EPUBSpeechChunk?
+  {
+    guard (2...2048).contains(maximumUTF16Length),
+      NativeTTSPositionModel.validCFI(fromCFI), fromCFI.utf16.count <= 2000
+    else { throw ConnectionError.invalidResponse }
+    try await waitForSpeechLayout()
+    let raw = try await publicationCommand(
+      "return await window.epubPreviousSpeechChunk(cfi, maximum)",
+      arguments: ["cfi": fromCFI, "maximum": maximumUTF16Length])
+    return try decodeSpeechChunk(raw, maximumUTF16Length: maximumUTF16Length)
+  }
+
+  private func decodeSpeechChunk(_ raw: Any?, maximumUTF16Length: Int) throws -> EPUBSpeechChunk? {
     if raw == nil || raw is NSNull { return nil }
     guard let value = raw as? [String: Any], let cfi = value["cfi"] as? String,
       let text = value["text"] as? String, let chapter = value["chapterIndex"] as? Int,

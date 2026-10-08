@@ -20,6 +20,8 @@ final class NativeRecordedPositionModel {
   }
   let api: BookOrbitAPI
   let fileID: Int
+  let canonical: NativeFilePositionModel
+  var conflict: ReaderPositionConflictState { canonical.conflict }
   private(set) var saved: NativeRecordedResume?
   private(set) var hasLoaded = false
   private(set) var hasPendingSave = false
@@ -33,6 +35,7 @@ final class NativeRecordedPositionModel {
   init(api: BookOrbitAPI, fileID: Int) {
     self.api = api
     self.fileID = fileID
+    canonical = NativeFilePositionModel(api: api, fileID: fileID, source: "narration")
   }
 
   func load() async throws {
@@ -54,23 +57,15 @@ final class NativeRecordedPositionModel {
       "books/files/\(fileID)/progress",
       byteLimit: 16 * 1024, session: session)
     try await checkSession()
+    try canonical.accept(remote, session: session)
     acknowledgedAt = remote.narrationUpdatedAt
-    if let local = readJournal(), local.pending || local.acknowledgedAt == remote.narrationUpdatedAt
-    {
+    if let local = readJournal() {
       saved = local.resume
       hasPendingSave = local.pending
-    } else if let fragment = remote.mediaOverlayFragment,
-      let section = remote.mediaOverlaySectionIndex
-    {
-      let resume = NativeRecordedResume(
-        fragment: fragment, sectionIndex: section,
-        offsetSeconds: 0, positionSeconds: remote.positionSeconds,
-        percentage: remote.narrationPercentage ?? remote.percentage, cfi: nil)
-      guard Self.valid(resume) else { throw ConnectionError.invalidResponse }
-      saved = resume
-      hasPendingSave = false
+      canonical.retainLocal(payload(local.resume))
+      if conflict.isBlocked { hasPendingSave = true }
     } else {
-      saved = nil
+      saved = resume(remote)
       hasPendingSave = false
     }
     hasLoaded = true
@@ -78,7 +73,9 @@ final class NativeRecordedPositionModel {
   }
 
   func record(_ value: NativeRecordedResume) throws {
-    guard hasLoaded, !isClosed, Self.valid(value) else { throw ConnectionError.invalidResponse }
+    guard hasLoaded, !isClosed, !conflict.isBlocked, Self.valid(value) else {
+      throw ConnectionError.invalidResponse
+    }
     if saved != value {
       saved = value
       hasPendingSave = true
@@ -88,31 +85,24 @@ final class NativeRecordedPositionModel {
 
   @discardableResult
   func flush() async -> Bool {
-    guard hasLoaded, !isClosed, !isSaving else { return false }
+    guard hasLoaded, !isClosed, !isSaving, !conflict.isBlocked else { return false }
     guard let value = saved, hasPendingSave else { return true }
     isSaving = true
     message = nil
     defer { isSaving = false }
     do {
       try await checkSession()
-      var payload = SaveFileProgressPayload(percentage: value.percentage)
-      payload.source = "narration"
-      payload.positionSeconds = value.positionSeconds
-      payload.mediaOverlayFragment = value.fragment
-      payload.mediaOverlaySectionIndex = value.sectionIndex
-      try await api.sendEmpty(
-        "books/files/\(fileID)/progress", body: JSONEncoder().encode(payload), session: session)
-      let response: FileReadingProgress = try await api.boundedJSON(
-        "books/files/\(fileID)/progress",
-        byteLimit: 16 * 1024, session: session)
+      guard let response = await canonical.save(payload(value)) else {
+        message = canonical.message
+        return false
+      }
       try await checkSession()
-      guard response.mediaOverlayFragment == value.fragment,
-        response.mediaOverlaySectionIndex == value.sectionIndex,
-        response.positionSeconds == value.positionSeconds,
-        response.narrationPercentage.map({ abs($0 - value.percentage) < 0.00001 }) == true
-      else { throw ConnectionError.invalidResponse }
       acknowledgedAt = response.narrationUpdatedAt
-      hasPendingSave = saved != value
+      hasPendingSave =
+        saved != value || response.mediaOverlayFragment != value.fragment
+        || response.mediaOverlaySectionIndex != value.sectionIndex
+        || response.positionSeconds != value.positionSeconds
+        || abs((response.narrationPercentage ?? -1) - value.percentage) >= 0.00001
       try persist()
       return !hasPendingSave
     } catch {
@@ -131,7 +121,66 @@ final class NativeRecordedPositionModel {
     }
   }
 
-  func close() { isClosed = true }
+  func choosePosition(local: Bool) async -> Bool {
+    guard !isClosed, !isSaving else { return false }
+    isSaving = true
+    let localResume = saved
+    defer { isSaving = false }
+    guard let response = await canonical.choose(local: local) else {
+      message = canonical.message
+      return false
+    }
+    do {
+      try await checkSession()
+      if local, let localResume, localResume.fragment == response.mediaOverlayFragment,
+        localResume.sectionIndex == response.mediaOverlaySectionIndex,
+        localResume.positionSeconds == response.positionSeconds
+      {
+        saved = localResume
+      } else {
+        saved = resume(response)
+      }
+      acknowledgedAt = response.narrationUpdatedAt
+      hasPendingSave = false
+      try persist()
+      message = "Chosen recorded narration position saved."
+      return true
+    } catch {
+      message = error.localizedDescription
+      return false
+    }
+  }
+
+  func refresh() async {
+    await canonical.refresh(saved.map(payload))
+    if conflict.isBlocked { message = canonical.message }
+  }
+
+  private func payload(_ value: NativeRecordedResume) -> SaveFileProgressPayload {
+    var result = SaveFileProgressPayload(percentage: value.percentage)
+    result.source = "narration"
+    result.positionSeconds = value.positionSeconds
+    result.mediaOverlayFragment = value.fragment
+    result.mediaOverlaySectionIndex = value.sectionIndex
+    return result
+  }
+
+  private func resume(_ remote: FileReadingProgress) -> NativeRecordedResume? {
+    guard let fragment = remote.mediaOverlayFragment, let section = remote.mediaOverlaySectionIndex
+    else {
+      return nil
+    }
+    let value = NativeRecordedResume(
+      fragment: fragment, sectionIndex: section, offsetSeconds: 0,
+      positionSeconds: remote.positionSeconds, percentage: remote.narrationPercentage ?? 0, cfi: nil
+    )
+    return Self.valid(value) ? value : nil
+  }
+
+  func close() {
+    isClosed = true
+    canonical.close()
+  }
 
   nonisolated static func valid(_ value: NativeRecordedResume) -> Bool {
     !value.fragment.isEmpty && value.fragment.utf8.count <= 4096 && value.sectionIndex >= 0
@@ -151,7 +200,13 @@ final class NativeRecordedPositionModel {
   }
 
   private func persist() throws {
-    guard let journalURL, let saved else { return }
+    guard let journalURL else { return }
+    guard let saved else {
+      if FileManager.default.fileExists(atPath: journalURL.path) {
+        try FileManager.default.removeItem(at: journalURL)
+      }
+      return
+    }
     let data = try JSONEncoder().encode(
       Journal(resume: saved, pending: hasPendingSave, acknowledgedAt: acknowledgedAt))
     guard data.count <= 16 * 1024 else { throw ConnectionError.invalidResponse }

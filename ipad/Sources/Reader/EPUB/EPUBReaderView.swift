@@ -5,6 +5,9 @@ struct EPUBReaderView: View {
   @State private var speech: NativeTTSModel
   @State private var recorded: NativeRecordedModel
   @State private var bridge: NativeContinuationModel
+  @State private var selectionTools: EPUBSelectionToolsModel
+  @State private var initialSearchQuery = ""
+  private let language: String?
   private let offersContinuation: Bool
   @State private var showingContents = false
   @State private var showingSearch = false
@@ -29,6 +32,7 @@ struct EPUBReaderView: View {
   ) {
     let reader = EPUBReaderModel(api: api, bookID: bookID, file: file, continuation: continuation)
     _model = State(initialValue: reader)
+    self.language = language
     let speech = NativeTTSModel(
       api: api, bookID: bookID, fileID: file.id,
       title: title, language: language, source: reader)
@@ -55,6 +59,11 @@ struct EPUBReaderView: View {
     _bridge = State(initialValue: bridge)
     _recorded = State(initialValue: recorded)
     _speech = State(initialValue: speech)
+    let selectionTools = EPUBSelectionToolsModel(reader: reader)
+    selectionTools.pronunciationAllowed = { [weak speech, weak recorded] in
+      speech?.isActive == false && recorded?.isActive == false
+    }
+    _selectionTools = State(initialValue: selectionTools)
   }
 
   var body: some View {
@@ -141,11 +150,16 @@ struct EPUBReaderView: View {
               .font(.caption).accessibilityIdentifier("epubReadingPosition")
           }
           // Save feedback must not resize the publication and trigger another relocation/save.
+          ReaderPositionChoiceView(
+            conflict: model.position.conflict,
+            isSaving: model.position.isSaving || model.position.isResolving,
+            chooseLocal: chooseLocalPosition, chooseRemote: chooseRemotePosition)
           readerFeedback
           if model.selectionCFI != nil {
-            Button("Bookmark selected passage", action: openBookmarks).frame(minHeight: 44)
-              .accessibilityIdentifier("epubBookmarkSelection")
-              .disabled(!model.canNavigate || isReaderAction || bridge.isPresented)
+            ViewThatFits(in: .horizontal) {
+              HStack { selectionActions }
+              VStack { selectionActions }
+            }
           }
           ViewThatFits(in: .horizontal) {
             HStack { navigationButtons }
@@ -165,14 +179,18 @@ struct EPUBReaderView: View {
     }
     .onChange(of: reduceMotion) { _, value in model.setReduceMotion(value) }
     .onChange(of: dynamicTypeSize) { _, _ in applySettings() }
+    .onChange(of: model.publicationID) { _, _ in selectionTools.detach() }
+    .onChange(of: model.isReady) { _, ready in if !ready { selectionTools.detach() } }
     .onChange(of: scenePhase) { _, phase in
       if phase == .active {
         Task {
+          await model.refreshPosition()
           await speech.foreground()
           await recorded.foreground()
         }
       }
       if phase == .background {
+        selectionTools.dismiss()
         bridge.cancel()
         speech.background()
         Task { _ = await recorded.stopAndSave() }
@@ -181,6 +199,7 @@ struct EPUBReaderView: View {
     .onDisappear {
       if !showingContents && !showingSearch && !showingSettings && !showingBookmarks
         && !showingSpeech && !showingRecorded && !showingPosition && !bridge.isPresented
+        && selectionTools.presentation == nil
       {
         Task {
           bridge.cancel()
@@ -196,6 +215,9 @@ struct EPUBReaderView: View {
     }
     .sheet(isPresented: $showingPosition) {
       EPUBPositionNavigationView(reader: model, onJump: jumpToPosition)
+    }
+    .sheet(item: $selectionTools.presentation, onDismiss: selectionTools.dismiss) { _ in
+      EPUBSelectionToolsView(model: selectionTools)
     }
     .sheet(isPresented: $showingSpeech) {
       NavigationStack {
@@ -222,16 +244,18 @@ struct EPUBReaderView: View {
       }
     }
     .fullScreenCover(isPresented: $showingContents) { EPUBContentsView(model: model) }
-    .fullScreenCover(isPresented: $showingSearch) { EPUBSearchView(model: model) }
+    .fullScreenCover(isPresented: $showingSearch) {
+      EPUBSearchView(model: model, initialQuery: initialSearchQuery)
+    }
     .fullScreenCover(isPresented: $showingSettings, onDismiss: applySettings) {
       EPUBPreferencesView(model: model.preferences)
     }
     .fullScreenCover(isPresented: $showingBookmarks) {
-      if let cfi = model.selectionCFI ?? model.location?.cfi {
+      if let cfi = model.selectionCFI ?? model.visibleLocation?.cfi {
         EPUBBookmarksView(
           api: model.api, bookID: model.bookID, cfi: cfi,
           defaultTitle: model.selectionText.isEmpty
-            ? "Chapter \((model.location?.chapterIndex ?? 0) + 1)"
+            ? "Chapter \((model.visibleLocation?.chapterIndex ?? 0) + 1)"
             : String(model.selectionText.prefix(200))
         ) { target in
           navigate { await model.goToCFI(target) }
@@ -239,7 +263,8 @@ struct EPUBReaderView: View {
       }
     }
     .interactiveDismissDisabled(
-      !canCloseReader || model.hasPendingSave || speech.isActive || speech.position.hasPendingSave
+      !canCloseReader || model.hasPendingSave || model.position.conflict.isBlocked
+        || speech.isActive || speech.position.hasPendingSave
         || recorded.isActive || recorded.position.hasPendingSave
     )
     .alert("Close without saving?", isPresented: $confirmsDiscard) {
@@ -257,6 +282,25 @@ struct EPUBReaderView: View {
       && !speech.isStopping
       && !speech.preferences.isSaving && !speech.position.isSaving
       && !recorded.isBusy && !recorded.position.isSaving
+  }
+
+  private var selectionActions: some View {
+    Group {
+      Button("Bookmark selected passage", action: openBookmarks).frame(minHeight: 44)
+        .accessibilityIdentifier("epubBookmarkSelection")
+        .disabled(!model.canNavigate || isReaderAction || bridge.isPresented)
+      Menu("Selected passage", systemImage: "text.cursor") {
+        Button("Define selected text", action: defineSelection)
+          .accessibilityIdentifier("epubDefineSelection")
+        Button("Translate selected text", action: translateSelection)
+          .accessibilityIdentifier("epubTranslateSelection")
+        Button("Search selected text", action: searchSelection)
+          .accessibilityIdentifier("epubSearchSelection")
+      }
+      .frame(minHeight: 44)
+      .disabled(!model.canNavigate || isReaderAction || bridge.isPresented)
+      .accessibilityIdentifier("epubSelectionTools")
+    }
   }
 
   @ViewBuilder private var recordedStatus: some View {
@@ -365,11 +409,13 @@ struct EPUBReaderView: View {
   private func previousPage() { navigate { await model.turn(forward: false) } }
   private func nextPage() { navigate { await model.turn(forward: true) } }
   private func previousSection() {
-    guard model.canGoToPreviousSection, let index = model.location?.chapterIndex else { return }
+    guard model.canGoToPreviousSection, let index = model.visibleLocation?.chapterIndex else {
+      return
+    }
     navigate { await model.goToChapter(index - 1) }
   }
   private func nextSection() {
-    guard model.canGoToNextSection, let index = model.location?.chapterIndex else { return }
+    guard model.canGoToNextSection, let index = model.visibleLocation?.chapterIndex else { return }
     navigate { await model.goToChapter(index + 1) }
   }
   private func openPosition() {
@@ -385,7 +431,12 @@ struct EPUBReaderView: View {
     guard await recorded.stopAndSave(), await speech.stopAndSave() else { return .failed }
     return await model.goToFraction(fraction)
   }
-  private func savePosition() { Task { await model.saveProgress() } }
+  private func savePosition() {
+    Task {
+      model.adoptVisiblePosition()
+      await model.saveProgress()
+    }
+  }
   private func retryOpen() {
     Task {
       await model.load()
@@ -396,16 +447,46 @@ struct EPUBReaderView: View {
     }
   }
   private func openContents() { navigate { showingContents = true } }
-  private func openSearch() { navigate { showingSearch = true } }
+  private func openSearch() {
+    initialSearchQuery = ""
+    navigate { showingSearch = true }
+  }
+  private func defineSelection() {
+    guard let passage = model.selectedPassage(language: language) else { return }
+    selectionTools.open(.dictionary, passage: passage)
+  }
+  private func translateSelection() {
+    guard let passage = model.selectedPassage(language: language) else { return }
+    selectionTools.open(.translation, passage: passage)
+  }
+  private func searchSelection() {
+    guard let passage = model.selectedPassage(language: language) else { return }
+    initialSearchQuery = passage.text
+    navigate { showingSearch = true }
+  }
   private func openSettings() { navigate { showingSettings = true } }
   private func openBookmarks() { navigate { showingBookmarks = true } }
   private func applySettings() { navigate { await model.applyPreferences() } }
   private func openContinuation() { Task { await bridge.open() } }
   private func openSpeech() {
-    Task { if await recorded.stopAndSave() { showingSpeech = true } }
+    Task {
+      if speech.position.conflict.isBlocked {
+        await recorded.freezeForPositionChoice()
+        showingSpeech = true
+      } else if await recorded.stopAndSave() {
+        showingSpeech = true
+      }
+    }
   }
   private func openRecorded() {
-    Task { if await speech.stopAndSave() { showingRecorded = true } }
+    Task {
+      if recorded.position.conflict.isBlocked {
+        await speech.stop()
+        showingRecorded = true
+      } else if await speech.stopAndSave() {
+        showingRecorded = true
+      }
+    }
   }
   private func closeRecorded() { showingRecorded = false }
   private func toggleRecorded() { Task { await recorded.togglePlayback() } }
@@ -433,6 +514,19 @@ struct EPUBReaderView: View {
     model.close()
     dismiss()
   }
+  private func chooseLocalPosition() { choosePosition(local: true) }
+  private func chooseRemotePosition() { choosePosition(local: false) }
+  private func choosePosition(local: Bool) {
+    Task {
+      guard !isReaderAction else { return }
+      isReaderAction = true
+      defer { isReaderAction = false }
+      await speech.stop()
+      await recorded.freezeForPositionChoice()
+      await model.choosePosition(local: local)
+    }
+  }
+
   private func closeReader() {
     Task {
       guard canCloseReader else { return }

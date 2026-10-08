@@ -4,10 +4,12 @@ struct AudioSettingsView: View {
   let model: AudioPlayerModel
   @Environment(\.dismiss) private var dismiss
   @State private var draft: AudioReaderSettings
+  @State private var volumeMemory: AudioVolumeMemory
 
   init(model: AudioPlayerModel) {
     self.model = model
     _draft = State(initialValue: model.preferences.value)
+    _volumeMemory = State(initialValue: model.volumeMemory)
   }
 
   var body: some View {
@@ -19,9 +21,26 @@ struct AudioSettingsView: View {
             value: $draft.playbackSpeed, in: 0.5...3, step: 0.05
           )
           .accessibilityIdentifier("audiobookPlaybackSpeed")
-          Slider(value: $draft.volume, in: 0...1) {
-            Text("Volume")
-          }.accessibilityIdentifier("audiobookVolume")
+          Slider(value: Binding(get: { draft.volume }, set: setVolume), in: 0...1) {
+            Text("Volume: \(Int((draft.volume * 100).rounded())) percent")
+          }
+          .accessibilityValue("\(Int((draft.volume * 100).rounded())) percent")
+          .accessibilityIdentifier("audiobookVolume")
+          Button(action: toggleMute) {
+            Label(
+              draft.volume > 0 ? "Mute" : "Unmute",
+              systemImage: draft.volume > 0 ? "speaker.wave.2" : "speaker.slash"
+            )
+            .font(.body).fixedSize(horizontal: false, vertical: true)
+            .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .foregroundStyle(Color(uiColor: .label))
+          .disabled(!model.preferences.canSave)
+          .accessibilityValue(
+            draft.volume == 0 ? "Muted" : "\(Int((draft.volume * 100).rounded())) percent"
+          )
+          .accessibilityIdentifier("audiobookSettingsMute")
         }
         Section("Skip intervals") {
           Stepper(
@@ -56,7 +75,11 @@ struct AudioSettingsView: View {
             .disabled(model.preferences.isSaving).accessibilityIdentifier("audiobookSettingsCancel")
           Spacer()
           Button(model.preferences.isSaving ? "Saving…" : "Save") {
-            Task { if await model.saveSettings(draft) { dismiss() } }
+            Task {
+              if await model.saveSettings(draft, restoringVolume: volumeMemory.previousVolume) {
+                dismiss()
+              }
+            }
           }
           .font(.body).frame(minWidth: 44, minHeight: 44)
           .disabled(!draft.isValid || !model.preferences.canSave)
@@ -69,5 +92,15 @@ struct AudioSettingsView: View {
       }
     }
     .interactiveDismissDisabled(model.preferences.isSaving)
+  }
+
+  private func toggleMute() {
+    setVolume(volumeMemory.toggledVolume(draft.volume))
+  }
+
+  private func setVolume(_ volume: Double) {
+    volumeMemory.remember(draft.volume)
+    volumeMemory.remember(volume)
+    draft.volume = volume
   }
 }

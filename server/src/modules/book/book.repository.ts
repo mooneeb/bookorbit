@@ -2389,6 +2389,7 @@ export class BookRepository {
     narration?: { percentage: number; updatedAt: Date } | null,
     /** Set when this write moved the text position, so clients can tell which one is fresher. */
     textUpdatedAt?: Date | null,
+    condition?: { previous: schema.ReadingProgress | null; source: 'text' | 'narration' },
   ) {
     const now = new Date();
     const normalizedKoboLocationSource = this.normalizeKoboLocationPart(koboLocationSource);
@@ -2400,12 +2401,31 @@ export class BookRepository {
       ? { narrationPercentage: this.clampProgressPercentage(narration.percentage), narrationUpdatedAt: narration.updatedAt }
       : {};
     const textColumns = textUpdatedAt ? { textUpdatedAt } : {};
-    const narrationPosition = {
-      ...(positionSeconds !== undefined ? { positionSeconds } : {}),
-      ...(mediaOverlayFragment !== undefined ? { mediaOverlayFragment } : {}),
-      ...(mediaOverlaySectionIndex !== undefined ? { mediaOverlaySectionIndex } : {}),
-    };
-    await this.db
+    const previous = condition?.previous;
+    const keys =
+      condition?.source === 'narration'
+        ? (['mediaOverlayFragment', 'mediaOverlaySectionIndex', 'positionSeconds', 'narrationPercentage', 'narrationUpdatedAt'] as const)
+        : (['cfi', 'pageNumber', 'percentage', 'textUpdatedAt'] as const);
+    const setWhere = condition
+      ? previous
+        ? and(
+            ...keys.map((key) =>
+              previous[key] instanceof Date
+                ? sql`date_trunc('milliseconds', ${readingProgress[key]}) = ${previous[key].toISOString()}::timestamptz`
+                : sql`${readingProgress[key]} is not distinct from ${previous[key]}`,
+            ),
+          )
+        : sql`false`
+      : undefined;
+    const narrationPosition =
+      condition?.source === 'text'
+        ? {}
+        : {
+            ...(positionSeconds !== undefined ? { positionSeconds } : {}),
+            ...(mediaOverlayFragment !== undefined ? { mediaOverlayFragment } : {}),
+            ...(mediaOverlaySectionIndex !== undefined ? { mediaOverlaySectionIndex } : {}),
+          };
+    const [saved] = await this.db
       .insert(readingProgress)
       .values({
         userId,
@@ -2428,27 +2448,33 @@ export class BookRepository {
       .onConflictDoUpdate({
         target: [readingProgress.bookFileId, readingProgress.userId],
         set: {
-          cfi,
-          pageNumber,
-          percentage,
+          ...(condition?.source === 'narration' ? {} : { cfi, pageNumber, percentage }),
           ...narrationPosition,
-          koboLocationSource: normalizedKoboLocationSource,
-          koboLocationType: normalizedKoboLocationType,
-          koboLocationValue: normalizedKoboLocationValue,
-          koboContentSourceProgressPercent: normalizedKoboContentSourceProgressPercent,
-          koreaderProgress: normalizedKoreaderProgress,
+          ...(condition?.source === 'narration'
+            ? {}
+            : {
+                koboLocationSource: normalizedKoboLocationSource,
+                koboLocationType: normalizedKoboLocationType,
+                koboLocationValue: normalizedKoboLocationValue,
+                koboContentSourceProgressPercent: normalizedKoboContentSourceProgressPercent,
+                koreaderProgress: normalizedKoreaderProgress,
+              }),
           updatedAt: now,
           // Absent halves keep whatever is stored: a text write must not blank the narration
           // position, and a narration write must not blank the text one.
           ...narrationColumns,
           ...textColumns,
         },
-      });
+        setWhere,
+      })
+      .returning();
+    if (!saved) return null;
 
     // Reading in BookOrbit is fresher intent than the reset that came before it, and it is
     // the way out for a device that never pulls and would otherwise have every push held
     // back indefinitely.
     await this.db.delete(koreaderProgressResets).where(and(eq(koreaderProgressResets.userId, userId), eq(koreaderProgressResets.bookFileId, fileId)));
+    return saved;
   }
 
   async upsertSyncedEpubProgressIfNewer(params: {

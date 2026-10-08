@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Put, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, ParseBoolPipe, Post, Put, Query, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { Permission } from '@bookorbit/types';
 
@@ -80,8 +80,12 @@ export class TtsController {
   }
 
   @Get('position/:bookFileId')
-  getPosition(@Param('bookFileId', ParseIntPipe) bookFileId: number, @CurrentUser() user: RequestUser) {
-    return this.ttsService.getPosition(user.id, bookFileId, user);
+  getPosition(
+    @Param('bookFileId', ParseIntPipe) bookFileId: number,
+    @CurrentUser() user: RequestUser,
+    @Query('withVersion', new ParseBoolPipe({ optional: true })) withVersion?: boolean,
+  ) {
+    return withVersion ? this.ttsService.getPosition(user.id, bookFileId, user, true) : this.ttsService.getPosition(user.id, bookFileId, user);
   }
 
   @Put('position/:bookFileId')
