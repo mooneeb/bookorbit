@@ -67,7 +67,9 @@ struct BookDetailView: View {
                 Text(book.authors.map(\.name).joined(separator: ", "))
               }
               Text(book.libraryName).foregroundStyle(.secondary)
-              if let description = book.description { Text(description) }
+              if let description = book.description {
+                RichDescriptionReadOnlyView(html: description)
+              }
               if canEditMetadata {
                 Button("Edit metadata", action: model.beginEditing)
                   .accessibilityIdentifier("editMetadata")
