@@ -191,10 +191,29 @@ final class AnnotationJourneyTests: XCTestCase {
       matches.element.tap()
     }
     XCTAssertTrue(app.navigationBars["Reader settings"].waitForExistence(timeout: 5))
-    let increment = app.steppers["epubFontSize"].buttons["Increment"]
-    XCTAssertTrue(increment.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    let fontSizes = app.steppers.matching(identifier: "epubFontSize")
+    let increments = fontSizes.element.buttons.matching(identifier: "epubFontSize-Increment")
+    guard fontSizes.element.waitForExistence(timeout: 5), fontSizes.count == 1,
+      increments.element.waitForExistence(timeout: 5), increments.count == 1,
+      increments.element.wait(for: \.isHittable, toEqual: true, timeout: 5)
+    else {
+      attach(
+        Data(app.debugDescription.utf8), name: "IPAD-E02-A01-font-size-controls-hierarchy",
+        type: "public.plain-text")
+      XCTFail("Expected one hittable native font size increment control.")
+      return
+    }
+    XCTAssertEqual(fontSizes.element.value as? String, "16")
+    let increment = increments.element
     increment.tap()
-    app.buttons["epubSaveSettings"].tap()
+    let increasedFontSize = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "value == %@", "17"), object: fontSizes.element)
+    XCTAssertEqual(XCTWaiter.wait(for: [increasedFontSize], timeout: 5), .completed)
+    let saveSettings = app.buttons["epubSaveSettings"]
+    XCTAssertTrue(saveSettings.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    saveSettings.tap()
+    XCTAssertTrue(
+      app.navigationBars["Reader settings"].wait(for: \.exists, toEqual: false, timeout: 10))
     reopenPassage(handwritingID, app: app)
     XCTAssertTrue(app.staticTexts["1 retained strokes"].waitForExistence(timeout: 10))
     XCTAssertEqual(app.otherElements["passageInkCanvas"].value as? String, "1 retained strokes")
