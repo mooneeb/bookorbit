@@ -216,10 +216,18 @@ final class AnnotationJourneyTests: XCTestCase {
       app.navigationBars["Reader settings"].wait(for: \.exists, toEqual: false, timeout: 10))
     reopenPassage(handwritingID, app: app)
     XCTAssertTrue(app.staticTexts["1 retained strokes"].waitForExistence(timeout: 10))
-    XCTAssertEqual(app.otherElements["passageInkCanvas"].value as? String, "1 retained strokes")
+    let passageCanvases = app.scrollViews.matching(identifier: "passageInkCanvas")
+    guard passageCanvases.element.waitForExistence(timeout: 5), passageCanvases.count == 1,
+      passageCanvases.element.wait(for: \.isHittable, toEqual: true, timeout: 5)
+    else {
+      XCTFail("Expected one hittable retained passage handwriting canvas after reflow.")
+      return
+    }
+    XCTAssertEqual(passageCanvases.element.value as? String, "1 retained strokes")
     capture("IPAD-E02-A01-handwriting-reopened-landscape-after-reflow")
     app.buttons["passageFixtureStroke"].tap()
     XCTAssertTrue(app.staticTexts["2 retained strokes"].waitForExistence(timeout: 5))
+    XCTAssertEqual(passageCanvases.element.value as? String, "2 retained strokes")
     app.buttons["passageSave"].tap()
     let edited = try await waitForAnnotations(bookID: 2, token: token) { items in
       guard let item = items.first(where: { $0["id"] as? Int == handwritingID }),
@@ -233,6 +241,9 @@ final class AnnotationJourneyTests: XCTestCase {
     XCUIDevice.shared.orientation = .portrait
     reopenPassage(handwritingID, app: app)
     XCTAssertTrue(app.staticTexts["2 retained strokes"].waitForExistence(timeout: 5))
+    XCTAssertEqual(passageCanvases.count, 1)
+    XCTAssertTrue(passageCanvases.element.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    XCTAssertEqual(passageCanvases.element.value as? String, "2 retained strokes")
     capture("IPAD-E02-A01-edited-handwriting-portrait-popover")
     try audit(app, state: "IPAD-E02-A01-handwriting-popover")
     app.buttons["passageCancel"].tap()
