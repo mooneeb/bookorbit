@@ -12,6 +12,7 @@ import { ZipArchive } from 'archiver';
 import { Readable } from 'stream';
 import * as unzipper from 'unzipper';
 
+import { appConfig } from '../../../config/config';
 import { EpubService } from './epub.service';
 
 const mockStat = stat as MockedFunction<typeof stat>;
@@ -215,6 +216,7 @@ describe('EpubService', () => {
   let fixtureRoot: string | null = null;
 
   afterEach(async () => {
+    await service.onModuleDestroy();
     if (fixtureRoot) await rm(fixtureRoot, { recursive: true, force: true });
     fixtureRoot = null;
   });
@@ -240,7 +242,7 @@ describe('EpubService', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    service = new EpubService(bookReadService as any, libraryService as any);
+    service = new EpubService(bookReadService as any, libraryService as any, appConfig());
     bookReadService.findLibraryIdByBookId.mockResolvedValue(3);
     bookReadService.findPrimaryFilesByBookIds.mockResolvedValue([{ format: 'epub', absolutePath: '/books/book.epub', sizeBytes: null }]);
     libraryService.verifyUserAccess.mockResolvedValue(undefined);
@@ -385,10 +387,9 @@ describe('EpubService', () => {
   });
 
   it('streams only playlist audio resources and supports byte ranges', async () => {
-    mockOpenFile
-      .mockResolvedValueOnce(makeMediaOverlayArchive() as any)
-      .mockResolvedValueOnce(makeMediaOverlayArchive() as any)
-      .mockResolvedValueOnce(makeMediaOverlayArchive() as any);
+    await useMediaOverlayFile();
+    const actualFs = await vi.importActual<typeof import('fs/promises')>('fs/promises');
+    mockStat.mockImplementation(actualFs.stat);
 
     const result = await service.streamMediaOverlayFile(99, 'OPS/audio/ch1.mp3', undefined, 'bytes=2-5', user);
 

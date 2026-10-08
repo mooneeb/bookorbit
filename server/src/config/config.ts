@@ -14,6 +14,7 @@ export const appConfig = registerAs('app', () => ({
     .split(',')
     .map((uri) => uri.trim())
     .filter(Boolean),
+  epubAudioCacheBytes: parsePositiveInteger(process.env.EPUB_AUDIO_CACHE_BYTES, 2 * 1024 * 1024 * 1024),
   version: process.env.APP_VERSION ?? 'Local build',
   githubReleasesRepo: process.env.GITHUB_RELEASES_REPO?.trim() || 'bookorbit/bookorbit',
   githubReleasesToken: process.env.GITHUB_RELEASES_TOKEN?.trim() || undefined,

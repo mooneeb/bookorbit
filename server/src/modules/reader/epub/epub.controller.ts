@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Param, ParseIntPipe, Query, Req, Res } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, ParseIntPipe, Query, Req, Res, ServiceUnavailableException } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Permission } from '@bookorbit/types';
 
@@ -43,10 +43,25 @@ export class EpubController {
     const filePath = this.decodePathParam(encodedPath);
     const range = typeof request.headers.range === 'string' ? request.headers.range : undefined;
     const parsedFileId = this.parseFileId(fileId);
-    const result =
-      sectionIndex === undefined
-        ? await this.epubService.streamMediaOverlayFile(bookId, filePath, parsedFileId, range, user)
-        : await this.epubService.streamMediaOverlayFile(bookId, filePath, parsedFileId, range, user, this.parseSectionIndex(sectionIndex));
+    const cancellation = new AbortController();
+    const cancel = () => cancellation.abort();
+    reply.raw.once('close', cancel);
+    let result;
+    try {
+      result = await this.epubService.streamMediaOverlayFile(
+        bookId,
+        filePath,
+        parsedFileId,
+        range,
+        user,
+        sectionIndex === undefined ? undefined : this.parseSectionIndex(sectionIndex),
+        cancellation.signal,
+      );
+    } catch (error) {
+      reply.raw.removeListener('close', cancel);
+      if (error instanceof ServiceUnavailableException) reply.header('Retry-After', '1');
+      throw error;
+    }
     const { data, contentType, size, status, contentRange, contentLength, etag } = result;
 
     reply.code(status);

@@ -1,5 +1,8 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { stat } from 'fs/promises';
+import type { ConfigType } from '@nestjs/config';
+import { appConfig } from '../../../config/config';
+import { EpubAudioCache, audioSourceRevision } from './epub-audio-cache';
 import { Readable } from 'node:stream';
 import * as unzipper from 'unzipper';
 import { XMLParser } from 'fast-xml-parser';
@@ -59,6 +62,7 @@ const OPTIONAL_META_INF_FILES = [
 interface CacheEntry {
   info: EpubBookInfo;
   mtime: number;
+  revision: string;
   validPaths: Set<string>;
   lastAccessed: number;
 }
@@ -327,12 +331,21 @@ async function parseEpub(epubPath: string): Promise<EpubBookInfo> {
 export class EpubService {
   private readonly logger = new Logger(EpubService.name);
   private readonly cache = new Map<string, CacheEntry>();
-  private readonly narrationAudio = new Map<string, { mtime: number; contentType: string }>();
+  private readonly narrationAudio = new Map<string, { revision: string; contentType: string }>();
+
+  private readonly audioCache: EpubAudioCache;
 
   constructor(
     private readonly bookReadService: BookReadService,
     private readonly libraryService: LibraryService,
-  ) {}
+    @Inject(appConfig.KEY) config: ConfigType<typeof appConfig>,
+  ) {
+    this.audioCache = new EpubAudioCache(config.epubAudioCacheBytes);
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.audioCache.close();
+  }
 
   async getBookInfo(bookId: number, fileId: number | undefined, user: RequestUser): Promise<EpubBookInfo> {
     const epubPath = await this.resolveEpubPath(bookId, fileId, user);
@@ -382,6 +395,7 @@ export class EpubService {
     rangeHeader: string | undefined,
     user: RequestUser,
     sectionIndex?: number,
+    signal?: AbortSignal,
   ): Promise<MediaOverlayFileResponse> {
     if (filePath.includes('..')) throw new ForbiddenException('Invalid path');
     const normalizedPath = normalizeEpubZipPath(filePath);
@@ -390,15 +404,15 @@ export class EpubService {
     const resolved = await this.resolveEpubFile(bookId, fileId, user);
     const cached = await this.getCachedEntry(resolved.absolutePath);
     const zip = await unzipper.Open.file(resolved.absolutePath);
-    const audioKey = JSON.stringify([resolved.absolutePath, sectionIndex ?? null, normalizedPath]);
+    const audioKey = JSON.stringify([user.id, resolved.absolutePath, sectionIndex ?? null, normalizedPath]);
     const previouslyValidated = this.narrationAudio.get(audioKey);
     const contentType =
-      previouslyValidated?.mtime === cached.mtime
+      previouslyValidated?.revision === cached.revision
         ? previouslyValidated.contentType
         : await findEpubMediaOverlayAudio(zip, cached.info, normalizedPath, sectionIndex);
     if (!contentType) throw new NotFoundException(`Media-overlay resource not in playlist: ${normalizedPath}`);
     this.narrationAudio.delete(audioKey);
-    this.narrationAudio.set(audioKey, { mtime: cached.mtime, contentType });
+    this.narrationAudio.set(audioKey, { revision: cached.revision, contentType });
     if (this.narrationAudio.size > 256) {
       const oldest = this.narrationAudio.keys().next().value;
       if (oldest) this.narrationAudio.delete(oldest);
@@ -421,8 +435,9 @@ export class EpubService {
         etag,
       };
     }
-    const source = entry.stream();
-    const streamed = range ? this.mediaRangeStream(source, range) : source;
+    const revision = audioSourceRevision(sourceStat);
+    if (revision !== cached.revision) throw new BadRequestException('Narration audio changed while reading');
+    const streamed = await this.audioCache.stream(user.id, bookId, resolved.absolutePath, revision, entry, range, signal);
     let data: Buffer | Readable = streamed;
     if (range && range.end - range.start + 1 <= 256 * 1024) {
       const chunks: Buffer[] = [];
@@ -438,27 +453,6 @@ export class EpubService {
       contentLength: range ? range.end - range.start + 1 : size,
       etag,
     };
-  }
-
-  private mediaRangeStream(source: Readable, range: ByteRange): Readable {
-    return Readable.from(
-      (async function* () {
-        let offset = 0;
-        let delivered = 0;
-        for await (const value of source) {
-          const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value as Uint8Array);
-          const start = Math.max(0, range.start - offset);
-          const end = Math.min(chunk.length, range.end + 1 - offset);
-          if (end > start) {
-            delivered += end - start;
-            yield chunk.subarray(start, end);
-          }
-          offset += chunk.length;
-          if (offset > range.end) break;
-        }
-        if (delivered !== range.end - range.start + 1) throw new BadRequestException('Narration audio changed while reading');
-      })(),
-    );
   }
 
   async streamFile(
@@ -536,9 +530,11 @@ export class EpubService {
   }
 
   private async getCachedEntry(epubPath: string): Promise<CacheEntry> {
-    const { mtimeMs } = await stat(epubPath);
+    const sourceStat = await stat(epubPath);
+    const { mtimeMs } = sourceStat;
+    const revision = audioSourceRevision(sourceStat);
     const cached = this.cache.get(epubPath);
-    if (cached && cached.mtime === mtimeMs) {
+    if (cached && cached.revision === revision) {
       cached.lastAccessed = Date.now();
       return cached;
     }
@@ -550,7 +546,7 @@ export class EpubService {
     for (const item of info.manifest) validPaths.add(normalizeZipPath(item.href));
     for (const path of info.optionalFiles ?? []) validPaths.add(normalizeZipPath(path));
 
-    const entry: CacheEntry = { info, mtime: mtimeMs, validPaths, lastAccessed: Date.now() };
+    const entry: CacheEntry = { info, mtime: mtimeMs, revision, validPaths, lastAccessed: Date.now() };
     this.evict();
     this.cache.set(epubPath, entry);
     return entry;
