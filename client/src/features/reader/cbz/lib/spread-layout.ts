@@ -1,9 +1,11 @@
+import { CBX_WIDE_PAGE_RATIO_THRESHOLD } from '@bookorbit/types'
+
 export type CbzReadingDirection = 'ltr' | 'rtl'
 export type CbzSpreadAlignment = 'normal' | 'shifted'
 export type CbzWidePageSingletonMode = 'auto' | 'disable'
 export type CbzSpreadKind = 'single' | 'spread'
 
-export const DEFAULT_WIDE_PAGE_RATIO_THRESHOLD = 1.2
+export const DEFAULT_WIDE_PAGE_RATIO_THRESHOLD = CBX_WIDE_PAGE_RATIO_THRESHOLD
 
 export interface CbzSpread {
   kind: CbzSpreadKind

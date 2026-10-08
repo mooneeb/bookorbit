@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import type { TtsPosition } from '@bookorbit/types'
 import * as ttsApi from '../api/tts.api'
 
 interface FoliateContent {
@@ -18,6 +19,7 @@ interface FoliateRenderer extends EventTarget {
 interface FoliateViewElement extends HTMLElement {
   renderer?: FoliateRenderer
   resolveCFI?: (cfi: string) => { index?: number; anchor?: (doc: Document) => Range } | undefined
+  getCFI?: (index: number, range: Range) => string
 }
 
 const TTS_HIGHLIGHT_KEY = '__tts_highlight__'
@@ -254,6 +256,76 @@ export function useFoliateTts() {
     }
   }
 
+  function getPositionForBlock(chapterIndex: number, blockIndex: number): TtsPosition | null {
+    const content = rendererRef?.getContents?.()?.find((value) => value.index === chapterIndex && value.doc === chapterDoc)
+    const block = chapterBlockRanges[blockIndex]
+    if (!content || !block || !foliateViewRef?.getCFI) return null
+    try {
+      const point = block.cloneRange()
+      point.collapse(true)
+      const cfi = foliateViewRef.getCFI(chapterIndex, point)
+      return cfi.startsWith('epubcfi(') ? { cfi, chapterIndex } : null
+    } catch {
+      return null
+    }
+  }
+
+  function getSpeechStartFromCfi(cfi: string): { chapterIndex: number; blockIndex: number; segments: Array<{ text: string; cfi: string }> } | null {
+    if (!foliateViewRef || !cfi.startsWith('epubcfi(')) return null
+    try {
+      const resolved = foliateViewRef.resolveCFI?.(cfi)
+      const content = rendererRef?.getContents?.()?.find((value) => value.index === resolved?.index && value.doc === chapterDoc)
+      if (!content?.doc || !resolved?.anchor || typeof resolved.index !== 'number') return null
+      const point = resolved.anchor(content.doc)
+      const blockIndex = getBlockIndexForRange(point)
+      const block = chapterBlockRanges[blockIndex]
+      if (!block) return null
+      const remainder = block.cloneRange()
+      remainder.setStart(point.startContainer, point.startOffset)
+      const text = remainder.toString()
+      if (!text.trim() || !foliateViewRef.getCFI) return null
+      const segments: Array<{ text: string; cfi: string }> = []
+      const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)[Symbol.iterator]()
+      let grapheme = graphemes.next()
+      const walker = content.doc.createTreeWalker(content.doc.body, NodeFilter.SHOW_TEXT)
+      let node = walker.nextNode()
+      let nodeOffset = 0
+      let consumed = 0
+      for (let offset = 0; offset < text.length;) {
+        let end = offset
+        while (!grapheme.done && grapheme.value.index + grapheme.value.segment.length <= offset + 2048) {
+          end = grapheme.value.index + grapheme.value.segment.length
+          grapheme = graphemes.next()
+        }
+        if (end === offset) return null
+        while (node) {
+          if (!remainder.intersectsNode(node)) {
+            node = walker.nextNode()
+            continue
+          }
+          const startOffset = node === remainder.startContainer ? remainder.startOffset : 0
+          const endOffset = node === remainder.endContainer ? remainder.endOffset : (node.textContent?.length ?? 0)
+          if (consumed + endOffset - startOffset > offset) {
+            nodeOffset = startOffset + offset - consumed
+            break
+          }
+          consumed += endOffset - startOffset
+          node = walker.nextNode()
+        }
+        if (!node) return null
+        const anchor = content.doc.createRange()
+        anchor.setStart(node, nodeOffset)
+        anchor.collapse(true)
+        const segmentCFI = offset === 0 ? cfi : foliateViewRef.getCFI(resolved.index, anchor)
+        segments.push({ text: text.slice(offset, end), cfi: segmentCFI })
+        offset = end
+      }
+      return { chapterIndex: resolved.index, blockIndex, segments }
+    } catch {
+      return null
+    }
+  }
+
   async function getServerTextBlocks(bookFileId: number, chapterIndex: number): Promise<string[]> {
     const chapterText = await ttsApi.getChapterText(bookFileId, chapterIndex)
     // Each server "sentence" entry is already one paragraph-level block, produced
@@ -273,5 +345,7 @@ export function useFoliateTts() {
     showResumeHighlightFromBlock,
     clearHighlight,
     getServerTextBlocks,
+    getPositionForBlock,
+    getSpeechStartFromCfi,
   }
 }

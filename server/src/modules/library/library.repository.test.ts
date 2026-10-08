@@ -4,7 +4,10 @@ vi.mock('drizzle-orm', () => ({
   getTableColumns: vi.fn(() => ({})),
   inArray: vi.fn((left: unknown, right: unknown[]) => ({ op: 'inArray', left, right })),
   isNotNull: vi.fn((value: unknown) => ({ op: 'isNotNull', value })),
-  sql: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ op: 'sql', text: strings.join(''), values })),
+  sql: Object.assign(
+    vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ op: 'sql', text: strings.join(''), values })),
+    { raw: vi.fn((text: string) => ({ op: 'sql.raw', text })) },
+  ),
 }));
 
 import { books, libraries, libraryFolders } from '../../db/schema';

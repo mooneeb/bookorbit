@@ -1,3 +1,5 @@
+export declare function getBlocks(doc: Document): Generator<Range>
+
 export declare class TTS {
   constructor(doc: Document, textWalker: unknown, highlightCallback: (range: Range) => void, granularity: string)
   start(): string | null

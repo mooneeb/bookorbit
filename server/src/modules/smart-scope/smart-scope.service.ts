@@ -11,6 +11,8 @@ import type {
   PodcastEpisodePage,
   PodcastScopeRules,
   SortSpec,
+  SmartScopePageQuery,
+  SmartScopesPage,
 } from '@bookorbit/types';
 import { APP_FEATURES, PODCAST_PLAYLIST_MAX_SAVED } from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
@@ -176,6 +178,32 @@ export class SmartScopeService {
         return { ...this.toResponse(smartScope, user, koboSyncEnabledFor(smartScope)), [countKey]: null };
       }
     });
+  }
+
+  async findPage(user: RequestUser, query: SmartScopePageQuery): Promise<SmartScopesPage> {
+    const startedAt = Date.now();
+    this.logger.log(
+      `[smart_scope.page] [start] userId=${user.id} page=${query.page ?? 0} size=${query.size ?? 40} owned=${query.owned ?? false} - smart scope page started`,
+    );
+    try {
+      const result = await this.smartScopeRepo.findVisiblePage(user.id, query);
+      const sharedIds = result.items.filter((scope) => scope.userId !== user.id).map((scope) => scope.id);
+      const subscribed = new Set(await this.smartScopeRepo.findKoboSubscribedScopeIds(user.id, sharedIds));
+      const items = result.items.map((scope) => ({
+        ...this.toResponse(scope, user, scope.userId === user.id ? scope.syncToKobo : subscribed.has(scope.id)),
+        createdAt: scope.createdAt.toISOString(),
+        updatedAt: scope.updatedAt.toISOString(),
+      }));
+      this.logger.log(
+        `[smart_scope.page] [end] userId=${user.id} durationMs=${Date.now() - startedAt} returned=${items.length} total=${result.total} - smart scope page completed`,
+      );
+      return { ...result, items };
+    } catch (error) {
+      this.logger.error(
+        `[smart_scope.page] [fail] userId=${user.id} durationMs=${Date.now() - startedAt} errorClass=${error instanceof Error ? error.constructor.name : 'Unknown'} error="${sanitizeLogValue(error instanceof Error ? error.message : 'Unknown failure')}" - smart scope page failed`,
+      );
+      throw new InternalServerErrorException('Could not load smart scopes');
+    }
   }
 
   async findOne(id: number, user: RequestUser) {

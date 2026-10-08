@@ -3,7 +3,10 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn((left: unknown, right: unknown) => ({ op: 'eq', left, right })),
   isNull: vi.fn((value: unknown) => ({ op: 'isNull', value })),
   or: vi.fn((...clauses: unknown[]) => ({ op: 'or', clauses })),
-  sql: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ op: 'sql', text: strings.join(''), values })),
+  sql: Object.assign(
+    vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ op: 'sql', text: strings.join(''), values })),
+    { raw: vi.fn((text: string) => ({ op: 'sql.raw', text })) },
+  ),
 }));
 
 import { and, eq, isNull, or, sql } from 'drizzle-orm';

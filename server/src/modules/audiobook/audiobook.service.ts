@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 
-import { BadRequestException, ConflictException, Injectable, NotFoundException, PreconditionFailedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, PreconditionFailedException, Logger } from '@nestjs/common';
 import {
   AUDIOBOOK_MANIFEST_SCHEMA,
   AUDIOBOOK_MANIFEST_VERSION,
   isAudioFormat,
   type AudiobookBookmark,
+  type AudiobookBookmarksPage,
+  type AudiobookBookmarksPageQuery,
   type AudiobookManifest,
   type AudiobookManifestAsset,
   type AudiobookManifestChapter,
@@ -15,9 +17,10 @@ import {
 
 import type { RequestUser } from '../../common/types/request-user';
 import { compareAudioTracks } from '../../common/utils/book-media.utils';
-import type { BookmarkRow } from '../../db/schema';
 import { BookService } from '../book/book.service';
 import type { CreateAudiobookBookmarkDto } from './dto/create-audiobook-bookmark.dto';
+import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import type { DeletePlaybackStateQueryDto } from './dto/delete-playback-state-query.dto';
 import type { PutAudiobookPlaybackStateDto } from './dto/put-audiobook-playback-state.dto';
 import type { UpdateAudiobookBookmarkDto } from './dto/update-audiobook-bookmark.dto';
 import { AudiobookRepository } from './audiobook.repository';
@@ -37,6 +40,8 @@ interface ManifestContext {
 
 @Injectable()
 export class AudiobookService {
+  private readonly logger = new Logger(AudiobookService.name);
+
   constructor(
     private readonly repo: AudiobookRepository,
     private readonly bookService: BookService,
@@ -84,7 +89,7 @@ export class AudiobookService {
     if (fileIndex < 0) throw new BadRequestException('assetId does not belong to this audiobook');
 
     const previous = await this.repo.findPlaybackState(user.id, bookId);
-    if (previous?.operationId === dto.operationId) {
+    if (previous?.operationId?.toLowerCase() === dto.operationId.toLowerCase()) {
       const existing = (await this.getPlaybackState(bookId, user))!;
       await this.bookService.syncEbookProgressForAudiobookPlayback(
         user,
@@ -148,15 +153,56 @@ export class AudiobookService {
     };
   }
 
-  async deletePlaybackState(bookId: number, user: RequestUser): Promise<void> {
-    await this.bookService.verifyBookAccess(bookId, user);
-    await this.repo.deletePlaybackState(user.id, bookId);
+  async deletePlaybackState(bookId: number, user: RequestUser, condition: DeletePlaybackStateQueryDto = {}): Promise<void> {
+    const startedAt = Date.now();
+    this.logger.log(
+      `[audiobook.clear_playback_state] [start] userId=${user.id} bookId=${bookId} conditional=${condition.baseRevision !== undefined} - position reset started`,
+    );
+    try {
+      await this.bookService.verifyBookAccess(bookId, user);
+      if (condition.manifestRevision !== undefined) {
+        const context = await this.loadManifestContext(bookId, user);
+        if (context.manifest.revision !== condition.manifestRevision)
+          throw new PreconditionFailedException('The audiobook changed. Reopen it before resetting.');
+      }
+      const cleared =
+        condition.baseRevision !== undefined
+          ? await this.repo.deletePlaybackState(user.id, bookId, condition.baseRevision)
+          : await this.repo.deletePlaybackState(user.id, bookId);
+      if (cleared === false) throw new ConflictException('The listening position changed. Review its current position before resetting.');
+      this.logger.log(
+        `[audiobook.clear_playback_state] [end] userId=${user.id} bookId=${bookId} durationMs=${Date.now() - startedAt} cleared=true - position reset completed`,
+      );
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'Unknown';
+      const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
+      this.logger.error(
+        `[audiobook.clear_playback_state] [fail] userId=${user.id} bookId=${bookId} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${message}" - position reset failed`,
+      );
+      throw error;
+    }
   }
 
   async listBookmarks(bookId: number, user: RequestUser): Promise<AudiobookBookmark[]> {
     await this.bookService.verifyBookAccess(bookId, user);
     const rows = await this.repo.findAudioBookmarks(user.id, bookId);
     return rows.map((row) => this.mapBookmark(row));
+  }
+
+  async listBookmarksPage(bookId: number, query: AudiobookBookmarksPageQuery, user: RequestUser): Promise<AudiobookBookmarksPage> {
+    await this.bookService.verifyBookAccess(bookId, user);
+    const limit = query.limit ?? 40;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('Bookmark page limit must be between 1 and 100');
+    const after = query.afterId ? await this.repo.findAudioBookmark(user.id, bookId, query.afterId) : undefined;
+    if (query.afterId && (!after || after.positionSeconds === null || !Number.isFinite(after.positionSeconds))) {
+      throw new BadRequestException('Bookmark cursor is no longer available. Reload the first page.');
+    }
+    const rows = await this.repo.findAudioBookmarksPage(user.id, bookId, limit, after ?? undefined);
+    const visible = rows.slice(0, limit);
+    return {
+      items: visible.map((row) => this.mapBookmark(row)),
+      nextCursor: rows.length > limit ? (visible.at(-1)?.clientId ?? null) : null,
+    };
   }
 
   async createBookmark(bookId: number, dto: CreateAudiobookBookmarkDto, user: RequestUser): Promise<AudiobookBookmark> {
@@ -285,7 +331,7 @@ export class AudiobookService {
       });
   }
 
-  private mapBookmark(row: BookmarkRow): AudiobookBookmark {
+  private mapBookmark(row: Awaited<ReturnType<AudiobookRepository['findAudioBookmarksPage']>>[number]): AudiobookBookmark {
     return {
       id: row.clientId,
       bookId: row.bookId,

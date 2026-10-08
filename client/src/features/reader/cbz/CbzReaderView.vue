@@ -33,6 +33,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import ReaderSettingsSheet from '@/features/reader/shared/components/ReaderSettingsSheet.vue'
 import CbzSettingsPanel from './components/CbzSettingsPanel.vue'
 import NextIssueCard from './components/NextIssueCard.vue'
+import ReaderBookmarksButton from '../shared/components/ReaderBookmarksButton.vue'
 
 const TWO_PAGE_BREAKPOINT = 900
 // A page turn that only just landed on the last page must not carry through into the next book:
@@ -93,7 +94,15 @@ const pageDimensions = ref<Array<{ width: number; height: number } | undefined>>
 const stripImagesReady = ref(false)
 const zoomScale = ref(1)
 
-watch(showSettings, setVisibilityLock)
+const bookmarksOpen = ref(false)
+watch([showSettings, bookmarksOpen], ([settings, bookmarks]) => setVisibilityLock(settings || bookmarks))
+
+function handleBookmarksOpen(open: boolean) {
+  bookmarksOpen.value = open
+}
+function openBookmarkedPage(page: number) {
+  goToPage(page - 1)
+}
 
 // The settings surface is one panel in two containers: an anchored popover where there
 // is room beside the page, a bottom sheet where the thumb is and the page must stay visible.
@@ -390,6 +399,18 @@ function onPaginatedImageLoad(pageIndex: number, e: Event) {
   }
 }
 
+function onLeftPageLoad(event: Event) {
+  if (renderLeftPage.value !== null) onPaginatedImageLoad(renderLeftPage.value, event)
+}
+
+function onRightPageLoad(event: Event) {
+  if (renderRightPage.value !== null) onPaginatedImageLoad(renderRightPage.value, event)
+}
+
+function onSinglePageLoad(event: Event) {
+  if (renderSinglePage.value !== null) onPaginatedImageLoad(renderSinglePage.value, event)
+}
+
 function onStripImageLoad(pageIndex: number, e: Event) {
   const target = e.target
   if (!(target instanceof HTMLImageElement)) return
@@ -432,6 +453,23 @@ async function openNextBook() {
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────────
+function goBack() {
+  router.back()
+}
+
+function goToFirstPage() {
+  goToPage(0)
+}
+
+function goToLastPage() {
+  goToPage(pageCount.value - 1)
+}
+
+function handlePageSliderInput(event: Event) {
+  const target = event.target
+  if (target instanceof HTMLInputElement) goToPage(Number(target.value))
+}
+
 function goToPage(n: number) {
   if (pageCount.value <= 0) return
 
@@ -566,6 +604,7 @@ function onWheel(e: WheelEvent) {
 
 // ── Keyboard ───────────────────────────────────────────────────────────────────
 function onKeyDown(e: KeyboardEvent) {
+  if (bookmarksOpen.value) return
   const target = (e.composedPath?.()[0] || e.target) as HTMLElement | null
   if (target?.tagName === 'INPUT') return
   const isRtl = direction.value === 'rtl'
@@ -795,7 +834,7 @@ onUnmounted(() => {
       :class="headerVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full pointer-events-none'"
     >
       <div class="h-12 flex items-center gap-1 px-3 bg-background/90 backdrop-blur-md border-b border-border">
-        <button class="viewer-btn" @click="router.back()"><ArrowLeft :size="16" /></button>
+        <button class="viewer-btn" :aria-label="t('reader.header.goBack')" @click="goBack"><ArrowLeft :size="16" /></button>
         <div class="flex-1 min-w-0 flex flex-col justify-center px-2">
           <span v-if="bookTitle" class="text-sm font-serif text-foreground truncate leading-tight">{{ bookTitle }}</span>
           <span class="text-xs text-muted-foreground tabular-nums">{{ pageLabel }}</span>
@@ -809,6 +848,15 @@ onUnmounted(() => {
             {{ t('reader.peek.startReading') }}
           </button>
         </div>
+        <ReaderBookmarksButton
+          v-if="!props.peekMode"
+          :book-id="props.bookId"
+          :file-id="props.fileId"
+          :current-page="currentPage + 1"
+          :page-count="pageCount"
+          @navigate="openBookmarkedPage"
+          @update:open="handleBookmarksOpen"
+        />
         <div class="hidden items-center md:flex" :aria-label="t('reader.cbz.zoomControls')" role="group">
           <Tooltip>
             <TooltipTrigger as-child>
@@ -932,7 +980,7 @@ onUnmounted(() => {
                 :style="{ maxWidth: '100%', maxHeight: '100%' }"
                 alt=""
                 draggable="false"
-                @load="onPaginatedImageLoad(renderLeftPage, $event)"
+                @load="onLeftPageLoad"
               />
               <div v-else aria-hidden="true" class="h-[92%] w-[92%] rounded-sm border border-border/60 bg-background/30" />
             </div>
@@ -944,7 +992,7 @@ onUnmounted(() => {
                 :style="{ maxWidth: '100%', maxHeight: '100%' }"
                 alt=""
                 draggable="false"
-                @load="onPaginatedImageLoad(renderRightPage, $event)"
+                @load="onRightPageLoad"
               />
               <div v-else aria-hidden="true" class="h-[92%] w-[92%] rounded-sm border border-border/60 bg-background/30" />
             </div>
@@ -956,7 +1004,7 @@ onUnmounted(() => {
             :class="[imgFitClass, 'pointer-events-none transition-opacity duration-150', currentImageLoaded ? 'opacity-100' : 'opacity-0']"
             alt=""
             draggable="false"
-            @load="onPaginatedImageLoad(renderSinglePage, $event)"
+            @load="onSinglePageLoad"
           />
         </div>
       </div>
@@ -1005,12 +1053,14 @@ onUnmounted(() => {
         <div class="hidden sm:block">
           <Tooltip>
             <TooltipTrigger as-child>
-              <button class="viewer-btn" @click="goToPage(0)"><ChevronsLeft :size="16" /></button>
+              <button class="viewer-btn" :aria-label="t('reader.cbz.firstPage')" @click="goToFirstPage"><ChevronsLeft :size="16" /></button>
             </TooltipTrigger>
             <TooltipContent>{{ t('reader.cbz.firstPage') }}</TooltipContent>
           </Tooltip>
         </div>
-        <button class="viewer-btn" :disabled="!canGoPrev" @click="prevPage"><ChevronLeft :size="16" /></button>
+        <button class="viewer-btn" :aria-label="t('common.pagination.previousPage')" :disabled="!canGoPrev" @click="prevPage">
+          <ChevronLeft :size="16" />
+        </button>
 
         <div class="relative flex-1 min-w-0 flex items-center h-6">
           <input
@@ -1024,18 +1074,20 @@ onUnmounted(() => {
               accentColor: 'var(--primary)',
               background: `linear-gradient(to right, var(--primary) ${sliderFillPercent}%, var(--border) ${sliderFillPercent}%)`,
             }"
-            @input="goToPage(Number(($event.target as HTMLInputElement).value))"
+            @input="handlePageSliderInput"
           />
           <datalist id="cbz-ticks">
             <option v-for="t in sliderTicks" :key="t" :value="t" />
           </datalist>
         </div>
 
-        <button class="viewer-btn" :disabled="!canGoNext" @click="nextPage"><ChevronRight :size="16" /></button>
+        <button class="viewer-btn" :aria-label="t('common.pagination.nextPage')" :disabled="!canGoNext" @click="nextPage">
+          <ChevronRight :size="16" />
+        </button>
         <div class="hidden sm:block">
           <Tooltip>
             <TooltipTrigger as-child>
-              <button class="viewer-btn" @click="goToPage(pageCount - 1)"><ChevronsRight :size="16" /></button>
+              <button class="viewer-btn" :aria-label="t('reader.cbz.lastPage')" @click="goToLastPage"><ChevronsRight :size="16" /></button>
             </TooltipTrigger>
             <TooltipContent>{{ t('reader.cbz.lastPage') }}</TooltipContent>
           </Tooltip>

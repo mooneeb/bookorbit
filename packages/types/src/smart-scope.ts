@@ -58,3 +58,31 @@ export interface CreateSmartScopePayload {
   isPublic?: boolean;
   syncToKobo?: boolean;
 }
+
+export interface SmartScopePageQuery {
+  page?: number;
+  size?: number;
+  q?: string;
+  mediaType?: MediaType;
+  owned?: boolean;
+}
+
+export interface SmartScopesPage {
+  items: SmartScope[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface UpdateSmartScopePayload {
+  name?: string;
+  icon?: string;
+  filter?: SmartScopeFilter;
+  defaultSort?: SortSpec[];
+  isPublic?: boolean;
+  syncToKobo?: boolean;
+}
+
+export interface SetSmartScopeKoboSyncPayload {
+  enabled: boolean;
+}

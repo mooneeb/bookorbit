@@ -174,6 +174,9 @@ export class FixedLayout extends HTMLElement {
     }
   }
   async #showSpread({ left, right, center, side }) {
+    for (const frame of [this.#left, this.#right, this.#center]) {
+      if (frame && !frame.blank) this.book.sections[frame.index]?.unload?.()
+    }
     this.#root.replaceChildren()
     this.#left = null
     this.#right = null
@@ -322,6 +325,9 @@ export class FixedLayout extends HTMLElement {
       }))
   }
   destroy() {
+    for (const frame of [this.#left, this.#right, this.#center]) {
+      if (frame && !frame.blank) this.book.sections[frame.index]?.unload?.()
+    }
     this.#observer.unobserve(this)
   }
 }

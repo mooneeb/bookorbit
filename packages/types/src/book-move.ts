@@ -1,4 +1,4 @@
-import type { BookSelectionPayload } from "./book-selection";
+import type { BookIdsSelection, BookSelectionPayload } from "./book-selection";
 import type { OrganizationMode } from "./library";
 
 /** How a destination collision is resolved for a book. */
@@ -145,6 +145,53 @@ export interface BookMoveExecuteRequest {
   overrides?: BookMoveCollisionOverride[];
 }
 
+export interface BookMoveExplicitPreviewRequest extends Omit<BookMovePreviewRequest, "selection"> {
+  selection: BookIdsSelection;
+}
+
+export interface BookMoveExplicitExecuteRequest extends Omit<BookMoveExecuteRequest, "selection"> {
+  selection: BookIdsSelection;
+}
+
+export interface BookMoveDestinationQuery {
+  sourceLibraryId: number;
+  page?: number;
+  size?: number;
+  q?: string;
+}
+
+export interface BookMoveFolderQuery {
+  page?: number;
+  size?: number;
+  q?: string;
+}
+
+export interface BookMoveDestination {
+  id: number;
+  name: string;
+  organizationMode: OrganizationMode;
+}
+
+export interface BookMoveDestinationsPage {
+  items: BookMoveDestination[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface BookMoveFolder {
+  id: number;
+  path: string;
+}
+
+export interface BookMoveFoldersPage {
+  libraryId: number;
+  items: BookMoveFolder[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 export type BookMoveBookStatus = "success" | "merged" | "failed" | "skipped";
 
 export interface BookMoveSummary {
@@ -156,9 +203,17 @@ export interface BookMoveSummary {
   cancelled: boolean;
 }
 
-export type BookMoveProgressEvent =
-  | { bookId: number; status: BookMoveBookStatus; reason?: string }
-  | ({ done: true } & BookMoveSummary);
+export interface BookMoveBookProgress {
+  bookId: number;
+  status: BookMoveBookStatus;
+  reason?: string;
+}
+
+export interface BookMoveCompletionEvent extends BookMoveSummary {
+  done: true;
+}
+
+export type BookMoveProgressEvent = BookMoveBookProgress | BookMoveCompletionEvent;
 
 export const BOOK_MOVE_PREVIEW_SAMPLE_LIMIT = 50;
 export const BOOK_MOVE_DETAIL_LIMIT = 200;

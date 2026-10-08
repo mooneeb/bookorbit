@@ -3,7 +3,10 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn((left: unknown, right: unknown) => ({ type: 'eq', left, right })),
   inArray: vi.fn((column: unknown, values: unknown[]) => ({ type: 'inArray', column, values })),
   isNotNull: vi.fn((value: unknown) => ({ type: 'isNotNull', value })),
-  sql: vi.fn((parts: TemplateStringsArray, ...values: unknown[]) => ({ type: 'sql', parts, values })),
+  sql: Object.assign(
+    vi.fn((parts: TemplateStringsArray, ...values: unknown[]) => ({ type: 'sql', parts, values })),
+    { raw: vi.fn((text: string) => ({ type: 'sql.raw', text })) },
+  ),
 }));
 
 vi.mock('../../common/utils/accent-insensitive-search.utils', async (importOriginal) => ({

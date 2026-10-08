@@ -1,4 +1,5 @@
 import { computed, onUnmounted, ref, unref, type MaybeRef, type Ref } from 'vue'
+import type { FileReadingProgress, SaveFileProgressPayload } from '@bookorbit/types'
 import { api } from '@/lib/api'
 import type { FoliateRenderer, RelocateDetail } from '../../epub/composables/useFoliate'
 
@@ -87,6 +88,9 @@ export function useReaderProgress(
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   let lastValidPercentage = 0
+  let pendingNarration: SaveFileProgressPayload | null = null
+  let savePromise: Promise<void> | null = null
+  let saveRequested = false
 
   onUnmounted(() => {
     if (saveTimer) clearTimeout(saveTimer)
@@ -107,7 +111,7 @@ export function useReaderProgress(
     if (!unref(trackingEnabled)) return
     const res = await api(`/api/v1/books/files/${fileId}/progress`)
     if (!res.ok) return
-    const data = await res.json()
+    const data: FileReadingProgress = await res.json()
     cfi.value = normalizeString(data.cfi)
     pageNumber.value = normalizePageNumber(data.pageNumber)
     updatePercentage(data.percentage, 0)
@@ -165,6 +169,12 @@ export function useReaderProgress(
     mediaOverlaySectionIndex.value = section
     positionSeconds.value = seconds
     pendingSource.value = 'narration'
+    pendingNarration = {
+      ...captureProgress('narration'),
+      positionSeconds: seconds,
+      mediaOverlayFragment: fragment,
+      mediaOverlaySectionIndex: section,
+    }
     scheduleSave()
   }
 
@@ -174,27 +184,55 @@ export function useReaderProgress(
     mediaOverlaySectionIndex.value = null
   }
 
-  async function save() {
-    if (!unref(trackingEnabled)) return
-    const safePercentage = updatePercentage(percentage.value)
-    await api(`/api/v1/books/files/${fileId}/progress`, {
+  function captureProgress(source: 'text' | 'narration'): SaveFileProgressPayload {
+    return {
+      cfi: cfi.value,
+      pageNumber: normalizePageNumber(pageNumber.value),
+      percentage: updatePercentage(percentage.value),
+      koboLocationSource: koboLocationSource.value,
+      koboLocationType: koboLocationType.value,
+      koboLocationValue: koboLocationValue.value,
+      koboContentSourceProgressPercent: normalizeNullablePercentage(koboContentSourceProgressPercent.value),
+      koreaderProgress: koreaderProgress.value,
+      source,
+    }
+  }
+
+  function postProgress(payload: SaveFileProgressPayload) {
+    return api(`/api/v1/books/files/${fileId}/progress`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        cfi: cfi.value,
-        pageNumber: normalizePageNumber(pageNumber.value),
-        percentage: safePercentage,
-        koboLocationSource: koboLocationSource.value,
-        koboLocationType: koboLocationType.value,
-        koboLocationValue: koboLocationValue.value,
-        koboContentSourceProgressPercent: normalizeNullablePercentage(koboContentSourceProgressPercent.value),
-        koreaderProgress: koreaderProgress.value,
-        positionSeconds: positionSeconds.value,
-        mediaOverlayFragment: mediaOverlayFragment.value,
-        mediaOverlaySectionIndex: mediaOverlaySectionIndex.value,
-        source: pendingSource.value,
-      }),
+      body: JSON.stringify(payload),
     })
+  }
+
+  async function flushProgress() {
+    if (!unref(trackingEnabled)) return
+    const payload = captureProgress(pendingSource.value)
+    const narration = pendingNarration
+    if (narration) {
+      const response = await postProgress(narration)
+      if (response.ok && pendingNarration === narration) pendingNarration = null
+    }
+    if (payload.source === 'text' && unref(trackingEnabled)) await postProgress(payload)
+  }
+
+  function save(): Promise<void> {
+    if (!unref(trackingEnabled)) return Promise.resolve()
+    saveRequested = true
+    if (!savePromise) {
+      savePromise = (async () => {
+        try {
+          while (saveRequested) {
+            saveRequested = false
+            await flushProgress()
+          }
+        } finally {
+          savePromise = null
+        }
+      })()
+    }
+    return savePromise
   }
 
   function cycleFooterMode() {

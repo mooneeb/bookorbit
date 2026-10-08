@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { SQL, and, count, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { APP_FEATURES } from '@bookorbit/types';
+import { APP_FEATURES, type CollectionPageQuery } from '@bookorbit/types';
+import { accentInsensitiveIlike, buildSearchPattern } from '../../common/utils/accent-insensitive-search.utils';
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
@@ -53,6 +54,72 @@ export class CollectionRepository {
       .where(and(or(eq(collections.userId, userId), eq(collections.isPublic, true)), visibleCollectionCondition))
       .groupBy(collections.id, collections.userId)
       .orderBy(collections.displayOrder, collections.name);
+  }
+
+  async findVisiblePage(userId: number, query: CollectionPageQuery, visibleBooksWhere: SQL | undefined) {
+    const page = query.page ?? 0;
+    const size = query.size ?? 40;
+    const where = and(
+      or(eq(collections.userId, userId), eq(collections.isPublic, true)),
+      query.owned ? eq(collections.userId, userId) : undefined,
+      visibleCollectionCondition,
+      query.mediaType ? eq(collections.mediaType, query.mediaType) : undefined,
+      query.q ? accentInsensitiveIlike(collections.name, buildSearchPattern(query.q)) : undefined,
+    );
+    const [ids, [summary]] = await Promise.all([
+      this.db
+        .select({ id: collections.id })
+        .from(collections)
+        .where(where)
+        .orderBy(collections.displayOrder, collections.name, collections.id)
+        .limit(size)
+        .offset(page * size),
+      this.db.select({ total: count() }).from(collections).where(where),
+    ]);
+    const items =
+      ids.length === 0
+        ? []
+        : await this.db
+            .select(collectionFieldsWithVisibleBookCount)
+            .from(collections)
+            .leftJoin(collectionBooks, eq(collections.id, collectionBooks.collectionId))
+            .leftJoin(books, and(eq(books.id, collectionBooks.bookId), ne(books.status, 'processing'), visibleBooksWhere))
+            .leftJoin(collectionPodcasts, eq(collections.id, collectionPodcasts.collectionId))
+            .where(
+              and(
+                where,
+                inArray(
+                  collections.id,
+                  ids.map((item) => item.id),
+                ),
+              ),
+            )
+            .groupBy(collections.id, collections.userId)
+            .orderBy(collections.displayOrder, collections.name, collections.id);
+    if (query.bookId === undefined) return { items, total: Number(summary?.total ?? 0), page, size };
+    const members =
+      ids.length === 0
+        ? []
+        : await this.db
+            .select({ collectionId: collectionBooks.collectionId })
+            .from(collectionBooks)
+            .innerJoin(books, and(eq(books.id, collectionBooks.bookId), ne(books.status, 'processing'), visibleBooksWhere))
+            .where(
+              and(
+                eq(collectionBooks.bookId, query.bookId),
+                inArray(
+                  collectionBooks.collectionId,
+                  ids.map((item) => item.id),
+                ),
+              ),
+            );
+    const memberIds = new Set(members.map((member) => member.collectionId));
+    return {
+      items: items.map((item) => ({ ...item, memberCount: memberIds.has(item.id) ? 1 : 0 })),
+      total: Number(summary?.total ?? 0),
+      page,
+      size,
+    };
   }
 
   findAllOwnedForUserWithMembership(userId: number, bookIds: number[], visibleBooksWhere: SQL | undefined) {

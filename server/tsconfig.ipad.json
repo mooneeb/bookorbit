@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist-ipad",
+    "declaration": false,
+    "incremental": true,
+    "tsBuildInfoFile": "./dist-ipad/tsconfig.ipad.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts", "test/ipad/harness.ts", "test/ipad/oidc-provider.ts"],
+  "exclude": ["node_modules", "dist", "dist-ipad", "src/metadata.ts", "**/*.test.ts"]
+}

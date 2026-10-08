@@ -16,10 +16,12 @@ const ORIGINAL_ENV = process.env;
 
 function resetEnv(): void {
   process.env = { ...ORIGINAL_ENV };
+  delete process.env.EPUB_AUDIO_CACHE_BYTES;
   delete process.env.NODE_ENV;
   delete process.env.HOST;
   delete process.env.APP_URL;
   delete process.env.APP_VERSION;
+  delete process.env.NATIVE_ADDITIONAL_REDIRECT_URIS;
   delete process.env.OIDC_ALLOW_LOCAL_ISSUERS;
   delete process.env.SWAGGER_ENABLED;
   delete process.env.KOBO_CLOUDSCRAPER_PYTHON;
@@ -66,6 +68,8 @@ describe('config', () => {
       host: '0.0.0.0',
       appUrl: 'http://localhost:6263',
       nativeRedirectUri: 'bookorbit://oauth2-callback',
+      nativeAdditionalRedirectUris: [],
+      epubAudioCacheBytes: 2147483648,
       version: 'Local build',
       githubReleasesRepo: 'bookorbit/bookorbit',
       githubReleasesToken: undefined,
@@ -94,6 +98,8 @@ describe('config', () => {
       host: '127.0.0.1',
       appUrl: 'https://bookorbit.local',
       nativeRedirectUri: 'myfork://oauth2-callback',
+      nativeAdditionalRedirectUris: [],
+      epubAudioCacheBytes: 2147483648,
       version: 'v2.3.4',
       githubReleasesRepo: 'acme/app',
       githubReleasesToken: 'ghp_example',

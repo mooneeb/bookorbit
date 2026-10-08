@@ -1,0 +1,6 @@
+ALTER TABLE "bookmarks" ADD COLUMN "file_id" integer;--> statement-breakpoint
+ALTER TABLE "bookmarks" ADD COLUMN "page_number" integer;--> statement-breakpoint
+ALTER TABLE "bookmarks" ADD CONSTRAINT "bookmarks_file_id_book_files_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."book_files"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "bookmarks_user_book_file_id_idx" ON "bookmarks" USING btree ("user_id","book_id","file_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX "bookmarks_user_book_file_page_uidx" ON "bookmarks" USING btree ("user_id","book_id","file_id","page_number") WHERE "bookmarks"."file_id" is not null and "bookmarks"."page_number" is not null;--> statement-breakpoint
+ALTER TABLE "bookmarks" ADD CONSTRAINT "bookmarks_fixed_page_chk" CHECK (("bookmarks"."file_id" is null and "bookmarks"."page_number" is null) or ("bookmarks"."file_id" is not null and "bookmarks"."page_number" is not null and "bookmarks"."page_number" between 1 and 1000000 and "bookmarks"."cfi" is null and "bookmarks"."position_seconds" is null));

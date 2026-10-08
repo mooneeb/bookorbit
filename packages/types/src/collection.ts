@@ -30,6 +30,24 @@ export type CreateCollectionPayload = {
   syncToKobo?: boolean;
 };
 
+export type UpdateCollectionPayload = Partial<Omit<CreateCollectionPayload, "mediaType">>;
+
+export type CollectionPageQuery = {
+  page?: number;
+  size?: number;
+  q?: string;
+  mediaType?: MediaType;
+  owned?: boolean;
+  bookId?: number;
+};
+
+export type CollectionsPage = {
+  items: Collection[];
+  total: number;
+  page: number;
+  size: number;
+};
+
 export type CollectionSummary = {
   id: number;
   mediaType: MediaType;

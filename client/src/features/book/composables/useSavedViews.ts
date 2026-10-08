@@ -1,6 +1,6 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import { storage } from '@/services/storage'
-import type { GroupRule, SortSpec, TableLayoutState, TableViewType } from '@bookorbit/types'
+import type { GroupRule, SavedView, SortSpec, TableLayoutState, TableViewType } from '@bookorbit/types'
 
 /**
  * Saved views: full presentation state snapshots, persisted locally.
@@ -18,14 +18,7 @@ import type { GroupRule, SortSpec, TableLayoutState, TableViewType } from '@book
  *   - Column preset → layout + optional sort, no filter, reusable template
  *   - SmartScope   → server-side rule engine that produces filtered datasets
  */
-export type SavedView = {
-  id: string
-  name: string
-  layout: TableLayoutState
-  sort: SortSpec[]
-  filter?: GroupRule
-  favorite?: boolean
-}
+export type { SavedView } from '@bookorbit/types'
 
 type SaveSavedViewInput = {
   name: string

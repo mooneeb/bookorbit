@@ -193,6 +193,8 @@ function handleStartReading() {
 
       <div class="viewer-sep hidden md:block" />
 
+      <slot name="bookmarks" />
+
       <div class="hidden items-center md:flex">
         <button class="viewer-btn" :aria-label="t('reader.pdf.toolbar.zoomOut')" @click="handleZoomOut">
           <Minus :size="15" />

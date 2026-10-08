@@ -3,7 +3,7 @@ import type { BookMetadataLockField } from "./metadata-lock";
 import type { AudiobookChapter, NarratorRef } from "./audiobook";
 import type { ComicMetadataFields } from "./metadata-fetch";
 import type { BookFileWriteField, WriteResult } from "./file-write";
-import type { CustomMetadataBookValue } from "./custom-metadata";
+import type { CustomMetadataBookValue, CustomMetadataBookValueInput } from "./custom-metadata";
 import type { CoverAspectRatio } from "./library";
 import { DEFAULT_FORMAT_PRIORITY } from "./library";
 import type { SeriesIndex } from "./series-index";
@@ -55,6 +55,18 @@ export type UserBookStatus = {
   startedAt: string | null;
   finishedAt: string | null;
   updatedAt: string;
+};
+
+export type SetBookReadingStatusPayload = {
+  status?: ReadStatus;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+};
+
+export const PERSONAL_NOTE_MAX_LENGTH = 10000;
+
+export type UpdateBookPersonalNotePayload = {
+  note?: string | null;
 };
 
 export const READING_ATTEMPT_OUTCOMES = ["completed", "skimmed", "abandoned"] as const;
@@ -221,6 +233,40 @@ export type BookCard = {
   collapsedSeries?: import("./series-collapse").CollapsedSeriesInfo;
 };
 
+export type FileProgressSource = "text" | "narration";
+
+export type FileReadingProgress = {
+  cfi: string | null;
+  pageNumber: number | null;
+  percentage: number;
+  positionSeconds: number | null;
+  mediaOverlayFragment: string | null;
+  mediaOverlaySectionIndex: number | null;
+  koboLocationSource: string | null;
+  koboLocationType: string | null;
+  koboLocationValue: string | null;
+  koboContentSourceProgressPercent: number | null;
+  koreaderProgress: string | null;
+  narrationPercentage: number | null;
+  narrationUpdatedAt: string | null;
+  textUpdatedAt: string | null;
+  textVersion?: string;
+  narrationVersion?: string;
+};
+
+/** Omitted narration locators preserve their stored values; explicit null clears them. */
+export type SaveFileProgressPayload = Partial<
+  Omit<FileReadingProgress, "percentage" | "narrationPercentage" | "narrationUpdatedAt" | "textUpdatedAt" | "textVersion" | "narrationVersion">
+> & {
+  percentage: number;
+  source?: FileProgressSource;
+  baseVersion?: string;
+};
+
+export type UpdateBookFilePayload = {
+  filename?: string;
+};
+
 export type BookDetailFile = {
   id: number;
   format: string | null;
@@ -244,6 +290,10 @@ export type AudioMetadata = {
 
 export type ReadAloudProgressSyncMode = "auto" | "disabled";
 
+export type UpdateBookReadAloudSyncPayload = {
+  mode: ReadAloudProgressSyncMode;
+};
+
 export type ReadAloudProgressSyncState = "enabled" | "disabled" | "unavailable";
 
 export type ReadAloudProgressSyncUnavailableReason = "no_media_overlay_epub" | "no_audio_files" | "missing_duration" | "duration_mismatch";
@@ -260,6 +310,51 @@ export type ReadAloudProgressSync = {
   koreaderDownloadAvailable: boolean;
 };
 
+export type BookContinuationDirection = "text_to_audio" | "audio_to_text";
+
+export type BookContinuationQuery = {
+  direction: BookContinuationDirection;
+  sourceFileId: number;
+  textCfi?: string;
+  audioRevision?: number;
+};
+
+export type BookContinuationUnavailableReason =
+  | "disabled"
+  | "unsupported_source"
+  | "no_media_overlay_epub"
+  | "ambiguous_media_overlay"
+  | "ambiguous_audio_order"
+  | "no_audio_files"
+  | "missing_duration"
+  | "duration_mismatch"
+  | "position_not_mapped"
+  | "position_not_synced"
+  | "too_many_files"
+  | "overlay_exceeds_limit";
+
+export type BookContinuationTarget = {
+  fileId: number;
+  format: string;
+  filename: string;
+  cfi: string | null;
+  assetId: string | null;
+  positionMs: number | null;
+  sequence: number | null;
+};
+
+export type BookContinuationResponse = {
+  sourceFileId: number;
+  sourceTextCfi: string | null;
+  sourceAudioRevision: number | null;
+  sourcePositionMs: number | null;
+  accuracy: "narrated_segment" | "duration_adjusted" | null;
+  state: "ready" | "unavailable";
+  reason: BookContinuationUnavailableReason | null;
+  overlayFileId: number | null;
+  targets: BookContinuationTarget[];
+};
+
 export type BookFileWriteDisabledReason =
   "library_disabled" | "no_primary_file" | "format_not_supported" | "format_disabled" | "file_exceeds_size_limit";
 
@@ -269,6 +364,11 @@ export type BookFileWriteStatus = {
   writableFormats: BookFormat[];
   writableFields: BookFileWriteField[];
 };
+
+export interface ClearFileProgressQuery {
+  textVersion?: string;
+  narrationVersion?: string;
+}
 
 export type BookDetail = {
   id: number;
@@ -326,10 +426,91 @@ export type BookCoverSlot = {
   height: number | null;
 };
 
+export type BookAddedAtUpdatePayload = {
+  addedAt: string;
+};
+
 export type BookMetadataSaveResult = {
   book: BookDetail;
   write: WriteResult | null;
   libraryAutoWriteEnabled: boolean;
+};
+
+export type BookMetadataUpdatePayload = Partial<
+  Pick<
+    BookDetail,
+    | "title"
+    | "subtitle"
+    | "description"
+    | "publisher"
+    | "publishedDate"
+    | "publishedYear"
+    | "language"
+    | "pageCount"
+    | "isbn10"
+    | "isbn13"
+    | "genres"
+    | "tags"
+    | "seriesName"
+    | "seriesIndex"
+    | "rating"
+  >
+> &
+  BookProviderIdsUpdatePayload & {
+    authors?: string[];
+    customMetadata?: CustomMetadataBookValueInput[];
+    seriesMemberships?: BookSeriesMembershipUpdatePayload[] | null;
+    communityRatings?: BookCommunityRatingUpdatePayload[] | null;
+    audioMetadata?: AudioMetadataUpdatePayload;
+    comicMetadata?: ComicMetadataUpdatePayload;
+  };
+
+export type BookProviderIdsUpdatePayload = {
+  googleBooksId?: string | null;
+  goodreadsId?: string | null;
+  amazonId?: string | null;
+  hardcoverId?: string | null;
+  hardcoverEditionId?: string | null;
+  openLibraryId?: string | null;
+  itunesId?: string | null;
+  audibleId?: string | null;
+  librofmId?: string | null;
+  koboId?: string | null;
+  comicvineId?: string | null;
+  ranobedbId?: string | null;
+  lubimyczytacId?: string | null;
+  aladinId?: string | null;
+};
+
+export type BookSeriesMembershipUpdatePayload = {
+  seriesName: string;
+  seriesIndex?: SeriesIndex | null;
+  expectedBookCount?: number | null;
+};
+
+export type BookCommunityRatingUpdatePayload = {
+  provider: MetadataProviderKey;
+  rating: number;
+  ratingCount?: number | null;
+};
+
+export type AudiobookChapterUpdatePayload = AudiobookChapter & { durationMs?: number | null };
+
+export type AudioMetadataUpdatePayload = {
+  narrators?: string[];
+  durationSeconds?: number | null;
+  abridged?: boolean | null;
+  chapters?: AudiobookChapterUpdatePayload[] | null;
+};
+
+export type ComicMetadataUpdatePayload = Omit<ComicMetadataFields, "issueNumber" | "volumeName"> & {
+  issueNumber?: string | null;
+  volumeName?: string | null;
+};
+
+export type BookMetadataAndLocksUpdatePayload = {
+  metadata?: BookMetadataUpdatePayload;
+  lockedFields: BookMetadataLockField[];
 };
 
 export type BookMetadataRefreshPreviewFields = {
@@ -375,6 +556,23 @@ export type BookMetadataRefreshPreviewFields = {
 export type BookMetadataRefreshPreviewResponse = {
   metadata: BookMetadataRefreshPreviewFields;
   diagnostics: MetadataFetchDiagnostics;
+};
+
+export type BookFileComicMetadata = Omit<ComicMetadataFields, "issueNumber" | "volumeName"> & {
+  issueNumber?: string | null;
+  volumeName?: string | null;
+};
+
+export type BookFileMetadataResponse = Omit<
+  BookMetadataRefreshPreviewFields,
+  "seriesMemberships" | "communityRatings" | "coverUrl" | "audioCoverUrl" | "audioMetadata" | "comicMetadata"
+> & {
+  isbn10?: string | null;
+  isbn13?: string | null;
+  narrators?: string[];
+  durationSeconds?: number | null;
+  customMetadata?: CustomMetadataBookValueInput[];
+  comicMetadata?: BookFileComicMetadata;
 };
 
 export type BookKoboReadingState = {
@@ -454,4 +652,15 @@ export type CoverSearchResult = {
 export type CoverSearchResponse = {
   results: CoverSearchResult[];
   total: number;
+};
+
+export type UploadCoverFromUrlPayload = { url: string };
+
+export const COVER_SEARCH_PROVIDERS = ["duckduckgo", "itunes", "audiobookcovers", "all"] as const;
+export type CoverSearchProvider = (typeof COVER_SEARCH_PROVIDERS)[number];
+export type CoverSearchQuery = {
+  title: string;
+  author?: string;
+  isAudiobook?: boolean;
+  provider?: CoverSearchProvider;
 };

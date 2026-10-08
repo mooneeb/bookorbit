@@ -1,6 +1,7 @@
+import type { UpdateAudiobookBookmark } from '@bookorbit/types';
 import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
-export class UpdateAudiobookBookmarkDto {
+export class UpdateAudiobookBookmarkDto implements UpdateAudiobookBookmark {
   @IsOptional()
   @IsString()
   @IsNotEmpty()

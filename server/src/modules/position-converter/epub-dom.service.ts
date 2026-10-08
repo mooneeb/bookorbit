@@ -1,8 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { stat } from 'fs/promises';
 import { eq } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import * as unzipper from 'unzipper';
+import type * as unzipper from 'unzipper';
+import { openBoundedEpubArchive, readBoundedEpubEntry } from '../../common/epub-archive';
 import { XMLParser } from 'fast-xml-parser';
 
 import { DB } from '../../db';
@@ -16,6 +17,8 @@ type Db = NodePgDatabase<typeof schema>;
 const EVENT = 'position_converter.epub_dom';
 const CHAPTER_CACHE_MAX = 12;
 const SPINE_CACHE_MAX = 24;
+const ENTRY_BYTES_MAX = 8 * 1024 * 1024;
+const ZIP_ENTRIES_MAX = 32768;
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -67,9 +70,11 @@ export interface EpubSpine {
 
 /** Parses container.xml + OPF from an opened zip and returns spine hrefs in order. */
 export async function readEpubSpine(zip: unzipper.CentralDirectory): Promise<EpubSpine> {
+  if (zip.files.length > ZIP_ENTRIES_MAX) throw new BadRequestException('The EPUB index exceeds the supported mapping limit');
   const containerEntry = findInZip(zip.files, 'META-INF/container.xml');
   if (!containerEntry) throw new Error('Missing META-INF/container.xml');
-  const containerDoc = xmlParser.parse(await containerEntry.buffer()) as Record<string, unknown>;
+  if (containerEntry.uncompressedSize > ENTRY_BYTES_MAX) throw new BadRequestException('The EPUB container exceeds the supported mapping limit');
+  const containerDoc = xmlParser.parse(await readBoundedEpubEntry(containerEntry)) as Record<string, unknown>;
   const container = containerDoc['container'] as Record<string, unknown>;
   const rootfiles = (container?.rootfiles as Record<string, unknown>)?.rootfile;
   const rootfile: unknown = Array.isArray(rootfiles) ? rootfiles[0] : rootfiles;
@@ -79,7 +84,8 @@ export async function readEpubSpine(zip: unzipper.CentralDirectory): Promise<Epu
   const rootPath = opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '';
   const opfEntry = findInZip(zip.files, opfPath);
   if (!opfEntry) throw new Error(`OPF not found: ${opfPath}`);
-  const opfDoc = xmlParser.parse(await opfEntry.buffer()) as Record<string, unknown>;
+  if (opfEntry.uncompressedSize > ENTRY_BYTES_MAX) throw new BadRequestException('The EPUB package exceeds the supported mapping limit');
+  const opfDoc = xmlParser.parse(await readBoundedEpubEntry(opfEntry)) as Record<string, unknown>;
   const pkg = (opfDoc['package'] ?? opfDoc) as Record<string, unknown>;
   const manifestEl = pkg['manifest'] as Record<string, unknown> | undefined;
   const spineEl = pkg['spine'] as Record<string, unknown> | undefined;
@@ -101,8 +107,8 @@ export async function readEpubSpine(zip: unzipper.CentralDirectory): Promise<Epu
 
 export async function loadChapterFromZip(zip: unzipper.CentralDirectory, href: string): Promise<ChapterDocument | null> {
   const entry = findInZip(zip.files, href);
-  if (!entry) return null;
-  const xhtml = (await entry.buffer()).toString('utf-8');
+  if (!entry || entry.uncompressedSize > ENTRY_BYTES_MAX) return null;
+  const xhtml = (await readBoundedEpubEntry(entry)).toString('utf-8');
   return parseChapterDocument(xhtml);
 }
 
@@ -145,7 +151,7 @@ export class EpubDomService {
     }
 
     try {
-      const zip = await unzipper.Open.file(entry.absolutePath);
+      const zip = await openBoundedEpubArchive(entry.absolutePath);
       const doc = await loadChapterFromZip(zip, href);
       if (!doc) return null;
       this.chapterCache.set(cacheKey, doc);
@@ -180,7 +186,7 @@ export class EpubDomService {
     if (cached && cached.absolutePath === file.absolutePath && cached.mtimeMs === mtimeMs) return cached;
 
     try {
-      const zip = await unzipper.Open.file(file.absolutePath);
+      const zip = await openBoundedEpubArchive(file.absolutePath);
       const spine = await readEpubSpine(zip);
       const entry: SpineCacheEntry = { absolutePath: file.absolutePath, mtimeMs, spine };
       this.spineCache.set(bookFileId, entry);

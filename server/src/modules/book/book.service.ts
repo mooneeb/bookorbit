@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  ConflictException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -15,6 +16,8 @@ import { inArray, type SQL } from 'drizzle-orm';
 
 import { MAX_BOOK_QUERY_OFFSET_ROWS, isBookQueryOffsetWithinLimit } from '../../common/constants/pagination.constants';
 import { compareAudioTracks, coverFetchInputs, resolveIsAudiobook } from '../../common/utils/book-media.utils';
+import type { ClearFileProgressQueryDto } from './dto/clear-file-progress-query.dto';
+import { filePositionVersion } from '../../common/utils/reader-position-version.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { selectPrimaryFile } from '../../common/utils/primary-file-selection.utils';
 import { normalizeMetadataText, normalizeMetadataTextKey } from '../../common/utils/metadata-text-normalize.utils';
@@ -53,6 +56,7 @@ import type {
   BookKoboState,
   BookMetadataRefreshPreviewFields,
   BookMetadataRefreshPreviewResponse,
+  BookFileMetadataResponse,
   BookMetadataLockField,
   BookDeletionAuditMeta,
   BookQuery,
@@ -2240,25 +2244,61 @@ export class BookService {
   async saveProgress(userId: number, fileId: number, dto: SaveProgressDto, user: RequestUser) {
     const file = await this.verifyFileAccess(fileId, user);
     const previous = await this.bookRepo.findProgress(userId, fileId);
+    const source = dto.source ?? 'text';
+    if (dto.baseVersion) {
+      const same =
+        source === 'narration'
+          ? previous?.mediaOverlayFragment === (dto.mediaOverlayFragment ?? null) &&
+            previous?.mediaOverlaySectionIndex === (dto.mediaOverlaySectionIndex ?? null) &&
+            previous?.positionSeconds === (dto.positionSeconds ?? null) &&
+            Math.abs((previous?.narrationPercentage ?? -1) - dto.percentage) < 0.00001
+          : previous?.cfi === (dto.cfi ?? null) &&
+            previous?.pageNumber === (dto.pageNumber ?? null) &&
+            Math.abs((previous?.percentage ?? -1) - dto.percentage) < 0.00001;
+      if (same) return previous;
+      if (dto.baseVersion !== filePositionVersion(userId, fileId, source, previous)) {
+        throw new ConflictException('Reading position changed in another reader');
+      }
+    }
     const now = new Date();
-    const text = this.resolveTextPosition(dto, previous ?? null);
-    await this.bookRepo.upsertProgress(
-      userId,
-      fileId,
-      text.cfi,
-      text.pageNumber,
-      text.percentage,
-      dto.positionSeconds ?? null,
-      dto.mediaOverlayFragment ?? null,
-      dto.mediaOverlaySectionIndex ?? null,
-      dto.koboLocationSource ?? null,
-      dto.koboLocationType ?? null,
-      dto.koboLocationValue ?? null,
-      dto.koboContentSourceProgressPercent ?? null,
-      dto.koreaderProgress ?? null,
-      dto.source === 'narration' ? { percentage: dto.percentage, updatedAt: now } : null,
-      text.moved ? now : null,
-    );
+    const text =
+      dto.baseVersion && source === 'narration'
+        ? { percentage: previous?.percentage ?? 0, cfi: previous?.cfi ?? null, pageNumber: previous?.pageNumber ?? null, moved: false }
+        : this.resolveTextPosition(dto, previous ?? null);
+    const conditionArgs: [] | [{ previous: NonNullable<typeof previous> | null; source: 'text' | 'narration' }] = dto.baseVersion
+      ? [{ previous: previous ?? null, source }]
+      : [];
+    const writeStartedAt = Date.now();
+    let saved: Awaited<ReturnType<BookRepository['upsertProgress']>>;
+    try {
+      saved = await this.bookRepo.upsertProgress(
+        userId,
+        fileId,
+        text.cfi,
+        text.pageNumber,
+        text.percentage,
+        dto.positionSeconds,
+        dto.mediaOverlayFragment,
+        dto.mediaOverlaySectionIndex,
+        dto.koboLocationSource ?? null,
+        dto.koboLocationType ?? null,
+        dto.koboLocationValue ?? null,
+        dto.koboContentSourceProgressPercent ?? null,
+        dto.koreaderProgress ?? null,
+        dto.source === 'narration' ? { percentage: dto.percentage, updatedAt: now } : null,
+        text.moved ? now : null,
+        ...conditionArgs,
+      );
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'Unknown';
+      const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
+      this.logger.error(
+        `[book.save_file_progress] [fail] userId=${userId} fileId=${fileId} source=${source} durationMs=${Date.now() - writeStartedAt} errorClass=${errorClass} error="${message}" - position write failed`,
+      );
+      throw error;
+    }
+    if (dto.baseVersion && !saved) throw new ConflictException('Reading position changed in another reader');
+    if (dto.baseVersion && source === 'narration') return saved;
     // Everything downstream reads the position the file now holds, not the one the client sent.
     // A narration write that did not move the text position must not move a Kobo bookmark, an
     // audiobook position, or a read status either.
@@ -2292,6 +2332,7 @@ export class BookService {
       timeZone: this.resolveUserTimeZone(user),
       strongRereadEvidence,
     });
+    if (dto.baseVersion) return saved;
   }
 
   async syncAudioProgressForExternalEbookProgress(
@@ -2324,9 +2365,29 @@ export class BookService {
     });
   }
 
-  async clearFileProgress(userId: number, fileId: number, user: RequestUser): Promise<void> {
-    await this.verifyFileAccess(fileId, user);
-    await this.bookRepo.clearFileProgress(userId, fileId);
+  async clearFileProgress(userId: number, fileId: number, user: RequestUser, condition: ClearFileProgressQueryDto = {}): Promise<void> {
+    const startedAt = Date.now();
+    this.logger.log(
+      `[book.clear_file_progress] [start] userId=${userId} fileId=${fileId} conditional=${condition.textVersion !== undefined} - position reset started`,
+    );
+    try {
+      await this.verifyFileAccess(fileId, user);
+      const cleared =
+        condition.textVersion !== undefined
+          ? await this.bookRepo.clearFileProgress(userId, fileId, condition)
+          : await this.bookRepo.clearFileProgress(userId, fileId);
+      if (cleared === false) throw new ConflictException('The file position changed. Review its current position before resetting.');
+      this.logger.log(
+        `[book.clear_file_progress] [end] userId=${userId} fileId=${fileId} durationMs=${Date.now() - startedAt} cleared=true - position reset completed`,
+      );
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'Unknown';
+      const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
+      this.logger.error(
+        `[book.clear_file_progress] [fail] userId=${userId} fileId=${fileId} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${message}" - position reset failed`,
+      );
+      throw error;
+    }
   }
 
   async clearBookProgressForReread(userId: number, bookId: number, user: RequestUser): Promise<void> {
@@ -3488,14 +3549,31 @@ export class BookService {
     return this.getDetail(id, user);
   }
 
-  async getMetadataFromFile(id: number, user: RequestUser): Promise<Record<string, unknown>> {
-    await this.verifyBookAccess(id, user);
-    const file = await this.bookRepo.findPrimaryFile(id);
-    if (!file) throw new NotFoundException(`Book ${id} has no primary file`);
+  async getMetadataFromFile(id: number, user: RequestUser): Promise<BookFileMetadataResponse> {
+    const startedAt = Date.now();
+    const event = 'book.read_file_metadata';
+    this.logger.log(`[${event}] [start] bookId=${id} userId=${user.id} - read file metadata started`);
+    try {
+      await this.verifyBookAccess(id, user);
+      const file = await this.bookRepo.findPrimaryFile(id);
+      if (!file) throw new NotFoundException(`Book ${id} has no primary file`);
+      const result = file.format ? await this.readPrimaryFileMetadata(id, file.absolutePath, file.format) : {};
+      const fields = Object.values(result).filter((value) => value !== undefined).length;
+      this.logger.log(
+        `[${event}] [end] bookId=${id} userId=${user.id} durationMs=${Date.now() - startedAt} fields=${fields} - read file metadata completed`,
+      );
+      return result;
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'unknown';
+      const errorMessage = error instanceof Error ? sanitizeLogValue(error.message) : 'unknown';
+      this.logger.warn(
+        `[${event}] [fail] bookId=${id} userId=${user.id} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${errorMessage}" - read file metadata failed`,
+      );
+      throw error;
+    }
+  }
 
-    const { absolutePath, format } = file;
-    if (!format) return {};
-
+  private async readPrimaryFileMetadata(id: number, absolutePath: string, format: string): Promise<BookFileMetadataResponse> {
     switch (format) {
       case 'epub': {
         const parsed = await extractEpubMetadata(absolutePath);
@@ -3638,7 +3716,7 @@ export class BookService {
         if (isAudioFormat(format)) {
           const parsed = await extractAudioMetadata(absolutePath);
           if (!parsed) return {};
-          const result: Record<string, unknown> = {};
+          const result: BookFileMetadataResponse = {};
           if (parsed.title !== null) result.title = parsed.title;
           if (parsed.subtitle !== null) result.subtitle = parsed.subtitle;
           if (parsed.description !== null) result.description = parsed.description;

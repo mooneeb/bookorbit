@@ -2687,8 +2687,8 @@ describe('BookService', () => {
         null,
         25,
         900,
-        null,
-        null,
+        undefined,
+        undefined,
         null,
         null,
         null,
@@ -2699,7 +2699,7 @@ describe('BookService', () => {
       );
     });
 
-    it('passes null positionSeconds when not provided in DTO', async () => {
+    it('preserves omitted positionSeconds when not provided in DTO', async () => {
       const { service, bookRepo, libraryService, userBookStatusService } = makeService();
       const user = makeUser();
 
@@ -2716,9 +2716,9 @@ describe('BookService', () => {
         null,
         null,
         50,
-        null,
-        null,
-        null,
+        undefined,
+        undefined,
+        undefined,
         null,
         null,
         null,
@@ -2754,9 +2754,9 @@ describe('BookService', () => {
         null,
         null,
         50,
-        null,
-        null,
-        null,
+        undefined,
+        undefined,
+        undefined,
         null,
         null,
         null,

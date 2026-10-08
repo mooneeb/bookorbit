@@ -1,4 +1,25 @@
+import type { GroupRule, SortSpec } from "./query";
+
 export type TableViewType = "library" | "smartScope" | "collection" | "series";
+
+/** A reusable column layout with optional sort. Filter snapshots belong in SavedView. */
+export type TablePreset = {
+  id: string;
+  name: string;
+  layout: TableLayoutState;
+  sort?: SortSpec[];
+  isBuiltIn?: boolean;
+  favorite?: boolean;
+};
+
+export type SavedView = {
+  id: string;
+  name: string;
+  layout: TableLayoutState;
+  sort: SortSpec[];
+  filter?: GroupRule;
+  favorite?: boolean;
+};
 
 export type TableLayoutState = {
   columnOrder: string[];

@@ -12,7 +12,15 @@ import { readdir, realpath, rm, stat } from 'fs/promises';
 import { dirname, isAbsolute, join, relative } from 'path';
 
 import { APP_FEATURES, DEFAULT_FORMAT_PRIORITY } from '@bookorbit/types';
-import type { AccessLevel, LibraryFileSyncProgressEvent, LibraryOverviewEntry, OrganizationMode, WriteResult } from '@bookorbit/types';
+import type {
+  AccessLevel,
+  BookMoveDestinationsPage,
+  BookMoveFoldersPage,
+  LibraryFileSyncProgressEvent,
+  LibraryOverviewEntry,
+  OrganizationMode,
+  WriteResult,
+} from '@bookorbit/types';
 import { podcastArtworkDirPath } from '../../common/podcast-artwork-storage';
 import { podcastFeedSnapshotPath } from '../../common/podcast-feed-snapshot-storage';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
@@ -26,6 +34,7 @@ import { isPrimaryFormat } from '../scanner/lib/classify';
 import { FileWatcherService } from '../scanner/file-watcher.service';
 import { ScannerService } from '../scanner/scanner.service';
 import { CreateLibraryDto } from './dto/create-library.dto';
+import { BookMoveDestinationsQueryDto, BookMoveFoldersQueryDto } from './dto/book-move-destinations-query.dto';
 import { GrantLibraryAccessDto } from './dto/grant-library-access.dto';
 import { PrescanLibraryDto } from './dto/prescan-library.dto';
 import { ReorderLibrariesDto } from './dto/reorder-libraries.dto';
@@ -135,6 +144,53 @@ export class LibraryService {
       ...normalizeLibraryOrganizationMode(library),
       folders: (foldersByLibraryId.get(library.id) ?? []).map(({ id, path, role, createdAt }) => ({ id, path, role, createdAt })),
     }));
+  }
+
+  async findMoveDestinations(query: BookMoveDestinationsQueryDto, user: RequestUser): Promise<BookMoveDestinationsPage> {
+    const startedAt = Date.now();
+    const fields = `userId=${user.id} sourceLibraryId=${query.sourceLibraryId} page=${query.page} size=${query.size} hasSearch=${Boolean(query.q)}`;
+    this.logger.log(`[library.move_destinations] [start] ${fields} - move destinations requested`);
+    try {
+      await this.verifyUserAccessLevel(user.id, query.sourceLibraryId, user.isSuperuser, 'editor');
+      const [source] = await this.libraryRepo.findById(query.sourceLibraryId);
+      if (!source) throw new NotFoundException('Source library not found');
+      if (source.type !== 'books') throw new BadRequestException('Books can only be moved between book libraries');
+      const result = await this.libraryRepo.findMoveDestinations(user.id, user.isSuperuser, source.id, query.page, query.size, query.q);
+      this.logger.log(
+        `[library.move_destinations] [end] ${fields} durationMs=${Date.now() - startedAt} returned=${result.items.length} total=${result.total} - move destinations loaded`,
+      );
+      return {
+        ...result,
+        items: result.items.map((library) => ({ ...library, organizationMode: normalizeOrganizationMode(library.organizationMode) })),
+      };
+    } catch (error) {
+      this.logger.warn(
+        `[library.move_destinations] [fail] ${fields} durationMs=${Date.now() - startedAt} errorClass=${error instanceof Error ? error.name : 'Unknown'} error="${sanitizeLogValue(error instanceof Error ? error.message : 'Request failed')}" - move destinations failed`,
+      );
+      throw error;
+    }
+  }
+
+  async findMoveFolders(libraryId: number, query: BookMoveFoldersQueryDto, user: RequestUser): Promise<BookMoveFoldersPage> {
+    const startedAt = Date.now();
+    const fields = `userId=${user.id} libraryId=${libraryId} page=${query.page} size=${query.size} hasSearch=${Boolean(query.q)}`;
+    this.logger.log(`[library.move_folders] [start] ${fields} - move folders requested`);
+    try {
+      await this.verifyUserAccessLevel(user.id, libraryId, user.isSuperuser, 'editor');
+      const [library] = await this.libraryRepo.findById(libraryId);
+      if (!library) throw new NotFoundException('Target library not found');
+      if (library.type !== 'books') throw new BadRequestException('Books can only be moved between book libraries');
+      const result = await this.libraryRepo.findMoveFolders(libraryId, query.page, query.size, query.q);
+      this.logger.log(
+        `[library.move_folders] [end] ${fields} durationMs=${Date.now() - startedAt} returned=${result.items.length} total=${result.total} - move folders loaded`,
+      );
+      return result;
+    } catch (error) {
+      this.logger.warn(
+        `[library.move_folders] [fail] ${fields} durationMs=${Date.now() - startedAt} errorClass=${error instanceof Error ? error.name : 'Unknown'} error="${sanitizeLogValue(error instanceof Error ? error.message : 'Request failed')}" - move folders failed`,
+      );
+      throw error;
+    }
   }
 
   /**

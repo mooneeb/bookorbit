@@ -1,5 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { stat } from 'fs/promises';
+import type { ConfigType } from '@nestjs/config';
+import { appConfig } from '../../../config/config';
+import { EpubAudioCache, audioSourceRevision } from './epub-audio-cache';
+import { Readable } from 'node:stream';
 import * as unzipper from 'unzipper';
 import { XMLParser } from 'fast-xml-parser';
 
@@ -7,7 +11,15 @@ import type { EpubBookInfo, EpubManifestItem, EpubMediaOverlayPlaylist, EpubSpin
 import { BookReadService } from '../../book/book-read.service';
 import { LibraryService } from '../../library/library.service';
 import type { RequestUser } from '../../../common/types/request-user';
-import { buildEpubMediaOverlayPlaylist, findEpubZipEntry, normalizeEpubZipPath } from './epub-media-overlay';
+import {
+  buildEpubMediaOverlayPlaylist,
+  buildEpubMediaOverlayClipsPage,
+  findEpubMediaOverlayAudio,
+  findEpubZipEntry,
+  normalizeEpubZipPath,
+} from './epub-media-overlay';
+import { MediaOverlayClipsQueryDto } from './dto/media-overlay-clips-query.dto';
+import { sanitizeLogValue } from '../../../common/utils/log-sanitize.utils';
 
 const CONTENT_TYPES: Record<string, string> = {
   '.xhtml': 'application/xhtml+xml',
@@ -50,6 +62,7 @@ const OPTIONAL_META_INF_FILES = [
 interface CacheEntry {
   info: EpubBookInfo;
   mtime: number;
+  revision: string;
   validPaths: Set<string>;
   lastAccessed: number;
 }
@@ -68,11 +81,13 @@ interface ByteRange {
 }
 
 interface MediaOverlayFileResponse {
-  data: Buffer;
+  data: Buffer | Readable;
   contentType: string;
   size: number;
   status: number;
   contentRange: string | null;
+  contentLength: number;
+  etag: string;
 }
 
 const xmlParser = new XMLParser({
@@ -151,7 +166,7 @@ function parseNavOl(ol: Record<string, unknown>, basePath: string): EpubTocItem[
   return toArray(ol?.li as any)
     .map((li: any) => {
       const a = li?.a as Record<string, unknown> | string | undefined;
-      let label = '';
+      let label: string;
       let href: string | undefined;
 
       if (typeof a === 'string') {
@@ -161,6 +176,8 @@ function parseNavOl(ol: Record<string, unknown>, basePath: string): EpubTocItem[
         const rawHref = a['@_href'] as string | undefined;
         if (rawHref && !rawHref.startsWith('http')) href = resolveHref(rawHref, basePath);
         else href = rawHref;
+      } else {
+        label = getText(li?.span) ?? '';
       }
 
       const nestedOl = li?.ol as Record<string, unknown> | undefined;
@@ -314,11 +331,21 @@ async function parseEpub(epubPath: string): Promise<EpubBookInfo> {
 export class EpubService {
   private readonly logger = new Logger(EpubService.name);
   private readonly cache = new Map<string, CacheEntry>();
+  private readonly narrationAudio = new Map<string, { revision: string; contentType: string }>();
+
+  private readonly audioCache: EpubAudioCache;
 
   constructor(
     private readonly bookReadService: BookReadService,
     private readonly libraryService: LibraryService,
-  ) {}
+    @Inject(appConfig.KEY) config: ConfigType<typeof appConfig>,
+  ) {
+    this.audioCache = new EpubAudioCache(config.epubAudioCacheBytes);
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.audioCache.close();
+  }
 
   async getBookInfo(bookId: number, fileId: number | undefined, user: RequestUser): Promise<EpubBookInfo> {
     const epubPath = await this.resolveEpubPath(bookId, fileId, user);
@@ -331,12 +358,44 @@ export class EpubService {
     return buildEpubMediaOverlayPlaylist(resolved.absolutePath, cached.info, bookId, resolved.fileId);
   }
 
+  async getMediaOverlayClips(bookId: number, query: MediaOverlayClipsQueryDto, user: RequestUser) {
+    const started = Date.now();
+    this.logger.log(
+      `[epub.narration_clips] [start] bookId=${bookId} userId=${user.id} sectionIndex=${query.sectionIndex} cursor=${query.cursor} limit=${query.limit} - narration clips requested`,
+    );
+    try {
+      const resolved = await this.resolveEpubFile(bookId, query.fileId, user);
+      const cached = await this.getCachedEntry(resolved.absolutePath);
+      if (query.sectionIndex >= cached.info.spine.length) throw new BadRequestException('Invalid sectionIndex');
+      const page = await buildEpubMediaOverlayClipsPage(
+        resolved.absolutePath,
+        cached.info,
+        bookId,
+        resolved.fileId,
+        query.sectionIndex,
+        query.cursor,
+        query.limit,
+      );
+      this.logger.log(
+        `[epub.narration_clips] [end] bookId=${bookId} userId=${user.id} durationMs=${Date.now() - started} clips=${page.items.length} - narration clips delivered`,
+      );
+      return page;
+    } catch (error) {
+      this.logger.warn(
+        `[epub.narration_clips] [fail] bookId=${bookId} userId=${user.id} durationMs=${Date.now() - started} errorClass=${error instanceof Error ? error.name : 'Unknown'} error="${sanitizeLogValue(error instanceof Error ? error.message : 'Unknown error')}" - narration clips failed`,
+      );
+      throw error;
+    }
+  }
+
   async streamMediaOverlayFile(
     bookId: number,
     filePath: string,
     fileId: number | undefined,
     rangeHeader: string | undefined,
     user: RequestUser,
+    sectionIndex?: number,
+    signal?: AbortSignal,
   ): Promise<MediaOverlayFileResponse> {
     if (filePath.includes('..')) throw new ForbiddenException('Invalid path');
     const normalizedPath = normalizeEpubZipPath(filePath);
@@ -344,23 +403,55 @@ export class EpubService {
 
     const resolved = await this.resolveEpubFile(bookId, fileId, user);
     const cached = await this.getCachedEntry(resolved.absolutePath);
-    const playlist = await buildEpubMediaOverlayPlaylist(resolved.absolutePath, cached.info, bookId, resolved.fileId);
-    const resource = playlist.resources.find((item) => item.href === normalizedPath);
-    if (!resource) throw new NotFoundException(`Media-overlay resource not in playlist: ${normalizedPath}`);
-
     const zip = await unzipper.Open.file(resolved.absolutePath);
+    const audioKey = JSON.stringify([user.id, resolved.absolutePath, sectionIndex ?? null, normalizedPath]);
+    const previouslyValidated = this.narrationAudio.get(audioKey);
+    const contentType =
+      previouslyValidated?.revision === cached.revision
+        ? previouslyValidated.contentType
+        : await findEpubMediaOverlayAudio(zip, cached.info, normalizedPath, sectionIndex);
+    if (!contentType) throw new NotFoundException(`Media-overlay resource not in playlist: ${normalizedPath}`);
+    this.narrationAudio.delete(audioKey);
+    this.narrationAudio.set(audioKey, { revision: cached.revision, contentType });
+    if (this.narrationAudio.size > 256) {
+      const oldest = this.narrationAudio.keys().next().value;
+      if (oldest) this.narrationAudio.delete(oldest);
+    }
     const entry = findEpubZipEntry(zip.files, normalizedPath);
     if (!entry) throw new NotFoundException(`Entry not in archive: ${normalizedPath}`);
 
-    const full = await entry.buffer();
-    const range = this.parseRange(rangeHeader, full.length);
-    const data = range ? full.subarray(range.start, range.end + 1) : full;
+    const size = entry.uncompressedSize;
+    const range = this.parseRange(rangeHeader, size);
+    const sourceStat = await stat(resolved.absolutePath);
+    const etag = `"${sourceStat.mtimeMs}-${sourceStat.size}-${entry.crc32}-${size}"`;
+    if (range === 'unsatisfiable') {
+      return {
+        data: Buffer.alloc(0),
+        contentType,
+        size,
+        status: 416,
+        contentRange: `bytes */${size}`,
+        contentLength: 0,
+        etag,
+      };
+    }
+    const revision = audioSourceRevision(sourceStat);
+    if (revision !== cached.revision) throw new BadRequestException('Narration audio changed while reading');
+    const streamed = await this.audioCache.stream(user.id, bookId, resolved.absolutePath, revision, entry, range, signal);
+    let data: Buffer | Readable = streamed;
+    if (range && range.end - range.start + 1 <= 256 * 1024) {
+      const chunks: Buffer[] = [];
+      for await (const chunk of streamed) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
+      data = Buffer.concat(chunks);
+    }
     return {
       data,
-      contentType: resource.mediaType,
-      size: full.length,
+      contentType,
+      size,
       status: range ? 206 : 200,
-      contentRange: range ? `bytes ${range.start}-${range.end}/${full.length}` : null,
+      contentRange: range ? `bytes ${range.start}-${range.end}/${size}` : null,
+      contentLength: range ? range.end - range.start + 1 : size,
+      etag,
     };
   }
 
@@ -413,7 +504,7 @@ export class EpubService {
     return { fileId: null, absolutePath: file.absolutePath, readerPath: file.absolutePath, sizeBytes: file.sizeBytes };
   }
 
-  private parseRange(rangeHeader: string | undefined, size: number): ByteRange | null {
+  private parseRange(rangeHeader: string | undefined, size: number): ByteRange | null | 'unsatisfiable' {
     if (!rangeHeader) return null;
     const match = rangeHeader.match(/^bytes=(\d*)-(\d*)$/);
     if (!match) throw new BadRequestException('Invalid Range header');
@@ -431,16 +522,19 @@ export class EpubService {
       start = Number(startRaw);
       end = endRaw ? Number(endRaw) : size - 1;
     }
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= size) {
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || (startRaw && endRaw && end < start)) {
       throw new BadRequestException('Invalid Range header');
     }
+    if (start >= size) return 'unsatisfiable';
     return { start, end: Math.min(end, size - 1) };
   }
 
   private async getCachedEntry(epubPath: string): Promise<CacheEntry> {
-    const { mtimeMs } = await stat(epubPath);
+    const sourceStat = await stat(epubPath);
+    const { mtimeMs } = sourceStat;
+    const revision = audioSourceRevision(sourceStat);
     const cached = this.cache.get(epubPath);
-    if (cached && cached.mtime === mtimeMs) {
+    if (cached && cached.revision === revision) {
       cached.lastAccessed = Date.now();
       return cached;
     }
@@ -452,7 +546,7 @@ export class EpubService {
     for (const item of info.manifest) validPaths.add(normalizeZipPath(item.href));
     for (const path of info.optionalFiles ?? []) validPaths.add(normalizeZipPath(path));
 
-    const entry: CacheEntry = { info, mtime: mtimeMs, validPaths, lastAccessed: Date.now() };
+    const entry: CacheEntry = { info, mtime: mtimeMs, revision, validPaths, lastAccessed: Date.now() };
     this.evict();
     this.cache.set(epubPath, entry);
     return entry;

@@ -1,6 +1,6 @@
 import { api } from '@/lib/api'
 import { Book, BookCheck, BookMarked, BookOpen, BookX, Pause, RotateCcw, ScanLine } from '@lucide/vue'
-import type { ReadStatus, UserBookStatus } from '@bookorbit/types'
+import type { ReadStatus, SetBookReadingStatusPayload, UserBookStatus } from '@bookorbit/types'
 
 export type StatusOption = {
   value: ReadStatus
@@ -40,11 +40,7 @@ export const STATUS_COLORS: Record<ReadStatus, string> = {
   abandoned: 'text-rose-400',
 }
 
-export type ReadStatusPatch = {
-  status?: ReadStatus
-  startedAt?: string | null
-  finishedAt?: string | null
-}
+export type ReadStatusPatch = SetBookReadingStatusPayload
 
 export class ReadStatusUpdateError extends Error {
   constructor(

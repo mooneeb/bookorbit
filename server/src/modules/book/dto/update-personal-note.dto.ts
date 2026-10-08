@@ -1,8 +1,9 @@
 import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { PERSONAL_NOTE_MAX_LENGTH, type UpdateBookPersonalNotePayload } from '@bookorbit/types';
 
-export class UpdatePersonalNoteDto {
+export class UpdatePersonalNoteDto implements UpdateBookPersonalNotePayload {
   @IsOptional()
   @IsString()
-  @MaxLength(10000)
+  @MaxLength(PERSONAL_NOTE_MAX_LENGTH)
   note?: string | null;
 }

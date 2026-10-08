@@ -25,6 +25,7 @@ import { BookQueryPipe, JumpBucketsQueryPipe } from '../book/pipes/book-query.pi
 import { CreateSmartScopeDto } from './dto/create-smart-scope.dto';
 import { ReorderSmartScopesDto } from './dto/reorder-smart-scopes.dto';
 import { SetKoboSyncDto } from './dto/set-kobo-sync.dto';
+import { SmartScopePageQueryDto } from './dto/smart-scope-page-query.dto';
 import { UpdateSmartScopeDto } from './dto/update-smart-scope.dto';
 import { SmartScopeService } from './smart-scope.service';
 
@@ -56,6 +57,12 @@ export class SmartScopeController {
   @Get()
   findAll(@CurrentUser() user: RequestUser) {
     return this.smartScopeService.findAll(user);
+  }
+
+  @Get('page')
+  findPage(@Query() query: SmartScopePageQueryDto, @CurrentUser() user: RequestUser) {
+    this.validatePageQuery(query.page, query.size);
+    return this.smartScopeService.findPage(user, query);
   }
 
   @Get(':id')

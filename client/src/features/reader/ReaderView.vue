@@ -252,12 +252,15 @@ const {
   getServerTextBlocks,
   getVisibleRange,
   getBlockIndexForRange,
+  getPositionForBlock,
+  getSpeechStartFromCfi,
   highlightBlock,
   showResumeHighlightFromCfi,
   showResumeHighlightFromBlock,
   clearHighlight,
 } = useFoliateTts()
-const { startPlayback, isActive, currentBook, currentBlockIndex, currentChapterIndex, playbackState, primeAudioContext } = useTtsPlayer()
+const { startPlayback, refreshPositionAnchor, isActive, currentBook, currentDomBlockIndex, currentChapterIndex, playbackState, primeAudioContext } =
+  useTtsPlayer()
 const { setExpanded: setMiniPlayerExpanded, setReaderFooterVisible } = useTtsMiniPlayerUi()
 const { loadBookPreferences, loadUserPreferences, defaultProviderId, defaultVoiceId, defaultSpeed } = useTtsPreferences()
 const ttsPosition = useTtsPosition()
@@ -373,7 +376,8 @@ function syncFoliateHighlightToCurrentBlock() {
     clearHighlight()
     return
   }
-  highlightBlock(currentBlockIndex.value)
+  highlightBlock(currentDomBlockIndex.value)
+  refreshPositionAnchor()
 }
 
 // Re-run the highlight sync whenever TTS becomes active, the chapter document
@@ -400,7 +404,7 @@ watch([foliateReady, isTtsActive, sectionIndex, () => ttsPosition.savedPosition.
 })
 
 // Keep the Foliate overlay in lockstep with TTS block changes.
-watch([currentChapterIndex, currentBlockIndex], ([chapterIdx]) => {
+watch([currentChapterIndex, currentDomBlockIndex], ([chapterIdx]) => {
   if (!isTtsActive.value || !foliateReady.value) return
 
   withTtsRelocation(async () => {
@@ -671,7 +675,9 @@ async function handleReadFromHere() {
     // audio block exactly - no fuzzy text matching.
     const blockIndex = range ? getBlockIndexForRange(range) : -1
     const startBlock = blockIndex >= 0 ? blockIndex : 0
-    await startPlayback(book, providerId, voiceId, speed, (chapterIndex) => getServerTextBlocks(fileId, chapterIndex), chapterIdx, startBlock)
+    await startPlayback(book, providerId, voiceId, speed, (chapterIndex) => getServerTextBlocks(fileId, chapterIndex), chapterIdx, startBlock, {
+      positionForBlock: getPositionForBlock,
+    })
   } catch {
     toast.error('Failed to start TTS playback')
   }
@@ -687,8 +693,6 @@ async function handleResumeTts() {
     return
   }
   const match = /^tts:(\d+):(\d+)$/.exec(saved.cfi)
-  const chapterIdx = match ? parseInt(match[1]!, 10) : (saved.chapterIndex ?? sectionIndex.value)
-  const blockIdx = match ? parseInt(match[2]!, 10) : 0
   const book = await buildTtsBook()
   if (!book) return
   try {
@@ -697,7 +701,50 @@ async function handleResumeTts() {
       toast.error('No TTS voices are available for the selected provider')
       return
     }
-    await startPlayback(book, providerId, voiceId, speed, (chapterIndex) => getServerTextBlocks(fileId, chapterIndex), chapterIdx, blockIdx)
+    if (match) {
+      await startPlayback(
+        book,
+        providerId,
+        voiceId,
+        speed,
+        (chapterIndex) => getServerTextBlocks(fileId, chapterIndex),
+        parseInt(match[1]!, 10),
+        parseInt(match[2]!, 10),
+        { positionForBlock: getPositionForBlock },
+      )
+      return
+    }
+    await goTo(saved.cfi)
+    const start = getSpeechStartFromCfi(saved.cfi)
+    if (!start) throw new Error('The saved speech passage could not be found in this ebook')
+    await startPlayback(
+      book,
+      providerId,
+      voiceId,
+      speed,
+      async (chapterIndex) => {
+        const blocks = await getServerTextBlocks(fileId, chapterIndex)
+        if (chapterIndex === start.chapterIndex) {
+          if (blocks[start.blockIndex] === undefined) throw new Error('The saved speech passage is no longer available')
+          blocks.splice(start.blockIndex, 1, ...start.segments.map((segment) => segment.text))
+        }
+        return blocks
+      },
+      start.chapterIndex,
+      start.blockIndex,
+      {
+        startPosition: saved,
+        domBlockIndexForPlayback: (chapterIndex, blockIndex) => {
+          if (chapterIndex !== start.chapterIndex || blockIndex < start.blockIndex) return blockIndex
+          return blockIndex < start.blockIndex + start.segments.length ? start.blockIndex : blockIndex - start.segments.length + 1
+        },
+        positionForBlock: (chapterIndex, blockIndex) => {
+          if (chapterIndex !== start.chapterIndex || blockIndex < start.blockIndex) return getPositionForBlock(chapterIndex, blockIndex)
+          const segment = start.segments[blockIndex - start.blockIndex]
+          return segment ? { cfi: segment.cfi, chapterIndex } : getPositionForBlock(chapterIndex, blockIndex - start.segments.length + 1)
+        },
+      },
+    )
   } catch {
     toast.error('Failed to resume TTS playback')
   }
@@ -739,7 +786,9 @@ async function handlePlayFromCurrentPage() {
     // of the currently visible position; map it to its paragraph index.
     const blockIndex = getBlockIndexForRange(getVisibleRange())
     const startBlock = blockIndex >= 0 ? blockIndex : 0
-    await startPlayback(book, providerId, voiceId, speed, (chapterIndex) => getServerTextBlocks(fileId, chapterIndex), chapterIdx, startBlock)
+    await startPlayback(book, providerId, voiceId, speed, (chapterIndex) => getServerTextBlocks(fileId, chapterIndex), chapterIdx, startBlock, {
+      positionForBlock: getPositionForBlock,
+    })
   } catch {
     toast.error('Failed to start TTS playback')
   }

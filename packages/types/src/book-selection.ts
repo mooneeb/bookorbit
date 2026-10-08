@@ -7,4 +7,6 @@ export type BookSelectionQuery = {
   sort?: SortSpec[];
 };
 
-export type BookSelectionPayload = { bookIds: number[]; query?: never } | { query: BookSelectionQuery; bookIds?: never };
+export type BookIdsSelection = { bookIds: number[]; query?: never };
+
+export type BookSelectionPayload = BookIdsSelection | { query: BookSelectionQuery; bookIds?: never };

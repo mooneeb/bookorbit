@@ -1,8 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, exists, inArray, ne, or, sql } from 'drizzle-orm';
+import { and, count, eq, exists, inArray, ne, or, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
-import { APP_FEATURES, type MediaType } from '@bookorbit/types';
+import { APP_FEATURES, type MediaType, type SmartScopePageQuery } from '@bookorbit/types';
+import { accentInsensitiveIlike, buildSearchPattern } from '../../common/utils/accent-insensitive-search.utils';
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import { smartScopeKoboSubscriptions, smartScopes } from '../../db/schema';
@@ -22,6 +23,29 @@ export class SmartScopeRepository {
       .from(smartScopes)
       .where(and(or(eq(smartScopes.userId, userId), eq(smartScopes.isPublic, true)), visibleSmartScopeCondition))
       .orderBy(smartScopes.displayOrder, smartScopes.name);
+  }
+
+  async findVisiblePage(userId: number, query: SmartScopePageQuery) {
+    const page = query.page ?? 0;
+    const size = query.size ?? 40;
+    const where = and(
+      or(eq(smartScopes.userId, userId), eq(smartScopes.isPublic, true)),
+      query.owned ? eq(smartScopes.userId, userId) : undefined,
+      visibleSmartScopeCondition,
+      query.mediaType ? eq(smartScopes.mediaType, query.mediaType) : undefined,
+      query.q ? accentInsensitiveIlike(smartScopes.name, buildSearchPattern(query.q)) : undefined,
+    );
+    const [items, [summary]] = await Promise.all([
+      this.db
+        .select()
+        .from(smartScopes)
+        .where(where)
+        .orderBy(smartScopes.displayOrder, smartScopes.name, smartScopes.id)
+        .limit(size)
+        .offset(page * size),
+      this.db.select({ total: count() }).from(smartScopes).where(where),
+    ]);
+    return { items, total: Number(summary?.total ?? 0), page, size };
   }
 
   findById(id: number) {

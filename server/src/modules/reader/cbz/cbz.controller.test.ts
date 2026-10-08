@@ -37,7 +37,7 @@ describe('CbzController', () => {
     await controller.getPage(12, 3, user, reply as any);
 
     expect(cbzService.streamPage).toHaveBeenCalledWith(12, 3, user);
-    expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'public, max-age=31536000, immutable');
+    expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
     expect(reply.type).toHaveBeenCalledWith('image/png');
     expect(reply.send).toHaveBeenCalledWith(stream);
   });

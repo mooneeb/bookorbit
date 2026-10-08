@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
@@ -74,8 +74,23 @@ export class AudiobookRepository {
     return row ?? null;
   }
 
-  async deletePlaybackState(userId: number, bookId: number) {
-    await this.db.delete(audiobookProgress).where(and(eq(audiobookProgress.userId, userId), eq(audiobookProgress.bookId, bookId)));
+  async deletePlaybackState(userId: number, bookId: number, baseRevision?: number) {
+    if (baseRevision === undefined) {
+      await this.db.delete(audiobookProgress).where(and(eq(audiobookProgress.userId, userId), eq(audiobookProgress.bookId, bookId)));
+      return true;
+    }
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`set local lock_timeout = '5s'`);
+      const [current] = await tx
+        .select()
+        .from(audiobookProgress)
+        .where(and(eq(audiobookProgress.userId, userId), eq(audiobookProgress.bookId, bookId)))
+        .limit(1)
+        .for('update');
+      if (baseRevision !== undefined && (current?.revision ?? 0) !== baseRevision) return false;
+      if (current) await tx.delete(audiobookProgress).where(and(eq(audiobookProgress.userId, userId), eq(audiobookProgress.bookId, bookId)));
+      return true;
+    });
   }
 
   findAudioBookmarks(userId: number, bookId: number) {
@@ -92,6 +107,39 @@ export class AudiobookRepository {
         ),
       )
       .orderBy(asc(bookmarks.positionSeconds), asc(bookmarks.id));
+  }
+
+  findAudioBookmarksPage(userId: number, bookId: number, limit: number, after?: Pick<typeof bookmarks.$inferSelect, 'id' | 'positionSeconds'>) {
+    return this.db
+      .select({
+        id: bookmarks.id,
+        clientId: bookmarks.clientId,
+        bookId: bookmarks.bookId,
+        positionSeconds: bookmarks.positionSeconds,
+        chapterId: bookmarks.chapterId,
+        title: bookmarks.title,
+        note: bookmarks.note,
+        createdAt: bookmarks.createdAt,
+        updatedAt: bookmarks.updatedAt,
+      })
+      .from(bookmarks)
+      .where(
+        and(
+          eq(bookmarks.userId, userId),
+          eq(bookmarks.bookId, bookId),
+          isNull(bookmarks.cfi),
+          isNotNull(bookmarks.positionSeconds),
+          isNull(bookmarks.deletedAt),
+          after?.positionSeconds !== null && after?.positionSeconds !== undefined
+            ? or(
+                gt(bookmarks.positionSeconds, after.positionSeconds),
+                and(eq(bookmarks.positionSeconds, after.positionSeconds), gt(bookmarks.id, after.id)),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(asc(bookmarks.positionSeconds), asc(bookmarks.id))
+      .limit(limit + 1);
   }
 
   async findAudioBookmark(userId: number, bookId: number, clientId: string) {

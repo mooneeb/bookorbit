@@ -1,5 +1,5 @@
-import { ref } from 'vue'
-import type { TtsPlaybackState } from '@bookorbit/types'
+import { computed, ref, shallowRef } from 'vue'
+import type { TtsPlaybackState, TtsPosition } from '@bookorbit/types'
 import { registerAudioFocusOwner, requestAudioFocus } from '@/lib/audio-focus'
 import * as ttsApi from '../api/tts.api'
 import { useTtsPosition } from './useTtsPosition'
@@ -17,10 +17,19 @@ const SCHEDULE_LATENCY = 0.05
 
 type TextSourceFn = (chapterIndex: number) => Promise<string[]>
 
+interface TtsPlaybackPositionContext {
+  startPosition?: TtsPosition
+  positionForBlock: (chapterIndex: number, blockIndex: number) => TtsPosition | null
+  domBlockIndexForPlayback?: (chapterIndex: number, blockIndex: number) => number
+}
+
 const playbackState = ref<TtsPlaybackState>('idle')
 const currentBook = ref<TtsCurrentBook | null>(null)
 const currentBlockIndex = ref(0)
 const currentChapterIndex = ref(0)
+const currentDomBlockIndex = computed(
+  () => positionContext.value?.domBlockIndexForPlayback?.(currentChapterIndex.value, currentBlockIndex.value) ?? currentBlockIndex.value,
+)
 const speed = ref(1.0)
 const error = ref<string | null>(null)
 const isActive = ref(false)
@@ -37,6 +46,9 @@ let getTextBlocks: TextSourceFn | null = null
 let chapterBlocks: string[] = []
 const pendingPrefetches = new Set<number>()
 let prefetchGeneration = 0
+const positionContext = shallowRef<TtsPlaybackPositionContext | null>(null)
+let initialBlockIndex = 0
+let initialChapterIndex = 0
 
 const positionComposable = useTtsPosition()
 const mediaSession = useTtsMediaSession()
@@ -44,7 +56,13 @@ const readingSession = useTtsReadingSession()
 
 function queueCurrentPositionSave(blockIdx = currentBlockIndex.value) {
   if (!currentBook.value) return
-  positionComposable.scheduleSave(currentBook.value.bookFileId, `tts:${currentChapterIndex.value}:${blockIdx}`, currentChapterIndex.value)
+  const start = currentChapterIndex.value === initialChapterIndex && blockIdx === initialBlockIndex ? positionContext.value?.startPosition : null
+  const position = start ?? positionContext.value?.positionForBlock(currentChapterIndex.value, blockIdx)
+  positionComposable.scheduleSave(
+    currentBook.value.bookFileId,
+    position?.cfi ?? `tts:${currentChapterIndex.value}:${blockIdx}`,
+    position?.chapterIndex ?? currentChapterIndex.value,
+  )
 }
 
 function flushCurrentPositionSave() {
@@ -84,6 +102,7 @@ function internalReset(): void {
   error.value = null
   chapterBlocks = []
   getTextBlocks = null
+  positionContext.value = null
 }
 
 async function decodeAudioBlob(blob: Blob): Promise<AudioBuffer> {
@@ -189,6 +208,7 @@ export function useTtsPlayer() {
     textSource: TextSourceFn,
     startChapter = 0,
     startBlock = 0,
+    context?: TtsPlaybackPositionContext,
   ) {
     internalReset()
     requestAudioFocus('tts')
@@ -199,6 +219,9 @@ export function useTtsPlayer() {
     currentChapterIndex.value = startChapter
     currentBlockIndex.value = Math.max(0, startBlock)
     getTextBlocks = textSource
+    positionContext.value = context ?? null
+    initialBlockIndex = startBlock
+    initialChapterIndex = startChapter
     isActive.value = true
     playbackState.value = 'loading'
     error.value = null
@@ -342,6 +365,10 @@ export function useTtsPlayer() {
     mediaSession.setPlaybackState('playing')
   }
 
+  function refreshPositionAnchor() {
+    if (isActive.value) queueCurrentPositionSave()
+  }
+
   function stopPlayback() {
     internalReset()
     void audioCtx?.close?.()
@@ -422,6 +449,7 @@ export function useTtsPlayer() {
     playbackState,
     currentBook,
     currentBlockIndex,
+    currentDomBlockIndex,
     currentChapterIndex,
     speed,
     currentProviderId,
@@ -431,6 +459,7 @@ export function useTtsPlayer() {
     sleepTimer,
     primeAudioContext,
     startPlayback,
+    refreshPositionAnchor,
     pausePlayback,
     resumePlayback,
     stopPlayback,

@@ -1,12 +1,12 @@
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsNotEmpty, IsOptional, IsString, MaxLength, IsIn } from 'class-validator';
-import { ICON_VALUE_MAX_LENGTH, MEDIA_TYPES, type MediaType } from '@bookorbit/types';
+import { ICON_VALUE_MAX_LENGTH, MEDIA_TYPES, type CreateCollectionPayload, type MediaType } from '@bookorbit/types';
 
 function trimString(value: unknown): unknown {
   return typeof value === 'string' ? value.trim() : value;
 }
 
-export class CreateCollectionDto {
+export class CreateCollectionDto implements CreateCollectionPayload {
   /** Defaults to books, so existing callers need no change. */
   @IsOptional()
   @IsIn(MEDIA_TYPES)

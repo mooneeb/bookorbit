@@ -1,4 +1,6 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { speechPositionVersion } from '../../common/utils/reader-position-version.utils';
+import { ConflictException, BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import type { TtsCaptionedSpeech, TtsChapterText, TtsEffectivePreferences, TtsUserPreferences, TtsVoice } from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
@@ -175,19 +177,70 @@ export class TtsService {
 
   // ---- TTS position ----
 
-  async getPosition(userId: number, bookFileId: number, user: RequestUser) {
+  async getPosition(userId: number, bookFileId: number, user: RequestUser, withVersion = false) {
     await this.bookService.verifyFileAccess(bookFileId, user);
-    return this.ttsRepo.findPosition(userId, bookFileId);
+    const row = await this.ttsRepo.findPosition(userId, bookFileId);
+    if (!withVersion) return row ?? null;
+    const version = speechPositionVersion(userId, bookFileId, row);
+    const position = row ? { ...row, version } : null;
+    return withVersion ? { position, version } : position;
   }
 
   async savePosition(userId: number, bookFileId: number, dto: SaveTtsPositionDto, user: RequestUser) {
     await this.bookService.verifyFileAccess(bookFileId, user);
-    return this.ttsRepo.upsertPosition(userId, bookFileId, dto.cfi, dto.chapterIndex ?? null);
+    if (!dto.baseVersion) return this.ttsRepo.upsertPosition(userId, bookFileId, dto.cfi, dto.chapterIndex ?? null);
+    const previous = await this.ttsRepo.findPosition(userId, bookFileId);
+    if (dto.baseVersion && previous?.cfi === dto.cfi && previous.chapterIndex === (dto.chapterIndex ?? null)) {
+      return { ...previous, version: speechPositionVersion(userId, bookFileId, previous) };
+    }
+    if (dto.baseVersion && dto.baseVersion !== speechPositionVersion(userId, bookFileId, previous)) {
+      throw new ConflictException('Speech position changed in another reader');
+    }
+    const writeStartedAt = Date.now();
+    let saved: Awaited<ReturnType<TtsRepository['upsertPosition']>>;
+    try {
+      saved = await this.ttsRepo.upsertPosition(
+        userId,
+        bookFileId,
+        dto.cfi,
+        dto.chapterIndex ?? null,
+        dto.baseVersion ? { previous: previous ?? null } : undefined,
+      );
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'Unknown';
+      const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
+      this.logger.error(
+        `[tts.save_position] [fail] userId=${userId} fileId=${bookFileId} durationMs=${Date.now() - writeStartedAt} errorClass=${errorClass} error="${message}" - speech position write failed`,
+      );
+      throw error;
+    }
+    if (!saved) throw new ConflictException('Speech position changed in another reader');
+    return { ...saved, version: speechPositionVersion(userId, bookFileId, saved) };
   }
 
-  async deletePosition(userId: number, bookFileId: number, user: RequestUser) {
-    await this.bookService.verifyFileAccess(bookFileId, user);
-    await this.ttsRepo.deletePosition(userId, bookFileId);
+  async deletePosition(userId: number, bookFileId: number, user: RequestUser, baseVersion?: string) {
+    const startedAt = Date.now();
+    this.logger.log(
+      `[tts.clear_position] [start] userId=${userId} fileId=${bookFileId} conditional=${baseVersion !== undefined} - position reset started`,
+    );
+    try {
+      await this.bookService.verifyFileAccess(bookFileId, user);
+      const cleared =
+        baseVersion !== undefined
+          ? await this.ttsRepo.deletePosition(userId, bookFileId, baseVersion)
+          : await this.ttsRepo.deletePosition(userId, bookFileId);
+      if (cleared === false) throw new ConflictException('The speech position changed. Review its current position before clearing.');
+      this.logger.log(
+        `[tts.clear_position] [end] userId=${userId} fileId=${bookFileId} durationMs=${Date.now() - startedAt} cleared=true - position reset completed`,
+      );
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'Unknown';
+      const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
+      this.logger.error(
+        `[tts.clear_position] [fail] userId=${userId} fileId=${bookFileId} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${message}" - position reset failed`,
+      );
+      throw error;
+    }
   }
 
   async getChapterText(bookFileId: number, chapterIndex: number, user: RequestUser): Promise<TtsChapterText> {

@@ -1,16 +1,20 @@
-import { IsIn, IsNumber, IsOptional, IsString, Max, Min, ValidateIf } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString, Max, Min, Matches, ValidateIf } from 'class-validator';
+import type { FileProgressSource, SaveFileProgressPayload } from '@bookorbit/types';
 
 /**
  * Which of a file's two positions this write moved. Text is the default so a client that predates
  * the field, or one that has only ever had a text position, keeps its current behaviour.
  */
-export const PROGRESS_SOURCES = ['text', 'narration'] as const;
-export type ProgressSource = (typeof PROGRESS_SOURCES)[number];
+export const PROGRESS_SOURCES = ['text', 'narration'] as const satisfies readonly FileProgressSource[];
 
-export class SaveProgressDto {
+export class SaveProgressDto implements SaveFileProgressPayload {
+  @IsOptional()
+  @Matches(/^[a-f0-9]{64}$/)
+  baseVersion?: string;
+
   @IsOptional()
   @IsIn(PROGRESS_SOURCES)
-  source?: ProgressSource;
+  source?: FileProgressSource;
 
   @ValidateIf((o: SaveProgressDto) => o.cfi != null)
   @IsString()

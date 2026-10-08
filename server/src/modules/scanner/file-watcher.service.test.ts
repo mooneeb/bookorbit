@@ -641,11 +641,14 @@ describe('pauseWatcher() against a real filesystem', () => {
 
       service.resumeWatcher(1);
       await writeFile(join(dir, 'after-resume.epub'), 'x');
-      await settle();
-
-      const seen = processSpy.mock.calls.map((call) => call[1]);
-      expect(seen).toContain(join(dir, 'after-resume.epub'));
-      expect(seen).not.toContain(join(dir, 'while-paused.epub'));
+      await vi.waitFor(
+        () => {
+          const seen = processSpy.mock.calls.map((call) => call[1]);
+          expect(seen).toContain(join(dir, 'after-resume.epub'));
+          expect(seen).not.toContain(join(dir, 'while-paused.epub'));
+        },
+        { timeout: 10000 },
+      );
     } finally {
       await service.onModuleDestroy();
       await rm(dir, { recursive: true, force: true });

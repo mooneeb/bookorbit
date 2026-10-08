@@ -185,7 +185,7 @@ const getDirection = (doc) => {
   const { writingMode, direction } = defaultView.getComputedStyle(doc.body)
   const vertical = writingMode === 'vertical-rl' || writingMode === 'vertical-lr'
   const rtl = doc.body.dir === 'rtl' || direction === 'rtl' || doc.documentElement.dir === 'rtl'
-  return { vertical, rtl }
+  return { vertical, rtl, blockRtl: writingMode === 'vertical-rl' }
 }
 
 const getBackground = (doc) => {
@@ -293,7 +293,7 @@ class View {
 
           // it needs to be visible for Firefox to get computed style
           this.#iframe.style.display = 'block'
-          const { vertical, rtl } = getDirection(doc)
+          const { vertical, rtl, blockRtl } = getDirection(doc)
           const background = getBackground(doc)
           this.#iframe.style.display = 'none'
 
@@ -301,7 +301,7 @@ class View {
           this.#rtl = rtl
 
           this.#contentRange.selectNodeContents(doc.body)
-          const layout = beforeRender?.({ vertical, rtl, background })
+          const layout = beforeRender?.({ vertical, rtl, blockRtl, background })
           this.#iframe.style.display = 'block'
           this.render(layout)
           this.#observer.observe(doc.body)
@@ -321,7 +321,7 @@ class View {
   render(layout) {
     if (!layout) return
     if (!this.document) return
-    this.#column = layout.flow !== 'scrolled'
+    this.#column = layout.flow !== 'scrolled' || layout.continuousColumns
     this.#layout = layout
     if (this.#column) this.columnize(layout)
     else this.scrolled(layout)
@@ -333,17 +333,22 @@ class View {
       'box-sizing': 'border-box',
       padding: vertical ? `${gap}px 0` : `0 ${gap}px`,
       'column-width': 'auto',
+      'column-gap': 'normal',
+      'column-fill': 'auto',
+      overflow: 'hidden',
       height: 'auto',
       width: 'auto',
     })
     setStylesImportant(doc.body, {
+      'max-height': 'none',
+      'max-width': 'none',
       [vertical ? 'max-height' : 'max-width']: `${columnWidth}px`,
       margin: 'auto',
     })
     this.setImageSize()
     this.expand()
   }
-  columnize({ width, height, gap, columnWidth }) {
+  columnize({ width, height, margin, gap, columnWidth, continuousColumns }) {
     const vertical = this.#vertical
     this.#size = vertical ? height : width
 
@@ -353,7 +358,9 @@ class View {
       'column-width': `${Math.trunc(columnWidth)}px`,
       'column-gap': `${gap}px`,
       'column-fill': 'auto',
-      ...(vertical ? { width: `${width}px` } : { height: `${height}px` }),
+      ...(vertical
+        ? { width: `${Math.max(1, width - (continuousColumns ? margin * 2 : 0))}px`, height: 'auto' }
+        : { height: `${Math.max(1, height - (continuousColumns ? margin * 2 : 0))}px`, width: 'auto' }),
       padding: vertical ? `${gap / 2}px 0` : `0 ${gap / 2}px`,
       overflow: 'hidden',
       // force wrap long words
@@ -409,14 +416,15 @@ class View {
       const expandedSize = pageCount * this.#size
       this.#element.style.padding = '0'
       this.#iframe.style[side] = `${expandedSize}px`
-      this.#element.style[side] = `${expandedSize + this.#size * 2}px`
-      this.#iframe.style[otherSide] = '100%'
+      const { continuousColumns, margin } = this.#layout
+      this.#element.style[side] = `${expandedSize + (continuousColumns ? 0 : this.#size * 2)}px`
+      this.#iframe.style[otherSide] = continuousColumns ? `calc(100% - ${margin * 2}px)` : '100%'
       this.#element.style[otherSide] = '100%'
       documentElement.style[side] = `${this.#size}px`
       if (this.#overlayer) {
         this.#overlayer.element.style.margin = '0'
-        this.#overlayer.element.style.left = this.#vertical ? '0' : `${this.#size}px`
-        this.#overlayer.element.style.top = this.#vertical ? `${this.#size}px` : '0'
+        this.#overlayer.element.style.left = continuousColumns ? (this.#vertical ? `${margin}px` : '0') : this.#vertical ? '0' : `${this.#size}px`
+        this.#overlayer.element.style.top = continuousColumns ? (this.#vertical ? '0' : `${margin}px`) : this.#vertical ? `${this.#size}px` : '0'
         this.#overlayer.element.style[side] = `${expandedSize}px`
         this.#overlayer.redraw()
       }
@@ -456,9 +464,9 @@ class View {
 
 // NOTE: everything here assumes the so-called "negative scroll type" for RTL
 export class Paginator extends HTMLElement {
-  static observedAttributes = ['flow', 'gap', 'margin', 'max-inline-size', 'max-block-size', 'max-column-count']
+  static observedAttributes = ['flow', 'continuous-axis', 'gap', 'margin', 'max-inline-size', 'max-block-size', 'max-column-count']
   #root = this.attachShadow({ mode: 'closed' })
-  #observer = new ResizeObserver(() => this.render())
+  #observer = new ResizeObserver(() => this.render(true))
   #top
   #background
   #container
@@ -467,6 +475,7 @@ export class Paginator extends HTMLElement {
   #view
   #vertical = false
   #rtl = false
+  #blockRtl = false
   #margin = 0
   #index = -1
   #anchor = 0 // anchor view to a fraction (0-1), Range, or Element
@@ -479,7 +488,12 @@ export class Paginator extends HTMLElement {
   #scrollBounds
   #touchState
   #touchScrolled
+  #pointerNavigation = new AbortController()
   #lastVisibleRange
+  #continuousInput = new AbortController()
+  #continuousDocumentInput = new AbortController()
+  #continuousTouch
+  #wheelBoundary
   constructor() {
     super()
     this.#root.innerHTML = `<style>
@@ -544,6 +558,14 @@ export class Paginator extends HTMLElement {
             grid-row: 1 / -1;
             overflow: auto;
         }
+        :host([flow="scrolled"][continuous-axis="horizontal"]) #container {
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+        :host([flow="scrolled"][continuous-axis="vertical"]) #container {
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
         #header {
             grid-column: 3 / 4;
             grid-row: 1;
@@ -591,21 +613,45 @@ export class Paginator extends HTMLElement {
     this.#container.addEventListener(
       'scroll',
       debounce(() => {
-        if (this.scrolled) {
+        if (this.scrolled && this.#view) {
           if (this.#justAnchored) this.#justAnchored = false
           else this.#afterScroll('scroll')
         }
       }, 250),
     )
 
-    const opts = { passive: false }
+    const registerContinuousInput = (target, signal = this.#continuousInput.signal) => {
+      const continuousOpts = { passive: true, signal }
+      target.addEventListener('touchstart', this.#onContinuousTouchStart.bind(this), continuousOpts)
+      target.addEventListener('touchend', this.#onContinuousTouchEnd.bind(this), continuousOpts)
+      target.addEventListener(
+        'touchcancel',
+        () => {
+          this.#continuousTouch = null
+        },
+        continuousOpts,
+      )
+      target.addEventListener('wheel', this.#onContinuousWheel.bind(this), { passive: false, signal })
+    }
+    registerContinuousInput(this)
+    this.addEventListener(
+      'load',
+      ({ detail: { doc } }) => {
+        this.#continuousDocumentInput.abort()
+        this.#continuousDocumentInput = new AbortController()
+        registerContinuousInput(doc, this.#continuousDocumentInput.signal)
+      },
+      { signal: this.#continuousInput.signal },
+    )
+
+    const opts = { passive: false, signal: this.#pointerNavigation.signal }
     this.addEventListener('touchstart', this.#onTouchStart.bind(this), opts)
     this.addEventListener('touchmove', this.#onTouchMove.bind(this), opts)
-    this.addEventListener('touchend', this.#onTouchEnd.bind(this))
+    this.addEventListener('touchend', this.#onTouchEnd.bind(this), { signal: this.#pointerNavigation.signal })
     this.addEventListener('load', ({ detail: { doc } }) => {
       doc.addEventListener('touchstart', this.#onTouchStart.bind(this), opts)
       doc.addEventListener('touchmove', this.#onTouchMove.bind(this), opts)
-      doc.addEventListener('touchend', this.#onTouchEnd.bind(this))
+      doc.addEventListener('touchend', this.#onTouchEnd.bind(this), { signal: this.#pointerNavigation.signal })
     })
 
     this.addEventListener('relocate', ({ detail }) => {
@@ -617,7 +663,7 @@ export class Paginator extends HTMLElement {
       }
     })
     const checkPointerSelection = debounce((range, sel) => {
-      if (!sel.rangeCount) return
+      if (this.#pointerNavigation.signal.aborted || !sel.rangeCount) return
       const selRange = sel.getRangeAt(0)
       const backward = selectionIsBackward(sel)
       if (backward && selRange.compareBoundaryPoints(Range.START_TO_START, range) < 0) this.prev()
@@ -625,8 +671,8 @@ export class Paginator extends HTMLElement {
     }, 700)
     this.addEventListener('load', ({ detail: { doc } }) => {
       let isPointerSelecting = false
-      doc.addEventListener('pointerdown', () => (isPointerSelecting = true))
-      doc.addEventListener('pointerup', () => (isPointerSelecting = false))
+      doc.addEventListener('pointerdown', () => (isPointerSelecting = true), { signal: this.#pointerNavigation.signal })
+      doc.addEventListener('pointerup', () => (isPointerSelecting = false), { signal: this.#pointerNavigation.signal })
       let isKeyboardSelecting = false
       doc.addEventListener('keydown', () => (isKeyboardSelecting = true))
       doc.addEventListener('keyup', () => (isKeyboardSelecting = false))
@@ -636,7 +682,7 @@ export class Paginator extends HTMLElement {
         if (!range) return
         const sel = doc.getSelection()
         if (!sel.rangeCount) return
-        if (isPointerSelecting && sel.type === 'Range') checkPointerSelection(range, sel)
+        if (!this.#pointerNavigation.signal.aborted && isPointerSelecting && sel.type === 'Range') checkPointerSelection(range, sel)
         else if (isKeyboardSelecting) {
           const selRange = sel.getRangeAt(0).cloneRange()
           const backward = selectionIsBackward(sel)
@@ -661,6 +707,7 @@ export class Paginator extends HTMLElement {
   attributeChangedCallback(name, _, value) {
     switch (name) {
       case 'flow':
+      case 'continuous-axis':
         this.render()
         break
       case 'gap':
@@ -687,6 +734,8 @@ export class Paginator extends HTMLElement {
     })
   }
   #createView() {
+    this.#continuousDocumentInput.abort()
+    this.#continuousTouch = null
     if (this.#view) {
       this.#view.destroy()
       this.#container.removeChild(this.#view.element)
@@ -698,8 +747,9 @@ export class Paginator extends HTMLElement {
     this.#container.append(this.#view.element)
     return this.#view
   }
-  #beforeRender({ vertical, rtl, background }) {
+  #beforeRender({ vertical, rtl, blockRtl = this.#blockRtl, background }) {
     this.#vertical = vertical
+    this.#blockRtl = blockRtl
     const pageProgressionRtl = getPageProgressionRtl(this.bookDir, rtl)
     this.#rtl = pageProgressionRtl
     this.#top.classList.toggle('vertical', vertical)
@@ -739,8 +789,8 @@ export class Paginator extends HTMLElement {
 
     const flow = this.getAttribute('flow')
     if (flow === 'scrolled') {
-      // FIXME: vertical-rl only, not -lr
-      this.setAttribute('dir', vertical ? 'rtl' : 'ltr')
+      const continuousColumns = this.continuousColumns
+      this.setAttribute('dir', this.negativeScroll ? 'rtl' : 'ltr')
       this.#top.style.padding = '0'
       const columnWidth = maxInlineSize
 
@@ -749,7 +799,16 @@ export class Paginator extends HTMLElement {
       this.#header.replaceChildren()
       this.#footer.replaceChildren()
 
-      return { flow, margin, gap, columnWidth }
+      const divisor = Math.max(1, Math.min(maxColumnCount, Math.ceil(size / maxInlineSize)))
+      return {
+        flow,
+        margin,
+        gap,
+        width,
+        height,
+        continuousColumns,
+        columnWidth: continuousColumns ? Math.max(1, size / divisor - gap) : columnWidth,
+      }
     }
 
     const divisor = Math.min(maxColumnCount, Math.ceil(size / maxInlineSize))
@@ -773,8 +832,9 @@ export class Paginator extends HTMLElement {
 
     return { height, width, margin, gap, columnWidth }
   }
-  render() {
+  render(preserveCurrent = false) {
     if (!this.#view) return
+    if (preserveCurrent && this.scrolled && this.hasAttribute('continuous-axis') && !this.#locked) this.#anchor = this.#getVisibleRange()
     this.#view.render(
       this.#beforeRender({
         vertical: this.#vertical,
@@ -786,13 +846,27 @@ export class Paginator extends HTMLElement {
   get scrolled() {
     return this.getAttribute('flow') === 'scrolled'
   }
+  get continuousAxis() {
+    const axis = this.getAttribute('continuous-axis')
+    return axis === 'horizontal' || axis === 'vertical' ? axis : this.#vertical ? 'horizontal' : 'vertical'
+  }
+  get continuousColumns() {
+    return this.scrolled && (this.continuousAxis === 'vertical') === this.#vertical
+  }
+  get negativeScroll() {
+    return this.scrolled
+      ? this.continuousColumns
+        ? usesNegativePageScroll(this.#vertical, this.#rtl)
+        : this.#vertical && this.#blockRtl
+      : usesNegativePageScroll(this.#vertical, this.#rtl)
+  }
   get scrollProp() {
-    const { scrolled } = this
-    return this.#vertical ? (scrolled ? 'scrollLeft' : 'scrollTop') : scrolled ? 'scrollTop' : 'scrollLeft'
+    if (this.scrolled) return this.continuousAxis === 'horizontal' ? 'scrollLeft' : 'scrollTop'
+    return this.#vertical ? 'scrollTop' : 'scrollLeft'
   }
   get sideProp() {
-    const { scrolled } = this
-    return this.#vertical ? (scrolled ? 'width' : 'height') : scrolled ? 'height' : 'width'
+    if (this.scrolled) return this.continuousAxis === 'horizontal' ? 'width' : 'height'
+    return this.#vertical ? 'height' : 'width'
   }
   get size() {
     return this.#container.getBoundingClientRect()[this.sideProp]
@@ -850,6 +924,10 @@ export class Paginator extends HTMLElement {
       xy: 0,
     }
   }
+  disablePointerNavigation() {
+    this.#pointerNavigation.abort()
+    this.#touchScrolled = false
+  }
   #onTouchMove(e) {
     const state = this.#touchState
     if (state.pinched) return
@@ -886,17 +964,84 @@ export class Paginator extends HTMLElement {
     // at this point I'm basically throwing `requestAnimationFrame` at
     // anything that doesn't work
     requestAnimationFrame(() => {
-      if (globalThis.visualViewport.scale === 1) this.snap(this.#touchState.vx, this.#touchState.vy)
+      if (!this.#pointerNavigation.signal.aborted && globalThis.visualViewport.scale === 1) this.snap(this.#touchState.vx, this.#touchState.vy)
     })
+  }
+  #onContinuousTouchStart(event) {
+    this.#continuousTouch = null
+    if (!this.scrolled || !this.hasAttribute('continuous-axis') || this.#locked || event.touches.length !== 1 || globalThis.visualViewport?.scale > 1)
+      return
+    this.#justAnchored = false
+    const touch = event.changedTouches[0]
+    this.#continuousTouch = {
+      x: touch.screenX,
+      y: touch.screenY,
+      atStart: this.start <= 2,
+      atEnd: this.viewSize - this.end <= 2,
+    }
+  }
+  #onContinuousTouchEnd(event) {
+    const state = this.#continuousTouch
+    this.#continuousTouch = null
+    if (!state || !this.scrolled || this.#locked || event.touches.length) return
+    const doc = event.currentTarget?.getSelection ? event.currentTarget : this.#view?.document
+    if (hasActiveTextSelection(doc)) return
+    const touch = event.changedTouches[0]
+    const horizontal = this.continuousAxis === 'horizontal'
+    const delta = horizontal ? state.x - touch.screenX : state.y - touch.screenY
+    const cross = horizontal ? state.y - touch.screenY : state.x - touch.screenX
+    if (Math.abs(delta) < 60 || Math.abs(delta) < Math.abs(cross) * 1.2) return
+    const direction = delta * (this.negativeScroll ? -1 : 1) > 0 ? 1 : -1
+    if ((direction < 0 && state.atStart && this.start <= 2) || (direction > 0 && state.atEnd && this.viewSize - this.end <= 2))
+      this.#continueSection(direction)
+  }
+  #onContinuousWheel(event) {
+    if (!this.scrolled || !this.hasAttribute('continuous-axis') || this.#locked) return
+    this.#justAnchored = false
+    if (hasActiveTextSelection(this.#view?.document) || event.ctrlKey) return
+    const horizontal = this.continuousAxis === 'horizontal'
+    const delta = (horizontal ? event.deltaX || event.deltaY : event.deltaY) * (this.negativeScroll ? -1 : 1)
+    if (!delta) return
+    const direction = delta > 0 ? 1 : -1
+    const edge = direction < 0 ? this.start <= 2 : this.viewSize - this.end <= 2
+    if (!edge) {
+      this.#wheelBoundary = null
+      if (horizontal && !event.deltaX) {
+        event.preventDefault()
+        this.#container[this.scrollProp] += event.deltaY
+      }
+      return
+    }
+    const previous = this.#wheelBoundary
+    const distance =
+      previous?.direction === direction && event.timeStamp - previous.time < 250 ? previous.distance + Math.abs(delta) : Math.abs(delta)
+    this.#wheelBoundary = { direction, distance, time: event.timeStamp }
+    if (distance >= 180) {
+      this.#wheelBoundary = null
+      event.preventDefault()
+      this.#continueSection(direction)
+    }
+  }
+  #continueSection(direction) {
+    if (this.#adjacentIndex(direction) == null) return
+    this.#turnPage(direction).catch((error) => this.dispatchEvent(new CustomEvent('navigation-error', { detail: error })))
   }
   // allows one to process rects as if they were LTR and horizontal
   #getRectMapper() {
     if (this.scrolled) {
       const size = this.viewSize
+      if (this.continuousColumns)
+        return this.negativeScroll
+          ? ({ left, right }) => ({ left: size - right, right: size - left })
+          : this.#vertical
+            ? ({ top, bottom }) => ({ left: top, right: bottom })
+            : (rect) => rect
       const margin = this.#margin
-      return this.#vertical
+      return this.#vertical && this.#blockRtl
         ? ({ left, right }) => ({ left: size - right - margin, right: size - left - margin })
-        : ({ top, bottom }) => ({ left: top + margin, right: bottom + margin })
+        : this.#vertical
+          ? ({ left, right }) => ({ left: left + margin, right: right + margin })
+          : ({ top, bottom }) => ({ left: top + margin, right: bottom + margin })
     }
     const pxSize = this.pages * this.size
     return usesNegativePageScroll(this.#vertical, this.#rtl)
@@ -905,24 +1050,24 @@ export class Paginator extends HTMLElement {
         ? ({ top, bottom }) => ({ left: top, right: bottom })
         : (f) => f
   }
-  async #scrollToRect(rect, reason) {
+  async #scrollToRect(rect, reason, smooth) {
     if (this.scrolled) {
-      const offset = this.#getRectMapper()(rect).left - this.#margin
-      return this.#scrollTo(offset, reason)
+      const offset = this.#getRectMapper()(rect).left - (this.continuousColumns ? 0 : this.#margin)
+      return this.#scrollTo(offset, reason, smooth)
     }
     const offset = this.#getRectMapper()(rect).left
-    return this.#scrollToPage(Math.floor(offset / this.size) + (usesNegativePageScroll(this.#vertical, this.#rtl) ? -1 : 1), reason)
+    return this.#scrollToPage(Math.floor(offset / this.size) + (usesNegativePageScroll(this.#vertical, this.#rtl) ? -1 : 1), reason, smooth)
   }
   async #scrollTo(offset, reason, smooth) {
     const element = this.#container
     const { scrollProp, size } = this
+    if (this.scrolled) offset = Math.max(0, Math.min(Math.max(0, this.viewSize - size), offset))
+    if (this.scrolled && this.negativeScroll) offset = -offset
     if (element[scrollProp] === offset) {
       this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
       this.#afterScroll(reason)
       return
     }
-    // FIXME: vertical-rl only, not -lr
-    if (this.scrolled && this.#vertical) offset = -offset
     if ((reason === 'snap' || smooth) && this.hasAttribute('animated'))
       return animate(element[scrollProp], offset, 300, easeOutQuad, (x) => (element[scrollProp] = x)).then(() => {
         this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
@@ -938,10 +1083,10 @@ export class Paginator extends HTMLElement {
     const offset = getPageScrollOffset(page, this.size, this.#vertical, this.#rtl)
     return this.#scrollTo(offset, reason, smooth)
   }
-  async scrollToAnchor(anchor, select) {
-    return this.#scrollToAnchor(anchor, select ? 'selection' : 'navigation')
+  async scrollToAnchor(anchor, select, smooth = false) {
+    return this.#scrollToAnchor(anchor, select ? 'selection' : 'navigation', smooth)
   }
-  async #scrollToAnchor(anchor, reason = 'anchor') {
+  async #scrollToAnchor(anchor, reason = 'anchor', smooth = false) {
     this.#anchor = anchor
     const rects = uncollapse(anchor)?.getClientRects?.()
     // if anchor is an element or a range
@@ -950,24 +1095,30 @@ export class Paginator extends HTMLElement {
       // previous column, there is an extra zero width rect in that column
       const rect = Array.from(rects).find((r) => r.width > 0 && r.height > 0) || rects[0]
       if (!rect) return
-      await this.#scrollToRect(rect, reason)
+      await this.#scrollToRect(rect, reason, smooth)
       return
     }
     // if anchor is a fraction
     if (this.scrolled) {
-      await this.#scrollTo(anchor * this.viewSize, reason)
+      await this.#scrollTo(anchor * this.viewSize, reason, smooth)
       return
     }
     const { pages } = this
     if (!pages) return
     const textPages = pages - 2
     const newPage = Math.round(anchor * (textPages - 1))
-    await this.#scrollToPage(newPage + 1, reason)
+    await this.#scrollToPage(newPage + 1, reason, smooth)
   }
   #getVisibleRange() {
-    if (this.scrolled) return getVisibleRange(this.#view.document, this.start + this.#margin, this.end - this.#margin, this.#getRectMapper())
+    if (this.scrolled) {
+      const margin = this.continuousColumns ? 0 : this.#margin
+      return getVisibleRange(this.#view.document, this.start + margin, this.end - margin, this.#getRectMapper())
+    }
     const size = usesNegativePageScroll(this.#vertical, this.#rtl) ? -this.size : this.size
     return getVisibleRange(this.#view.document, this.start - size, this.end - size, this.#getRectMapper())
+  }
+  captureLocation() {
+    if (this.scrolled && this.#view) this.#afterScroll('scroll')
   }
   #afterScroll(reason) {
     const range = this.#getVisibleRange()
@@ -988,7 +1139,7 @@ export class Paginator extends HTMLElement {
     this.dispatchEvent(new CustomEvent('relocate', { detail }))
   }
   async #display(promise) {
-    const { index, src, anchor, onLoad, select } = await promise
+    const { index, src, anchor, onLoad, select, smooth } = await promise
     this.#index = index
     const hasFocus = this.#view?.document?.hasFocus()
     if (src) {
@@ -1016,14 +1167,14 @@ export class Paginator extends HTMLElement {
       )
       this.#view = view
     }
-    await this.scrollToAnchor((typeof anchor === 'function' ? anchor(this.#view.document) : anchor) ?? 0, select)
+    await this.scrollToAnchor((typeof anchor === 'function' ? anchor(this.#view.document) : anchor) ?? 0, select, smooth)
     if (hasFocus) this.focusView()
   }
   #canGoToIndex(index) {
     return index >= 0 && index <= this.sections.length - 1
   }
-  async #goTo({ index, anchor, select }) {
-    if (index === this.#index) await this.#display({ index, anchor, select })
+  async #goTo({ index, anchor, select, smooth = false }) {
+    if (index === this.#index) await this.#display({ index, anchor, select, smooth })
     else {
       const oldIndex = this.#index
       const onLoad = (detail) => {
@@ -1031,11 +1182,12 @@ export class Paginator extends HTMLElement {
         this.setStyles(this.#styles)
         this.dispatchEvent(new CustomEvent('load', { detail }))
       }
+      this.dispatchEvent(new Event('before-section-load'))
       await this.#display(
         Promise.resolve(this.sections[index].load())
           .then((src) => {
             if (!src) throw new Error(`Failed to load section ${index}`)
-            return { index, src, anchor, onLoad, select }
+            return { index, src, anchor, onLoad, select, smooth }
           })
           .catch((e) => {
             console.warn(e)
@@ -1072,10 +1224,10 @@ export class Paginator extends HTMLElement {
     return this.#scrollToPage(page, 'page', true).then(() => page >= pages - 1)
   }
   get atStart() {
-    return this.#adjacentIndex(-1) == null && this.page <= 1
+    return this.#adjacentIndex(-1) == null && (this.scrolled ? this.start <= 2 : this.page <= 1)
   }
   get atEnd() {
-    return this.#adjacentIndex(1) == null && this.page >= this.pages - 2
+    return this.#adjacentIndex(1) == null && (this.scrolled ? this.viewSize - this.end <= 2 : this.page >= this.pages - 2)
   }
   #adjacentIndex(dir) {
     for (let index = this.#index + dir; this.#canGoToIndex(index); index += dir) if (this.sections[index]?.linear !== 'no') return index
@@ -1083,15 +1235,15 @@ export class Paginator extends HTMLElement {
   async #turnPage(dir, distance) {
     if (this.#locked) return
     this.#locked = true
-    const prev = dir === -1
-    const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
-    if (shouldGo)
-      await this.#goTo({
-        index: this.#adjacentIndex(dir),
-        anchor: prev ? () => 1 : () => 0,
-      })
-    if (shouldGo || !this.hasAttribute('animated')) await wait(100)
-    this.#locked = false
+    try {
+      const prev = dir === -1
+      const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
+      const index = shouldGo ? this.#adjacentIndex(dir) : null
+      if (index != null) await this.#goTo({ index, anchor: prev ? () => 1 : () => 0 })
+      if (shouldGo || !this.hasAttribute('animated')) await wait(100)
+    } finally {
+      this.#locked = false
+    }
   }
   prev(distance) {
     return this.#turnPage(-1, distance)
@@ -1145,7 +1297,12 @@ export class Paginator extends HTMLElement {
     this.#view.document.defaultView.focus()
   }
   destroy() {
-    this.#observer.unobserve(this)
+    this.#pointerNavigation.abort()
+    this.#continuousInput.abort()
+    this.#continuousDocumentInput.abort()
+    this.#continuousTouch = null
+    this.#wheelBoundary = null
+    this.#observer.unobserve(this.#container)
     this.#view.destroy()
     this.#view = null
     this.sections[this.#index]?.unload?.()

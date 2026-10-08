@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { PERSONAL_NOTE_MAX_LENGTH } from '@bookorbit/types';
 
 import type { UserBookNoteRow } from '../../db/schema';
 import { UserBookNoteRepository } from './user-book-note.repository';
 
-export const USER_BOOK_NOTE_MAX_LENGTH = 10000;
+export const USER_BOOK_NOTE_MAX_LENGTH = PERSONAL_NOTE_MAX_LENGTH;
 
 export interface UserBookNoteDto {
   note: string | null;

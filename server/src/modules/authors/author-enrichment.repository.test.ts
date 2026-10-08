@@ -8,7 +8,10 @@ vi.mock('drizzle-orm', () => ({
   lte: vi.fn((left: unknown, right: unknown) => ({ op: 'lte', left, right })),
   max: vi.fn((value: unknown) => ({ op: 'max', value })),
   or: vi.fn((...clauses: unknown[]) => ({ op: 'or', clauses })),
-  sql: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ op: 'sql', text: strings.join(''), values })),
+  sql: Object.assign(
+    vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ op: 'sql', text: strings.join(''), values })),
+    { raw: vi.fn((text: string) => ({ op: 'sql.raw', text })) },
+  ),
 }));
 
 import { and, eq, inArray, lte, or } from 'drizzle-orm';

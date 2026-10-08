@@ -1,8 +1,17 @@
 import { api } from '@/lib/api'
-import type { TtsChapterText, TtsEffectivePreferences, TtsProviderStatus, TtsSynthesisRequest, TtsUserPreferences, TtsVoice } from '@bookorbit/types'
+import type {
+  TtsChapterText,
+  TtsEffectivePreferences,
+  TtsPosition,
+  TtsProviderStatus,
+  TtsSynthesisRequest,
+  TtsUserPreferences,
+  TtsVoice,
+} from '@bookorbit/types'
 import { toStaticVoiceConfig, type StaticVoiceConfig } from '../lib/voice-presets'
 
 export type { StaticVoiceConfig }
+export type { TtsPosition } from '@bookorbit/types'
 
 export interface TtsProviderInfo {
   id: string
@@ -21,11 +30,6 @@ export interface TtsDbProvider {
   displayOrder: number
   staticVoices: StaticVoiceConfig[] | null
   supportsVoiceDiscovery: boolean
-}
-
-export interface TtsPosition {
-  cfi: string
-  chapterIndex: number | null
 }
 
 export interface TtsBookPrefs {

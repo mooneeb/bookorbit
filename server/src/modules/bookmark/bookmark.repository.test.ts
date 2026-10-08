@@ -138,7 +138,15 @@ describe('BookmarkRepository', () => {
 
       const result = await repo.create(10, 5, { cfi: null, title: '00:00:15', positionSeconds: 15 });
 
-      expect(db._insert.values).toHaveBeenCalledWith({ userId: 10, bookId: 5, cfi: null, title: '00:00:15', positionSeconds: 15 });
+      expect(db._insert.values).toHaveBeenCalledWith({
+        userId: 10,
+        bookId: 5,
+        cfi: null,
+        title: '00:00:15',
+        positionSeconds: 15,
+        fileId: null,
+        pageNumber: null,
+      });
       expect(db._values.onConflictDoNothing).toHaveBeenCalledTimes(1);
       expect(result).toEqual(row);
     });

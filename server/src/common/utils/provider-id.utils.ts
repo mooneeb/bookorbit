@@ -6,22 +6,8 @@
  *
  * `lubimyczytac_id` is a `text` column, so 512 is the API bound rather than a storage limit.
  */
-export const PROVIDER_ID_MAX_LENGTHS = {
-  googleBooksId: 50,
-  goodreadsId: 50,
-  amazonId: 20,
-  hardcoverId: 255,
-  hardcoverEditionId: 50,
-  openLibraryId: 50,
-  itunesId: 50,
-  audibleId: 20,
-  librofmId: 50,
-  koboId: 255,
-  comicvineId: 50,
-  ranobedbId: 50,
-  lubimyczytacId: 512,
-  aladinId: 20,
-} as const;
+import { PROVIDER_ID_MAX_LENGTHS } from '@bookorbit/types';
+export { PROVIDER_ID_MAX_LENGTHS } from '@bookorbit/types';
 
 export type ProviderIdField = keyof typeof PROVIDER_ID_MAX_LENGTHS;
 

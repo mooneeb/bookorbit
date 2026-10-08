@@ -49,15 +49,51 @@ export interface TtsEffectivePreferences {
   isBookOverride: boolean;
 }
 
+export interface TtsSpeedPreferencesPatch {
+  speed: number;
+}
+
+export interface TtsPreferencesPatch {
+  providerId?: string;
+  voiceId?: string;
+  speed?: number;
+}
+
+export interface TtsVoicePreviewRequest {
+  providerId: string;
+  voiceId: string;
+}
+
+export interface NativeTtsVoiceSettings {
+  voiceIdentifier: string | null;
+  useServer?: boolean;
+}
+
 // Playback state
 
-export type TtsPlaybackState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
+export type TtsPlaybackState = "idle" | "loading" | "playing" | "paused" | "error";
 
 // Position persistence
 
 export interface TtsPosition {
   cfi: string;
   chapterIndex: number | null;
+  version?: string;
+}
+
+export interface TtsPositionSnapshot {
+  position: TtsPosition | null;
+  version: string;
+}
+
+export interface ClearTtsPositionQuery {
+  baseVersion?: string;
+}
+
+export interface SaveTtsPositionPayload {
+  cfi: string;
+  chapterIndex?: number | null;
+  baseVersion?: string;
 }
 
 // Synthesis
@@ -97,7 +133,7 @@ export interface TtsChapterText {
 export interface TtsProviderInfo {
   id: string;
   name: string;
-  type: 'openai-compatible';
+  type: "openai-compatible";
 }
 
 // Captioned synthesis: audio plus the timing of each spoken word, for readers that

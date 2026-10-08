@@ -1,6 +1,8 @@
 import type { FileMetadata } from '../composables/useFileMetadata'
 import type { MetadataPatch } from '../composables/useMetadataDiff'
 
+export type MetadataFormPatch = Omit<MetadataPatch, 'comicMetadata'> & Pick<FileMetadata, 'comicMetadata'>
+
 const FILE_METADATA_PATCH_FIELDS = [
   'title',
   'subtitle',
@@ -34,8 +36,8 @@ const FILE_METADATA_PATCH_FIELDS = [
   'durationSeconds',
 ] as const satisfies readonly (keyof FileMetadata & keyof MetadataPatch)[]
 
-export function buildFileMetadataPatch(meta: FileMetadata): MetadataPatch {
-  const patch: MetadataPatch = {}
+export function buildFileMetadataPatch(meta: FileMetadata): MetadataFormPatch {
+  const patch: MetadataFormPatch = {}
 
   for (const field of FILE_METADATA_PATCH_FIELDS) {
     if (meta[field] !== undefined) {

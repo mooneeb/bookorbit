@@ -3,13 +3,14 @@ import type { FastifyReply } from 'fastify';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../../common/types/request-user';
 import { CbzService } from './cbz.service';
+import { ComicPageCountResponseDto } from './dto/comic-page-count-response.dto';
 
 @Controller('cbz')
 export class CbzController {
   constructor(private readonly cbzService: CbzService) {}
 
   @Get('files/:fileId/pages')
-  async getPageCount(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser) {
+  async getPageCount(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser): Promise<ComicPageCountResponseDto> {
     return { pageCount: await this.cbzService.getPageCount(fileId, user) };
   }
 
@@ -21,7 +22,7 @@ export class CbzController {
     @Res() reply: FastifyReply,
   ) {
     const { stream, mimeType } = await this.cbzService.streamPage(fileId, pageIndex, user);
-    reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+    reply.header('Cache-Control', 'private, no-store');
     reply.type(mimeType);
     reply.send(stream);
   }

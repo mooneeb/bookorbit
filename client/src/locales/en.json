@@ -9990,6 +9990,26 @@
       "toggleFullscreen": "Toggle fullscreen",
       "cycleFooterMode": "Cycle footer info mode"
     },
+    "fixedBookmarks": {
+      "title": "Bookmarks",
+      "description": "Save pages from this file and open them on your connected readers.",
+      "page": "Page {page}",
+      "bookmarkPage": "Bookmark page {page}",
+      "bookmarkTitle": "Bookmark title",
+      "save": "Save bookmark",
+      "saved": "Bookmark saved.",
+      "removed": "Bookmark removed.",
+      "empty": "No bookmarks for this file.",
+      "confirmedOnly": "Only your confirmed bookmark is shown. Retry loading to see the full list.",
+      "requestFailed": "The bookmark request failed. Your draft and confirmed changes are retained. Retry when connected.",
+      "remove": "Remove bookmark",
+      "removeNamed": "Remove bookmark: {title}",
+      "removeConfirm": "Remove bookmark?",
+      "removeDescription": "This removes the saved page from your bookmarks on connected readers.",
+      "newer": "Newer bookmarks",
+      "older": "Older bookmarks",
+      "first": "First page of bookmarks"
+    },
     "cbz": {
       "fitMode": "Fit mode",
       "background": "Background",

@@ -1,11 +1,18 @@
-vi.mock('fs/promises', () => ({ stat: vi.fn() }));
+vi.mock('fs/promises', async () => ({
+  ...(await vi.importActual<typeof import('fs/promises')>('fs/promises')),
+  stat: vi.fn(),
+}));
 vi.mock('unzipper', () => ({ Open: { file: vi.fn() } }));
 
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { stat } from 'fs/promises';
+import { mkdtemp, rm, stat, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { ZipArchive } from 'archiver';
 import { Readable } from 'stream';
 import * as unzipper from 'unzipper';
 
+import { appConfig } from '../../../config/config';
 import { EpubService } from './epub.service';
 
 const mockStat = stat as MockedFunction<typeof stat>;
@@ -158,15 +165,19 @@ const SMIL_XML = `
 </smil>
 `;
 
-function makeMediaOverlayArchive(smil = SMIL_XML) {
-  return makeArchive([
+function mediaOverlayEntries(smil = SMIL_XML): ZipEntrySpec[] {
+  return [
     { path: 'META-INF/container.xml', content: CONTAINER_XML },
     { path: 'OPS/content.opf', content: OPF_MEDIA_OVERLAY_XML },
     { path: 'OPS/nav.xhtml', content: NAV_XHTML },
     { path: 'OPS/text/ch1.xhtml', content: '<h1>ch1</h1>' },
     { path: 'OPS/smil/ch1.smil', content: smil },
     { path: 'OPS/audio/ch1.mp3', content: Buffer.from('0123456789') },
-  ]);
+  ];
+}
+
+function makeMediaOverlayArchive(smil = SMIL_XML) {
+  return makeArchive(mediaOverlayEntries(smil));
 }
 
 function makeEpubArchive(options?: { navBufferError?: boolean; omitChapterFile?: boolean; lowerCasePaths?: boolean }) {
@@ -202,10 +213,36 @@ describe('EpubService', () => {
     verifyUserAccess: vi.fn(),
   };
   let service: EpubService;
+  let fixtureRoot: string | null = null;
+
+  afterEach(async () => {
+    await service.onModuleDestroy();
+    if (fixtureRoot) await rm(fixtureRoot, { recursive: true, force: true });
+    fixtureRoot = null;
+  });
+
+  async function useMediaOverlayFile(smil = SMIL_XML): Promise<void> {
+    fixtureRoot = await mkdtemp(join(tmpdir(), 'bookorbit-epub-service-'));
+    const path = join(fixtureRoot, 'book.epub');
+    const archive = new ZipArchive({ zlib: { level: 0 } });
+    const chunks: Buffer[] = [];
+    archive.on('data', (chunk: Buffer) => chunks.push(chunk));
+    const complete = new Promise<void>((resolve, reject) => {
+      archive.on('end', resolve);
+      archive.on('error', reject);
+    });
+    for (const entry of mediaOverlayEntries(smil)) archive.append(entry.content, { name: entry.path });
+    await archive.finalize();
+    await complete;
+    await writeFile(path, Buffer.concat(chunks));
+    const actual = await vi.importActual<typeof unzipper>('unzipper');
+    mockOpenFile.mockImplementation((filePath: string) => actual.Open.file(filePath));
+    bookReadService.findPrimaryFilesByBookIds.mockResolvedValue([{ format: 'epub', absolutePath: path, sizeBytes: null }]);
+  }
 
   beforeEach(() => {
     vi.resetAllMocks();
-    service = new EpubService(bookReadService as any, libraryService as any);
+    service = new EpubService(bookReadService as any, libraryService as any, appConfig());
     bookReadService.findLibraryIdByBookId.mockResolvedValue(3);
     bookReadService.findPrimaryFilesByBookIds.mockResolvedValue([{ format: 'epub', absolutePath: '/books/book.epub', sizeBytes: null }]);
     libraryService.verifyUserAccess.mockResolvedValue(undefined);
@@ -301,7 +338,7 @@ describe('EpubService', () => {
   });
 
   it('builds a normalized media-overlay playlist from SMIL clips', async () => {
-    mockOpenFile.mockResolvedValueOnce(makeMediaOverlayArchive() as any).mockResolvedValueOnce(makeMediaOverlayArchive() as any);
+    await useMediaOverlayFile();
 
     const playlist = await service.getMediaOverlayPlaylist(99, undefined, user);
 
@@ -333,7 +370,7 @@ describe('EpubService', () => {
 
   it('preserves a zero-length SMIL clip as a known zero-width playlist item', async () => {
     const smil = SMIL_XML.replace('clipBegin="3s" clipEnd="4500ms"', 'clipBegin="3s" clipEnd="3s"');
-    mockOpenFile.mockResolvedValueOnce(makeMediaOverlayArchive(smil) as any).mockResolvedValueOnce(makeMediaOverlayArchive(smil) as any);
+    await useMediaOverlayFile(smil);
 
     const playlist = await service.getMediaOverlayPlaylist(99, undefined, user);
 
@@ -350,10 +387,9 @@ describe('EpubService', () => {
   });
 
   it('streams only playlist audio resources and supports byte ranges', async () => {
-    mockOpenFile
-      .mockResolvedValueOnce(makeMediaOverlayArchive() as any)
-      .mockResolvedValueOnce(makeMediaOverlayArchive() as any)
-      .mockResolvedValueOnce(makeMediaOverlayArchive() as any);
+    await useMediaOverlayFile();
+    const actualFs = await vi.importActual<typeof import('fs/promises')>('fs/promises');
+    mockStat.mockImplementation(actualFs.stat);
 
     const result = await service.streamMediaOverlayFile(99, 'OPS/audio/ch1.mp3', undefined, 'bytes=2-5', user);
 

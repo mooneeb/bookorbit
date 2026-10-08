@@ -36,7 +36,7 @@ import MetadataFieldLabel from './MetadataFieldLabel.vue'
 import RichDescriptionEditor from './RichDescriptionEditor.vue'
 import SeriesMembershipEditor from './SeriesMembershipEditor.vue'
 import WriteAndRenameResultPanel from '../WriteAndRenameResultPanel.vue'
-import type { MetadataDiffApply, MetadataPatch } from '../../../composables/useMetadataDiff'
+import type { MetadataDiffApply } from '../../../composables/useMetadataDiff'
 import { type EditableSeriesMembership, normalizeSeriesMemberships, useMetadataEditor } from '../../../composables/useMetadataEditor'
 import { type MetadataRefreshPreview, useRefreshMetadata } from '../../../composables/useRefreshMetadata'
 import { type FileMetadata, useFileMetadata } from '../../../composables/useFileMetadata'
@@ -48,7 +48,7 @@ import { useGenreSearch, useTagSearch } from '../../../composables/useTagSearch'
 import { usePublisherSearch, useSeriesNameSearch, useLanguageSearch } from '../../../composables/useMetadataFieldSearch'
 import InputWithSuggestions from '@/components/ui/InputWithSuggestions.vue'
 import { RATING_STARS, getRatingStarClass } from '@/features/book/lib/rating-stars'
-import { buildFileMetadataPatch } from '@/features/book/lib/file-metadata-patch'
+import { buildFileMetadataPatch, type MetadataFormPatch } from '@/features/book/lib/file-metadata-patch'
 import { metadataRefreshAppliedMessage, metadataRefreshEmptyMessage } from '@/features/book/lib/metadata-refresh-feedback'
 import { filterProviderIdFields, isProviderIdFieldAvailable, isProviderIdFormField } from '@/features/book/lib/provider-id-fields'
 import { formatCommunityRatingLine } from '@/features/book/lib/community-rating'
@@ -459,7 +459,7 @@ function applyPrimarySeriesPatch(field: 'seriesName' | 'seriesIndex', value: unk
   return true
 }
 
-function applySeriesMembershipPatch(formPatch: MetadataPatch, skippedFields: BookMetadataLockField[]): number {
+function applySeriesMembershipPatch(formPatch: MetadataFormPatch, skippedFields: BookMetadataLockField[]): number {
   if (formPatch.seriesMemberships === undefined) return 0
   if (isSeriesLocked.value) {
     if (isLocked('seriesName')) trackLockedField('seriesName', skippedFields)
@@ -483,7 +483,7 @@ function applySeriesMembershipPatch(formPatch: MetadataPatch, skippedFields: Boo
   return 1
 }
 
-function normalizeCommunityRatingPatchItem(rating: NonNullable<MetadataPatch['communityRatings']>[number]): BookCommunityRating | null {
+function normalizeCommunityRatingPatchItem(rating: NonNullable<MetadataFormPatch['communityRatings']>[number]): BookCommunityRating | null {
   if (!Number.isFinite(rating.rating) || rating.rating < 0 || rating.rating > 5) return null
   const ratingCount =
     typeof rating.ratingCount === 'number' && Number.isInteger(rating.ratingCount) && rating.ratingCount >= 0 ? rating.ratingCount : null
@@ -495,7 +495,7 @@ function normalizeCommunityRatingPatchItem(rating: NonNullable<MetadataPatch['co
   }
 }
 
-function applyCommunityRatingPatch(formPatch: MetadataPatch, skippedFields: BookMetadataLockField[]): number {
+function applyCommunityRatingPatch(formPatch: MetadataFormPatch, skippedFields: BookMetadataLockField[]): number {
   if (formPatch.communityRatings === undefined) return 0
   if (isLocked('communityRating')) {
     trackLockedField('communityRating', skippedFields)
@@ -528,7 +528,7 @@ function applyDirectPatchField(field: (typeof DIRECT_PATCH_FIELDS)[number], valu
   return true
 }
 
-function applyPublishedPatch(formPatch: MetadataPatch, skippedFields: BookMetadataLockField[]): number {
+function applyPublishedPatch(formPatch: MetadataFormPatch, skippedFields: BookMetadataLockField[]): number {
   if (formPatch.publishedDate === undefined && formPatch.publishedYear === undefined) return 0
   if (isLocked('publishedYear')) {
     trackLockedField('publishedYear', skippedFields)
@@ -539,7 +539,7 @@ function applyPublishedPatch(formPatch: MetadataPatch, skippedFields: BookMetada
   return 1
 }
 
-function applyComicPatch(formPatch: MetadataPatch, skippedFields: BookMetadataLockField[]): number {
+function applyComicPatch(formPatch: MetadataFormPatch, skippedFields: BookMetadataLockField[]): number {
   if (!formPatch.comicMetadata) return 0
   let updated = 0
   for (const [comicKey, formKey] of Object.entries(COMIC_FIELD_MAP) as [
@@ -558,7 +558,7 @@ function applyComicPatch(formPatch: MetadataPatch, skippedFields: BookMetadataLo
   return updated
 }
 
-function applyAudioPatch(formPatch: MetadataPatch, skippedFields: BookMetadataLockField[]): number {
+function applyAudioPatch(formPatch: MetadataFormPatch, skippedFields: BookMetadataLockField[]): number {
   let updated = 0
   if (formPatch.narrators !== undefined) {
     if (isLocked('narrators')) {
@@ -587,7 +587,7 @@ function applyAudioPatch(formPatch: MetadataPatch, skippedFields: BookMetadataLo
   return updated
 }
 
-function applyCustomMetadataPatch(formPatch: MetadataPatch): number {
+function applyCustomMetadataFormPatch(formPatch: MetadataFormPatch): number {
   if (!formPatch.customMetadata) return 0
   let updated = 0
   for (const value of formPatch.customMetadata) {
@@ -601,7 +601,7 @@ function applyCustomMetadataPatch(formPatch: MetadataPatch): number {
 
 type FetchedCovers = Partial<Record<CoverMedium, string>>
 
-function applyPatchToForm(formPatch: MetadataPatch, covers: FetchedCovers): { skippedFields: BookMetadataLockField[]; updatedCount: number } {
+function applyPatchToForm(formPatch: MetadataFormPatch, covers: FetchedCovers): { skippedFields: BookMetadataLockField[]; updatedCount: number } {
   const skippedFields: BookMetadataLockField[] = []
   let updatedCount = 0
   const hasSeriesMembershipPatch = formPatch.seriesMemberships !== undefined
@@ -614,7 +614,7 @@ function applyPatchToForm(formPatch: MetadataPatch, covers: FetchedCovers): { sk
   }
   updatedCount += applyComicPatch(formPatch, skippedFields)
   updatedCount += applyAudioPatch(formPatch, skippedFields)
-  updatedCount += applyCustomMetadataPatch(formPatch)
+  updatedCount += applyCustomMetadataFormPatch(formPatch)
 
   for (const [medium, url] of Object.entries(covers) as [CoverMedium, string | undefined][]) {
     if (!url) continue
@@ -708,7 +708,7 @@ function showSaveResultToast(write: WriteResult | null, libraryAutoWriteEnabled:
   toast.info(reason ? t('book.detail.editMetadata.savedWriteSkippedReason', { reason }) : t('book.detail.editMetadata.savedWriteSkipped'))
 }
 
-function buildPreviewPatch(preview: MetadataRefreshPreview): MetadataPatch {
+function buildPreviewPatch(preview: MetadataRefreshPreview): MetadataFormPatch {
   return {
     title: preview.title,
     subtitle: preview.subtitle,

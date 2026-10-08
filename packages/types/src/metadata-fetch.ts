@@ -48,6 +48,40 @@ export interface ComicMetadataFields {
 
 export type MetadataProviderKey = (typeof MetadataProviderKey)[keyof typeof MetadataProviderKey];
 
+export const PROVIDER_ID_MAX_LENGTHS = {
+  googleBooksId: 50,
+  goodreadsId: 50,
+  amazonId: 20,
+  hardcoverId: 255,
+  hardcoverEditionId: 50,
+  openLibraryId: 50,
+  itunesId: 50,
+  audibleId: 20,
+  librofmId: 50,
+  koboId: 255,
+  comicvineId: 50,
+  ranobedbId: 50,
+  lubimyczytacId: 512,
+  aladinId: 20,
+} as const;
+
+export const METADATA_PROVIDER_ID_FIELDS = {
+  google: "googleBooksId",
+  goodreads: "goodreadsId",
+  amazon: "amazonId",
+  hardcover: "hardcoverId",
+  openLibrary: "openLibraryId",
+  itunes: "itunesId",
+  audible: "audibleId",
+  audnexus: "audibleId",
+  librofm: "librofmId",
+  comicvine: "comicvineId",
+  ranobedb: "ranobedbId",
+  kobo: "koboId",
+  lubimyczytac: "lubimyczytacId",
+  aladin: "aladinId",
+} as const satisfies Record<MetadataProviderKey, keyof typeof PROVIDER_ID_MAX_LENGTHS>;
+
 export interface MetadataSeriesMembership {
   seriesName: string;
   seriesIndex?: SeriesIndex | null;

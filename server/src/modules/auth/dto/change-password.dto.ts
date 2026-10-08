@@ -1,6 +1,7 @@
 import { IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import type { ChangePasswordRequest } from '@bookorbit/types';
 
-export class ChangePasswordDto {
+export class ChangePasswordDto implements ChangePasswordRequest {
   @IsString()
   @MaxLength(1024)
   currentPassword: string;

@@ -53,6 +53,11 @@ export interface AudiobookPlaybackState {
   manifestRevision: string;
 }
 
+export interface DeleteAudiobookPlaybackStateQuery {
+  baseRevision?: number;
+  manifestRevision?: string;
+}
+
 export interface PutAudiobookPlaybackState {
   assetId: string;
   positionMs: number;
@@ -71,6 +76,16 @@ export interface AudiobookBookmark {
   note: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AudiobookBookmarksPage {
+  items: AudiobookBookmark[];
+  nextCursor: string | null;
+}
+
+export interface AudiobookBookmarksPageQuery {
+  limit?: number;
+  afterId?: string;
 }
 
 export interface CreateAudiobookBookmark {

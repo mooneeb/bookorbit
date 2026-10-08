@@ -41,6 +41,8 @@ import { BulkEditMetadataDto } from './dto/bulk-edit-metadata.dto';
 import { DeleteBooksDto } from './dto/delete-books.dto';
 import { ExportBooksDto } from './dto/export-books.dto';
 import { MetadataExportDto } from './dto/metadata-export.dto';
+import { ClearFileProgressQueryDto } from './dto/clear-file-progress-query.dto';
+import { filePositionVersion } from '../../common/utils/reader-position-version.utils';
 import { SaveProgressDto } from './dto/save-progress.dto';
 import { UpsertAudioProgressDto } from './dto/upsert-audio-progress.dto';
 import { UpdateBookMetadataAndLocksDto } from './dto/update-book-metadata-and-locks.dto';
@@ -52,9 +54,9 @@ import { UpdatePersonalNoteDto } from './dto/update-personal-note.dto';
 import { SearchBooksDto } from './dto/search-books.dto';
 import { UpdateBookFileDto } from './dto/update-book-file.dto';
 import { SetStatusDto } from '../user-book-status/dto/set-status.dto';
-import { Permission, AuditAction, AuditResource } from '@bookorbit/types';
+import { Permission, AuditAction, AuditResource, BOOK_FILE_MIME_TYPES } from '@bookorbit/types';
 import type { BookDeletionAuditMeta } from '@bookorbit/types';
-import type { BookQuery } from '@bookorbit/types';
+import type { BookQuery, FileReadingProgress } from '@bookorbit/types';
 import { UpdateBookMetadataLocksDto } from '../book-metadata-lock/dto/update-book-metadata-locks.dto';
 import { UpdateReadAloudSyncSettingsDto } from './dto/update-read-aloud-sync-settings.dto';
 
@@ -71,25 +73,12 @@ const AUDIO_MIME_TYPES: Record<string, string> = {
   flac: 'audio/flac',
 };
 
-const BOOK_MIME_TYPES: Record<string, string> = {
-  epub: 'application/epub+zip',
-  kepub: 'application/epub+zip',
-  pdf: 'application/pdf',
-  mobi: 'application/x-mobipocket-ebook',
-  azw: 'application/vnd.amazon.ebook',
-  azw3: 'application/vnd.amazon.ebook',
-  fb2: 'application/x-fictionbook+xml',
-  cbz: 'application/vnd.comicbook+zip',
-  cbr: 'application/vnd.comicbook-rar',
-  cb7: 'application/x-cb7',
-};
-
 function resolveAudioMimeType(format: string | null): string | null {
   return format ? (AUDIO_MIME_TYPES[format.toLowerCase()] ?? null) : null;
 }
 
 function resolveBookMimeType(format: string): string {
-  return resolveAudioMimeType(format) ?? BOOK_MIME_TYPES[format.toLowerCase()] ?? 'application/octet-stream';
+  return resolveAudioMimeType(format) ?? BOOK_FILE_MIME_TYPES[format.toLowerCase()] ?? 'application/octet-stream';
 }
 
 @Controller('books')
@@ -350,7 +339,7 @@ export class BookController {
 
     const { mtimeMs } = await stat(coverPath);
     const etag = `"${Math.floor(mtimeMs)}"`;
-    const cacheControl = query.t ? 'public, max-age=31536000, immutable' : 'private, max-age=86400';
+    const cacheControl = 'private, no-store';
 
     if (ifNoneMatch === etag) {
       reply.status(304).header('Cache-Control', cacheControl).header('ETag', etag).send();
@@ -394,6 +383,7 @@ export class BookController {
   // These MUST come before `:id/*` routes to avoid NestJS matching 'files' as :id.
 
   @Get('files/:fileId/serve')
+  @RequirePermission(Permission.LibraryDownload)
   async serveFile(
     @Param('fileId', ParseIntPipe) fileId: number,
     @CurrentUser() user: RequestUser,
@@ -523,36 +513,60 @@ export class BookController {
   }
 
   @Get('files/:fileId/progress')
-  async getFileProgress(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser) {
-    return (
-      (await this.bookService.getProgress(user.id, fileId, user)) ?? {
-        cfi: null,
-        pageNumber: null,
-        positionSeconds: null,
-        mediaOverlayFragment: null,
-        mediaOverlaySectionIndex: null,
-        percentage: 0,
-        koboLocationSource: null,
-        koboLocationType: null,
-        koboLocationValue: null,
-        koboContentSourceProgressPercent: null,
-        koreaderProgress: null,
-        narrationPercentage: null,
-        narrationUpdatedAt: null,
-        textUpdatedAt: null,
-      }
-    );
+  async getFileProgress(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser): Promise<FileReadingProgress> {
+    const progress = await this.bookService.getProgress(user.id, fileId, user);
+    if (progress) {
+      return {
+        ...progress,
+        textVersion: filePositionVersion(user.id, fileId, 'text', progress),
+        narrationVersion: filePositionVersion(user.id, fileId, 'narration', progress),
+        narrationUpdatedAt: progress.narrationUpdatedAt?.toISOString() ?? null,
+        textUpdatedAt: progress.textUpdatedAt?.toISOString() ?? null,
+      };
+    }
+    return {
+      cfi: null,
+      pageNumber: null,
+      positionSeconds: null,
+      mediaOverlayFragment: null,
+      mediaOverlaySectionIndex: null,
+      percentage: 0,
+      koboLocationSource: null,
+      koboLocationType: null,
+      koboLocationValue: null,
+      koboContentSourceProgressPercent: null,
+      koreaderProgress: null,
+      narrationPercentage: null,
+      narrationUpdatedAt: null,
+      textUpdatedAt: null,
+      textVersion: filePositionVersion(user.id, fileId, 'text', null),
+      narrationVersion: filePositionVersion(user.id, fileId, 'narration', null),
+    };
   }
 
   @Post('files/:fileId/progress')
   async saveFileProgress(@Param('fileId', ParseIntPipe) fileId: number, @Body() dto: SaveProgressDto, @CurrentUser() user: RequestUser) {
-    await this.bookService.saveProgress(user.id, fileId, dto, user);
+    const saved = await this.bookService.saveProgress(user.id, fileId, dto, user);
+    if (dto.baseVersion && saved) {
+      return {
+        ...saved,
+        narrationUpdatedAt: saved.narrationUpdatedAt?.toISOString() ?? null,
+        textUpdatedAt: saved.textUpdatedAt?.toISOString() ?? null,
+        textVersion: filePositionVersion(user.id, fileId, 'text', saved),
+        narrationVersion: filePositionVersion(user.id, fileId, 'narration', saved),
+      };
+    }
   }
 
   @Delete('files/:fileId/progress')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async clearFileProgress(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser) {
-    await this.bookService.clearFileProgress(user.id, fileId, user);
+  async clearFileProgress(
+    @Param('fileId', ParseIntPipe) fileId: number,
+    @CurrentUser() user: RequestUser,
+    @Query() query: ClearFileProgressQueryDto = {},
+  ) {
+    if (query.textVersion !== undefined) await this.bookService.clearFileProgress(user.id, fileId, user, query);
+    else await this.bookService.clearFileProgress(user.id, fileId, user);
   }
 
   /**

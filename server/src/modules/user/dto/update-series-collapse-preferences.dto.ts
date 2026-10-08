@@ -1,3 +1,4 @@
+import type { UpdateSeriesCollapsePreferencesPayload } from '@bookorbit/types';
 import { IsBoolean, IsOptional, registerDecorator, ValidationOptions } from 'class-validator';
 
 function IsBooleanOrNullRecord(validationOptions?: ValidationOptions) {
@@ -20,7 +21,7 @@ function IsBooleanOrNullRecord(validationOptions?: ValidationOptions) {
   };
 }
 
-export class UpdateSeriesCollapsePreferencesDto {
+export class UpdateSeriesCollapsePreferencesDto implements UpdateSeriesCollapsePreferencesPayload {
   @IsOptional()
   @IsBoolean()
   global?: boolean;

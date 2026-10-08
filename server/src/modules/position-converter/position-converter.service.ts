@@ -1,6 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 
-import { chapterIndexFromSpineStep, findElementById, parseCfi } from './cfi.utils';
+import {
+  chapterIndexFromSpineStep,
+  findElementById,
+  joinCfiIndirection,
+  nodeToParts,
+  parseCfi,
+  spineCfiForChapterIndex,
+  type CfiNode,
+} from './cfi.utils';
 import { EpubDomService } from './epub-dom.service';
 import {
   CfiToXPointerResult,
@@ -64,6 +72,34 @@ export class PositionConverterService {
   readonly version = CONVERTER_VERSION;
 
   constructor(private readonly epubDom: EpubDomService) {}
+
+  async tocFragmentCfis(bookFileId: number, chapterIndex: number, fragments: string[]): Promise<Array<string | null>> {
+    if (fragments.length > 512 || !Number.isInteger(chapterIndex) || chapterIndex < 0) {
+      throw new BadRequestException('Invalid contents fragment batch');
+    }
+    const doc = await this.epubDom.getChapter(bookFileId, chapterIndex);
+    if (!doc) return fragments.map(() => null);
+    const wanted = new Set(fragments.filter(Boolean));
+    const ids = new Map<string, CfiNode>();
+    const names = new Map<string, CfiNode>();
+    const pending = [doc.root];
+    while (pending.length) {
+      const node = pending.pop()!;
+      const id = node.attribs?.id;
+      const name = node.attribs?.name;
+      if (id && wanted.has(id) && !ids.has(id)) ids.set(id, node);
+      if (name && wanted.has(name) && !names.has(name)) names.set(name, node);
+      for (let index = (node.children?.length ?? 0) - 1; index >= 0; index -= 1) pending.push(node.children![index]);
+    }
+    return fragments.map((fragment) => {
+      const element = ids.get(fragment) ?? names.get(fragment);
+      if (!element) return null;
+      const path = `epubcfi(${nodeToParts(element)
+        .map((part) => `/${part.index}`)
+        .join('')})`;
+      return joinCfiIndirection(spineCfiForChapterIndex(chapterIndex), path);
+    });
+  }
 
   async xpointerToCfi(params: XPointerToCfiParams): Promise<XPointerToCfiOutcome> {
     const parsed = parseXPointer(params.pos0);

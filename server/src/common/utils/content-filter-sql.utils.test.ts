@@ -5,7 +5,10 @@ vi.mock('drizzle-orm', () => ({
   inArray: vi.fn((left: unknown, right: unknown) => ({ type: 'inArray', left, right })),
   exists: vi.fn((subquery: unknown) => ({ type: 'exists', subquery })),
   notExists: vi.fn((subquery: unknown) => ({ type: 'notExists', subquery })),
-  sql: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ type: 'sql', text: strings.join(''), values })),
+  sql: Object.assign(
+    vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ type: 'sql', text: strings.join(''), values })),
+    { raw: vi.fn((text: string) => ({ type: 'sql.raw', text })) },
+  ),
 }));
 
 import { EMPTY_CONTENT_FILTER_RULES } from '@bookorbit/types';

@@ -144,7 +144,7 @@ const getFragmentWithMarks = (range, textWalker, granularity) => {
 
 const rangeIsEmpty = (range) => !range.toString().trim()
 
-function* getBlocks(doc) {
+export function* getBlocks(doc) {
   let last
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT)
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {

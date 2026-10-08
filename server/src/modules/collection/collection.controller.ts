@@ -25,6 +25,7 @@ import { BookQueryPipe, JumpBucketsQueryPipe } from '../book/pipes/book-query.pi
 import { CollectionBooksDto } from './dto/collection-books.dto';
 import { CollectionPodcastsDto } from './dto/collection-podcasts.dto';
 import { CreateCollectionDto } from './dto/create-collection.dto';
+import { CollectionPageQueryDto } from './dto/collection-page-query.dto';
 import { ReorderCollectionsDto } from './dto/reorder-collections.dto';
 import { UpdateCollectionDto } from './dto/update-collection.dto';
 import { CollectionService } from './collection.service';
@@ -85,6 +86,11 @@ export class CollectionController {
   @Post('membership')
   findAllWithMembership(@Body() dto: CollectionBooksDto, @CurrentUser() user: RequestUser) {
     return this.collectionService.findAllWithSelectionMembership(dto, user);
+  }
+
+  @Get('page')
+  findPage(@Query() query: CollectionPageQueryDto, @CurrentUser() user: RequestUser) {
+    return this.collectionService.findPage(query, user);
   }
 
   /** Podcast collections for the add-to-collection sheet, flagged with existing membership. */

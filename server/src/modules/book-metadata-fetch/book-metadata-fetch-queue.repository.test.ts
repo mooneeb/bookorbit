@@ -5,6 +5,7 @@ vi.mock('drizzle-orm', () => {
     chunks,
     separator,
   }));
+  (sqlFn as typeof sqlFn & { raw: ReturnType<typeof vi.fn> }).raw = vi.fn((text: string) => ({ op: 'sql.raw', text }));
   (sqlFn as typeof sqlFn & { identifier: ReturnType<typeof vi.fn> }).identifier = vi.fn((value: string) => ({ op: 'sql.identifier', value }));
 
   return {

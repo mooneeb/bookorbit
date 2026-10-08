@@ -14,6 +14,7 @@ export const EPUB_TEXT_INDENT_MIN = 0;
 export const EPUB_TEXT_INDENT_MAX = 4;
 export const CBX_SPREAD_GAP_MIN = 0;
 export const CBX_SPREAD_GAP_MAX = 64;
+export const CBX_WIDE_PAGE_RATIO_THRESHOLD = 1.2;
 
 // Formats the reader can actually open. Used to show/hide Read/Open buttons.
 export const READER_OPENABLE_FORMATS = new Set([
@@ -65,10 +66,7 @@ export function getFormatGroup(format: string): ReaderFormatGroup {
 /** Formats a given reader can open, so a caller can ask for "another file this same reader handles". */
 export function getOpenableFormatsForGroup(group: ReaderFormatGroup): string[] {
   return Object.entries(FORMAT_TO_GROUP)
-    .filter(
-      ([format, formatGroup]) =>
-        formatGroup === group && READER_OPENABLE_FORMATS.has(format),
-    )
+    .filter(([format, formatGroup]) => formatGroup === group && READER_OPENABLE_FORMATS.has(format))
     .map(([format]) => format);
 }
 
@@ -138,11 +136,7 @@ export type ReaderSettingsMap = {
   audio: AudioReaderSettings;
 };
 
-export type ReaderSettings =
-  | EpubReaderSettings
-  | PdfReaderSettings
-  | CbxReaderSettings
-  | AudioReaderSettings;
+export type ReaderSettings = EpubReaderSettings | PdfReaderSettings | CbxReaderSettings | AudioReaderSettings;
 
 export const EPUB_READER_DEFAULTS: EpubReaderSettings = {
   themeName: "default",
@@ -201,12 +195,10 @@ export const AUDIO_READER_DEFAULTS: AudioReaderSettings = {
  *
  * Only the keys present in `set` are written. Every other key of the group keeps whatever the
  * stored row already holds, so a client that owns a subset of the fields can save its own without
- * having to send, and therefore without having to know, the rest. The iOS app is the only caller:
- * it keeps the layout fields on the device and sends only the look fields.
+ * having to send, and therefore without having to know, the rest. Native page animation stays
+ * on the device; supported format settings use this shared contract.
  */
-export interface ReaderDefaultsPatchBody<
-  G extends ReaderFormatGroup = ReaderFormatGroup,
-> {
+export interface ReaderDefaultsPatchBody<G extends ReaderFormatGroup = ReaderFormatGroup> {
   set: Partial<ReaderSettingsMap[G]>;
 }
 
@@ -217,12 +209,40 @@ export interface ReaderDefaultsPatchBody<
  * default. At least one of the two must be non-empty, and a key may not appear in both. A row left
  * with no keys is deleted, which is the same state as never having been customized.
  */
-export interface ReaderPreferencePatchBody<
-  G extends ReaderFormatGroup = ReaderFormatGroup,
-> {
+export interface ReaderPreferencePatchBody<G extends ReaderFormatGroup = ReaderFormatGroup> {
   set?: Partial<ReaderSettingsMap[G]>;
   unset?: string[];
 }
+
+export type PdfReaderSettingsPatch = Partial<PdfReaderSettings>;
+export type CbxReaderSettingsPatch = Partial<CbxReaderSettings>;
+export type PdfReaderPreferenceResponse = {
+  settings: PdfReaderSettingsPatch | null;
+  isCustomized: boolean;
+};
+export type CbxReaderPreferenceResponse = {
+  settings: CbxReaderSettingsPatch | null;
+  isCustomized: boolean;
+};
+export type FixedReaderDefaultsResponse = {
+  pdf?: PdfReaderSettingsPatch;
+  cbx?: CbxReaderSettingsPatch;
+};
+export type PdfReaderPreferencePatchBody = ReaderPreferencePatchBody<"pdf">;
+export type CbxReaderPreferencePatchBody = ReaderPreferencePatchBody<"cbx">;
+export type PdfReaderDefaultsPatchBody = ReaderDefaultsPatchBody<"pdf">;
+export type CbxReaderDefaultsPatchBody = ReaderDefaultsPatchBody<"cbx">;
+
+export type EpubReaderSettingsPatch = Partial<EpubReaderSettings>;
+export type EpubReaderDefaultsResponse = { epub?: EpubReaderSettingsPatch };
+export type EpubReaderDefaultsPatchBody = ReaderDefaultsPatchBody<"epub">;
+export type EpubReaderPreferenceResponse = { settings: EpubReaderSettingsPatch | null; isCustomized: boolean };
+export type EpubReaderSettingsBody = { settings: EpubReaderSettings };
+export type EpubReaderPreferencePatchBody = ReaderPreferencePatchBody<"epub">;
+
+export type AudioReaderSettingsPatch = Partial<AudioReaderSettings>;
+export type AudioReaderDefaultsResponse = { audio?: AudioReaderSettingsPatch };
+export type AudioReaderDefaultsPatchBody = ReaderDefaultsPatchBody<"audio">;
 
 export const READER_GROUP_DEFAULTS: ReaderSettingsMap = {
   epub: EPUB_READER_DEFAULTS,

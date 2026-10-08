@@ -15,6 +15,7 @@ vi.mock('drizzle-orm', () => ({
   sql: Object.assign(
     vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ op: 'sql', text: strings.join(''), values })),
     {
+      raw: vi.fn((text: string) => ({ op: 'sql.raw', text })),
       join: vi.fn((chunks: unknown[], separator: unknown) => ({ op: 'sql.join', chunks, separator })),
     },
   ),

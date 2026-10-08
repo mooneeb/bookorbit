@@ -1,6 +1,7 @@
 import { IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import type { ResetPasswordRequest } from '@bookorbit/types';
 
-export class ResetPasswordDto {
+export class ResetPasswordDto implements ResetPasswordRequest {
   @IsString()
   @MaxLength(512)
   token: string;

@@ -84,8 +84,9 @@ const BODY = {
 }
 
 class FB2Converter {
-  constructor(fb2) {
+  constructor(fb2, options = {}) {
     this.fb2 = fb2
+    this.options = options
     this.doc = document.implementation.createDocument(NS.XHTML, 'html')
     // use this instead of `getElementById` to allow images like
     // `<image l:href="#img1.jpg" id="img1.jpg" />`
@@ -97,6 +98,7 @@ class FB2Converter {
     const [, id] = href.split('#')
     if (!id) return href
     const bin = this.bins.get(id)
+    if (bin && this.options.imageURL) return this.options.imageURL(id, bin.getAttribute('content-type'), bin.textContent)
     return bin ? `data:${bin.getAttribute('content-type')};base64,${bin.textContent}` : href
   }
   image(node) {
@@ -254,10 +256,13 @@ const template = (html) => `<?xml version="1.0" encoding="utf-8"?>
 // name of custom ID attribute for TOC items
 const dataID = 'data-foliate-id'
 
-export const makeFB2 = async (blob) => {
+export const makeFB2 = async (blob, options = {}) => {
   const book = {}
   const doc = await parseXML(blob)
-  const converter = new FB2Converter(doc)
+  if (doc.querySelector('parsererror') || doc.documentElement.localName !== 'FictionBook') throw new Error('Invalid FictionBook document')
+  if (options.maximumSections && doc.querySelectorAll('body, section').length > options.maximumSections)
+    throw new Error('The book exceeds the section limit')
+  const converter = new FB2Converter(doc, options)
 
   const $ = (x) => doc.querySelector(x)
   const $$ = (x) => [...doc.querySelectorAll(x)]
@@ -310,6 +315,7 @@ export const makeFB2 = async (blob) => {
   })
 
   const urls = []
+  let serializedBytes = 0
   const sectionData = bodyData[0][0]
     // make a separate section for each section in the first body
     .map(({ el, ids }) => {
@@ -331,7 +337,10 @@ export const makeFB2 = async (blob) => {
     .map(({ ids, titles, el, linear }) => {
       const str = template(el.outerHTML)
       const blob = new Blob([str], { type: MIME.XHTML })
+      serializedBytes += blob.size
+      if (options.maximumTextBytes && serializedBytes > options.maximumTextBytes) throw new Error('The decoded book exceeds the text limit')
       const url = URL.createObjectURL(blob)
+      options.trackURL?.(url)
       urls.push(url)
       const title = normalizeWhitespace(
         el.querySelector('.title, .subtitle, p')?.textContent ?? (el.classList.contains('title') ? el.textContent : ''),

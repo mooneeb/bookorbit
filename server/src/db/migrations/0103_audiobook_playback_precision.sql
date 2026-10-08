@@ -1,0 +1,1 @@
+ALTER TABLE "audiobook_progress" ALTER COLUMN "position_seconds" SET DATA TYPE double precision;

@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { EventEmitter } from 'events';
 import { PassThrough } from 'stream';
 
 import { EpubController } from './epub.controller';
@@ -76,6 +77,7 @@ describe('EpubController', () => {
   it('sets range headers for media-overlay audio files', async () => {
     const user = { id: 1, isSuperuser: false, permissions: [] } as any;
     const reply = {
+      raw: new EventEmitter(),
       code: vi.fn().mockReturnThis(),
       header: vi.fn(),
       send: vi.fn(),
@@ -90,7 +92,15 @@ describe('EpubController', () => {
 
     await controller.getMediaOverlayFile(9, 'OPS/audio/ch1.mp3', '13', user, { headers: { range: 'bytes=2-5' } } as any, reply as any);
 
-    expect(epubService.streamMediaOverlayFile).toHaveBeenCalledWith(9, 'OPS/audio/ch1.mp3', 13, 'bytes=2-5', user);
+    expect(epubService.streamMediaOverlayFile).toHaveBeenCalledWith(
+      9,
+      'OPS/audio/ch1.mp3',
+      13,
+      'bytes=2-5',
+      user,
+      undefined,
+      expect.any(AbortSignal),
+    );
     expect(reply.code).toHaveBeenCalledWith(206);
     expect(reply.header).toHaveBeenCalledWith('Accept-Ranges', 'bytes');
     expect(reply.header).toHaveBeenCalledWith('Content-Range', 'bytes 2-5/10');

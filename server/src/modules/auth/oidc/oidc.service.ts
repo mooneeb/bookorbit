@@ -4,7 +4,7 @@ import type { ConfigType } from '@nestjs/config';
 import { compare } from 'bcryptjs';
 import type { FastifyReply } from 'fastify';
 import { AuditAction, AuditResource, AuthenticationMethod, OidcCallbackResponse, OidcErrorCode, Permission } from '@bookorbit/types';
-import type { OidcAutoProvision, OidcClaimMapping } from '@bookorbit/types';
+import type { OidcAutoProvision, OidcClaimMapping, OidcStateResponse } from '@bookorbit/types';
 
 import { AUDIT_EVENT, AuditEventsService } from '../../audit/audit-events.service';
 import { OidcProviderService } from '../../app-settings/oidc-provider.service';
@@ -40,6 +40,7 @@ export class OidcService {
   private readonly logger = new Logger(OidcService.name);
   private readonly appUrl: string;
   private readonly nativeRedirectUri: string;
+  private readonly nativeAdditionalRedirectUris: readonly string[];
 
   constructor(
     private readonly providerService: OidcProviderService,
@@ -59,9 +60,10 @@ export class OidcService {
   ) {
     this.appUrl = appConfiguration.appUrl.replace(/\/$/, '');
     this.nativeRedirectUri = appConfiguration.nativeRedirectUri;
+    this.nativeAdditionalRedirectUris = appConfiguration.nativeAdditionalRedirectUris ?? [];
   }
 
-  async generateState(providerSlug: string): Promise<{ state: string; authorizationEndpoint: string }> {
+  async generateState(providerSlug: string): Promise<OidcStateResponse> {
     const provider = await this.providerService.findBySlugOrFail(providerSlug);
     if (!provider.enabled) throw new UnauthorizedException('OIDC provider is not enabled');
     const [state, disc] = await Promise.all([this.stateService.generate(provider.id), this.discovery.getDiscoveryDoc(provider.issuerUri)]);
@@ -156,7 +158,13 @@ export class OidcService {
     const claimMapping = provider.claimMapping as OidcClaimMapping;
     const autoProvision = provider.autoProvision as OidcAutoProvision;
 
-    if (!isAllowedRedirectUri(params.redirectUri, { appUrl: this.appUrl, nativeRedirectUri: this.nativeRedirectUri })) {
+    if (
+      !isAllowedRedirectUri(params.redirectUri, {
+        appUrl: this.appUrl,
+        nativeRedirectUri: this.nativeRedirectUri,
+        nativeAdditionalRedirectUris: this.nativeAdditionalRedirectUris,
+      })
+    ) {
       throw new BadRequestException(`Redirect URI is not allowed: ${params.redirectUri}`);
     }
 

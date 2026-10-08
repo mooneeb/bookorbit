@@ -1,0 +1,9 @@
+# Dashboard cover cache repair
+
+The dashboard's authenticated, versioned `GET books/6/cover?medium=ebook&strict=true&t=<coverVersion>` response returned `200 image/png` with `Cache-Control: public, max-age=31536000, immutable`. The retained public HTTP diagnostic is `/tmp/bookorbit-dashboard-qa-c3fea03d/test-results/ipad/run-67869-1791322890598/dashboard-cache-diagnostic/header.json`. Its companion `cover.png` is the actual delivered red cover with the label "Original ebook cover". The repair agent independently opened that PNG, read the complete diagnostic and recomputed its SHA-256 as `63aa63e6971c4c3089d81465d0bb7ce6f66104f931dd5030700465f9274404b8`.
+
+Anonymous requests still returned 401 and restricted requests still returned 404 after authorized priming. This evidence establishes an unsafe cache directive on authorized media; it does not establish an origin authorization bypass.
+
+The source repair sets the owning `BookController.getCover` response policy to `private, no-store`, including its conditional 304 response. It preserves authorization before file access and conditional handling, medium and strict selection, the accepted version query, the ETag calculation, MIME type and streamed cover bytes. It leaves other media routes unchanged.
+
+Prettier, targeted controller ESLint, TypeScript syntax/transpilation and `git diff --check` passed in the isolated repair checkout. No dependency downloads, physical iPad checks, full build or overlapping heavy runtime checks were performed. The independent dashboard tester will verify corrected versioned and unversioned HTTP responses, conditional responses, delivered bytes and access denials in its real fixture before this repair is marked GREEN. Native and browser acceptance remain with that tester; this note does not claim those checks or issue #2 are complete.

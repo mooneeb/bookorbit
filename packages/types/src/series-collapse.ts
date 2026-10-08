@@ -12,6 +12,14 @@ export type SeriesCollapsePreferences = {
   authorPages?: boolean;
 };
 
+export type UpdateSeriesCollapsePreferencesPayload = {
+  global?: boolean;
+  authorPages?: boolean;
+  libraries?: Record<string, boolean | null>;
+  collections?: Record<string, boolean | null>;
+  smartScopes?: Record<string, boolean | null>;
+};
+
 export type CollapsedSeriesInfo = {
   bookCount: number;
   readCount: number;

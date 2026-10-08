@@ -1,8 +1,8 @@
 import { computed, ref, watch, type Ref } from 'vue'
-import type { BookDetail } from '@bookorbit/types'
+import { PERSONAL_NOTE_MAX_LENGTH, type BookDetail } from '@bookorbit/types'
 import { api } from '@/lib/api'
 
-export const PERSONAL_NOTE_MAX_LENGTH = 10000
+export { PERSONAL_NOTE_MAX_LENGTH }
 
 function normalizePersonalNoteValue(value: string | null | undefined): string | null {
   const trimmed = value?.trim() ?? ''
