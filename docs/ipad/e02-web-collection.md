@@ -1,6 +1,12 @@
 # E02 bounded web annotation collections
 
-The approved seams are authenticated HTTP, actual web reader UI and delivered artifacts. The standalone Playwright configuration leaves the existing E02 runner/configuration untouched. The fixture creates 1,101 reader-owned private PDF annotations across three pages through canonical public operations, in batches of at most 100. Cleanup searches only its known note prefix and deletes only matching reader-owned annotations in bounded batches. It never creates source PDF ink or edits source bytes; delivered source SHA-256 equality is asserted after cleanup.
+The approved seams are authenticated HTTP, actual web reader UI and delivered artifacts. The dedicated Playwright configuration runs serially after the six main browser journeys in the integrated E02 harness. The fixture creates 1,101 reader-owned private PDF annotations across three pages through canonical public operations, in batches of at most 100. Cleanup searches only its known note prefix and deletes only matching reader-owned annotations in bounded batches. It never creates source PDF ink or edits source bytes; delivered source SHA-256 equality is asserted after cleanup.
+
+Run the fresh, self-contained HTTP and nine-browser acceptance command:
+
+```sh
+node scripts/ipad/run-harness.mjs --annotations --web
+```
 
 Run against the existing isolated harness only after its runtime owner releases a stable lease:
 
@@ -32,9 +38,20 @@ After the run, independent bounded authenticated public cleanup removed all 1,10
 
 Both meaningful RED reports/traces and the EPUB GREEN are preserved. No visual baseline has been approved. The runner and configuration were frozen and handed to the assigned Repairer without another case rerun.
 
+## Final integrated evidence
+
+Candidate `4a75ab220a0647bf1803748c6d25e1af4a1603c5` passed both collection journeys in the fresh `run-41109-1791495583976-collection` phase, 44.0 seconds including fixtures. The PDF browser journey took 16.1 seconds and the EPUB journey 4.4 seconds. The [actual collection report](../../test-results/ipad/run-41109-1791495583976-collection/browser-report/index.html) records zero failures and skips. This phase followed 23 passing authenticated HTTP cases and six passing main browser journeys; the subsequent dense shared-source journey also passed, for 32 passing checks in the single isolated run.
+
+The PDF assertions now reach the eleventh 100-row note window, return to the first, retain the active-page yellow highlight and display the remote green highlight after actual delta reception. The EPUB assertions retain the bounded hundred-row sidebar and reveal the remote earlier-position note after refetch. Source equality and captured progress restoration assertions completed in their independent cleanup contexts. The run proves successful teardown; it does not simulate a timeout to prove every cancellation path.
+
+The preceding fresh run at `c3742ee8`, `run-37427-1791495095780`, passed 23 HTTP cases, six main browser journeys and the EPUB collection. Its PDF collection failed because a strict exact text locator matched multiple `Collection PDF note 0098` elements. The dense source journey was not reached. That 31-check execution is preserved as a failed run. The final candidate selects the unique visible accessible canonical row despite hidden virtual-scroller cache; no product change or relaxed paging/highlight assertion was needed.
+
+The final run's [collection-fix review](../../test-results/ipad/run-41109-1791495583976/reviews/bookorbit-issue-3-collectionfix-code-review.md) is preserved with the evidence. No screenshot baseline has been automatically accepted.
+
+The [independent final report](../../test-results/ipad/run-41109-1791495583976/final-integrated-validation-report.md) includes inspection of all five actual collection captures among the 21 browser states. The PDF images show the initial bounded window, the eleventh window with the active-page highlight preserved, and the remote addition on that page. The EPUB images show the hundred-row window and earlier remote note after refetch. These are functional image observations, with human baseline review still pending. The Tester independently confirmed the integrated harness removed its database, sessions, API/proxy/preview listeners, runner process and temporary content folders.
+
 ## Remaining scope
 
-- PDF GREEN remains pending: reach the eleventh 100-row window and return, preserve the actual active-page highlight across paging, and display the remote green highlight without losing earlier note windows.
-- The driver repair must keep fixture creation bounded, reserve a usable browser acceptance budget under slow setup, and clean up through a viable independently bounded request context after a timeout. Cleanup must restore captured progress and leave unrelated private annotations and source bytes unchanged.
+- Injected slow-setup/timeout cancellation and its complete independent cleanup still need a dedicated execution; the final successful run does not establish that fault outcome.
 - The dense-page segment controls, many-files spread and broader visual/accessibility profile matrix are separate scale cases. This fixture distributes its notes over three pages.
-- Actual native sessions, hardware input and human-reviewed visual baselines remain outside these protocol/browser checks.
+- Actual native runtime and XCTest performance, narrow native windows, hardware Pencil/Scribble input, human walkthrough and human-reviewed visual baselines remain outside these protocol/browser checks. Human participation is a nonblocking evidence residual.

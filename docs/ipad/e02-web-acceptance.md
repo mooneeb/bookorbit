@@ -8,6 +8,8 @@ Run the browser journeys with the existing harness:
 node scripts/ipad/run-harness.mjs --annotations --web
 ```
 
+This self-contained command creates a fresh isolated database and content fixture, starts the real API and fault proxy before authenticated HTTP verification, then executes six main browser journeys, two private collection journeys and one dense shared-source journey serially. It preserves separate reports for the main, `-collection` and `-source-window` phases before cleaning up its services and fixture. The supplemental journeys use their actual A01/A03 IDs; an A02 filter selects the main A03/A02 publication journey.
+
 Run the actual native journeys before browser verification with:
 
 ```sh
@@ -112,7 +114,7 @@ Each directory starts with `annotations-cross-client-`. The transition-frame toa
 IPAD_ANNOTATIONS_PROOF=1 IPAD_TEST_RUN=e02-browser-replacement-fixed ./node_modules/.bin/playwright test --config scripts/ipad/playwright.config.mjs --grep IPAD-E02-A06
 ```
 
-All six final journeys therefore have passing live evidence: the five unchanged journeys in `e02-browser-final-six`, plus the corrected A06 in `e02-browser-replacement-fixed`. This is not a claim that the final six were run together in one fresh harness. Final syntax, Prettier and six-test discovery checks also pass.
+Those historical runs supplied passing live evidence for all six journeys separately: the five unchanged journeys in `e02-browser-final-six`, plus the corrected A06 in `e02-browser-replacement-fixed`. They did not run the six together in one fresh harness. The integrated execution below now supplies that evidence. Final syntax, Prettier and six-test discovery checks also passed at that handoff.
 
 The settled-toast private conflict image was opened and inspected at `test-results/ipad/e02-browser-final-six/browser/annotations-cross-client-I-67f7b-nonical-version-on-conflict/IPAD-E02-A05-A05-private-popover-conflict-retains-input.png`: retained drawing, unsaved text, Cancel/Save and complete Failed feedback fit the viewport. The earlier partly clipped transition capture remains preserved.
 
@@ -127,10 +129,30 @@ All five A06 actual images below were opened and inspected under `test-results/i
 
 The corresponding replacement screenshot and independent artifact from the failed cleanup run were also inspected and preserved. Neither successful screenshots nor the empty baseline state were automatically accepted as human-reviewed regression baselines.
 
+## Final fresh integrated execution
+
+On candidate `4a75ab220a0647bf1803748c6d25e1af4a1603c5`, `run-41109-1791495583976` completed the full annotation HTTP/browser command with **32 passed, 0 failed, 0 skipped and 0 unreached**, no retries, in 214.757 seconds. The environment used Node 25.7.0, pnpm 11.22.0, the migrated isolated PostgreSQL database, the 50,000-book fixture, the production client build and one Chromium worker. The selected browser profile was `pro13-portrait-light`, en-US/UTC, with animations enabled; A01 also captured its actual landscape reflow.
+
+| Phase                                      | Result       | Duration                                                        | Report                                                                                                          |
+| ------------------------------------------ | ------------ | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Authenticated HTTP and delivered artifacts | 23/23 passed | 20.9 seconds                                                    | [Captured integrated log](../../test-results/ipad/run-41109-1791495583976/final-green-e2e.log)                  |
+| Main browser annotation journeys           | 6/6 passed   | 36.0 seconds                                                    | [Main browser report](../../test-results/ipad/run-41109-1791495583976/browser-report/index.html)                |
+| Private PDF/EPUB collections               | 2/2 passed   | 44.0 seconds                                                    | [Collection report](../../test-results/ipad/run-41109-1791495583976-collection/browser-report/index.html)       |
+| Dense shared-source collection             | 1/1 passed   | 21.7-second browser journey; 1.3-minute phase including fixture | [Source-window report](../../test-results/ipad/run-41109-1791495583976-source-window/browser-report/index.html) |
+
+The earlier integrated run at `44423e4ed49dd71d470a5bca231febb0f5384234` passed the 23 HTTP cases but failed four browser setup paths because the driver assumed one source-delta page. The required full root suite also failed with 26 tests across its phases; subsequent targeted repair verification passed 201 focused tests and the two dedicated bookmark-retirement HTTP cases. These are separate results, and no whole root suite pass after the fixes is claimed. The next fresh run at `c3742ee8`, `run-37427-1791495095780`, passed the same 23 HTTP cases and six main browser journeys, then failed one collection journey because an exact text locator matched multiple note elements. Its dense journey was not reached. Both failures remain preserved; the final candidate selects the unique visible accessible collection row without weakening the acceptance assertions.
+
+The latest completed [collection-fix review](../../test-results/ipad/run-41109-1791495583976/reviews/bookorbit-issue-3-collectionfix-code-review.md) and earlier reviews are preserved with this run. Successful captures retain their `pending-human-baseline` status. No screenshot baseline was created or approved automatically.
+
+The independent Tester confirmed the run in the [final integrated validation report](../../test-results/ipad/run-41109-1791495583976/final-integrated-validation-report.md). Inspection covered 48 unique critical PNGs: 21 actual browser state captures and 27 independent PDF-render images. All 21 visual-helper actual copies byte-match their original captures. Parsing all 27 delivered PDFs found 26 complete three-page documents with 600 by 800 page geometry and the intended one-page 420 by 600 replacement. Independent global cleanup found no owned database or sessions, no listeners on ports 16482/16484/16485, no runner PID 41109 and no remaining `bookorbit-ipad-*` temporary content folders.
+
+Inspection also recorded a nonblocking Medium visual follow-up in the dense source journey: unrelated gray/blue groups appear red in the immediate browser capture after Undo, while the exported PDF and later browser window capture preserve the expected colors. Only that immediate state was observed; its duration and wider extent remain unverified. This is not evidence of source corruption and does not make every browser state visually approved. The [source-window evidence](e02-source-ink-window-web.md) links the three relevant images. No human-reviewed baseline or physical walkthrough is claimed.
+
 ## Remaining evidence
 
 - The actual native UI runner owns real-app creation, retained PKDrawing edit, gesture substitutions, offline transfer/restart, hub/export/trash/repair, and recovery screens. The public API fixture in this browser runner does not replace those checks.
 - The focused concurrent A05 driver is implemented and awaits execution against the live real services. Sequential native/browser stages do not prove simultaneous sessions.
-- A06 browser replacement has passed. Source deletion, interrupted file writes, explicit reattachment and native recovery/export need integrated evidence from their owning components; this browser runner does not claim them.
-- The representative profile matrix, large text, dark theme, Reduce Motion, accessibility auditing, and human-reviewed visual baselines require documented matrix runs. The runner's portrait/landscape passage captures alone do not prove that full matrix.
+- A06 browser replacement and the authenticated HTTP publication/interruption gate have passed. Native source recovery/export and explicit reattachment still require their own runtime evidence; the browser run does not establish those native interactions.
+- Native runtime, XCTest performance budgets, the representative profile matrix, large text, dark theme, Reduce Motion, accessibility auditing, the unsupported narrow native window profile and human-reviewed visual baselines remain pending. The runner's portrait/landscape passage captures alone do not prove that full matrix.
 - Real Pencil/Scribble recognition, pressure/tilt/hover/squeeze/roll/haptics, VoiceOver feel, and physical signing/private-network behavior remain justified device-specific checks. These are residual evidence rather than a reason to omit repeatable downstream assertions.
+- The physical device walkthrough and baseline review remain nonblocking residuals under the user's instruction; this automated result does not claim either completed.
