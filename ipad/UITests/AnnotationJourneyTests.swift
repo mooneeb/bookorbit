@@ -724,25 +724,79 @@ final class AnnotationJourneyTests: XCTestCase {
     XCTAssertTrue(row.waitForExistence(timeout: 10))
     app.buttons["annotationHubSelect\(id)"].tap()
     XCTAssertEqual(app.staticTexts["annotationHubSelectedCount"].label, "1 selected")
+    let directory = try XCTUnwrap(
+      ProcessInfo.processInfo.environment["IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY"],
+      "Supply the installed app's public Documents directory from the native harness.")
+    let documents = URL(fileURLWithPath: directory, isDirectory: true).standardizedFileURL
+    XCTAssertTrue(directory.hasPrefix("/"))
+    XCTAssertEqual(documents.lastPathComponent, "Documents")
+    XCTAssertEqual(documents.resolvingSymlinksInPath().path, documents.path)
+    let directoryValues = try documents.resourceValues(forKeys: [
+      .isDirectoryKey, .isSymbolicLinkKey,
+    ])
+    XCTAssertEqual(directoryValues.isDirectory, true)
+    XCTAssertEqual(directoryValues.isSymbolicLink, false)
+    let filename = "BookOrbit annotations \(marker).json"
+    let exportURL = documents.appendingPathComponent(filename)
+    XCTAssertFalse(
+      FileManager.default.fileExists(atPath: exportURL.path),
+      "A07 requires a new native Files artifact")
+    let beforeExport = try await annotations(bookID: 2, token: token)
+    let expectedExport = try XCTUnwrap(beforeExport.first { $0["id"] as? Int == id })
     tapHubControl("annotationHubExport", app: app)
-    let exportSave = app.buttons["Save"].firstMatch
-    XCTAssertTrue(exportSave.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    capture("IPAD-E02-A07-native-Files-export-destination")
-    exportSave.tap()
+    saveA07ToPublicDocuments(filename: filename, app: app)
     XCTAssertTrue(
       app.staticTexts["Annotations exported with retained drawings and version details."]
         .waitForExistence(timeout: 15))
-    let exportedBytes = try await api("annotations/native/hub/export?ids=\(id)", token: token)
-    attach(exportedBytes, name: "IPAD-E02-A07-public-export-retained-drawing", type: "public.json")
+    let deadline = Date().addingTimeInterval(15)
+    while !FileManager.default.fileExists(atPath: exportURL.path) && Date() < deadline {
+      try await Task.sleep(for: .milliseconds(250))
+    }
+    XCTAssertTrue(
+      FileManager.default.fileExists(atPath: exportURL.path),
+      "Inspect the actual native Files Save artifact")
+    let exportedValues = try exportURL.resourceValues(forKeys: [
+      .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey,
+    ])
+    XCTAssertEqual(exportedValues.isRegularFile, true)
+    XCTAssertEqual(exportedValues.isSymbolicLink, false)
+    XCTAssertEqual(
+      exportURL.resolvingSymlinksInPath().deletingLastPathComponent().path, documents.path)
+    let size = try XCTUnwrap(exportedValues.fileSize)
+    XCTAssertGreaterThan(size, 0)
+    XCTAssertLessThanOrEqual(size, 16 * 1024 * 1024)
+    let exportedBytes = try Data(contentsOf: exportURL)
+    XCTAssertEqual(exportedBytes.count, size)
+    attach(
+      exportedBytes, name: "IPAD-E02-A07-actual-native-Files-retained-drawing", type: "public.json")
+    let hash = SHA256.hash(data: exportedBytes).map { String(format: "%02x", $0) }.joined()
+    attach(
+      try JSONSerialization.data(
+        withJSONObject: ["filename": filename, "canonicalID": id, "sha256": hash, "bytes": size],
+        options: [.sortedKeys]),
+      name: "IPAD-E02-A07-native-Files-export-hash", type: "public.json")
     let exported = try XCTUnwrap(
       JSONSerialization.jsonObject(with: exportedBytes) as? [String: Any])
     XCTAssertEqual(exported["format"] as? String, "bookorbit-annotations-v1")
     let exportedItems = try XCTUnwrap(exported["items"] as? [[String: Any]])
     XCTAssertEqual(exportedItems.count, 1)
-    XCTAssertEqual(exportedItems.first?["id"] as? Int, id)
-    let exportedDrawing = try XCTUnwrap(exportedItems.first?["drawing"] as? [String: Any])
+    let exportedItem = try XCTUnwrap(exportedItems.first)
+    XCTAssertEqual(exportedItem["id"] as? Int, id)
     XCTAssertEqual(
-      exportedDrawing["nativeData"] as? String, originalDrawing["nativeData"] as? String)
+      try XCTUnwrap(exportedItem["version"] as? Int),
+      try XCTUnwrap(expectedExport["version"] as? Int))
+    XCTAssertEqual(
+      try XCTUnwrap(exportedItem["cfi"] as? String), try XCTUnwrap(expectedExport["cfi"] as? String)
+    )
+    XCTAssertEqual(
+      try XCTUnwrap(exportedItem["jumpFileId"] as? Int),
+      try XCTUnwrap(expectedExport["jumpFileId"] as? Int))
+    XCTAssertEqual(exportedItem["text"] as? String, expectedExport["text"] as? String)
+    XCTAssertEqual(exportedItem["kind"] as? String, "handwriting")
+    let exportedDrawing = try XCTUnwrap(exportedItem["drawing"] as? [String: Any])
+    let expectedDrawing = try XCTUnwrap(expectedExport["drawing"] as? [String: Any])
+    XCTAssertEqual(exportedDrawing as NSDictionary, expectedDrawing as NSDictionary)
+    XCTAssertEqual(exportedDrawing as NSDictionary, originalDrawing as NSDictionary)
     tapHubControl("annotationHubTrashSelected", app: app)
     app.buttons["Move to Trash"].tap()
     let trashed = try await waitForAnnotations(bookID: 2, token: token) { items in
@@ -797,6 +851,37 @@ final class AnnotationJourneyTests: XCTestCase {
     XCTAssertEqual(
       repairedDrawing["nativeData"] as? String, originalDrawing["nativeData"] as? String)
     capture("IPAD-E02-A07-explicit-anchor-repair-preserves-drawing")
+  }
+
+  @MainActor
+  private func saveA07ToPublicDocuments(filename: String, app: XCUIApplication) {
+    let save = app.buttons["Save"].firstMatch
+    XCTAssertTrue(save.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    let browse = app.buttons["Browse"]
+    if browse.isHittable { browse.tap() }
+    let local = app.cells.containing(.staticText, identifier: "On My iPad").firstMatch
+    if local.isHittable {
+      local.tap()
+    } else if app.buttons["On My iPad"].isHittable {
+      app.buttons["On My iPad"].tap()
+    }
+    let folder = app.cells.containing(.staticText, identifier: "BookOrbit").firstMatch
+    if folder.isHittable {
+      folder.tap()
+    } else if app.buttons["BookOrbit"].isHittable {
+      app.buttons["BookOrbit"].tap()
+    }
+    let fields = app.textFields.matching(
+      NSPredicate(format: "value CONTAINS %@", "BookOrbit annotations"))
+    XCTAssertEqual(fields.count, 1, "Expected the actual native export filename field")
+    XCTAssertTrue(fields.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    replaceText(
+      fields.element, with: URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
+    )
+    capture("IPAD-E02-A07-native-Files-export-destination")
+    XCTAssertTrue(save.isHittable)
+    save.tap()
+    XCTAssertTrue(save.wait(for: \.exists, toEqual: false, timeout: 15))
   }
 
   @MainActor
