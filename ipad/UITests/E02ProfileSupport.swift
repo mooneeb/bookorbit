@@ -173,6 +173,33 @@ enum E02ProfileSupport {
     return true
   }
 
+  static func closeOfflineResources(app: XCUIApplication) -> Bool {
+    let resources = app.navigationBars.matching(identifier: "Offline resources")
+    guard resources.count == 1,
+      resources.element.wait(for: \.isHittable, toEqual: true, timeout: 10)
+    else {
+      XCTFail("Expected one active Offline resources navigation bar.\n\(app.debugDescription)")
+      return false
+    }
+    let buttons = resources.element.buttons.matching(identifier: "Done")
+    guard buttons.count == 1,
+      buttons.element.wait(for: \.isEnabled, toEqual: true, timeout: 10),
+      buttons.element.wait(for: \.isHittable, toEqual: true, timeout: 10)
+    else {
+      XCTFail("Expected one available Done control in Offline resources.\n\(app.debugDescription)")
+      return false
+    }
+    buttons.element.tap()
+    let details = app.navigationBars.matching(identifier: "Book details")
+    guard resources.element.wait(for: \.exists, toEqual: false, timeout: 10),
+      details.count == 1, details.element.wait(for: \.isHittable, toEqual: true, timeout: 10)
+    else {
+      XCTFail("Closing Offline resources must reveal Book details.\n\(app.debugDescription)")
+      return false
+    }
+    return true
+  }
+
   static func applyMotionInSettings(_ test: XCTestCase) {
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
     settings.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]

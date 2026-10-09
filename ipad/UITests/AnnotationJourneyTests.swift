@@ -373,7 +373,7 @@ final class AnnotationJourneyTests: XCTestCase {
     XCTAssertFalse(app.buttons["offlinePause"].exists)
     capture("IPAD-E02-A04-verified-selected-PDF-ready")
     try audit(app, state: "IPAD-E02-A04-verified-offline-resources")
-    app.buttons["Done"].tap()
+    guard E02ProfileSupport.closeOfflineResources(app: app) else { return }
     app.buttons["Done"].tap()
     try await fault("offline")
     app.terminate()
@@ -604,7 +604,7 @@ final class AnnotationJourneyTests: XCTestCase {
     app.buttons["offlineDownload"].tap()
     XCTAssertTrue(
       app.staticTexts["Verified ready for offline reading"].waitForExistence(timeout: 40))
-    app.buttons["Done"].tap()
+    guard E02ProfileSupport.closeOfflineResources(app: app) else { return }
     app.buttons["readFile\(fileID)"].tap()
     XCTAssertTrue(app.buttons["pdfInkDraw"].waitForExistence(timeout: 15))
     try await fault("offline")

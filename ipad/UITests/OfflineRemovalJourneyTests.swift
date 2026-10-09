@@ -366,7 +366,7 @@ final class OfflineRemovalJourneyTests: XCTestCase {
     download.tap()
     XCTAssertTrue(
       app.staticTexts["Verified ready for offline reading"].waitForExistence(timeout: 45))
-    app.buttons["Done"].tap()
+    guard E02ProfileSupport.closeOfflineResources(app: app) else { return }
   }
 
   @MainActor
