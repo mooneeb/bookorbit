@@ -119,6 +119,30 @@ final class AnnotationHubJourneyTests: XCTestCase {
     XCTAssertTrue(done.wait(for: \.isHittable, toEqual: true, timeout: 5))
     XCTAssertGreaterThanOrEqual(done.frame.width, 44)
     XCTAssertGreaterThanOrEqual(done.frame.height, 44)
+    let description =
+      "Each entry shows the last annotation revision a device acknowledged for one book."
+    let lists = (app.collectionViews.allElementsBoundByIndex + app.tables.allElementsBoundByIndex)
+      .filter { $0.staticTexts[description].exists }
+    XCTAssertEqual(lists.count, 1, "The Devices acknowledgement list must be uniquely identifiable")
+    let list = try XCTUnwrap(lists.first)
+    XCTAssertTrue(list.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    let visibleList = list.frame.intersection(app.frame)
+    let visibleTop = max(visibleList.minY, headings.element.frame.maxY, done.frame.maxY)
+    let viewport = CGRect(
+      x: visibleList.minX, y: visibleTop, width: visibleList.width,
+      height: visibleList.maxY - visibleTop)
+    XCTAssertGreaterThan(viewport.width, 0)
+    XCTAssertGreaterThan(viewport.height, 0)
+    let row = list.cells.containing(
+      NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", expectedDevice, expectedDevice)
+    ).firstMatch
+    for _ in 0..<4 where !row.isHittable || !viewport.contains(row.frame) {
+      if row.exists && row.frame.minY < viewport.minY { list.swipeDown() } else { list.swipeUp() }
+    }
+    XCTAssertTrue(row.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    XCTAssertTrue(viewport.contains(row.frame), "The expected device row must be fully visible")
+    XCTAssertTrue(device.isHittable, "The expected UUID must be visible before capture and audit")
+    XCTAssertTrue(viewport.contains(device.frame))
     capture("IPAD-E02-A07-hub-devices-loaded-current-account-native-acknowledgement")
     try app.performAccessibilityAudit()
     done.tap()
