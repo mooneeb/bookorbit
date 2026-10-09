@@ -467,8 +467,10 @@ final class RecoveryDraftJourneyTests: XCTestCase {
 
   @MainActor
   private func saveToPublicDocuments(filename: String, app: XCUIApplication) {
-    let save = app.buttons["Save"].firstMatch
+    let saves = app.buttons.matching(identifier: "Save")
+    let save = saves.element
     XCTAssertTrue(save.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    XCTAssertEqual(saves.count, 1, "Expected the actual native Files Save dialog")
     let browse = app.buttons["Browse"]
     if browse.isHittable { browse.tap() }
     let local = app.cells.containing(.staticText, identifier: "On My iPad").firstMatch
@@ -483,12 +485,23 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     } else if app.buttons["BookOrbit"].isHittable {
       app.buttons["BookOrbit"].tap()
     }
-    let fields = app.textFields.matching(
-      NSPredicate(format: "value CONTAINS %@", "BookOrbit recovery draft"))
+    XCTAssertEqual(saves.count, 1)
+    XCTAssertTrue(save.isHittable)
+    let fields = app.textFields
     XCTAssertEqual(fields.count, 1, "Expected the actual native export filename field")
-    replaceText(
-      fields.element, with: URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
-    )
+    let field = fields.element
+    XCTAssertTrue(field.isHittable)
+    let originalName = field.value as? String ?? ""
+    XCTAssertTrue(originalName.contains("BookOrbit recovery draft"))
+    let exportName = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
+    field.tap()
+    field.typeText(
+      String(repeating: XCUIKeyboardKey.delete.rawValue, count: originalName.utf16.count))
+    XCTAssertEqual(fields.count, 1)
+    XCTAssertEqual(field.value as? String, "")
+    field.typeText(exportName)
+    XCTAssertEqual(fields.count, 1)
+    XCTAssertEqual(field.value as? String, exportName)
     capture("IPAD-E02-A06-native-Files-recovery-export-destination")
     save.tap()
     XCTAssertTrue(save.wait(for: \.exists, toEqual: false, timeout: 15))
