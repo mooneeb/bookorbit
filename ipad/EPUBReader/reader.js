@@ -15,6 +15,7 @@ const fontFamilyCSS = (family) => (genericFontFamilies.has(family) ? family : JS
 const view = document.querySelector("foliate-view");
 let closed = false;
 let narrationMovement = 0;
+let recordedSectionLoad;
 let active = 0;
 let publication;
 let publisherSpread;
@@ -156,10 +157,24 @@ const drain = () => {
       });
   }
 };
-const settle = async () => {
+const recordedStep = (step, phase, index, started) => {
+  window.webkit.messageHandlers.recordedTransition?.postMessage({ step, phase, index, durationMs: Math.round(performance.now() - started) });
+};
+const settle = async (recordedIndex = null, pass = 1) => {
+  const diagnostic = (step, phase, started) => {
+    if (recordedIndex !== null) recordedStep(`${step}${pass}`, phase, recordedIndex, started);
+  };
   for (const { doc } of view.renderer.getContents()) {
+    let started = performance.now();
+    diagnostic("customFonts", "start", started);
     await settleCustomFonts(doc);
+    diagnostic("customFonts", "end", started);
+    started = performance.now();
+    diagnostic("fonts", "start", started);
     await doc.fonts.ready;
+    diagnostic("fonts", "end", started);
+    started = performance.now();
+    diagnostic("images", "start", started);
     await Promise.all(
       Array.from(doc.images, async (image) => {
         if (!image.complete)
@@ -170,8 +185,21 @@ const settle = async () => {
         if (image.complete && image.naturalWidth) await image.decode().catch(() => {});
       }),
     );
+    diagnostic("images", "end", started);
   }
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const frameStarted = performance.now();
+  diagnostic("frameA", "start", frameStarted);
+  await new Promise((resolve) =>
+    requestAnimationFrame(() => {
+      diagnostic("frameA", "end", frameStarted);
+      const nextFrameStarted = performance.now();
+      diagnostic("frameB", "start", nextFrameStarted);
+      requestAnimationFrame(() => {
+        diagnostic("frameB", "end", nextFrameStarted);
+        resolve();
+      });
+    }),
+  );
 };
 const location = () => {
   const value = view.lastLocation;
@@ -190,7 +218,7 @@ const location = () => {
     ...publicationPosition(value),
   };
 };
-const go = async (target, smooth = false) => {
+const go = async (target, smooth = false, recorded = false) => {
   const opened = publication;
   if (closed || !opened) throw new Error("The reader closed.");
   resourceBytes = 0;
@@ -199,11 +227,35 @@ const go = async (target, smooth = false) => {
     throw new Error("This passage is unavailable in the publication.");
   const renderer = view.renderer;
   await withProgrammaticMovement(renderer, smooth, async () => {
-    await renderer.goTo({ ...resolved, smooth });
-    await settle();
+    let started = performance.now();
+    if (recorded) recordedStep("navigation1", "start", resolved.index, started);
+    const section = publication.sections[resolved.index];
+    const load = section.load;
+    const traceLoad = recorded && window.webkit.messageHandlers.recordedTransition;
+    if (traceLoad)
+      section.load = async (...args) => {
+        const loadStarted = performance.now();
+        recordedStep("sectionLoad", "start", resolved.index, loadStarted);
+        const result = await load.apply(section, args);
+        recordedStep("sectionLoad", "end", resolved.index, loadStarted);
+        recordedSectionLoad = { index: resolved.index, started: performance.now() };
+        recordedStep("iframeLoad", "start", resolved.index, recordedSectionLoad.started);
+        return result;
+      };
+    try {
+      await renderer.goTo({ ...resolved, smooth });
+    } finally {
+      if (traceLoad) section.load = load;
+      recordedSectionLoad = null;
+    }
+    if (recorded) recordedStep("navigation1", "end", resolved.index, started);
+    await settle(recorded ? resolved.index : null, 1);
     if (closed || opened !== publication || renderer !== view.renderer) throw new Error("The reader closed.");
+    started = performance.now();
+    if (recorded) recordedStep("navigation2", "start", resolved.index, started);
     await renderer.goTo(resolved);
-    await settle();
+    if (recorded) recordedStep("navigation2", "end", resolved.index, started);
+    await settle(recorded ? resolved.index : null, 2);
   });
   if (closed || opened !== publication || renderer !== view.renderer) throw new Error("The reader closed.");
   if (!view.renderer.getContents().some((item) => item.index === resolved.index)) throw new Error("The requested passage could not be opened.");
@@ -237,6 +289,11 @@ const applyDocumentStyles = (doc) => {
   style.textContent = currentStyles;
 };
 view.addEventListener("load", ({ detail: { doc, index } }) => {
+  if (recordedSectionLoad?.index === index) {
+    recordedStep("iframeLoad", "end", index, recordedSectionLoad.started);
+    recordedSectionLoad.started = performance.now();
+    recordedStep("sectionRender", "start", index, recordedSectionLoad.started);
+  }
   if (view.isFixedLayout) applyDocumentStyles(doc);
   renderPassageAnnotations(doc, index);
   let pencilStart;
@@ -354,6 +411,9 @@ const openPublication = async (book, cfi, settings, formatting) => {
   if (settings.fixedLayoutSpread === "none") publication.rendition.spread = "none";
   await view.open(publication);
   view.renderer.disablePointerNavigation?.();
+  view.renderer.addEventListener("create-overlayer", ({ detail: { index } }) => {
+    if (recordedSectionLoad?.index === index) recordedStep("sectionRender", "end", index, recordedSectionLoad.started);
+  });
   view.renderer.addEventListener("before-section-load", () => {
     resourceBytes = 0;
   });
@@ -807,24 +867,55 @@ window.epubRecordedMatch = async (items, cfi) => {
   return null;
 };
 window.epubRecordedHighlight = async (href, follow) => {
-  const generation = recordedGeneration;
-  const resolved = await view.resolveNavigation(href);
-  if (!resolved || !Number.isInteger(resolved.index)) throw new Error("The recorded segment is unavailable.");
-  if (follow) await go(href);
-  if (closed || generation !== recordedGeneration) throw new Error("Recorded highlighting was cancelled.");
-  clearRecordedPaint();
-  const content = view.renderer.getContents().find((item) => item.index === resolved.index);
-  const doc = content?.doc ?? (await publication.sections[resolved.index].createDocument());
-  if (closed || generation !== recordedGeneration) throw new Error("Recorded highlighting was cancelled.");
-  const range = recordedRange(doc, resolved.anchor);
-  const point = range.cloneRange();
-  point.collapse(true);
-  const cfi = view.getCFI(resolved.index, point);
-  if (content) {
-    if (!doc.defaultView.CSS.highlights || !doc.defaultView.Highlight) throw new Error("Segment highlighting is unavailable on this device.");
-    doc.defaultView.CSS.highlights.set("bookorbit-recorded", new doc.defaultView.Highlight(range));
+  const diagnosticStarted = performance.now();
+  let resolved;
+  let statement = "resolve";
+  try {
+    const generation = recordedGeneration;
+    resolved = await view.resolveNavigation(href);
+    if (!resolved || !Number.isInteger(resolved.index)) throw new Error("The recorded segment is unavailable.");
+    statement = "follow";
+    if (follow) await go(href, false, true);
+    if (closed || generation !== recordedGeneration) throw new Error("Recorded highlighting was cancelled.");
+    statement = "clearPaint";
+    clearRecordedPaint();
+    statement = "document";
+    const content = view.renderer.getContents().find((item) => item.index === resolved.index);
+    const doc = content?.doc ?? (await publication.sections[resolved.index].createDocument());
+    if (closed || generation !== recordedGeneration) throw new Error("Recorded highlighting was cancelled.");
+    statement = "range";
+    const range = recordedRange(doc, resolved.anchor);
+    const point = range.cloneRange();
+    point.collapse(true);
+    statement = "cfi";
+    const cfi = view.getCFI(resolved.index, point);
+    statement = "paint";
+    if (content) {
+      if (!doc.defaultView.CSS.highlights || !doc.defaultView.Highlight) throw new Error("Segment highlighting is unavailable on this device.");
+      doc.defaultView.CSS.highlights.set("bookorbit-recorded", new doc.defaultView.Highlight(range));
+    }
+    statement = "result";
+    return { cfi, chapterIndex: resolved.index, text: range.toString().slice(0, 500), percentage: follow ? location().percentage : null };
+  } catch (error) {
+    const names = new Set(["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "SecurityError", "InvalidStateError", "WrongDocumentError", "NotFoundError"]);
+    const name = names.has(error?.name) ? error.name : "UnknownError";
+    const source = /reader\.js:(\d+):(\d+)/.exec(String(error?.stack ?? "").slice(0, 4096));
+    const messages = new Map([
+      ["The reading position is unavailable.", "readingPosition"],
+      ["Recorded highlighting was cancelled.", "cancelled"],
+      ["The recorded segment is unavailable.", "segmentUnavailable"],
+      ["The recorded segment is unavailable in this publication.", "anchorUnavailable"],
+      ["Segment highlighting is unavailable on this device.", "highlightUnavailable"],
+      ["The requested passage could not be opened.", "passageUnavailable"],
+      ["The reader closed.", "closed"],
+    ]);
+    window.webkit.messageHandlers.recordedTransition?.postMessage({
+      step: "highlightException", phase: "fail", index: resolved?.index ?? 0, statement, durationMs: Math.round(performance.now() - diagnosticStarted),
+      errorName: name, line: source ? Number(source[1]) : 0, column: source ? Number(source[2]) : 0,
+      messageCode: messages.get(error?.message) ?? "engineException",
+    });
+    throw error;
   }
-  return { cfi, chapterIndex: resolved.index, text: range.toString().slice(0, 500), percentage: follow ? location().percentage : null };
 };
 window.epubClearRecordedHighlight = () => {
   recordedGeneration++;

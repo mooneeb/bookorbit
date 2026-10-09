@@ -10,6 +10,7 @@ import { startFaultProxy } from "./fault-proxy.mjs";
 import { createCoverFixture } from "./cover-fixture.mjs";
 import { annotationProfile } from "./annotation-matrix.mjs";
 import { compareNativeAnnotationVisuals } from "./annotation-visual.mjs";
+import { waitForNativeOfflineReady } from "./combined-coordination.mjs";
 
 const startedAt = Date.now();
 process.on("uncaughtExceptionMonitor", (error) => {
@@ -35,6 +36,86 @@ if (nativeOnly && (!annotationsProof || !process.argv.includes("--ui") || proces
 }
 const annotationCase = process.argv.find((argument) => argument.startsWith("--case="))?.slice(7);
 const combinedRecovery = annotationsProof && annotationCase === "QA456";
+const qa5BrowserOnly = process.argv.includes("--qa5-browser-only");
+if (
+  qa5BrowserOnly &&
+  (!annotationsProof ||
+    !process.argv.includes("--web") ||
+    process.argv.includes("--ui") ||
+    nativeOnly ||
+    annotationCase ||
+    process.argv.includes("--serve") ||
+    process.env.IPAD_TEST_ONLY)
+) {
+  throw new Error("--qa5-browser-only requires --annotations --web without native/case/retained-server overrides");
+}
+const recordedLayout = process.argv.includes("--recorded-layout");
+const pdfHandoff = process.argv.includes("--pdf-handoff");
+const pdfRecovery = process.argv.includes("--pdf-recovery");
+if (
+  recordedLayout &&
+  (!annotationsProof ||
+    !nativeOnly ||
+    annotationCase ||
+    pdfHandoff ||
+    pdfRecovery ||
+    annotationVisualProfile.name !== "pro13-portrait-light" ||
+    process.argv.includes("--serve") ||
+    process.env.IPAD_TEST_ONLY)
+) {
+  throw new Error(
+    "--recorded-layout requires --annotations --ui --native-only --profile=pro13-portrait-light without case/selector/retained-server overrides",
+  );
+}
+if (
+  pdfHandoff &&
+  (!annotationsProof ||
+    !nativeOnly ||
+    annotationCase ||
+    recordedLayout ||
+    pdfRecovery ||
+    qa5BrowserOnly ||
+    annotationVisualProfile.name !== "pro13-portrait-light" ||
+    process.argv.includes("--serve") ||
+    process.env.IPAD_TEST_ONLY)
+) {
+  throw new Error(
+    "--pdf-handoff requires --annotations --ui --native-only --profile=pro13-portrait-light without case/selector/retained-server overrides",
+  );
+}
+if (
+  pdfRecovery &&
+  (!annotationsProof ||
+    !nativeOnly ||
+    annotationCase ||
+    recordedLayout ||
+    pdfHandoff ||
+    qa5BrowserOnly ||
+    annotationVisualProfile.name !== "pro13-portrait-light" ||
+    [
+      "--serve",
+      "--progress-only",
+      "--cross-client",
+      "--metadata-proof",
+      "--metadata-clears-proof",
+      "--cover-proof",
+      "--reader-proof",
+      "--epub-proof",
+      "--comic-proof",
+      "--organization-proof",
+      "--pdf-reader",
+      "--inspect-web",
+    ].some((flag) => process.argv.includes(flag)) ||
+    process.env.IPAD_TEST_ONLY)
+) {
+  throw new Error(
+    "--pdf-recovery requires --annotations --ui --native-only --profile=pro13-portrait-light without other journey/selector/retained-server overrides",
+  );
+}
+const isolatedNative = combinedRecovery || recordedLayout || pdfHandoff || pdfRecovery;
+const recordedLayoutNative = "BookOrbitUITests/AnnotationJourneyTests/testRecordedColdCachedCrossChapterSurvivesLayoutTransition";
+const pdfHandoffNative = "BookOrbitUITests/AnnotationJourneyTests/testCachedPDFCloseReturnsOfflineLibrary";
+const pdfRecoveryNative = "BookOrbitUITests/AnnotationJourneyTests/testDeletedPDFRetainedExportSurvivesRestart";
 const annotationConcurrent =
   annotationsProof && ["A05", "QA456"].includes(annotationCase) && process.argv.includes("--ui") && process.argv.includes("--web");
 if (annotationCase && (!annotationsProof || !/^(?:A0[1-7]|QA456)$/.test(annotationCase))) {
@@ -58,9 +139,19 @@ if (
 }
 let currentNativeDeviceID;
 const combinedNative = "BookOrbitUITests/AnnotationJourneyTests/testIPADE02QA456OfflineReadAlongAndAuthoritativeRecovery";
-const combinedFaultPort = combinedRecovery ? 16585 + (process.pid % 1000) : 16485;
+const combinedNativePreparationBudgetMs = 180_000;
+const combinedNativeExecutionAllowanceMs = 900_000;
+const combinedNativeExecutionBudgetMs = combinedNativeExecutionAllowanceMs + 60_000;
+const combinedNativeEvidenceBudgetMs = 120_000;
+const combinedFaultPort = isolatedNative ? 16585 + (process.pid % 1000) : 16485;
 if (process.argv.includes("--list-journey")) {
-  if (!combinedRecovery) throw new Error("--list-journey requires --case=QA456");
+  if (!isolatedNative) throw new Error("--list-journey requires --case=QA456, --recorded-layout, --pdf-handoff or --pdf-recovery");
+  if (recordedLayout || pdfHandoff || pdfRecovery) {
+    console.log(
+      JSON.stringify({ native: [pdfRecovery ? pdfRecoveryNative : pdfHandoff ? pdfHandoffNative : recordedLayoutNative], browser: [] }, null, 2),
+    );
+    process.exit(0);
+  }
   console.log(
     JSON.stringify(
       { native: [combinedNative], browser: ["IPAD-E02-QA456-web: one browser collaborates with the combined offline recovery journey"] },
@@ -109,7 +200,15 @@ if (
 if ([metadataProof, metadataClearsProof, coverProof, pdfReader, organizationProof].filter(Boolean).length > 1)
   throw new Error("Select one focused journey");
 let nativeTests =
-  (combinedRecovery ? [combinedNative] : process.env.IPAD_TEST_ONLY?.split(",")) ??
+  (combinedRecovery
+    ? [combinedNative]
+    : recordedLayout
+      ? [recordedLayoutNative]
+      : pdfHandoff
+        ? [pdfHandoffNative]
+        : pdfRecovery
+          ? [pdfRecoveryNative]
+          : process.env.IPAD_TEST_ONLY?.split(",")) ??
   (annotationsProof ? ["BookOrbitUITests/AnnotationJourneyTests", "BookOrbitUITests/AnnotationHubJourneyTests"] : []);
 if (nativeTests.some((name) => !new RegExp(`^${nativeTestBundle}/[A-Za-z_]\\w*(?:/[A-Za-z_]\\w*)?$`).test(name))) {
   throw new Error(`IPAD_TEST_ONLY must contain comma-separated ${nativeTestBundle} classes or methods`);
@@ -122,6 +221,13 @@ const env = {
   APP_URL: "http://localhost:16484",
   IPAD_TEST_RUN: runID,
   IPAD_ANNOTATIONS_PROOF: annotationsProof ? "1" : "0",
+  IPAD_QA5_BROWSER_ONLY: qa5BrowserOnly ? "1" : "0",
+  IPAD_RECORDED_LAYOUT_ONLY: recordedLayout ? "1" : "0",
+  TEST_RUNNER_IPAD_RECORDED_LAYOUT_ONLY: recordedLayout ? "1" : "0",
+  IPAD_PDF_HANDOFF_ONLY: pdfHandoff ? "1" : "0",
+  TEST_RUNNER_IPAD_PDF_HANDOFF_ONLY: pdfHandoff ? "1" : "0",
+  IPAD_PDF_RECOVERY_ONLY: pdfRecovery ? "1" : "0",
+  TEST_RUNNER_IPAD_PDF_RECOVERY_ONLY: pdfRecovery ? "1" : "0",
   IPAD_ANNOTATION_CASE: annotationCase ?? "",
   IPAD_ANNOTATION_FAULT_URL: `http://127.0.0.1:${combinedFaultPort}`,
   TEST_RUNNER_IPAD_ANNOTATION_FAULT_URL: `http://127.0.0.1:${combinedFaultPort}`,
@@ -149,15 +255,24 @@ const env = {
   NATIVE_ADDITIONAL_REDIRECT_URIS: "bookorbit-private://oauth2-callback",
 };
 
-async function command(cmd, args, { capture = false, timeoutMs, ...options } = {}) {
+async function command(cmd, args, { capture = false, timeoutMs, signal, ...options } = {}) {
   if (interrupted) throw new Error("iPad harness interrupted");
+  signal?.throwIfAborted();
   await mkdir(`${artifactsRoot}/logs`, { recursive: true });
   const log = createWriteStream(`${artifactsRoot}/logs/${String(++commandNumber).padStart(3, "0")}-${basename(cmd)}.log`);
   return new Promise((resolve, reject) => {
     let output = "";
     const child = launch(cmd, args, { stdio: ["ignore", "pipe", "pipe"], ...options });
     let timedOut = false;
+    let aborted = false;
     let killTimeout;
+    const abort = () => {
+      aborted = true;
+      signalGroup(child, "SIGTERM");
+      killTimeout = setTimeout(() => signalGroup(child, "SIGKILL"), 5_000);
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     const timeout =
       timeoutMs &&
       setTimeout(() => {
@@ -180,19 +295,22 @@ async function command(cmd, args, { capture = false, timeoutMs, ...options } = {
       });
     }
     child.once("error", (error) => {
+      signal?.removeEventListener("abort", abort);
       clearTimeout(timeout);
       clearTimeout(killTimeout);
       log.end();
       reject(error);
     });
-    child.once("close", (code, signal) => {
+    child.once("close", (code, closeSignal) => {
+      signal?.removeEventListener("abort", abort);
       clearTimeout(timeout);
       clearTimeout(killTimeout);
       children.delete(child);
       log.end(() => {
-        if (timedOut) reject(new Error(`${cmd} exceeded ${timeoutMs}ms`));
+        if (aborted) reject(signal.reason ?? new Error(`${cmd} aborted`));
+        else if (timedOut) reject(new Error(`${cmd} exceeded ${timeoutMs}ms`));
         else if (code === 0) resolve(output);
-        else reject(new Error(`${cmd} failed (${code ?? signal})`));
+        else reject(new Error(`${cmd} failed (${code ?? closeSignal})`));
       });
     });
   });
@@ -327,7 +445,7 @@ async function startWeb() {
 }
 
 async function runAdditionalAnnotationBrowserTests() {
-  if (!annotationsProof) return;
+  if (!annotationsProof || qa5BrowserOnly) return;
   const suites = [
     { config: "scripts/ipad/annotations-collection.config.mjs", cases: ["A01", "A03"], artifactSuffix: "collection" },
     { config: "scripts/ipad/source-ink-window-web.config.mjs", cases: ["A03"], artifactSuffix: "source-window" },
@@ -387,8 +505,15 @@ async function cleanup() {
     );
 }
 
-async function runNativeTests() {
+async function runNativeTests({ onExecutionStart, onFailure } = {}) {
   const startedAt = Date.now();
+  let nativeCommandDeadline = combinedRecovery ? Date.now() + combinedNativePreparationBudgetMs : undefined;
+  async function nativeCommand(cmd, args, options = {}) {
+    if (!nativeCommandDeadline) return command(cmd, args, options);
+    const remaining = nativeCommandDeadline - Date.now();
+    if (remaining <= 0) throw new Error("QA456 native phase exceeded its owning deadline");
+    return command(cmd, args, { ...options, timeoutMs: Math.min(options.timeoutMs ?? remaining, remaining) });
+  }
   const nativeLock = "/tmp/bookorbit-ipad-xcode.lock";
   try {
     await mkdir(nativeLock);
@@ -402,7 +527,7 @@ async function runNativeTests() {
   try {
     const artifacts = `${root}/test-results/ipad/${runID}`;
     await mkdir(artifacts, { recursive: true });
-    const devices = JSON.parse(await command("xcrun", ["simctl", "list", "devices", "available", "--json"], { capture: true }));
+    const devices = JSON.parse(await nativeCommand("xcrun", ["simctl", "list", "devices", "available", "--json"], { capture: true }));
     const explicitID = process.env.IPAD_TEST_DESTINATION?.match(/(?:^|,)id=([A-Fa-f0-9-]+)/)?.[1];
     const explicitName = process.env.IPAD_TEST_DESTINATION?.match(/(?:^|,)name=([^,]+)/)?.[1] ?? "BookOrbit Test iPad";
     const matches = Object.values(devices.devices)
@@ -411,8 +536,8 @@ async function runNativeTests() {
     if (matches.length !== 1) throw new Error("Select exactly one available test simulator with IPAD_TEST_DESTINATION");
     const selectedDevice = matches[0];
     currentNativeDeviceID = selectedDevice.udid;
-    if (selectedDevice.state === "Shutdown") await command("xcrun", ["simctl", "boot", selectedDevice.udid]);
-    await command("xcrun", ["simctl", "bootstatus", selectedDevice.udid, "-b"]);
+    if (selectedDevice.state === "Shutdown") await nativeCommand("xcrun", ["simctl", "boot", selectedDevice.udid]);
+    await nativeCommand("xcrun", ["simctl", "bootstatus", selectedDevice.udid, "-b"]);
     if (annotationsProof) {
       const size = nativeVisualProfile.nativeDevice.includes("11") ? "11-inch" : "13-inch";
       if (!selectedDevice.deviceTypeIdentifier?.includes(size)) throw new Error(`Native profile requires an actual ${size} iPad simulator`);
@@ -422,10 +547,10 @@ async function runNativeTests() {
           : nativeVisualProfile.dynamicType === "extraExtraExtraLarge"
             ? "extra-extra-extra-large"
             : "large";
-      await command("xcrun", ["simctl", "ui", selectedDevice.udid, "appearance", nativeVisualProfile.colorScheme]);
-      await command("xcrun", ["simctl", "ui", selectedDevice.udid, "content_size", contentSize]);
-      const appearance = (await command("xcrun", ["simctl", "ui", selectedDevice.udid, "appearance"], { capture: true })).trim();
-      const actualContentSize = (await command("xcrun", ["simctl", "ui", selectedDevice.udid, "content_size"], { capture: true })).trim();
+      await nativeCommand("xcrun", ["simctl", "ui", selectedDevice.udid, "appearance", nativeVisualProfile.colorScheme]);
+      await nativeCommand("xcrun", ["simctl", "ui", selectedDevice.udid, "content_size", contentSize]);
+      const appearance = (await nativeCommand("xcrun", ["simctl", "ui", selectedDevice.udid, "appearance"], { capture: true })).trim();
+      const actualContentSize = (await nativeCommand("xcrun", ["simctl", "ui", selectedDevice.udid, "content_size"], { capture: true })).trim();
       if (appearance !== nativeVisualProfile.colorScheme || actualContentSize !== contentSize)
         throw new Error("Actual simulator appearance or content size differs from the requested profile");
       await writeFile(
@@ -452,7 +577,7 @@ async function runNativeTests() {
     if (!readerProof && !annotationsProof) {
       const destination = process.env.IPAD_TEST_DESTINATION;
       const device = destination?.match(/(?:^|,)id=([A-Fa-f0-9-]+)/)?.[1] ?? "BookOrbit Test iPad";
-      await command("xcrun", [
+      await nativeCommand("xcrun", [
         "simctl",
         "addmedia",
         device,
@@ -464,11 +589,11 @@ async function runNativeTests() {
       const device = selectedDevice.udid;
       let installed = false;
       try {
-        await command("xcrun", ["simctl", "get_app_container", device, "com.mooneeb.bookorbit.private", "data"], { capture: true });
+        await nativeCommand("xcrun", ["simctl", "get_app_container", device, "com.mooneeb.bookorbit.private", "data"], { capture: true });
         installed = true;
       } catch {}
-      if (installed && !combinedRecovery) await command("xcrun", ["simctl", "uninstall", device, "com.mooneeb.bookorbit.private"]);
-      await command("xcrun", [
+      if (installed && !isolatedNative) await nativeCommand("xcrun", ["simctl", "uninstall", device, "com.mooneeb.bookorbit.private"]);
+      await nativeCommand("xcrun", [
         "simctl",
         "status_bar",
         device,
@@ -487,8 +612,8 @@ async function runNativeTests() {
         "100",
       ]);
     }
-    await command("xcodegen", ["generate", "--spec", "ipad/project.yml"]);
-    if (annotationsProof && !combinedRecovery && !process.env.IPAD_TEST_ONLY) {
+    await nativeCommand("xcodegen", ["generate", "--spec", "ipad/project.yml"]);
+    if (annotationsProof && !isolatedNative && !process.env.IPAD_TEST_ONLY) {
       nativeTests = [];
       for (const file of await readdir(`${root}/ipad/UITests`)) {
         if (!file.endsWith(".swift")) continue;
@@ -528,14 +653,14 @@ async function runNativeTests() {
         "CODE_SIGNING_ALLOWED=YES",
         "CODE_SIGN_IDENTITY=-",
       ];
-      if (annotationsProof && !combinedRecovery) {
+      if (annotationsProof && !isolatedNative) {
         const preflight = "BookOrbitUITests/AnnotationProfilePerformanceTests/testIPADE02A01ApplySystemProfile";
-        await command(
+        await nativeCommand(
           "xcodebuild",
           ["test", ...commonArguments, "-resultBundlePath", `${artifacts}/profile.xcresult`, `-only-testing:${preflight}`],
           { env: nativeEnvironment },
         );
-        const profileSummaryText = await command(
+        const profileSummaryText = await nativeCommand(
           "xcrun",
           ["xcresulttool", "get", "test-results", "summary", "--path", `${artifacts}/profile.xcresult`, "--format", "json"],
           { capture: true },
@@ -560,7 +685,7 @@ async function runNativeTests() {
         exportedArtifactDirectory = await publicExportDirectory(selectedDevice.udid);
         nativeEnvironment.IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
         nativeEnvironment.TEST_RUNNER_IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
-        await command("xcrun", [
+        await nativeCommand("xcrun", [
           "xcresulttool",
           "export",
           "attachments",
@@ -570,14 +695,25 @@ async function runNativeTests() {
           `${artifacts}/profile-attachments`,
         ]);
       }
-      if (combinedRecovery) {
-        await command("xcodebuild", ["build-for-testing", ...commonArguments], { env: nativeEnvironment });
-        await command("xcrun", ["simctl", "install", selectedDevice.udid, "ipad/DerivedData/Build/Products/Debug-iphonesimulator/BookOrbit.app"]);
-        nativeEnvironment.IPAD_E02_CURRENT_PUBLIC_FILES = "1";
-        nativeEnvironment.TEST_RUNNER_IPAD_E02_CURRENT_PUBLIC_FILES = "1";
+      if (isolatedNative) {
+        await nativeCommand("xcodebuild", ["build-for-testing", ...commonArguments], { env: nativeEnvironment });
+        await nativeCommand("xcrun", [
+          "simctl",
+          "install",
+          selectedDevice.udid,
+          "ipad/DerivedData/Build/Products/Debug-iphonesimulator/BookOrbit.app",
+        ]);
+        if (combinedRecovery || pdfRecovery) {
+          nativeEnvironment.IPAD_E02_CURRENT_PUBLIC_FILES = "1";
+          nativeEnvironment.TEST_RUNNER_IPAD_E02_CURRENT_PUBLIC_FILES = "1";
+        }
       }
       nativeJourneyStarted = true;
-      await command(
+      if (combinedRecovery) {
+        nativeCommandDeadline = Date.now() + combinedNativeExecutionBudgetMs;
+        onExecutionStart?.(nativeCommandDeadline);
+      }
+      await nativeCommand(
         "xcodebuild",
         [
           annotationsProof ? "test-without-building" : "test",
@@ -598,10 +734,12 @@ async function runNativeTests() {
       );
     } catch (error) {
       nativeFailure = error;
+      onFailure?.(error);
     }
-    if ((exportedArtifactDirectory || combinedRecovery) && nativeJourneyStarted) {
+    if (combinedRecovery) nativeCommandDeadline = Date.now() + combinedNativeEvidenceBudgetMs;
+    if ((exportedArtifactDirectory || combinedRecovery || pdfRecovery) && nativeJourneyStarted) {
       try {
-        if (combinedRecovery) exportedArtifactDirectory = await publicExportDirectory(selectedDevice.udid);
+        if (combinedRecovery || pdfRecovery) exportedArtifactDirectory = await publicExportDirectory(selectedDevice.udid);
         const recoverySelected = nativeTests.some(
           (name) =>
             name === "BookOrbitUITests/RecoveryDraftJourneyTests" ||
@@ -617,23 +755,23 @@ async function runNativeTests() {
     }
     if (!interrupted) {
       try {
-        const summaryText = await command(
+        const summaryText = await nativeCommand(
           "xcrun",
           ["xcresulttool", "get", "test-results", "summary", "--path", `${artifacts}/native.xcresult`, "--format", "json"],
           { capture: true },
         );
         await writeFile(`${artifacts}/native-summary.json`, summaryText);
-        const exported = await command(
+        const exported = await nativeCommand(
           "xcrun",
           ["xcresulttool", "export", "attachments", "--path", `${artifacts}/native.xcresult`, "--output-path", `${artifacts}/native-attachments`],
           { capture: true },
         );
         await writeFile(`${artifacts}/native-attachments.log`, exported);
-        if (annotationsProof && !combinedRecovery) await compareNativeAnnotationVisuals(artifacts, nativeVisualProfile.name);
+        if (annotationsProof && !isolatedNative) await compareNativeAnnotationVisuals(artifacts, nativeVisualProfile.name);
         const summary = JSON.parse(summaryText);
         if (
           summary.totalTestCount < 1 ||
-          (combinedRecovery && summary.totalTestCount !== 1) ||
+          (isolatedNative && summary.totalTestCount !== 1) ||
           summary.failedTests !== 0 ||
           summary.skippedTests !== 0 ||
           summary.expectedFailures !== 0 ||
@@ -651,6 +789,7 @@ async function runNativeTests() {
     if (nativeFailure) throw nativeFailure;
     if (interrupted) throw new Error("Native verification interrupted");
   } catch (error) {
+    onFailure?.(error);
     console.error(
       `[ipad.ui] [fail] runId=${runID} durationMs=${Date.now() - startedAt} errorClass=${error instanceof Error ? error.name : "Error"} error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - native verification failed`,
     );
@@ -660,12 +799,45 @@ async function runNativeTests() {
   }
 }
 
+async function runCombinedNativeAndBrowser() {
+  let resolveExecutionStarted;
+  const executionStarted = new Promise((resolve) => {
+    resolveExecutionStarted = resolve;
+  });
+  const browserAbort = new AbortController();
+  let nativeReady = false;
+  const native = runNativeTests({
+    onExecutionStart: resolveExecutionStarted,
+    onFailure: (error) => browserAbort.abort(error),
+  }).then(() => {
+    if (!nativeReady) browserAbort.abort(new Error("Native peer exited before its offline readiness checkpoint"));
+  });
+  const browser = (async () => {
+    const deadline = await Promise.race([
+      executionStarted,
+      native.then(() => {
+        throw new Error("Native peer exited before its browser lifecycle started");
+      }),
+    ]);
+    await waitForNativeOfflineReady({ faultURL: env.IPAD_ANNOTATION_FAULT_URL, deadline, signal: browserAbort.signal });
+    nativeReady = true;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error("QA456 browser has no time remaining in the owning native run");
+    await command("pnpm", ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"], {
+      env: { ...env, IPAD_QA456_NATIVE_DEADLINE_MS: String(deadline) },
+      timeoutMs: remaining,
+      signal: browserAbort.signal,
+    });
+  })();
+  return Promise.allSettled([native, browser]);
+}
+
 try {
   console.log(`[ipad.harness] [start] runId=${runID} annotations=${annotationsProof} - isolated acceptance run starting`);
   await mkdir(artifactsRoot, { recursive: true });
   await writeFile(
     `${artifactsRoot}/environment.json`,
-    `${JSON.stringify({ runID, node: process.version, nativeScheme, profile: annotationVisualProfile, destination: process.env.IPAD_TEST_DESTINATION ?? "platform=iOS Simulator,name=BookOrbit Test iPad", fixtureDate: "2026-10-05T00:00:00Z", apiURL: "http://localhost:16482/api/v1", webURL: "http://localhost:16484", annotationCase: annotationCase ?? "all", nativeInputSubstitution: annotationsProof ? "debug-only deterministic Pencil/Scribble boundary" : null }, null, 2)}\n`,
+    `${JSON.stringify({ runID, node: process.version, nativeScheme, profile: annotationVisualProfile, destination: process.env.IPAD_TEST_DESTINATION ?? "platform=iOS Simulator,name=BookOrbit Test iPad", fixtureDate: "2026-10-05T00:00:00Z", apiURL: "http://localhost:16482/api/v1", webURL: "http://localhost:16484", annotationCase: pdfRecovery ? "pdf-recovery" : pdfHandoff ? "pdf-handoff" : recordedLayout ? "recorded-layout" : (annotationCase ?? "all"), nativeInputSubstitution: annotationsProof ? "debug-only deterministic Pencil/Scribble boundary" : null }, null, 2)}\n`,
   );
   await createCoverFixture(env.IPAD_COVER_FIXTURE_DIR);
   if (epubProof || annotationsProof) {
@@ -700,7 +872,7 @@ try {
   if (annotationsProof) {
     stopFaultProxy = await startFaultProxy({
       port: combinedFaultPort,
-      ...(combinedRecovery
+      ...(combinedRecovery || pdfRecovery
         ? {
             currentDocuments: async () => {
               if (!currentNativeDeviceID) throw new Error("Native device has not been selected");
@@ -719,7 +891,7 @@ try {
     );
     await interrupt;
   } else {
-    if (annotationsProof && !nativeOnly && !combinedRecovery) {
+    if (annotationsProof && !nativeOnly && !combinedRecovery && !qa5BrowserOnly) {
       await command(process.execPath, [
         "--test",
         "--test-concurrency=1",
@@ -743,10 +915,12 @@ try {
     if (process.argv.includes("--ui") && !stopFaultProxy) stopFaultProxy = await startFaultProxy({ port: combinedFaultPort });
     if (annotationConcurrent) {
       await startWeb();
-      const outcomes = await Promise.allSettled([
-        runNativeTests(),
-        command("pnpm", ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"]),
-      ]);
+      const outcomes = combinedRecovery
+        ? await runCombinedNativeAndBrowser()
+        : await Promise.allSettled([
+            runNativeTests(),
+            command("pnpm", ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"]),
+          ]);
       const failed = outcomes.filter((outcome) => outcome.status === "rejected");
       if (failed.length)
         throw new AggregateError(
@@ -766,7 +940,9 @@ try {
           `[ipad.browser_inspection] [end] runId=${runID} durationMs=${Date.now() - inspectionAt} closed=true - retained browser inspection finished`,
         );
       } else {
-        await command("pnpm", ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"]);
+        await command("pnpm", ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"], {
+          ...(qa5BrowserOnly ? { timeoutMs: 150_000 } : {}),
+        });
         await runAdditionalAnnotationBrowserTests();
       }
     }

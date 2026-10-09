@@ -1571,19 +1571,46 @@ actor BookOrbitAPI {
     bookID: Int, fileID: Int, path: String, expectedSize: Int?, byteLimit: Int = 8 * 1024 * 1024,
     session: UUID? = nil
   ) async throws -> Data {
+    guard bookID > 0, fileID > 0, EPUBPublicationResources.validPath(path) else {
+      throw ConnectionError.invalidResponse
+    }
+    guard (1...(8 * 1024 * 1024)).contains(byteLimit),
+      expectedSize.map({ (0...byteLimit).contains($0) }) ?? true
+    else { throw ConnectionError.resourceTooLarge }
+    let generation = session ?? sessionGeneration
+    try ensureSession(generation)
+    if isOffline {
+      return try await localEPUBResource(
+        bookID: bookID, fileID: fileID, path: path, expectedSize: expectedSize,
+        byteLimit: byteLimit, generation: generation)
+    }
     do {
       return try await epubResourceOnline(
         bookID: bookID, fileID: fileID, path: path,
-        expectedSize: expectedSize, byteLimit: byteLimit, session: session)
+        expectedSize: expectedSize, byteLimit: byteLimit, session: generation)
     } catch {
-      guard error is URLError,
-        let data = try await offlineStore().read(
-          path: "epub/\(bookID)/file/\(path)",
-          query: [URLQueryItem(name: "fileId", value: String(fileID))], limit: byteLimit),
-        expectedSize.map({ data.count == $0 }) ?? true
-      else { throw error }
-      return data
+      guard error is URLError else { throw error }
+      return try await localEPUBResource(
+        bookID: bookID, fileID: fileID, path: path, expectedSize: expectedSize,
+        byteLimit: byteLimit, generation: generation)
     }
+  }
+
+  private func localEPUBResource(
+    bookID: Int, fileID: Int, path: String, expectedSize: Int?, byteLimit: Int,
+    generation: UUID
+  ) async throws -> Data {
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    guard
+      let data = try await offlineStore().read(
+        path: "epub/\(bookID)/file/\(path)",
+        query: [URLQueryItem(name: "fileId", value: String(fileID))], limit: byteLimit),
+      expectedSize.map({ data.count == $0 }) ?? true
+    else { throw ConnectionError.fileChanged }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    return data
   }
 
   func comicPage(fileID: Int, pageIndex: Int) async throws -> Data {
@@ -1631,10 +1658,45 @@ actor BookOrbitAPI {
     }
   }
 
+  func recordedClipsPage(
+    bookID: Int, fileID: Int, section: Int, cursor: Int, generation: UUID
+  ) async throws -> EpubMediaOverlayClipsPage {
+    try ensureSession(generation)
+    guard bookID > 0, fileID > 0, section >= 0, cursor >= 0 else {
+      throw ConnectionError.invalidResponse
+    }
+    let path = "epub/\(bookID)/media-overlay/clips"
+    let query = [
+      URLQueryItem(name: "fileId", value: String(fileID)),
+      URLQueryItem(name: "sectionIndex", value: String(section)),
+      URLQueryItem(name: "cursor", value: String(cursor)),
+      URLQueryItem(name: "limit", value: "64"),
+    ]
+    if isOffline,
+      let data = try await offlineStore().read(path: path, query: query, limit: 512 * 1024)
+    {
+      try ensureSession(generation)
+      return try JSONDecoder().decode(EpubMediaOverlayClipsPage.self, from: data)
+    }
+    return try await boundedJSON(
+      path, query: query, byteLimit: 512 * 1024, session: generation)
+  }
+
   func recordedAudioChunk(
     bookID: Int, fileID: Int, clip: EpubMediaOverlayClip, offset: Int64, length: Int,
     expectedSize: Int64?, generation: UUID
   ) async throws -> AudioByteChunk {
+    try ensureSession(generation)
+    guard bookID > 0, fileID > 0, clip.sectionIndex >= 0,
+      EPUBPublicationResources.validPath(clip.audioHref), clip.audioMimeType.hasPrefix("audio/")
+    else { throw ConnectionError.invalidResponse }
+    if isOffline {
+      return try await localAudioChunk(
+        path: "epub/\(bookID)/file/\(clip.audioHref)",
+        query: [URLQueryItem(name: "fileId", value: String(fileID))], offset: offset,
+        length: length, expectedSize: expectedSize, mimeType: clip.audioMimeType,
+        generation: generation)
+    }
     do {
       return try await recordedAudioChunkOnline(
         bookID: bookID, fileID: fileID, clip: clip,
@@ -1663,6 +1725,8 @@ actor BookOrbitAPI {
     defer { try? handle.close() }
     try handle.seek(toOffset: UInt64(offset))
     let data = try handle.read(upToCount: length) ?? Data()
+    try Task.checkCancellation()
+    try ensureSession(generation)
     guard data.count == length else { throw ConnectionError.fileChanged }
     return AudioByteChunk(
       data: data, totalBytes: Int64(count), mimeType: mimeType,

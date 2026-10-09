@@ -9,7 +9,7 @@ struct EPUBRecordedSegment: Codable, Sendable {
 
 extension EPUBReaderModel {
   func recordedMatch(_ items: [EpubMediaOverlayClip], cfi: String) async throws -> Int? {
-    guard isReady, !isNavigating, items.count <= 128, NativeTTSPositionModel.validCFI(cfi) else {
+    guard isReady, items.count <= 128, NativeTTSPositionModel.validCFI(cfi) else {
       throw ConnectionError.invalidResponse
     }
     let data = try JSONEncoder().encode(items)
@@ -26,7 +26,7 @@ extension EPUBReaderModel {
   func highlightRecorded(_ clip: EpubMediaOverlayClip, follow: Bool) async throws
     -> EPUBRecordedSegment
   {
-    guard isReady, !isNavigating, EPUBPublicationResources.validPath(clip.textHref),
+    guard isReady, EPUBPublicationResources.validPath(clip.textHref),
       clip.textFragment.map({ !$0.contains("#") && $0.utf16.count <= 4096 }) ?? true
     else { throw ConnectionError.invalidResponse }
     let target = clip.textFragment.map { "\(clip.textHref)#\($0)" } ?? clip.textHref

@@ -70,8 +70,210 @@ final class AnnotationJourneyTests: XCTestCase {
   }
 
   @MainActor
+  func testDeletedPDFRetainedExportSurvivesRestart() async throws {
+    executionTimeAllowance = 360
+    XCTAssertEqual(ProcessInfo.processInfo.environment["IPAD_PDF_RECOVERY_ONLY"], "1")
+    try await fault("reset")
+    let token = try await loginAPI()
+    let detailBytes = try await api("books/6", token: token)
+    let detail = try XCTUnwrap(JSONSerialization.jsonObject(with: detailBytes) as? [String: Any])
+    let files = try XCTUnwrap(detail["files"] as? [[String: Any]])
+    let pdf = try XCTUnwrap(files.first { ($0["format"] as? String)?.lowercased() == "pdf" })
+    let fileID = try XCTUnwrap(pdf["id"] as? Int)
+    let originalBytes = try await api("books/files/\(fileID)/serve", token: token)
+    XCTAssertEqual(try XCTUnwrap(PDFDocument(data: originalBytes)).pageCount, 3)
+    let app = launchAndSignIn(serverURL: Self.faultServerURL, expectedBookCountLabel: "10 books")
+    openBookDetail(try XCTUnwrap(detail["title"] as? String), bookID: 6, app: app)
+    try qa456Download(fileID, app: app)
+    XCTAssertTrue(E02ProfileSupport.openBookFile(app: app, fileID: fileID))
+    XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 15))
+    try await fault("offline")
+    tapInkControl("pdfInkFixtureStroke", app: app)
+    XCTAssertTrue(app.staticTexts["Ink saved locally"].waitForExistence(timeout: 15))
+    capture("IPAD-E02-PDF-retained-real-pending-ink-before-source-delete")
+    _ = try await api("books/files/\(fileID)", method: "DELETE", token: token)
+    var gone = URLRequest(
+      url: try XCTUnwrap(URL(string: "\(Self.fixtureServerURL)/api/v1/books/files/\(fileID)/serve"))
+    )
+    gone.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    let (_, response) = try await Self.networkResponse(for: gone)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 404)
+    try await fault("online")
+    app.terminate()
+    app.launch()
+    try await qa456ExportRetained(fileID: fileID, originalBytes: originalBytes, app: app)
+  }
+
+  @MainActor
+  func testCachedPDFCloseReturnsOfflineLibrary() async throws {
+    executionTimeAllowance = 180
+    XCTAssertEqual(ProcessInfo.processInfo.environment["IPAD_PDF_HANDOFF_ONLY"], "1")
+    try await fault("reset")
+    let token = try await loginAPI()
+    let bytes = try await api("books/files/1/serve", token: token)
+    XCTAssertEqual(try XCTUnwrap(PDFDocument(data: bytes)).pageCount, 3)
+    let app = launchAndSignIn(serverURL: Self.faultServerURL, expectedBookCountLabel: "10 books")
+    openBookDetail("Orbit fixture", bookID: 1, app: app)
+    try qa456Download(1, app: app)
+    let details = app.navigationBars.matching(identifier: "Book details")
+    XCTAssertEqual(details.count, 1)
+    let initialDone = details.element.buttons.matching(NSPredicate(format: "label == %@", "Done"))
+    XCTAssertEqual(initialDone.count, 1)
+    XCTAssertTrue(initialDone.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(initialDone.element.isEnabled)
+    initialDone.element.tap()
+    XCTAssertTrue(details.element.wait(for: \.exists, toEqual: false, timeout: 10))
+    try await fault("offline")
+    app.terminate()
+    app.launch()
+    qa456OpenOffline(bookID: 1, fileID: 1, app: app)
+    XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 15))
+    capture("IPAD-E02-PDF-cached-reader-before-sheet-return")
+    let close = app.buttons["Close reader"]
+    XCTAssertTrue(close.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(close.isEnabled)
+    close.tap()
+    try returnToLibraryFromOfflineBookDetails(app: app)
+    XCTAssertFalse(app.navigationBars["Book details"].exists)
+    XCTAssertFalse(app.navigationBars["Offline books"].exists)
+    capture("IPAD-E02-PDF-cached-reader-returned-to-offline-library")
+  }
+
+  @MainActor
+  func testRecordedColdCachedCrossChapterSurvivesLayoutTransition() async throws {
+    executionTimeAllowance = 240
+    XCTAssertEqual(ProcessInfo.processInfo.environment["IPAD_RECORDED_LAYOUT_ONLY"], "1")
+    try await fault("reset")
+    let app = launchAndSignIn(serverURL: Self.faultServerURL, expectedBookCountLabel: "10 books")
+    defer { XCUIDevice.shared.orientation = .portrait }
+    openBookDetail("Native renderer proof", bookID: 2, app: app)
+    try qa456Download(2, app: app)
+    app.buttons["Done"].tap()
+    let onlineTraffic = try await qa456Traffic()
+    try await fault("offline")
+    app.terminate()
+    app.launch()
+    qa456OpenOffline(bookID: 2, fileID: 2, app: app)
+    let content = app.webViews["epubReaderContent"]
+
+    func requireVisiblePassage(_ passage: String) async throws {
+      let text = content.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", passage))
+        .firstMatch
+      let visible = XCTNSPredicateExpectation(
+        predicate: NSPredicate { _, _ in
+          guard content.exists, text.exists else { return false }
+          let viewport = content.frame.intersection(app.frame)
+          return !viewport.isEmpty && !text.frame.isEmpty && viewport.contains(text.frame)
+        }, object: nil)
+      let ready = await XCTWaiter.fulfillment(of: [visible], timeout: 25) == .completed
+      if !ready {
+        attach(
+          Data(content.debugDescription.utf8.prefix(32 * 1024)),
+          name: "IPAD-E02-recorded-layout-passage-not-visible", type: "public.plain-text")
+        qa456CaptureRecordedStart(app: app, phase: "layout-passage-not-visible")
+      }
+      _ = try XCTUnwrap(ready ? text : nil, passage)
+    }
+
+    func openRecordedControls() throws {
+      let tools = app.descendants(matching: .any).matching(identifier: "epubReaderTools").element
+      let toolsReady =
+        tools.wait(for: \.isHittable, toEqual: true, timeout: 15)
+        && tools.wait(for: \.isEnabled, toEqual: true, timeout: 15)
+      if !toolsReady { qa456CaptureRecordedStart(app: app, phase: "layout-tools-not-ready") }
+      try XCTUnwrap(toolsReady ? tools : nil, "Reader tools must be ready.").tap()
+      let entry = app.descendants(matching: .any).matching(identifier: "epubRecordedReadAlong")
+        .element
+      let entryReady =
+        entry.wait(for: \.isHittable, toEqual: true, timeout: 15)
+        && entry.wait(for: \.isEnabled, toEqual: true, timeout: 15)
+      if !entryReady { qa456CaptureRecordedStart(app: app, phase: "layout-menu-not-ready") }
+      try XCTUnwrap(entryReady ? entry : nil, "Recorded Read Along must be visible.").tap()
+    }
+
+    func requireRecordedPassage(_ passage: String) throws {
+      let segment = app.staticTexts.matching(identifier: "recordedSegmentText")
+        .matching(NSPredicate(format: "label CONTAINS %@", passage)).element
+      let ready = segment.waitForExistence(timeout: 15)
+      if !ready { qa456CaptureRecordedStart(app: app, phase: "layout-recorded-passage-timeout") }
+      _ = try XCTUnwrap(ready ? segment : nil, passage)
+      XCTAssertFalse(app.staticTexts["recordedNarrationError"].exists)
+      XCTAssertFalse(app.staticTexts["epubReaderError"].exists)
+    }
+
+    try await requireVisiblePassage("Alpha 😀 cafe\u{301} omega.")
+    try openRecordedControls()
+    let start = app.buttons["recordedStartPassage"]
+    XCTAssertTrue(start.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    XCTAssertTrue(start.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+    qa456CaptureRecordedStart(app: app, phase: "layout-before-single-start")
+    let playbackStarted = Date()
+    start.tap()
+    try requireRecordedPassage("Alpha")
+    XCTAssertEqual(app.buttons["recordedToggle"].label, "Pause recording")
+    try requireRecordedPassage("First chapter ends here.")
+    let nearBoundary = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        let segment = app.staticTexts["recordedSegmentText"]
+        let time = app.staticTexts["recordedSegmentTime"]
+        guard segment.exists, time.exists,
+          segment.label.contains("First chapter ends here."),
+          let elapsed = Double(time.label.components(separatedBy: " / ").first ?? "")
+        else { return false }
+        return elapsed >= 4.5
+      }, object: nil)
+    let boundaryReady = await XCTWaiter.fulfillment(of: [nearBoundary], timeout: 15) == .completed
+    if !boundaryReady { qa456CaptureRecordedStart(app: app, phase: "layout-boundary-not-ready") }
+    _ = try XCTUnwrap(
+      boundaryReady ? true : nil, "The first chapter clip must approach its boundary.")
+    let initialFrame = content.frame
+    print(
+      "IPAD-E02 recorded-layout phase=rotate time=\(app.staticTexts["recordedSegmentTime"].label)")
+    XCUIDevice.shared.orientation = .landscapeLeft
+    let changedLayout = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        content.exists && content.frame != initialFrame && app.frame.width > app.frame.height
+      }, object: nil)
+    let layoutReady = await XCTWaiter.fulfillment(of: [changedLayout], timeout: 10) == .completed
+    if !layoutReady { qa456CaptureRecordedStart(app: app, phase: "layout-did-not-change") }
+    _ = try XCTUnwrap(
+      layoutReady ? true : nil, "The actual EPUB viewport must change to landscape.")
+    try requireRecordedPassage("Second chapter begins here.")
+    qa456CaptureRecordedStart(app: app, phase: "layout-third-recorded-passage")
+    let close = app.buttons["recordedCloseControls"]
+    XCTAssertTrue(close.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    close.tap()
+    XCTAssertTrue(close.wait(for: \.exists, toEqual: false, timeout: 10))
+    try await requireVisiblePassage("Second chapter begins here.")
+    XCTAssertFalse(app.staticTexts["epubReaderError"].exists)
+    try openRecordedControls()
+    try requireRecordedPassage("Second chapter ends here.")
+    XCTAssertTrue(
+      app.buttons["recordedToggle"].wait(for: \.label, toEqual: "Play recording", timeout: 15))
+    XCTAssertTrue(app.staticTexts["recordedSegmentTime"].label.hasPrefix("6.0 / 6.0"))
+    XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(playbackStarted), 22)
+    XCTAssertFalse(app.staticTexts["recordedNarrationError"].exists)
+    qa456CaptureRecordedStart(app: app, phase: "layout-four-clips-complete")
+    XCTAssertTrue(close.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    close.tap()
+    XCTAssertTrue(close.wait(for: \.exists, toEqual: false, timeout: 10))
+    try await requireVisiblePassage("Second chapter ends here.")
+    XCTAssertFalse(app.staticTexts["epubReaderError"].exists)
+    let offlineTraffic = try await qa456Traffic()
+    XCTAssertEqual(
+      offlineTraffic.dropFirst(onlineTraffic.count).reduce(0) { sum, record in
+        sum
+          + (((200..<300).contains(record["status"] as? Int ?? 0))
+            ? record["bytes"] as? Int ?? 0 : 0)
+      }, 0)
+    capture("IPAD-E02-recorded-layout-cold-offline-chapter-two-complete")
+    app.buttons["epubCloseReader"].tap()
+    try returnToLibraryFromOfflineBookDetails(app: app)
+  }
+
+  @MainActor
   func testIPADE02QA456OfflineReadAlongAndAuthoritativeRecovery() async throws {
-    executionTimeAllowance = 600
+    executionTimeAllowance = 900
     XCTAssertEqual(ProcessInfo.processInfo.environment["IPAD_E02_CONCURRENT_NATIVE"], "1")
     try await fault("reset")
     let token = try await loginAPI()
@@ -115,11 +317,11 @@ final class AnnotationJourneyTests: XCTestCase {
     tapInkControl("pdfInkFixtureStroke", app: app)
     let items = try await waitForAnnotations(bookID: 6, token: token) { entries in
       entries.contains {
-        $0["bookFileId"] as? Int == fileID && $0["kind"] as? String == "pdf_ink"
+        $0["jumpFileId"] as? Int == fileID && $0["kind"] as? String == "pdf_ink"
           && $0["deletedAt"] is NSNull
       }
     }
-    let ownItems = items.filter { $0["bookFileId"] as? Int == fileID && $0["deletedAt"] is NSNull }
+    let ownItems = items.filter { $0["jumpFileId"] as? Int == fileID && $0["deletedAt"] is NSNull }
     XCTAssertEqual(ownItems.count, 1)
     let item = try XCTUnwrap(ownItems.first)
     let id = try XCTUnwrap(item["id"] as? Int)
@@ -131,19 +333,63 @@ final class AnnotationJourneyTests: XCTestCase {
     app.terminate()
     app.launch()
     qa456OpenOffline(bookID: 2, fileID: 2, app: app)
-    let first = app.webViews.staticTexts.matching(
+    let content = app.webViews["epubReaderContent"]
+    let first = content.staticTexts.matching(
       NSPredicate(format: "label CONTAINS %@", "Alpha 😀 cafe\u{301} omega.")
     ).firstMatch
-    XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 25))
-    app.buttons["epubReaderTools"].tap()
-    app.buttons["epubRecordedReadAlong"].tap()
+    let visibleFirst = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        guard content.exists, first.exists else { return false }
+        let viewport = content.frame.intersection(app.frame)
+        let textFrame = first.frame
+        return !viewport.isEmpty && !textFrame.isEmpty && viewport.contains(textFrame)
+      }, object: nil)
+    let firstReady = await XCTWaiter.fulfillment(of: [visibleFirst], timeout: 25) == .completed
+    if !firstReady {
+      attach(
+        Data(content.debugDescription.utf8.prefix(32 * 1024)),
+        name: "IPAD-E02-QA456-cached-alpha-not-visible", type: "public.plain-text")
+      qa456CaptureRecordedStart(app: app, phase: "cached-alpha-not-visible")
+    }
+    _ = try XCTUnwrap(
+      firstReady ? first : nil, "Cached Alpha must be visible in the EPUB viewport.")
+    let tools = app.descendants(matching: .any).matching(identifier: "epubReaderTools").element
+    let toolsReady =
+      tools.wait(for: \.isHittable, toEqual: true, timeout: 15)
+      && tools.wait(for: \.isEnabled, toEqual: true, timeout: 15)
+    if !toolsReady { qa456CaptureRecordedStart(app: app, phase: "tools-not-ready") }
+    try XCTUnwrap(toolsReady ? tools : nil, "Reader tools must be visible and enabled.").tap()
+    let recorded = app.descendants(matching: .any).matching(identifier: "epubRecordedReadAlong")
+      .element
+    let recordedReady =
+      recorded.wait(for: \.isHittable, toEqual: true, timeout: 15)
+      && recorded.wait(for: \.isEnabled, toEqual: true, timeout: 15)
+    if !recordedReady { qa456CaptureRecordedStart(app: app, phase: "recorded-menu-not-ready") }
+    try XCTUnwrap(
+      recordedReady ? recorded : nil, "Recorded Read Along must be visible in Reader tools."
+    )
+    .tap()
     let start = app.buttons["recordedStartPassage"]
     XCTAssertTrue(start.wait(for: \.isHittable, toEqual: true, timeout: 15))
     XCTAssertTrue(start.isEnabled)
+    qa456CaptureRecordedStart(app: app, phase: "before-tap")
     let playbackStarted = Date()
     start.tap()
     let segment = app.staticTexts["recordedSegmentText"]
-    XCTAssertTrue(segment.waitForExistence(timeout: 15))
+    let segmentReady = segment.waitForExistence(timeout: 15)
+    if !segmentReady {
+      qa456CaptureRecordedStart(app: app, phase: "after-single-tap-timeout")
+      if let records = try? await qa456Traffic(),
+        let data = try? JSONSerialization.data(withJSONObject: records, options: [.sortedKeys])
+      {
+        attach(data, name: "IPAD-E02-QA456-silent-start-public-traffic", type: "public.json")
+      } else {
+        attach(
+          Data("Public fault traffic could not be captured.".utf8),
+          name: "IPAD-E02-QA456-silent-start-traffic-unavailable", type: "public.plain-text")
+      }
+    }
+    XCTAssertTrue(segmentReady)
     XCTAssertTrue(segment.label.contains("Alpha"))
     XCTAssertEqual(app.buttons["recordedToggle"].label, "Pause recording")
     for passage in [
@@ -173,7 +419,7 @@ final class AnnotationJourneyTests: XCTestCase {
       }, 0)
     capture("IPAD-E02-QA456-four-complete-recorded-clips-after-offline-restart")
     app.buttons["epubCloseReader"].tap()
-    app.buttons["Done"].tap()
+    try returnToLibraryFromOfflineBookDetails(app: app)
     qa456OpenOffline(bookID: 6, fileID: fileID, app: app)
     tapInkControl("pdfInkSelect", app: app)
     app.buttons["pdfInkSelectItem\(clientID)"].tap()
@@ -190,7 +436,7 @@ final class AnnotationJourneyTests: XCTestCase {
     XCUIDevice.shared.press(.home)
     app.activate()
     app.buttons["Close reader"].tap()
-    app.buttons["Done"].tap()
+    try returnToLibraryFromOfflineBookDetails(app: app)
     app.buttons["openAnnotationHub"].tap()
     tapHubControl("annotationHubSynchronize", app: app)
     tapHubControl("annotationHubRecovery", app: app)
@@ -242,6 +488,56 @@ final class AnnotationJourneyTests: XCTestCase {
     app.launch()
     try await qa456ExportRetained(fileID: fileID, originalBytes: originalBytes, app: app)
     try await checkpoint("journey-complete", reach: true)
+  }
+
+  @MainActor
+  private func returnToLibraryFromOfflineBookDetails(app: XCUIApplication) throws {
+    for title in ["Book details", "Offline books"] {
+      let bars = app.navigationBars.matching(identifier: title)
+      let barReady = bars.element.waitForExistence(timeout: 10) && bars.count == 1
+      if !barReady { qa456CaptureRecordedStart(app: app, phase: "close-\(title)-not-ready") }
+      let bar = try XCTUnwrap(
+        barReady ? bars.element : nil, "Expected one \(title) navigation bar.")
+      let done = bar.buttons.matching(NSPredicate(format: "label == %@", "Done"))
+      let doneReady =
+        done.count == 1
+        && done.element.wait(for: \.isHittable, toEqual: true, timeout: 10)
+        && done.element.wait(for: \.isEnabled, toEqual: true, timeout: 10)
+      if !doneReady {
+        attach(
+          Data(bar.debugDescription.utf8.prefix(32 * 1024)),
+          name: "IPAD-E02-close-\(title)-not-ready", type: "public.plain-text")
+        qa456CaptureRecordedStart(app: app, phase: "close-\(title)-not-ready")
+      }
+      try XCTUnwrap(doneReady ? done.element : nil, "Expected one ready Done in \(title).").tap()
+      XCTAssertTrue(bar.wait(for: \.exists, toEqual: false, timeout: 10))
+    }
+    XCTAssertTrue(app.buttons["offlineLibrary"].wait(for: \.isHittable, toEqual: true, timeout: 15))
+  }
+
+  @MainActor
+  private func qa456CaptureRecordedStart(app: XCUIApplication, phase: String) {
+    let panels = app.scrollViews.containing(.button, identifier: "recordedStartPassage")
+    let headings = app.navigationBars.matching(identifier: "Recorded Read Along")
+    let identifiers = [
+      "epubReadingPosition", "epubReaderError", "nativeTTSError",
+      "recordedNarrationError", "recordedSyncError", "readerPositionConflict",
+    ]
+    let cues = app.staticTexts.matching(NSPredicate(format: "identifier IN %@", identifiers))
+    let cueDescriptions = cues.allElementsBoundByIndex.prefix(12).map {
+      "\($0.identifier): \($0.label)"
+    }.joined(separator: "\n")
+    let panel = panels.allElementsBoundByIndex.prefix(1).map(\.debugDescription)
+      .joined(separator: "\n")
+    let navigation = app.descendants(matching: .any).matching(
+      NSPredicate(format: "identifier IN %@", ["epubReaderTools", "epubRecordedReadAlong"]))
+    let navigationDescription = navigation.allElementsBoundByIndex.prefix(2)
+      .map(\.debugDescription).joined(separator: "\n")
+    let evidence =
+      "phase=\(phase) time=\(Date().ISO8601Format()) panels=\(panels.count) headings=\(headings.count) navigation=\(navigation.count)\n\(navigationDescription)\n\(cueDescriptions)\n\(panel)"
+    let bounded = Data(evidence.utf8.prefix(32 * 1024))
+    attach(bounded, name: "IPAD-E02-QA456-recorded-start-\(phase)", type: "public.plain-text")
+    capture("IPAD-E02-QA456-recorded-start-\(phase)")
   }
 
   @MainActor
@@ -337,7 +633,7 @@ final class AnnotationJourneyTests: XCTestCase {
     let versions = app.descendants(matching: .any).matching(
       NSPredicate(format: "identifier BEGINSWITH %@", "sourceRecoveryVersion"))
     XCTAssertLessThanOrEqual(versions.count, 40)
-    let recoveryLists = app.collectionViews.matching(identifier: "sourceRecoveryList")
+    let recoveryLists = app.descendants(matching: .any).matching(identifier: "sourceRecoveryList")
     XCTAssertEqual(recoveryLists.count, 1)
     let recoveryList = recoveryLists.element
     let matchingVersions = recoveryList.staticTexts.matching(
@@ -353,18 +649,66 @@ final class AnnotationJourneyTests: XCTestCase {
     XCTAssertTrue(E02ProfileSupport.reveal(matchingVersions.element, in: recoveryList, app: app))
     let retainedVersionID = String(
       matchingVersions.element.identifier.dropFirst("sourceRecoveryVersion".count))
-    let cells = recoveryList.cells.allElementsBoundByIndex
+    let snapshot = try app.snapshot()
+    var appPending = [(node: snapshot, depth: 0)]
+    var listSnapshots = [snapshot]
+    listSnapshots.removeAll()
+    var appVisited = 0
+    while let entry = appPending.popLast() {
+      appVisited += 1
+      _ = try XCTUnwrap(
+        appVisited <= 16_384 && entry.depth <= 128 ? true : nil,
+        "The public app snapshot must stay within its traversal bounds")
+      if entry.node.identifier == "sourceRecoveryList" { listSnapshots.append(entry.node) }
+      appPending.append(
+        contentsOf: entry.node.children.reversed().map {
+          (node: $0, depth: entry.depth + 1)
+        })
+    }
+    attach(
+      try JSONSerialization.data(withJSONObject: [
+        "identifier": "sourceRecoveryList", "count": listSnapshots.count,
+        "elementTypes": listSnapshots.map { $0.elementType.rawValue }, "visitedNodes": appVisited,
+      ]), name: "QA456-retained-recovery-list-snapshot", type: "public.json")
+    XCTAssertEqual(
+      listSnapshots.count, 1, "Exactly one recovery list must exist in the public snapshot")
+    let listSnapshot = try XCTUnwrap(
+      listSnapshots.count == 1 ? listSnapshots.first : nil,
+      "The exact recovery list must be available for provenance verification")
+    var pending = [(node: listSnapshot, depth: 0, cellIndices: [Int]())]
+    var cells = [[(identifier: String, label: String)]]()
+    var visited = 0
+    while let entry = pending.popLast() {
+      visited += 1
+      _ = try XCTUnwrap(
+        visited <= 16_384 && entry.depth <= 128 ? true : nil,
+        "The public recovery snapshot must stay within its traversal bounds")
+      var cellIndices = entry.cellIndices
+      if entry.node.elementType == .cell {
+        cells.append([])
+        cellIndices.append(cells.count - 1)
+      }
+      if entry.node.elementType == .staticText {
+        let text = (identifier: entry.node.identifier, label: entry.node.label)
+        for index in cellIndices { cells[index].append(text) }
+      }
+      pending.append(
+        contentsOf: entry.node.children.reversed().map {
+          (node: $0, depth: entry.depth + 1, cellIndices: cellIndices)
+        })
+    }
     var selectedVersion = false
     var foundCurrentFile = false
-    for cell in cells {
-      let headings = cell.staticTexts.matching(
-        NSPredicate(format: "identifier BEGINSWITH %@", "sourceRecoveryVersion"))
-      if headings.count > 0 {
-        selectedVersion = headings.element.identifier == "sourceRecoveryVersion\(retainedVersionID)"
+    for texts in cells {
+      let headings = texts.filter { $0.identifier.hasPrefix("sourceRecoveryVersion") }
+      if !headings.isEmpty {
+        XCTAssertEqual(headings.count, 1)
+        selectedVersion = headings[0].identifier == "sourceRecoveryVersion\(retainedVersionID)"
       }
       if selectedVersion
-        && cell.staticTexts.matching(identifier: "sourceRecoveryProvenance")
-          .matching(NSPredicate(format: "label == %@", "Book 6, file \(fileID), PDF")).count == 1
+        && texts.filter({
+          $0.identifier == "sourceRecoveryProvenance" && $0.label == "Book 6, file \(fileID), PDF"
+        }).count == 1
       {
         foundCurrentFile = true
       }
@@ -1921,7 +2265,9 @@ final class AnnotationJourneyTests: XCTestCase {
   }
 
   @MainActor
-  private func launchAndSignIn(serverURL: String? = nil) -> XCUIApplication {
+  private func launchAndSignIn(
+    serverURL: String? = nil, expectedBookCountLabel: String = "50,000 books"
+  ) -> XCUIApplication {
     let profile = ProcessInfo.processInfo.environment["IPAD_E02_PROFILE"] ?? "pro13-portrait-light"
     XCUIDevice.shared.orientation = profile.contains("landscape") ? .landscapeLeft : .portrait
     let app = XCUIApplication()
@@ -1969,7 +2315,7 @@ final class AnnotationJourneyTests: XCTestCase {
     app.secureTextFields["password"].tap()
     app.secureTextFields["password"].typeText("IpadFixture123")
     app.buttons["signIn"].tap()
-    XCTAssertTrue(app.staticTexts["50,000 books"].waitForExistence(timeout: 25))
+    XCTAssertTrue(app.staticTexts[expectedBookCountLabel].waitForExistence(timeout: 25))
     if ProcessInfo.processInfo.environment["IPAD_ANNOTATION_FORCE_UI_FAILURE"] == "1" {
       XCTAssertTrue(
         app.staticTexts["IPAD-E02-forced-teardown-failure"].exists,
@@ -2309,10 +2655,10 @@ final class AnnotationJourneyTests: XCTestCase {
       try await Task.sleep(for: .milliseconds(250))
       items = try await annotations(bookID: bookID, token: token)
     }
-    XCTAssertTrue(condition(items), "The public annotation state did not converge")
     let data = try JSONSerialization.data(
       withJSONObject: items, options: [.prettyPrinted, .sortedKeys])
     attach(data, name: "IPAD-E02-public-annotations-book-\(bookID)", type: "public.json")
+    XCTAssertTrue(condition(items), "The public annotation state did not converge")
     return items
   }
 

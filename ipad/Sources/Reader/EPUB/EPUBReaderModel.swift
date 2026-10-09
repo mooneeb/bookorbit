@@ -59,6 +59,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   private(set) var isReady = false
   private(set) var isLoading = false
   private(set) var isNavigating = false
+  @ObservationIgnored private var publicationCommandsInFlight = 0
   private(set) var isPositionResetting = false
   private(set) var isSaving = false
   private(set) var isSearching = false
@@ -123,6 +124,9 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     configuration.userContentController.add(self, name: "pencilRelease")
     configuration.userContentController.add(self, name: "pencilMarking")
     configuration.userContentController.add(self, name: "readerError")
+    #if DEBUG
+      configuration.userContentController.add(self, name: "recordedTransition")
+    #endif
     preferences.validateFont = { [weak self] requested in
       guard let self, self.isReady, !self.isClosed else { throw EPUBFontError.loadFailed }
       try await self.prepareFontSelection(requested)
@@ -449,7 +453,9 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   func layoutAnchor() async -> String? {
-    guard isReady, !isClosed, !isNavigating else { return visibleLocation?.cfi }
+    guard isReady, !isClosed, !isNavigating, publicationCommandsInFlight == 0 else {
+      return visibleLocation?.cfi
+    }
     guard isContinuous, narrationLocation == nil else { return visibleLocation?.cfi }
     do {
       let raw = try await webView.callAsyncJavaScript(
@@ -462,7 +468,9 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   func preserveLayout(at cfi: String) async {
-    guard isReady, !isClosed, !isNavigating else { return }
+    guard isReady, !isClosed, !isNavigating, publicationCommandsInFlight == 0,
+      cfi == visibleLocation?.cfi
+    else { return }
     let started = Date()
     if annotationInputFixture {
       Self.fixtureLogger.info(
@@ -818,6 +826,52 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     guard !isClosed, !isPositionResetting, message.frameInfo.isMainFrame,
       message.frameInfo.request.url == resources.entry
     else { return }
+    #if DEBUG
+      if message.name == "recordedTransition" {
+        let steps: Set<String> = [
+          "sectionLoad", "iframeLoad", "sectionRender", "navigation1", "navigation2",
+          "customFonts1", "customFonts2", "fonts1",
+          "fonts2",
+          "images1", "images2", "frameA1", "frameA2", "frameB1", "frameB2",
+        ]
+        if let value = message.body as? [String: Any], value.count == 9,
+          value["step"] as? String == "highlightException", value["phase"] as? String == "fail",
+          let index = value["index"] as? Int, (0..<chapterCount).contains(index),
+          let durationMs = value["durationMs"] as? Int, durationMs >= 0,
+          let statement = value["statement"] as? String,
+          ["resolve", "follow", "clearPaint", "document", "range", "cfi", "paint", "result"]
+            .contains(statement),
+          let errorName = value["errorName"] as? String,
+          [
+            "Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "SecurityError",
+            "InvalidStateError", "WrongDocumentError", "NotFoundError", "UnknownError",
+          ].contains(errorName),
+          let line = value["line"] as? Int, (0...10000).contains(line),
+          let column = value["column"] as? Int, (0...10000).contains(column),
+          let messageCode = value["messageCode"] as? String,
+          [
+            "readingPosition", "cancelled", "segmentUnavailable", "anchorUnavailable",
+            "highlightUnavailable", "passageUnavailable", "closed", "engineException",
+          ].contains(messageCode)
+        {
+          Logger(subsystem: "com.mooneeb.bookorbit.private", category: "RecordedPlayback").error(
+            "[recorded.transition] [fail] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) sectionIndex=\(index, privacy: .public) durationMs=\(durationMs, privacy: .public) errorClass=\(errorName, privacy: .public) error=\"recorded renderer exception\" step=highlightException statement=\(statement, privacy: .public) sourceLine=\(line, privacy: .public) sourceColumn=\(column, privacy: .public) messageCode=\(messageCode, privacy: .public) - recorded renderer exception observed"
+          )
+          return
+        }
+        guard let value = message.body as? [String: Any], value.count == 4,
+          let step = value["step"] as? String, steps.contains(step),
+          let phase = value["phase"] as? String,
+          phase == "start" || phase == "end",
+          let index = value["index"] as? Int, (0..<chapterCount).contains(index),
+          let durationMs = value["durationMs"] as? Int, durationMs >= 0
+        else { return }
+        Logger(subsystem: "com.mooneeb.bookorbit.private", category: "RecordedPlayback").info(
+          "[recorded.transition] [\(phase, privacy: .public)] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) sectionIndex=\(index, privacy: .public) durationMs=\(durationMs, privacy: .public) step=\(step, privacy: .public) - recorded renderer await observed"
+        )
+        return
+      }
+    #endif
     if message.name == "location" {
       if !isNavigating, let value = try? decodedLocation(message.body) {
         if (message.body as? [String: Any])?["source"] as? String == "narration" {
@@ -1008,9 +1062,20 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   func publicationCommand(_ script: String, arguments: [String: Any]) async throws -> Any? {
-    guard isReady, !isClosed, !isNavigating, !isSearching, let generation,
-      try await api.authenticatedSessionGeneration() == generation
-    else { throw ConnectionError.expiredSession }
+    try Task.checkCancellation()
+    while isNavigating || publicationCommandsInFlight > 0 {
+      try await Task.sleep(for: .milliseconds(50))
+      guard isReady, !isClosed else { throw ConnectionError.expiredSession }
+    }
+    try Task.checkCancellation()
+    guard isReady, !isClosed, !isNavigating, !isSearching, let generation else {
+      throw ConnectionError.expiredSession
+    }
+    publicationCommandsInFlight += 1
+    defer { publicationCommandsInFlight -= 1 }
+    guard try await api.authenticatedSessionGeneration() == generation else {
+      throw ConnectionError.expiredSession
+    }
     let result = try await webView.callAsyncJavaScript(
       script, arguments: arguments, in: nil, contentWorld: .page)
     guard !isClosed, try await api.authenticatedSessionGeneration() == generation else {

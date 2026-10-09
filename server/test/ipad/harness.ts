@@ -30,7 +30,11 @@ class IpadHarnessModule {}
 const started = Date.now();
 
 async function main() {
-  console.log(`[ipad.harness] [start] runId=${process.pid} books=50000 batchSize=500 - isolated harness starting`);
+  const fixtureBookCount =
+    process.env.IPAD_RECORDED_LAYOUT_ONLY === '1' || process.env.IPAD_PDF_HANDOFF_ONLY === '1' || process.env.IPAD_PDF_RECOVERY_ONLY === '1'
+      ? 10
+      : 50_000;
+  console.log(`[ipad.harness] [start] runId=${process.pid} books=${fixtureBookCount} batchSize=500 - isolated harness starting`);
   const database = new URL(process.env.DATABASE_URL ?? '');
   if (!['localhost', '127.0.0.1'].includes(database.hostname) || !/^bookorbit_ipad_[0-9]+_e2e$/.test(database.pathname.slice(1))) {
     throw new Error('The iPad harness requires its own localhost bookorbit_ipad_<run>_e2e database');
@@ -111,8 +115,8 @@ async function main() {
       { userId: editor.id, libraryId: library.id, accessLevel: 'editor' },
     ]);
     const [libraryFolder] = await db.insert(schema.libraryFolders).values({ libraryId: library.id, path: folder }).returning();
-    for (let offset = 0; offset < 50_000; offset += 500) {
-      const batch = Array.from({ length: 500 }, (_, index) => ({
+    for (let offset = 0; offset < fixtureBookCount; offset += 500) {
+      const batch = Array.from({ length: Math.min(500, fixtureBookCount - offset) }, (_, index) => ({
         libraryId: library.id,
         libraryFolderId: libraryFolder.id,
         folderPath: join(folder, `book-${offset + index}`),
@@ -127,7 +131,7 @@ async function main() {
         })),
       );
     }
-    await createOrganizationFixture(db);
+    if (fixtureBookCount === 50_000) await createOrganizationFixture(db);
     const document = await PDFDocument.create();
     const font = await document.embedFont(StandardFonts.Helvetica);
     for (let index = 0; index < 3; index++) {
@@ -250,7 +254,9 @@ async function main() {
       }
     }
   }
-  console.log(`[ipad.harness] [end] runId=${process.pid} durationMs=${Date.now() - started} books=50000 port=${apiPort} - localhost server ready`);
+  console.log(
+    `[ipad.harness] [end] runId=${process.pid} durationMs=${Date.now() - started} books=${fixtureBookCount} port=${apiPort} - localhost server ready`,
+  );
   const close = async () => {
     await app.close();
     if (oidc) await new Promise<void>((resolve, reject) => oidc.close((error) => (error ? reject(error) : resolve())));
