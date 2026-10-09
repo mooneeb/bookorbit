@@ -442,6 +442,46 @@ final class PrivateAnnotationSyncJourneyTests: XCTestCase {
 
   @MainActor private func tap(_ id: String, _ app: XCUIApplication) {
     let button = app.buttons[id]
+    if ["passageFixtureBlueStroke", "passageFixtureStroke"].contains(id) {
+      let targets = app.buttons.matching(identifier: id)
+      let editors = app.scrollViews
+        .containing(.staticText, identifier: "passageSelectionPreview")
+        .containing(.button, identifier: id)
+      let windows = app.windows.containing(.button, identifier: id)
+      let canvases = app.scrollViews.matching(identifier: "passageInkCanvas")
+      guard button.waitForExistence(timeout: 10), targets.count == 1,
+        editors.count == 1, windows.count == 1, canvases.count == 1,
+        let retained = canvases.element.value as? String
+      else {
+        XCTFail("Expected one fixture stroke control, outer passage editor, window and ink canvas.")
+        return
+      }
+      let editor = editors.element
+      let window = windows.element
+      let windowFrame = window.frame
+      for _ in 0..<4 {
+        let visible = editor.frame.intersection(window.frame)
+        if button.isHittable && visible.contains(button.frame) { break }
+        if button.frame.minY < visible.minY {
+          editor.swipeDown()
+        } else {
+          editor.swipeUp()
+        }
+        guard app.state == .runningForeground, window.frame == windowFrame,
+          canvases.element.value as? String == retained
+        else {
+          XCTFail("Revealing the fixture stroke control changed the editor window or retained ink.")
+          return
+        }
+      }
+      guard app.state == .runningForeground, window.frame == windowFrame,
+        canvases.element.value as? String == retained,
+        editor.frame.intersection(window.frame).contains(button.frame)
+      else {
+        XCTFail("Fixture stroke control is not fully inside its unchanged live passage editor.")
+        return
+      }
+    }
     XCTAssertTrue(button.wait(for: \.isHittable, toEqual: true, timeout: 10), id)
     XCTAssertTrue(button.wait(for: \.isEnabled, toEqual: true, timeout: 10), id)
     button.tap()

@@ -47,7 +47,8 @@ struct PassageAnnotationView: View {
               )
               .frame(width: 640, height: 360).fixedSize().disabled(!model.canManage)
             }
-            Text("\(model.drawing.strokes.count) retained strokes").font(.caption)
+            Text("\(model.drawing.strokes.count) retained strokes").font(.body)
+              .fixedSize(horizontal: false, vertical: true)
               .accessibilityIdentifier("passageRetainedStrokeCount")
             if annotationInputFixture {
               Button(action: model.addFixtureStroke) {

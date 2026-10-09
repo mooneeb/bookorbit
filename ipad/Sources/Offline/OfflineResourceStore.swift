@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import OSLog
 
 struct OfflineResource: Codable, Sendable, Identifiable {
   var path: String
@@ -33,6 +34,8 @@ struct OfflineBookSnapshot: Codable, Sendable, Identifiable {
 }
 
 actor OfflineResourceStore {
+  private static let integrityLogger = Logger(
+    subsystem: "com.mooneeb.bookorbit.private", category: "offline.resource")
   static let byteLimit: Int64 = 4 * 1024 * 1024 * 1024
   static let bookLimit = 500
   private static let resourceFileLimit = 350_000
@@ -199,6 +202,7 @@ actor OfflineResourceStore {
   }
 
   func verifiedURL(path: String, query: [URLQueryItem] = []) throws -> URL? {
+    let started = ContinuousClock.now
     let file = destination(path: path, query: query)
     let receipt = file.appendingPathExtension("receipt")
     guard FileManager.default.fileExists(atPath: file.path),
@@ -206,11 +210,25 @@ actor OfflineResourceStore {
     else { return nil }
     let resource = try JSONDecoder().decode(OfflineResource.self, from: Data(contentsOf: receipt))
     let attributes = try file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+    var failedCheck: String?
+    var actualDigest: String?
+    defer {
+      if let failedCheck {
+        Self.logIntegrityFailure(
+          resource, check: failedCheck, actualBytes: attributes.fileSize.map(Int64.init),
+          expectedDigest: resource.digest, actualDigest: actualDigest, started: started)
+      }
+    }
     guard attributes.fileSize.map(Int64.init) == resource.receivedBytes,
       let date = attributes.contentModificationDate
-    else { throw OfflineStorageError.corruptResource }
+    else {
+      failedCheck = "receipt_size"
+      throw OfflineStorageError.corruptResource
+    }
     if verified[file.lastPathComponent] != date {
-      guard let digest = resource.digest, try checksum(file) == digest else {
+      if resource.digest != nil { actualDigest = try checksum(file) }
+      guard let digest = resource.digest, actualDigest == digest else {
+        failedCheck = "receipt_digest"
         throw OfflineStorageError.corruptResource
       }
       verified[file.lastPathComponent] = date
@@ -267,6 +285,7 @@ actor OfflineResourceStore {
   ) throws
     -> OfflineResource
   {
+    let started = ContinuousClock.now
     var completed = resource
     guard let size = try partial.resourceValues(forKeys: [.fileSizeKey]).fileSize,
       resource.expectedBytes == Int64(size)
@@ -274,6 +293,9 @@ actor OfflineResourceStore {
     completed.receivedBytes = Int64(size)
     completed.digest = try checksum(partial)
     guard resource.sourceDigest.map({ $0 == completed.digest }) ?? true else {
+      Self.logIntegrityFailure(
+        resource, check: "published_digest", actualBytes: Int64(size),
+        expectedDigest: resource.sourceDigest, actualDigest: completed.digest, started: started)
       throw OfflineStorageError.corruptResource
     }
     let receipt = destination.appendingPathExtension("receipt")
@@ -765,6 +787,32 @@ actor OfflineResourceStore {
     let previous = sizes?[file.lastPathComponent] ?? 0
     usedBytes += size - previous
     sizes?[file.lastPathComponent] = size == 0 ? nil : size
+  }
+
+  private static func logIntegrityFailure(
+    _ resource: OfflineResource, check: String, actualBytes: Int64?,
+    expectedDigest: String?, actualDigest: String?, started: ContinuousClock.Instant
+  ) {
+    let bookID = resource.bookID.map(String.init) ?? "none"
+    let fileID = resource.fileID.map(String.init) ?? "none"
+    let expectedBytes = resource.expectedBytes.map(String.init) ?? "none"
+    let receivedBytes = resource.receivedBytes
+    let actualBytes = actualBytes.map(String.init) ?? "none"
+    let expectedSHA = digestLogValue(expectedDigest)
+    let actualSHA = digestLogValue(actualDigest)
+    let elapsed = started.duration(to: .now).components
+    let durationMs = elapsed.seconds * 1000 + elapsed.attoseconds / 1_000_000_000_000_000
+    integrityLogger.error(
+      "[offline.resource] [fail] resourceKey=\(resource.id, privacy: .public) bookId=\(bookID, privacy: .public) fileId=\(fileID, privacy: .public) check=\(check, privacy: .public) expectedBytes=\(expectedBytes, privacy: .public) receiptBytes=\(receivedBytes, privacy: .public) actualBytes=\(actualBytes, privacy: .public) expectedSHA=\(expectedSHA, privacy: .public) actualSHA=\(actualSHA, privacy: .public) durationMs=\(durationMs, privacy: .public) errorClass=OfflineStorageError error=\"resource integrity verification failed\" - resource integrity verification failed"
+    )
+  }
+
+  private static func digestLogValue(_ value: String?) -> String {
+    guard let value else { return "none" }
+    guard value.utf8.count == 64,
+      value.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) })
+    else { return "invalid" }
+    return value
   }
 
   private func checksum(_ file: URL) throws -> String {
