@@ -201,7 +201,8 @@ final class SourceInkTransformJourneyTests: XCTestCase {
     XCTAssertTrue(
       app.staticTexts["Undo queued. The saved change will be checked when connected."]
         .waitForExistence(timeout: 10))
-    XCTAssertTrue(pending.wait(for: \.exists, toEqual: false, timeout: 10))
+    XCTAssertTrue(
+      app.images["pdfInkItem\(pendingIdentity)"].wait(for: \.exists, toEqual: false, timeout: 10))
     capture("IPAD-E02-A03-attempted-write-undo-queued-with-overlay-hidden")
     try await fault("offline")
     try await releaseHeldRequest()
@@ -255,7 +256,7 @@ final class SourceInkTransformJourneyTests: XCTestCase {
     XCTAssertTrue(pending.exists)
     tapInk("pdfInkUndo", app: app)
     XCTAssertTrue(app.staticTexts["Ink synchronized"].waitForExistence(timeout: 10))
-    XCTAssertTrue(pending.wait(for: \.exists, toEqual: false, timeout: 10))
+    XCTAssertTrue(app.images[pendingIdentifier].wait(for: \.exists, toEqual: false, timeout: 10))
     capture("IPAD-E02-A03-tagged-timing-fixture-cancels-unattempted-native-ink")
     app.terminate()
     app.launch()
