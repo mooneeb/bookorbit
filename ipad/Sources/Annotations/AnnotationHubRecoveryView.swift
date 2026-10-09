@@ -77,7 +77,13 @@ struct AnnotationHubRecoveryView: View {
         .navigationTitle("Recovery drafts")
         .toolbar {
           ToolbarItem(placement: .cancellationAction) {
-            Button("Done", action: dismiss.callAsFunction)
+            Button(action: dismiss.callAsFunction) {
+              Text("Done")
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+            }
           }
         }
         .task { await load() }
