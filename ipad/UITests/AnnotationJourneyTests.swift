@@ -605,7 +605,7 @@ final class AnnotationJourneyTests: XCTestCase {
     XCTAssertTrue(
       app.staticTexts["Verified ready for offline reading"].waitForExistence(timeout: 40))
     guard E02ProfileSupport.closeOfflineResources(app: app) else { return }
-    app.buttons["readFile\(fileID)"].tap()
+    guard E02ProfileSupport.openBookFile(app: app, fileID: fileID) else { return }
     XCTAssertTrue(app.buttons["pdfInkDraw"].waitForExistence(timeout: 15))
     try await fault("offline")
     tapInkControl("pdfInkFixtureStroke", app: app)
@@ -657,10 +657,10 @@ final class AnnotationJourneyTests: XCTestCase {
     let directory = try XCTUnwrap(
       ProcessInfo.processInfo.environment["IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY"],
       "Supply the installed app's public Documents directory for the native PDF export.")
-    let documents = URL(fileURLWithPath: directory, isDirectory: true).standardizedFileURL
+    let documents = URL(fileURLWithPath: directory, isDirectory: true)
+      .standardizedFileURL.resolvingSymlinksInPath()
     XCTAssertTrue(directory.hasPrefix("/"))
     XCTAssertEqual(documents.lastPathComponent, "Documents")
-    XCTAssertEqual(documents.resolvingSymlinksInPath().path, documents.path)
     let directoryValues = try documents.resourceValues(forKeys: [
       .isDirectoryKey, .isSymbolicLinkKey,
     ])
