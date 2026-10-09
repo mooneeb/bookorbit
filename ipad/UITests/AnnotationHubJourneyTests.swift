@@ -2,6 +2,14 @@ import Foundation
 import XCTest
 
 final class AnnotationHubJourneyTests: XCTestCase {
+  private let httpSession: URLSession = {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForRequest = 15
+    configuration.timeoutIntervalForResource = 20
+    configuration.waitsForConnectivity = false
+    return URLSession(configuration: configuration)
+  }()
+
   override func setUpWithError() throws {
     try super.setUpWithError()
     continueAfterFailure = false
@@ -19,7 +27,7 @@ final class AnnotationHubJourneyTests: XCTestCase {
   }
 
   @MainActor
-  func testIPADE02A07HubEntryAndBoundedSearch() throws {
+  func testIPADE02A07HubEntryAndBoundedSearch() async throws {
     let app = XCUIApplication()
     let profile = ProcessInfo.processInfo.environment["IPAD_E02_PROFILE"] ?? "pro13-portrait-light"
     app.launchArguments = [
@@ -80,8 +88,107 @@ final class AnnotationHubJourneyTests: XCTestCase {
     XCTAssertTrue(app.buttons["annotationHubApplyFilters"].waitForExistence(timeout: 5))
     capture("IPAD-E02-A07-hub-filters")
     try app.performAccessibilityAudit()
+    let kind = app.buttons["annotationHubKind"]
+    XCTAssertTrue(kind.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    kind.tap()
+    app.buttons["Text notes"].tap()
+    app.buttons["annotationHubApplyFilters"].tap()
+    XCTAssertTrue(app.staticTexts["annotationHubEmpty"].waitForExistence(timeout: 15))
+    XCTAssertEqual(search.value as? String, "NoSuchConvertedPassageFixture")
+    let expectedDevice = try await knownNativeDevice()
+    let devices = app.buttons.matching(identifier: "annotationHubDevices")
+    XCTAssertEqual(devices.count, 1)
+    XCTAssertTrue(devices.element.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    devices.element.tap()
+    let headings = app.navigationBars.matching(identifier: "Annotation devices")
+    XCTAssertTrue(headings.element.waitForExistence(timeout: 10))
+    XCTAssertEqual(headings.count, 1)
+    let device = app.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", expectedDevice, expectedDevice)
+    ).firstMatch
+    XCTAssertTrue(device.waitForExistence(timeout: 15), "The acknowledged native device must load")
+    XCTAssertFalse(app.staticTexts["annotationHubDevicesError"].exists)
+    XCTAssertFalse(app.staticTexts["No device acknowledgements are available."].exists)
+    XCTAssertTrue(
+      app.staticTexts["Loading devices…"].wait(for: \.exists, toEqual: false, timeout: 5))
+    let doneButtons = app.buttons.matching(
+      NSPredicate(format: "label == %@ AND identifier != %@", "Done", "annotationHubDone"))
+    XCTAssertEqual(
+      doneButtons.count, 1, "Only the active Devices sheet may provide this Done action")
+    let done = doneButtons.element
+    XCTAssertTrue(done.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    XCTAssertGreaterThanOrEqual(done.frame.width, 44)
+    XCTAssertGreaterThanOrEqual(done.frame.height, 44)
+    capture("IPAD-E02-A07-hub-devices-loaded-current-account-native-acknowledgement")
+    try app.performAccessibilityAudit()
+    done.tap()
+    XCTAssertTrue(headings.element.wait(for: \.exists, toEqual: false, timeout: 10))
+    XCTAssertEqual(searchFields.count, 1)
+    XCTAssertTrue(search.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    XCTAssertEqual(search.value as? String, "NoSuchConvertedPassageFixture")
+    XCTAssertTrue(app.staticTexts["annotationHubEmpty"].exists)
+    XCTAssertEqual(
+      app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "annotationHubItem"))
+        .count, 0)
+    app.buttons["annotationHubFilters"].tap()
+    XCTAssertTrue(kind.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    XCTAssertTrue(
+      [kind.label, kind.value as? String ?? ""].contains { $0.contains("Text notes") },
+      "Dismissing Devices must preserve the applied annotation type filter")
+    capture("IPAD-E02-A07-hub-devices-dismissed-search-and-filter-preserved")
     app.buttons["Cancel"].tap()
     app.buttons["annotationHubDone"].tap()
+  }
+
+  @MainActor
+  private func knownNativeDevice() async throws -> String {
+    let credentials = try await api(
+      "auth/login", method: "POST",
+      body: [
+        "username": "ipad-owner", "password": "IpadFixture123", "clientKind": "native",
+        "deviceLabel": "Hub Devices public acceptance",
+      ])
+    let token = try XCTUnwrap(credentials["accessToken"] as? String)
+    let refresh = try XCTUnwrap(credentials["refreshToken"] as? String)
+    addTeardownBlock { [httpSession, refresh] in
+      var request = URLRequest(url: URL(string: "http://127.0.0.1:16482/api/v1/auth/logout")!)
+      request.httpMethod = "POST"
+      request.timeoutInterval = 15
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      request.httpBody = try JSONSerialization.data(withJSONObject: ["refreshToken": refresh])
+      let (_, response) = try await httpSession.data(for: request)
+      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+    }
+    let response = try await api("annotations/native/hub/devices?limit=40", token: token)
+    let items = try XCTUnwrap(response["items"] as? [[String: Any]])
+    XCTAssertLessThanOrEqual(items.count, 40)
+    let device = try XCTUnwrap(
+      items.compactMap { $0["deviceId"] as? String }.first { UUID(uuidString: $0) != nil },
+      "The current account fixture must include an acknowledged native iPad device")
+    let attachment = XCTAttachment(
+      data: try JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]),
+      uniformTypeIdentifier: "public.json")
+    attachment.name = "IPAD-E02-A07-bounded-public-device-acknowledgements"
+    attachment.lifetime = .keepAlways
+    add(attachment)
+    return device
+  }
+
+  @MainActor
+  private func api(
+    _ path: String, method: String = "GET", token: String? = nil, body: [String: Any]? = nil
+  ) async throws -> [String: Any] {
+    var request = URLRequest(url: URL(string: "http://127.0.0.1:16482/api/v1/\(path)")!)
+    request.httpMethod = method
+    request.timeoutInterval = 15
+    if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+    if let body {
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    }
+    let (data, response) = try await httpSession.data(for: request)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200, path)
+    return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
   }
 
   @MainActor
