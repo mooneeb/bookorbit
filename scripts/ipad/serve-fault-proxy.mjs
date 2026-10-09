@@ -63,7 +63,7 @@ if (proxyPID) {
   }
   if (await listener(16485)) throw new Error("The old proxy listener did not close");
 }
-const stopProxy = await startFaultProxy();
+const stopProxy = await startFaultProxy({ captureProgressCAS: process.env.IPAD_CAPTURE_PROGRESS_CAS === "1" });
 const metadataPath = join(artifacts, "proxy-runtime.json");
 async function record(state) {
   const temporaryPath = `${metadataPath}.${process.pid}.tmp`;

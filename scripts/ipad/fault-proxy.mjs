@@ -1,7 +1,7 @@
 import { createServer, request } from "node:http";
 import { pipeline } from "node:stream/promises";
 
-export async function startFaultProxy() {
+export async function startFaultProxy({ captureProgressCAS = false } = {}) {
   let annotationOffline = false;
   let annotationWriteArmed = false;
   let annotationTransferPath;
@@ -231,6 +231,42 @@ export async function startFaultProxy() {
       bytes: 0,
       complete: false,
     };
+    const captureProgress = captureProgressCAS && path === "/api/v1/books/files/2/progress";
+    function captureJSON(stream, field, keys) {
+      const chunks = [];
+      let size = 0;
+      stream.on("data", (chunk) => {
+        size += chunk.length;
+        if (size <= 16 * 1024) chunks.push(Buffer.from(chunk));
+        else chunks.length = 0;
+      });
+      stream.once("end", () => {
+        if (size > 16 * 1024) {
+          traffic[field] = { omitted: "size_limit" };
+          return;
+        }
+        try {
+          const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          const selected = {};
+          for (const key of keys) {
+            const item = value[key];
+            if (key.endsWith("Version")) {
+              if (item === null || (typeof item === "string" && /^[a-f0-9]{64}$/.test(item))) selected[key] = item;
+            } else if (key === "source") {
+              if (item === "text" || item === "narration") selected[key] = item;
+            } else if (typeof item === "number" && Number.isFinite(item)) selected[key] = item;
+          }
+          if (field === "progressResponse" && stream.statusCode === 409) {
+            if (value.statusCode === 409) selected.statusCode = 409;
+            if (value.error === "Conflict") selected.error = value.error;
+            if (value.message === "Reading position changed in another reader") selected.message = value.message;
+          }
+          traffic[field] = selected;
+        } catch {
+          traffic[field] = { omitted: "invalid_json" };
+        }
+      });
+    }
     annotationTraffic.push(traffic);
     if (annotationTraffic.length > 512) {
       annotationTraffic.shift();
@@ -341,6 +377,9 @@ export async function startFaultProxy() {
       headers: { ...incoming.headers, host: "localhost:16482" },
     });
     upstream.once("response", async (response) => {
+      if (captureProgress && (incoming.method === "GET" || response.statusCode === 409)) {
+        captureJSON(response, "progressResponse", ["textVersion", "narrationVersion", "percentage"]);
+      }
       if (holdAnnotationTransfer && response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
         outgoing.writeHead(response.statusCode, response.headers);
         let first = true;
@@ -460,6 +499,9 @@ export async function startFaultProxy() {
     outgoing.once("close", () => {
       if (!outgoing.writableFinished) upstream.destroy();
     });
+    if (captureProgress && incoming.method === "POST") {
+      captureJSON(incoming, "progressRequest", ["baseVersion", "baseNarrationVersion", "source", "percentage"]);
+    }
     void pipeline(incoming, upstream).catch(() => upstream.destroy());
   });
   await new Promise((resolve, reject) => {
