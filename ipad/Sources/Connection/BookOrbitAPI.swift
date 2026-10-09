@@ -119,8 +119,12 @@ actor BookOrbitAPI {
     guard let saved else { return }
     let body = try JSONEncoder().encode(
       RefreshRequest(refreshToken: saved.credentials.refreshToken))
-    let (_, response) = try await raw("auth/logout", method: "POST", body: body)
-    try validate(response)
+    do {
+      let (_, response) = try await raw("auth/logout", method: "POST", body: body)
+      try validate(response)
+    } catch let error as URLError where error.code != .cancelled {
+      // A server outage must not prevent removing this device's credentials.
+    }
     try invalidateSession()
   }
 
