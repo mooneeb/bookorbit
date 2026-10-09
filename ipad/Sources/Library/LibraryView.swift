@@ -378,11 +378,12 @@ struct LibraryView: View {
     }
     .alert(
       "Could not sign out",
-      isPresented: Binding(get: { session.error != nil }, set: { if !$0 { session.error = nil } })
+      isPresented: Binding(
+        get: { session.signOutError != nil }, set: { if !$0 { session.signOutError = nil } })
     ) {
-      Button("OK") { session.error = nil }
+      Button("OK") { session.signOutError = nil }
     } message: {
-      Text(session.error ?? "")
+      Text(session.signOutError ?? "")
     }
   }
 

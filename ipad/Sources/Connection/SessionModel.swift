@@ -26,6 +26,7 @@ final class SessionModel {
   private(set) var options: LoginOptionsResponse?
   private(set) var isBusy = false
   var error: String?
+  var signOutError: String?
   var serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? ""
   private let oidc = OIDCSignIn()
   private var sessionOperationID = UUID()
@@ -44,7 +45,6 @@ final class SessionModel {
       } catch {
         guard error is URLError, let user = try await api.resumeOfflineUser() else { throw error }
         self.user = user
-        self.error = "Server unreachable. Your selected offline books remain available."
       }
     }
   }
@@ -111,9 +111,14 @@ final class SessionModel {
   }
 
   func signOut() async {
-    guard let api else { return }
+    guard let api, !isBusy else { return }
     await perform {
-      try await api.logout()
+      do {
+        try await api.logout()
+      } catch {
+        self.signOutError = error.localizedDescription
+        throw error
+      }
       self.user = nil
       self.api = nil
       self.options = nil
@@ -141,6 +146,7 @@ final class SessionModel {
     api = nil
     options = nil
     error = nil
+    signOutError = nil
   }
 
   private func synchronizeAnnotations(api: BookOrbitAPI) async {
@@ -159,6 +165,7 @@ final class SessionModel {
     sessionOperationID = UUID()
     isBusy = true
     error = nil
+    signOutError = nil
     defer { isBusy = false }
     do { try await work() } catch { self.error = error.localizedDescription }
   }
