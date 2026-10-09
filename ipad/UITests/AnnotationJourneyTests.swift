@@ -1001,9 +1001,17 @@ final class AnnotationJourneyTests: XCTestCase {
       NSPredicate(format: "value CONTAINS %@", "BookOrbit annotations"))
     XCTAssertEqual(fields.count, 1, "Expected the actual native export filename field")
     XCTAssertTrue(fields.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    replaceText(
-      fields.element, with: URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
-    )
+    let field = fields.element
+    let originalName = field.value as? String ?? ""
+    XCTAssertTrue(originalName.contains("BookOrbit annotations"))
+    let exportName = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
+    field.tap()
+    field.typeText(
+      String(repeating: XCUIKeyboardKey.delete.rawValue, count: originalName.utf16.count)
+        + exportName)
+    let renamedFields = app.textFields.matching(NSPredicate(format: "value == %@", exportName))
+    XCTAssertEqual(renamedFields.count, 1, "Expected the uniquely renamed native export filename")
+    XCTAssertEqual(renamedFields.element.value as? String, exportName)
     capture("IPAD-E02-A07-native-Files-export-destination")
     XCTAssertTrue(save.isHittable)
     save.tap()
