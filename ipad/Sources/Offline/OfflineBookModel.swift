@@ -29,6 +29,12 @@ final class OfflineBookModel {
       "\(ByteCountFormatter.string(fromByteCount: snapshot.receivedBytes, countStyle: .file)) of \(ByteCountFormatter.string(fromByteCount: snapshot.knownBytes, countStyle: .file)) known bytes"
   }
 
+  private var availableCoverMedia: [CoverMedium] {
+    book.coverMedia.filter { medium in
+      (medium == .ebook ? book.covers.ebook : book.covers.audio) != nil
+    }
+  }
+
   func load() async {
     do {
       namespace = try await api.storageNamespace()
@@ -123,6 +129,13 @@ final class OfflineBookModel {
         snapshot = OfflineBookSnapshot(book: book, selectedFileIDs: selectedFileIDs.sorted())
       }
       snapshot?.book = book
+      snapshot?.resources.removeAll { resource in
+        guard resource.path == "books/\(book.id)/cover",
+          let value = resource.query.first(where: { $0.name == "medium" })?.value,
+          let medium = CoverMedium(rawValue: value)
+        else { return false }
+        return (medium == .ebook ? book.covers.ebook : book.covers.audio) == nil
+      }
       resourceIndices = Dictionary(
         uniqueKeysWithValues: snapshot!.resources.enumerated().map { ($0.element.id, $0.offset) })
       snapshot?.state = "preparing"
@@ -249,7 +262,7 @@ final class OfflineBookModel {
     try await addJSON("fonts")
     try await addJSON("server-fonts")
     try await addJSON("user-preferences/server-fonts")
-    for medium in book.coverMedia {
+    for medium in availableCoverMedia {
       add(
         "books/\(book.id)/cover",
         query: [
@@ -259,7 +272,9 @@ final class OfflineBookModel {
     }
     for file in book.files {
       let _: FileReadingProgress = try await cache("books/files/\(file.id)/progress")
-      try await cacheBookmarks(file)
+      if ["pdf", "cbz", "cbr", "cb7"].contains(file.format?.lowercased() ?? "") {
+        try await cacheFixedPageBookmarks(file)
+      }
     }
     var before: Int?
     repeat {
@@ -385,7 +400,7 @@ final class OfflineBookModel {
     try await persist()
   }
 
-  private func cacheBookmarks(_ file: BookDetailFile) async throws {
+  private func cacheFixedPageBookmarks(_ file: BookDetailFile) async throws {
     var cursor: Int?
     repeat {
       var query = [
