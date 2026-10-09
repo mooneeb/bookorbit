@@ -88,7 +88,7 @@ final class PrivateAnnotationSyncJourneyTests: XCTestCase {
     let app = launchAndSignIn(username, serverURL: proxy)
     openEPUB(app)
     tap("epubFixtureSelectPassage", app)
-    tap("epubMarkPassage", app)
+    tapMarkPassage(app)
     tap("Handwriting", app)
     tap("passageFixtureBlueStroke", app)
     XCTAssertTrue(app.staticTexts["1 retained strokes"].waitForExistence(timeout: 5))
@@ -382,6 +382,51 @@ final class PrivateAnnotationSyncJourneyTests: XCTestCase {
     tap("Book details", app)
     guard E02ProfileSupport.openBookFile(app: app, fileID: 2) else { return }
     XCTAssertTrue(app.buttons["epubFixtureSelectPassage"].waitForExistence(timeout: 20))
+  }
+
+  @MainActor private func tapMarkPassage(_ app: XCUIApplication) {
+    let marks = app.buttons.matching(identifier: "epubMarkPassage")
+    let mark = marks.element
+    XCTAssertTrue(mark.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    XCTAssertEqual(marks.count, 1)
+    let panels = app.scrollViews.containing(.button, identifier: "epubMarkPassage")
+    let windows = app.windows.containing(.button, identifier: "epubMarkPassage")
+    guard panels.count == 1, windows.count == 1 else {
+      XCTFail(
+        "Expected one reader controls scroll view and window containing Mark selected passage.")
+      return
+    }
+    let panel = panels.element
+    let window = windows.element
+    let positions = panel.staticTexts.matching(identifier: "epubReadingPosition")
+    guard positions.count == 1 else {
+      XCTFail("Expected one logical reading position in the reader controls scroll view.")
+      return
+    }
+    let windowFrame = window.frame
+    let position = positions.element.label
+    let visible = panel.frame.intersection(windowFrame)
+    for _ in 0..<6 {
+      if mark.isHittable && visible.contains(mark.frame) { break }
+      if mark.frame.minY < visible.minY {
+        panel.swipeDown()
+      } else {
+        panel.swipeUp()
+      }
+      guard window.frame == windowFrame, positions.element.label == position else {
+        XCTFail(
+          "Revealing Mark selected passage moved the reader window or logical reading position.")
+        return
+      }
+    }
+    guard mark.wait(for: \.isHittable, toEqual: true, timeout: 10),
+      visible.contains(mark.frame), mark.isEnabled
+    else {
+      XCTFail(
+        "Mark selected passage is not fully visible, hittable and enabled in reader controls.")
+      return
+    }
+    mark.tap()
   }
 
   @MainActor private func tap(_ id: String, _ app: XCUIApplication) {
