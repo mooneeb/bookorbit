@@ -186,7 +186,9 @@ struct AnnotationHubRepairView: View {
               VStack(alignment: .leading) {
                 Text(file.filename ?? file.format?.uppercased() ?? String(localized: "Book file"))
                 Text(file.format?.uppercased() ?? "").foregroundStyle(.secondary)
-              }.frame(minHeight: 44)
+              }
+              .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+              .contentShape(Rectangle())
             }.accessibilityIdentifier("annotationHubRepairFile\(file.id)")
           }
           if files.isEmpty {

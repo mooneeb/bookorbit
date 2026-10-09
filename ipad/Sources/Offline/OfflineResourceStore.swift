@@ -261,6 +261,9 @@ actor OfflineResourceStore {
   }
 
   func finish(_ resource: OfflineResource, at file: URL) throws -> OfflineResource {
+    var file = file
+    // Atomic replacement leaves size and timestamp values cached on the caller's URL.
+    file.removeAllCachedResourceValues()
     var resource = resource
     guard let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize,
       resource.expectedBytes.map({ $0 == Int64(size) }) ?? true

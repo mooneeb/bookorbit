@@ -744,6 +744,10 @@ final class AnnotationJourneyTests: XCTestCase {
     let app = launchAndSignIn()
     openBook("Native renderer proof", fileID: 2, app: app)
     selectA07Chapter(second: true, app: app)
+    let tools = app.descendants(matching: .any).matching(identifier: "epubReaderTools")
+    XCTAssertTrue(tools.element.wait(for: \.isEnabled, toEqual: true, timeout: 20))
+    XCTAssertEqual(tools.count, 1)
+    XCTAssertTrue(tools.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
     let selection = app.buttons["epubFixtureSelectPassage"]
     XCTAssertTrue(selection.wait(for: \.isHittable, toEqual: true, timeout: 20))
     selection.tap()
