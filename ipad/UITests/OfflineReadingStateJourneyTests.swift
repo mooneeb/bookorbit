@@ -282,6 +282,19 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
     ).firstMatch
     XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 25))
     app.buttons["epubReaderTools"].tap()
+    app.buttons["epubGoToPosition"].tap()
+    let positionInput = app.textFields["epubJumpInput"]
+    XCTAssertTrue(positionInput.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    replaceText(positionInput, with: "0")
+    XCTAssertEqual(positionInput.value as? String, "0")
+    app.buttons["epubJumpCommit"].tap()
+    XCTAssertTrue(positionInput.wait(for: \.exists, toEqual: false, timeout: 15))
+    XCTAssertTrue(
+      app.staticTexts.matching(identifier: "epubReadingPosition")
+        .matching(NSPredicate(format: "label ENDSWITH %@", ", 0 percent"))
+        .element.waitForExistence(timeout: 15))
+    XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    app.buttons["epubReaderTools"].tap()
     app.buttons["epubRecordedReadAlong"].tap()
     let start = app.buttons["recordedStartPassage"]
     XCTAssertTrue(start.wait(for: \.isEnabled, toEqual: true, timeout: 15))
@@ -295,7 +308,8 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
     ] {
       let literal = NSPredicate(format: "label CONTAINS %@", text)
       XCTAssertTrue(
-        app.staticTexts.matching(literal).firstMatch.waitForExistence(timeout: 15), text)
+        app.staticTexts.matching(identifier: "recordedSegmentText").matching(literal)
+          .element.waitForExistence(timeout: 15), text)
       XCTAssertTrue(segment.label.contains(text))
       XCTAssertFalse(app.staticTexts["recordedNarrationError"].exists)
     }
