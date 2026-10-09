@@ -298,10 +298,27 @@ enum E02ProfileSupport {
       return
     }
     motion.tap()
-    let toggle = settings.switches["Reduce Motion"]
-    XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+    let reduceMotionRows = settings.cells.matching(identifier: "REDUCE_MOTION")
+    let toggles = settings.switches.matching(identifier: "REDUCE_MOTION")
+    guard reduceMotionRows.firstMatch.waitForExistence(timeout: 5), reduceMotionRows.count == 1,
+      toggles.count == 1
+    else {
+      XCTFail("Expected one Reduce Motion row and its labeled switch value.")
+      return
+    }
+    let row = reduceMotionRows.element
+    let toggle = toggles.element
+    let controls = settings.switches.matching(NSPredicate(format: "identifier == %@", ""))
+      .allElementsBoundByIndex.filter { !$0.frame.isEmpty && row.frame.contains($0.frame) }
+    guard controls.count == 1, let control = controls.first,
+      control.wait(for: \.isEnabled, toEqual: true, timeout: 5),
+      control.wait(for: \.isHittable, toEqual: true, timeout: 5)
+    else {
+      XCTFail("Expected one enabled, hittable physical switch inside the exact Reduce Motion row.")
+      return
+    }
     let expected = reducedMotion ? "1" : "0"
-    if toggle.value as? String != expected { toggle.tap() }
+    if toggle.value as? String != expected { control.tap() }
     let value = XCTNSPredicateExpectation(
       predicate: NSPredicate(format: "value == %@", expected), object: toggle)
     XCTAssertEqual(XCTWaiter.wait(for: [value], timeout: 5), .completed)
