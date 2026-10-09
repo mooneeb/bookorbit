@@ -89,14 +89,31 @@ final class AnnotationProfilePerformanceTests: XCTestCase {
       app.buttons["openAnnotationHub"].tap()
       let searchFields = app.textFields.matching(identifier: "annotationHubSearch")
       let search = searchFields.element
-      XCTAssertTrue(search.wait(for: \.isHittable, toEqual: true, timeout: 5))
+      XCTAssertTrue(
+        search.isHittable || search.wait(for: \.isHittable, toEqual: true, timeout: 5))
       XCTAssertEqual(searchFields.count, 1)
       XCTAssertLessThanOrEqual(
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "annotationHubItem"))
           .count, 40)
       search.tap()
-      search.typeText("PerformanceNoSuchConvertedPassage\n")
-      XCTAssertTrue(app.staticTexts["annotationHubEmpty"].waitForExistence(timeout: 5))
+      let query = "PerformanceNoSuchConvertedPassage"
+      search.typeText(query)
+      XCTAssertEqual(search.value as? String, query)
+      let submitButtons = app.keyboards.buttons.matching(
+        NSPredicate(format: "label ==[c] %@ OR identifier ==[c] %@", "Search", "Search"))
+      XCTAssertEqual(submitButtons.count, 1)
+      let submit = submitButtons.element
+      XCTAssertTrue(
+        submit.isHittable || submit.wait(for: \.isHittable, toEqual: true, timeout: 5))
+      submit.tap()
+      let empty = app.staticTexts["annotationHubEmpty"]
+      let resultReady = NSPredicate(
+        format: "exists == true AND value == %@", "Search results for \(query)")
+      if !resultReady.evaluate(with: empty) {
+        let ready = XCTNSPredicateExpectation(predicate: resultReady, object: empty)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+      }
+      XCTAssertTrue(resultReady.evaluate(with: empty))
       XCTAssertLessThanOrEqual(
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "annotationHubItem"))
           .count, 40)

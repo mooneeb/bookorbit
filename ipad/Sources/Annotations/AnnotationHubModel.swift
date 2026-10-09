@@ -37,6 +37,7 @@ final class AnnotationHubModel {
   private(set) var items: [NativeAnnotationHubItem] = []
   private(set) var nextCursor: Int?
   private(set) var isBusy = false
+  private(set) var completedSearch: String?
   private(set) var page = 1
   private var cursor: Int?
   private var previousCursors: [Int?] = []
@@ -98,6 +99,7 @@ final class AnnotationHubModel {
   }
 
   func load(reset: Bool = false) async {
+    let requestedSearch = search
     if reset {
       cursor = nil
       previousCursors = []
@@ -107,10 +109,11 @@ final class AnnotationHubModel {
     let attempt = UUID()
     self.attempt = attempt
     isBusy = true
+    completedSearch = nil
     error = nil
     defer { if self.attempt == attempt { isBusy = false } }
     do {
-      guard search.utf16.count <= 200 else {
+      guard requestedSearch.utf16.count <= 200 else {
         throw AnnotationHubError(
           message: String(localized: "Search must be 200 characters or fewer."))
       }
@@ -122,7 +125,9 @@ final class AnnotationHubModel {
         URLQueryItem(name: "status", value: status),
         URLQueryItem(name: "groupBy", value: groupBy),
       ]
-      if !search.isEmpty { query.append(.init(name: "search", value: search)) }
+      if !requestedSearch.isEmpty {
+        query.append(.init(name: "search", value: requestedSearch))
+      }
       if !kind.isEmpty { query.append(.init(name: "kind", value: kind)) }
       if let cursor { query.append(.init(name: "cursor", value: String(cursor))) }
       if let bookID { query.append(.init(name: "bookId", value: String(bookID))) }
@@ -134,6 +139,7 @@ final class AnnotationHubModel {
       else { throw ConnectionError.invalidResponse }
       items = response.items
       nextCursor = response.nextCursor
+      completedSearch = requestedSearch
       if repository.error != nil {
         notice = String(
           localized:

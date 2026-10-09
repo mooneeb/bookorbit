@@ -64,6 +64,12 @@ struct AnnotationHubView: View {
             Section {
               Text("No annotations match these filters.")
                 .accessibilityIdentifier("annotationHubEmpty")
+                .accessibilityValue(
+                  model.completedSearch.map { query in
+                    query.isEmpty
+                      ? String(localized: "All annotations")
+                      : String(localized: "Search results for \(query)")
+                  } ?? "")
               Text(
                 "Search finds passages and converted text. Handwriting stays available in each note."
               )
