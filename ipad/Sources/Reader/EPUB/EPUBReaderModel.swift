@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Observation
 import UIKit
 import WebKit
@@ -34,6 +35,8 @@ struct EPUBSearchPage: Codable {
 
 @MainActor @Observable
 final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+  private static let fixtureLogger = Logger(
+    subsystem: "com.mooneeb.bookorbit.private", category: "epub.fixture_selection")
   let api: BookOrbitAPI
   let bookID: Int
   let file: BookDetailFile
@@ -493,9 +496,35 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
   func selectFixturePassage() {
     guard annotationInputFixture, isReady else { return }
+    let started = Date()
+    Self.fixtureLogger.info(
+      "[epub.fixture_selection] [start] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) - fixture DOM selection requested"
+    )
     Task {
-      _ = try? await webView.callAsyncJavaScript(
-        "window.epubFixtureSelectPassage()", arguments: [:], in: nil, contentWorld: .page)
+      do {
+        let value = try await webView.callAsyncJavaScript(
+          "window.epubFixtureSelectPassage()", arguments: [:], in: nil, contentWorld: .page)
+        let result = value as? [String: Any] ?? [:]
+        let contents = result["contentsCount"] as? Int ?? -1
+        let section = result["sectionIndex"] as? Int ?? -1
+        let paragraphs = result["paragraphCount"] as? Int ?? -1
+        let ranges = result["rangeCount"] as? Int ?? -1
+        let collapsed = result["collapsed"] as? Bool ?? true
+        let visible = result["targetVisible"] as? Bool ?? false
+        let textChars = result["textChars"] as? Int ?? 0
+        let cfiChars = result["cfiChars"] as? Int ?? 0
+        let roundTrip = result["cfiRoundTrip"] as? Bool ?? false
+        let durationMs = max(0, Int(Date().timeIntervalSince(started) * 1000))
+        Self.fixtureLogger.info(
+          "[epub.fixture_selection] [end] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) durationMs=\(durationMs, privacy: .public) contents=\(contents, privacy: .public) section=\(section, privacy: .public) paragraphs=\(paragraphs, privacy: .public) ranges=\(ranges, privacy: .public) collapsed=\(collapsed, privacy: .public) targetVisible=\(visible, privacy: .public) textChars=\(textChars, privacy: .public) cfiChars=\(cfiChars, privacy: .public) cfiRoundTrip=\(roundTrip, privacy: .public) - fixture DOM selection observed"
+        )
+      } catch {
+        let durationMs = max(0, Int(Date().timeIntervalSince(started) * 1000))
+        let errorClass = String(reflecting: type(of: error))
+        Self.fixtureLogger.error(
+          "[epub.fixture_selection] [fail] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) durationMs=\(durationMs, privacy: .public) errorCode=\((error as NSError).code, privacy: .public) errorClass=\(errorClass, privacy: .public) error=\"fixture DOM selection invocation failed\" - fixture DOM selection invocation failed"
+        )
+      }
     }
   }
 
@@ -762,6 +791,16 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   func userContentController(
     _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
   ) {
+    if annotationInputFixture, message.name == "selection" {
+      let value = message.body as? [String: Any]
+      let cfi = value?["cfi"] as? String ?? ""
+      let text = value?["text"] as? String ?? ""
+      let entryMatches = message.frameInfo.request.url == resources.entry
+      let callbackKind = value == nil ? "empty" : "range"
+      Self.fixtureLogger.info(
+        "[epub.fixture_selection_callback] [end] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) durationMs=0 callbackKind=\(callbackKind, privacy: .public) mainFrame=\(message.frameInfo.isMainFrame, privacy: .public) entryMatches=\(entryMatches, privacy: .public) closed=\(self.isClosed, privacy: .public) resetting=\(self.isPositionResetting, privacy: .public) textChars=\(text.utf16.count, privacy: .public) cfiChars=\(cfi.utf16.count, privacy: .public) cfiPrefixValid=\(cfi.hasPrefix("epubcfi("), privacy: .public) - fixture selection bridge callback observed"
+      )
+    }
     guard !isClosed, !isPositionResetting, message.frameInfo.isMainFrame,
       message.frameInfo.request.url == resources.entry
     else { return }

@@ -86,7 +86,8 @@ window.epubAnnotationWriting = (enabled) => {
   if (!enabled) setPencilMarking(false);
 };
 window.epubFixtureSelectPassage = () => {
-  for (const { doc, index } of view.renderer.getContents()) {
+  const contents = view.renderer.getContents();
+  for (const { doc, index } of contents) {
     const paragraph = Array.from(doc.querySelectorAll("p")).find((item) => item.textContent.trim());
     if (!paragraph) continue;
     const range = doc.createRange();
@@ -94,9 +95,33 @@ window.epubFixtureSelectPassage = () => {
     const selected = doc.getSelection();
     selected.removeAllRanges();
     selected.addRange(range);
-    window.webkit.messageHandlers.selection.postMessage(selection(doc, index));
-    return;
+    const passage = selection(doc, index);
+    window.webkit.messageHandlers.selection.postMessage(passage);
+    const rect = range.getBoundingClientRect();
+    let cfiRoundTrip = false;
+    try {
+      const resolved = passage && view.resolveCFI(passage.cfi);
+      cfiRoundTrip = resolved?.index === index && resolved.anchor(doc).toString() === passage.text;
+    } catch {}
+    return {
+      contentsCount: contents.length,
+      sectionIndex: index,
+      paragraphCount: doc.querySelectorAll("p").length,
+      rangeCount: selected.rangeCount,
+      collapsed: selected.isCollapsed,
+      targetVisible:
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.bottom > 0 &&
+        rect.right > 0 &&
+        rect.top < doc.defaultView.innerHeight &&
+        rect.left < doc.defaultView.innerWidth,
+      textChars: passage?.text.length ?? 0,
+      cfiChars: passage?.cfi.length ?? 0,
+      cfiRoundTrip,
+    };
   }
+  return { contentsCount: contents.length, sectionIndex: -1, paragraphCount: 0 };
 };
 window.epubFixturePencilRelease = (repeating) => {
   if (repeating && lastPencilRelease) {
