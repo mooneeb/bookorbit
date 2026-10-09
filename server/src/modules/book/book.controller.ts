@@ -338,7 +338,7 @@ export class BookController {
     const coverPath = await this.bookService.getCoverPath(id, user, { medium: query.medium, strict: query.strict });
     if (!coverPath) throw new NotFoundException(`No cover for book ${id}`);
 
-    const { mtimeMs } = await stat(coverPath);
+    const { mtimeMs, size } = await stat(coverPath);
     const etag = `"${Math.floor(mtimeMs)}"`;
     const cacheControl = 'private, no-store';
 
@@ -351,6 +351,7 @@ export class BookController {
     reply.header('Cache-Control', cacheControl);
     reply.header('ETag', etag);
     reply.type(contentType);
+    reply.header('Content-Length', size);
     reply.send(createReadStream(coverPath));
   }
 
