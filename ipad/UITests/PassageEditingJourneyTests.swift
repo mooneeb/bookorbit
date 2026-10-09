@@ -78,7 +78,10 @@ final class PassageEditingJourneyTests: XCTestCase {
     XCTAssertTrue(initial.isEmpty)
     let app = launchAndSignIn(username)
     openEPUB(app)
-    tap("pencilWritingMode", app)
+    guard enterWritingMode(app) else { return }
+    if app.buttons["pencilWritingMode"].value as? String != "Writing" {
+      captureWritingModeFailure(app)
+    }
     XCTAssertEqual(app.buttons["pencilWritingMode"].value as? String, "Writing")
     tap("epubFixturePencilRelease", app)
     XCTAssertFalse(app.staticTexts["passageSelectionPreview"].exists)
@@ -257,6 +260,41 @@ final class PassageEditingJourneyTests: XCTestCase {
     XCTAssertTrue(button.wait(for: \.isHittable, toEqual: true, timeout: 10), id)
     XCTAssertTrue(button.wait(for: \.isEnabled, toEqual: true, timeout: 10), id)
     button.tap()
+  }
+
+  @MainActor private func enterWritingMode(_ app: XCUIApplication) -> Bool {
+    let modes = app.buttons.matching(identifier: "pencilWritingMode")
+    let mode = modes.element
+    let panels = app.scrollViews.containing(.button, identifier: "pencilWritingMode")
+    let windows = app.windows.containing(.button, identifier: "pencilWritingMode")
+    guard modes.firstMatch.waitForExistence(timeout: 10), modes.count == 1,
+      mode.wait(for: \.isEnabled, toEqual: true, timeout: 10),
+      mode.wait(for: \.isHittable, toEqual: true, timeout: 10),
+      panels.count == 1, windows.count == 1,
+      panels.element.frame.intersection(windows.element.frame).contains(mode.frame)
+    else {
+      captureWritingModeFailure(app)
+      XCTFail("Expected one enabled, hittable writing mode control fully inside its reader panel.")
+      return false
+    }
+    mode.tap()
+    let writing = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "value == %@", "Writing"), object: mode)
+    guard XCTWaiter.wait(for: [writing], timeout: 10) == .completed else {
+      captureWritingModeFailure(app)
+      XCTFail("Writing mode did not become observable within 10 seconds after its single ID tap.")
+      XCTAssertEqual(mode.value as? String, "Writing")
+      return false
+    }
+    XCTAssertEqual(mode.value as? String, "Writing")
+    return true
+  }
+
+  @MainActor private func captureWritingModeFailure(_ app: XCUIApplication) {
+    attach(
+      Data(app.debugDescription.utf8), name: "IPAD-E02-P2-writing-mode-failure-AX",
+      type: "public.plain-text")
+    capture("IPAD-E02-P2-writing-mode-failure-visible")
   }
 
   @MainActor private func replaceText(_ field: XCUIElement, _ value: String) {
