@@ -288,6 +288,48 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
     let tools = app.buttons["epubReaderTools"]
     XCTAssertTrue(tools.wait(for: \.isEnabled, toEqual: true, timeout: 15))
     XCTAssertTrue(tools.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    for (entryID, title, closeID) in [
+      ("epubRecordedReadAlong", "Recorded Read Along", "recordedCloseControls"),
+      ("epubTextToSpeech", "System speech", "nativeTTSCloseControls"),
+    ] {
+      tools.tap()
+      let entry = app.descendants(matching: .any).matching(identifier: entryID)
+      XCTAssertTrue(entry.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+      XCTAssertEqual(entry.count, 1)
+      XCTAssertTrue(entry.element.isEnabled)
+      entry.element.tap()
+      let heading = app.navigationBars.matching(identifier: title)
+      XCTAssertTrue(heading.element.waitForExistence(timeout: 15))
+      XCTAssertEqual(heading.count, 1)
+      capture("IPAD-E02-A04-online-resume-panel-\(title)")
+      attach(
+        Data(app.debugDescription.utf8), name: "IPAD-E02-A04-online-resume-panel-\(title)",
+        type: "public.plain-text")
+      if conflict.exists {
+        let remoteChoice = app.buttons.matching(identifier: "readerPositionChooseRemote")
+        XCTAssertEqual(remoteChoice.count, 1)
+        XCTAssertTrue(remoteChoice.element.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+        XCTAssertTrue(remoteChoice.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+        remoteChoice.element.tap()
+      }
+      XCTAssertTrue(conflict.wait(for: \.exists, toEqual: false, timeout: 15))
+      if entryID == "epubRecordedReadAlong" {
+        XCTAssertTrue(
+          app.buttons["recordedStartPassage"].wait(for: \.isEnabled, toEqual: true, timeout: 15))
+      } else {
+        XCTAssertTrue(
+          app.staticTexts["nativeTTSPendingPosition"].wait(
+            for: \.exists, toEqual: false, timeout: 15))
+      }
+      let close = app.buttons.matching(identifier: closeID)
+      XCTAssertEqual(close.count, 1)
+      XCTAssertTrue(close.element.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+      XCTAssertTrue(close.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+      close.element.tap()
+      XCTAssertTrue(heading.element.wait(for: \.exists, toEqual: false, timeout: 15))
+      XCTAssertTrue(tools.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+      XCTAssertTrue(tools.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    }
     tools.tap()
     let setupPosition = app.descendants(matching: .any).matching(identifier: "epubGoToPosition")
     XCTAssertTrue(setupPosition.element.wait(for: \.isHittable, toEqual: true, timeout: 15))

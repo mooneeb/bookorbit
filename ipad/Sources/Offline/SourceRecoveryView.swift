@@ -84,6 +84,7 @@ struct SourceRecoveryView: View {
   private func versionSection(_ version: OfflineSourceVersion) -> some View {
     Section {
       Text(version.title).font(.headline).fixedSize(horizontal: false, vertical: true)
+        .accessibilityIdentifier("sourceRecoveryVersion\(version.id)")
       Text(version.reason == "source_deleted" ? "Source deleted" : "Source replaced")
         .font(.subheadline.weight(.semibold)).accessibilityIdentifier("sourceRecoveryState")
       Text(version.filename).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
@@ -118,7 +119,7 @@ struct SourceRecoveryView: View {
         Text("Protected by pending work or a recovery draft").font(.caption)
           .accessibilityIdentifier("sourceRecoveryProtected\(version.id)")
       }
-    }.accessibilityIdentifier("sourceRecoveryVersion\(version.id)")
+    }
   }
 
   private func draftRow(_ draft: NativeAnnotationRecoveryDraft) -> some View {
