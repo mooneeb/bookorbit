@@ -189,6 +189,158 @@ final class RecoveryDraftJourneyTests: XCTestCase {
   }
 
   @MainActor
+  func testIPADE02A06RecoveryFilesExportAndExplicitReattachmentPreserveDeletedOriginal()
+    async throws
+  {
+    let directory = try XCTUnwrap(
+      ProcessInfo.processInfo.environment["IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY"],
+      "Supply the installed app's public Documents directory from simctl get_app_container.")
+    XCTAssertEqual(URL(fileURLWithPath: directory).lastPathComponent, "Documents")
+    let token = try await login()
+    let marker = "RecoveryFilesUI-\(UUID().uuidString)"
+    let requestedClientID = UUID().uuidString.lowercased()
+    let drawing = retainedDrawing()
+    let created = try await apply(
+      token: token,
+      operation: [
+        "operationId": UUID().uuidString.lowercased(), "clientId": requestedClientID, "bookId": 2,
+        "baseVersion": 0, "action": "create",
+        "payload": [
+          "bookFileId": 2, "cfi": "epubcfi(/6/2[c1ref]!/4/2[p1],/1:0,/1:5)",
+          "kind": "handwriting", "text": "Alpha", "note": marker, "drawing": drawing,
+        ],
+      ])
+    XCTAssertEqual(created["status"] as? String, "applied")
+    addTeardownBlock { try await Self.cleanUpActiveFixture(marker: marker, token: token) }
+    let original = try XCTUnwrap(created["annotation"] as? [String: Any])
+    let clientID = try XCTUnwrap(original["clientId"] as? String)
+    XCTAssertEqual(clientID, requestedClientID)
+    let originalID = try XCTUnwrap(original["id"] as? Int)
+    let originalVersion = try XCTUnwrap(original["version"] as? Int)
+    let deleted = try await apply(
+      token: token,
+      operation: [
+        "operationId": UUID().uuidString.lowercased(), "clientId": clientID,
+        "annotationId": originalID,
+        "bookId": 2, "baseVersion": originalVersion, "action": "delete",
+      ])
+    XCTAssertEqual(deleted["status"] as? String, "applied")
+    let tombstone = try XCTUnwrap(deleted["annotation"] as? [String: Any])
+    let deletedAt = try XCTUnwrap(tombstone["deletedAt"] as? String)
+    let deletedVersion = try XCTUnwrap(tombstone["version"] as? Int)
+    let operationID = UUID().uuidString.lowercased()
+    let recoveredNote = "\(marker) offline intended note"
+    let recovered = try await apply(
+      token: token,
+      operation: [
+        "operationId": operationID, "clientId": clientID, "annotationId": originalID,
+        "bookId": 2, "baseVersion": originalVersion, "action": "update",
+        "payload": ["note": recoveredNote],
+      ])
+    XCTAssertEqual(recovered["status"] as? String, "recovery")
+    let draftID = try XCTUnwrap(recovered["draftId"] as? Int)
+    let identity = "server-\(draftID)"
+    let draftsBefore = try await drafts(token: token)
+    let draftBefore = try XCTUnwrap(draftsBefore.first { $0["id"] as? Int == draftID })
+
+    let app = launchAndSignIn()
+    openRecovery(app)
+    let export = app.buttons["annotationHubExportDraft\(identity)"]
+    reveal(export, app: app)
+    XCTAssertTrue(app.staticTexts["Original drawing retained"].exists)
+    XCTAssertTrue(app.staticTexts[recoveredNote].exists)
+    capture("IPAD-E02-A06-files-functional-deleted-original-retained-recovery")
+    export.tap()
+    let filename = "\(marker)-recovery.json"
+    saveToPublicDocuments(filename: filename, app: app)
+    let exported = try await readExport(
+      URL(fileURLWithPath: directory, isDirectory: true).appendingPathComponent(filename))
+    attach(exported, name: "\(marker)-actual-native-Files-recovery", type: "public.json")
+    let artifact = try XCTUnwrap(JSONSerialization.jsonObject(with: exported) as? [String: Any])
+    XCTAssertEqual(artifact["id"] as? String, identity)
+    XCTAssertEqual(artifact["bookId"] as? Int, 2)
+    let exportedOperation = try XCTUnwrap(artifact["operation"] as? [String: Any])
+    XCTAssertEqual(exportedOperation["operationId"] as? String, operationID)
+    XCTAssertEqual(exportedOperation["clientId"] as? String, clientID)
+    XCTAssertEqual(exportedOperation["annotationId"] as? Int, originalID)
+    XCTAssertEqual(exportedOperation["baseVersion"] as? Int, originalVersion)
+    let exportedItem = try XCTUnwrap(artifact["item"] as? [String: Any])
+    XCTAssertEqual(exportedItem["id"] as? Int, originalID)
+    XCTAssertEqual(exportedItem["clientId"] as? String, clientID)
+    XCTAssertEqual(exportedItem["note"] as? String, recoveredNote)
+    XCTAssertEqual(exportedItem["kind"] as? String, "handwriting")
+    let exportedDrawing = try XCTUnwrap(exportedItem["drawing"] as? [String: Any])
+    XCTAssertEqual(exportedDrawing as NSDictionary, drawing as NSDictionary)
+    let retained = try XCTUnwrap(exportedDrawing["nativeData"] as? String)
+    let decodedDrawing = try PKDrawing(data: XCTUnwrap(Data(base64Encoded: retained)))
+    XCTAssertEqual(decodedDrawing.strokes.count, 1)
+    XCTAssertFalse(decodedDrawing.bounds.isEmpty)
+    capture("IPAD-E02-A06-files-functional-native-recovery-export-saved")
+
+    let reattach = app.buttons["annotationHubReattachDraft\(identity)"]
+    reveal(reattach, app: app)
+    reattach.tap()
+    let edition = app.buttons["annotationHubRepairFile2"]
+    XCTAssertTrue(edition.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    capture("IPAD-E02-A06-files-functional-explicit-reattachment-edition-choice")
+    let beforeChoosing = try await activeItems(marker: marker, token: token)
+    XCTAssertEqual(beforeChoosing.count, 0)
+    app.buttons["Cancel"].tap()
+    XCTAssertTrue(reattach.waitForExistence(timeout: 10))
+    let afterCancelling = try await activeItems(marker: marker, token: token)
+    XCTAssertEqual(afterCancelling.count, 0)
+    reattach.tap()
+    XCTAssertTrue(edition.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    edition.tap()
+    goToSecondChapter(app)
+    let select = app.buttons["epubFixtureSelectPassage"]
+    XCTAssertTrue(select.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    select.tap()
+    let confirmation = app.buttons["passageRepairHere"]
+    XCTAssertTrue(confirmation.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    let beforeConfirming = try await activeItems(marker: marker, token: token)
+    XCTAssertEqual(beforeConfirming.count, 0)
+    capture("IPAD-E02-A06-files-functional-new-passage-awaits-explicit-confirmation")
+    confirmation.tap()
+    XCTAssertTrue(reattach.waitForExistence(timeout: 15))
+    app.buttons["Done"].tap()
+    tapHubControl("annotationHubSynchronize", app: app)
+    let attached = try await waitForAttached(marker: marker, token: token)
+    let newID = try XCTUnwrap(attached["id"] as? Int)
+    XCTAssertNotEqual(newID, originalID)
+    let attachedClientID = try XCTUnwrap(attached["clientId"] as? String)
+    XCTAssertNotNil(UUID(uuidString: attachedClientID))
+    XCTAssertNotEqual(attachedClientID.lowercased(), clientID.lowercased())
+    XCTAssertEqual(attached["jumpFileId"] as? Int, 2)
+    XCTAssertEqual(attached["text"] as? String, "Second chapter begins here.")
+    let attachedCFI = try XCTUnwrap(attached["cfi"] as? String)
+    XCTAssertTrue(attachedCFI.hasPrefix("epubcfi("))
+    XCTAssertNotEqual(attachedCFI, original["cfi"] as? String)
+    XCTAssertEqual(attached["kind"] as? String, "handwriting")
+    XCTAssertEqual(attached["note"] as? String, recoveredNote)
+    XCTAssertEqual(try XCTUnwrap(attached["drawing"] as? NSDictionary), drawing as NSDictionary)
+    let trashed = try await items(marker: marker, status: "trashed", token: token)
+    let preserved = try XCTUnwrap(trashed.first { $0["id"] as? Int == originalID })
+    XCTAssertEqual(preserved["deletedAt"] as? String, deletedAt)
+    XCTAssertEqual(preserved["version"] as? Int, deletedVersion)
+    XCTAssertEqual(preserved["clientId"] as? String, clientID)
+    XCTAssertEqual(preserved["cfi"] as? String, original["cfi"] as? String)
+    XCTAssertEqual(preserved["note"] as? String, marker)
+    XCTAssertEqual(try XCTUnwrap(preserved["drawing"] as? NSDictionary), drawing as NSDictionary)
+    let draftsAfter = try await drafts(token: token)
+    let draftAfter = try XCTUnwrap(draftsAfter.first { $0["id"] as? Int == draftID })
+    XCTAssertEqual(draftAfter as NSDictionary, draftBefore as NSDictionary)
+    attach(
+      try JSONSerialization.data(withJSONObject: ["new": attached, "deleted": preserved]),
+      name: "IPAD-E02-A06-files-functional-new-identity-and-preserved-tombstone",
+      type: "public.json")
+    openRecovery(app)
+    reveal(reattach, app: app)
+    capture("IPAD-E02-A06-files-functional-recovery-draft-retained-after-explicit-attachment")
+    app.buttons["Done"].tap()
+  }
+
+  @MainActor
   private func goToSecondChapter(_ app: XCUIApplication) {
     let tools = app.descendants(matching: .any).matching(identifier: "epubReaderTools")
     let previous = app.descendants(matching: .any).matching(identifier: "epubPreviousSection")

@@ -25,6 +25,70 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
   }
 
   @MainActor
+  func testIPADE02A04ExplicitOfflineSignOutFailureRetainsSelectedPDFAndSession() async throws {
+    try await fault("reset")
+    let token = try await loginAPI()
+    let book = try await bookDetails(bookID: 1, format: "pdf", token: token)
+    _ = try await api("books/files/\(book.fileID)/progress", method: "DELETE", token: token)
+    let originalPDF = try await api("books/files/\(book.fileID)/serve", token: token)
+    XCTAssertTrue(originalPDF.starts(with: Data("%PDF-".utf8)))
+    attach(originalPDF, name: "IPAD-E02-A04-signout-selected-complete-PDF", type: "com.adobe.pdf")
+    let app = launchAndSignIn()
+    openBookDetail(book, app: app)
+    downloadSelectedFile(book.fileID, app: app)
+    let downloaded = try await traffic()
+    app.navigationBars["Book details"].buttons["Done"].tap()
+    let signOuts = app.buttons.matching(identifier: "signOut")
+    XCTAssertEqual(signOuts.count, 1)
+    let signOut = signOuts.element
+    XCTAssertTrue(signOut.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(signOut.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    try await fault("offline")
+    signOut.tap()
+    let failure = app.alerts["Could not sign out"]
+    XCTAssertTrue(failure.waitForExistence(timeout: 20))
+    XCTAssertTrue(failure.staticTexts["Could not sign out"].exists)
+    let messages = failure.staticTexts.matching(
+      NSPredicate(format: "label != %@", "Could not sign out"))
+    XCTAssertEqual(messages.count, 1)
+    XCTAssertFalse(messages.element.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    capture("IPAD-E02-A04-explicit-offline-signout-reports-real-failure")
+    failure.buttons["OK"].tap()
+    XCTAssertTrue(failure.wait(for: \.exists, toEqual: false, timeout: 10))
+    XCTAssertFalse(app.textFields["serverURL"].exists)
+    XCTAssertFalse(app.textFields["username"].exists)
+    openOfflineBook(book, app: app)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 20))
+    XCTAssertTrue(
+      app.staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "Orbit fixture: passage 1")
+      ).firstMatch.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    app.buttons["pdfNextPage"].tap()
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 10))
+    assertSecondPage("PDF", app: app)
+    XCTAssertTrue(app.staticTexts["Position saved on this iPad"].waitForExistence(timeout: 15))
+    capture("IPAD-E02-A04-selected-PDF-still-readable-after-failed-signout")
+    app.terminate()
+    app.launch()
+    openOfflineBook(book, app: app)
+    XCTAssertFalse(app.textFields["serverURL"].exists)
+    XCTAssertFalse(app.textFields["username"].exists)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 20))
+    assertSecondPage("PDF", app: app)
+    XCTAssertFalse(app.alerts["Could not sign out"].exists)
+    let offlineTraffic = try await traffic()
+    let attempted = Array(offlineTraffic.dropFirst(downloaded.count))
+    XCTAssertEqual(successfulBytes(attempted), 0)
+    XCTAssertTrue(
+      attempted.contains {
+        $0["method"] as? String == "POST" && $0["path"] as? String == "/api/v1/auth/logout"
+      })
+    capture("IPAD-E02-A04-failed-signout-retains-authenticated-offline-PDF-after-restart")
+  }
+
+  @MainActor
   func testIPADE02A04PDFPageAndBookmarkCreationDeletionSurviveOfflineRestart() async throws {
     try await exerciseFixedPages(bookID: 1, format: "pdf", nextPage: "pdfNextPage", kind: "PDF")
   }
