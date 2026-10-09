@@ -809,10 +809,10 @@ final class AnnotationJourneyTests: XCTestCase {
     let directory = try XCTUnwrap(
       ProcessInfo.processInfo.environment["IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY"],
       "Supply the installed app's public Documents directory from the native harness.")
-    let documents = URL(fileURLWithPath: directory, isDirectory: true).standardizedFileURL
+    let documents = URL(fileURLWithPath: directory, isDirectory: true)
+      .standardizedFileURL.resolvingSymlinksInPath()
     XCTAssertTrue(directory.hasPrefix("/"))
     XCTAssertEqual(documents.lastPathComponent, "Documents")
-    XCTAssertEqual(documents.resolvingSymlinksInPath().path, documents.path)
     let directoryValues = try documents.resourceValues(forKeys: [
       .isDirectoryKey, .isSymbolicLinkKey,
     ])

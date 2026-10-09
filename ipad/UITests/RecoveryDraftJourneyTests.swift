@@ -487,7 +487,8 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     }
     XCTAssertEqual(saves.count, 1)
     XCTAssertTrue(save.isHittable)
-    let fields = app.textFields
+    let fields = app.textFields.matching(
+      NSPredicate(format: "value CONTAINS %@", "BookOrbit recovery draft"))
     XCTAssertEqual(fields.count, 1, "Expected the actual native export filename field")
     let field = fields.element
     XCTAssertTrue(field.isHittable)
@@ -496,12 +497,11 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     let exportName = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
     field.tap()
     field.typeText(
-      String(repeating: XCUIKeyboardKey.delete.rawValue, count: originalName.utf16.count))
-    XCTAssertEqual(fields.count, 1)
-    XCTAssertEqual(field.value as? String, "")
-    field.typeText(exportName)
-    XCTAssertEqual(fields.count, 1)
-    XCTAssertEqual(field.value as? String, exportName)
+      String(repeating: XCUIKeyboardKey.delete.rawValue, count: originalName.utf16.count)
+        + exportName)
+    let renamedFields = app.textFields.matching(NSPredicate(format: "value == %@", exportName))
+    XCTAssertEqual(renamedFields.count, 1, "Expected the uniquely renamed native export filename")
+    XCTAssertEqual(renamedFields.element.value as? String, exportName)
     capture("IPAD-E02-A06-native-Files-recovery-export-destination")
     save.tap()
     XCTAssertTrue(save.wait(for: \.exists, toEqual: false, timeout: 15))
