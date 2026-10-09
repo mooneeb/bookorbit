@@ -47,7 +47,7 @@ final class AnnotationProfilePerformanceTests: XCTestCase {
       details.tap()
       XCTAssertTrue(
         app.descendants(matching: .any).matching(identifier: "bookDetailContent").firstMatch
-          .waitForExistence(timeout: 5))
+          .wait(for: \.exists, toEqual: true, timeout: 5))
     } cleanup: {
       app.navigationBars["Book details"].buttons.element(boundBy: 0).tap()
       XCTAssertTrue(
