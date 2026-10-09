@@ -250,8 +250,53 @@ enum E02ProfileSupport {
       return
     }
     accessibility.tap()
-    let motion = settings.cells.containing(.staticText, identifier: "Motion").firstMatch
-    XCTAssertTrue(motion.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    let motions = settings.cells.matching(identifier: "MOTION_TITLE")
+    let motionTables = settings.tables.containing(.cell, identifier: "MOTION_TITLE")
+    let motionWindows = settings.windows.containing(.cell, identifier: "MOTION_TITLE")
+    let accessibilityHeadings = settings.navigationBars.matching(identifier: "Accessibility")
+    guard motions.firstMatch.waitForExistence(timeout: 10), motions.count == 1,
+      motionTables.count == 1, motionWindows.count == 1, accessibilityHeadings.count == 1
+    else {
+      XCTFail("Expected one Motion row, Accessibility table, window and navigation heading.")
+      return
+    }
+    let motion = motions.element
+    let table = motionTables.element
+    let motionVisible = table.frame.intersection(motionWindows.element.frame)
+    let motionTop = max(motionVisible.minY, accessibilityHeadings.element.frame.maxY)
+    let motionViewport = CGRect(
+      x: motionVisible.minX, y: motionTop, width: motionVisible.width,
+      height: motionVisible.maxY - motionTop)
+    let motionX = motion.frame.midX
+    guard motionViewport.width > 0, motionViewport.height > 0,
+      motionX > motionViewport.minX, motionX < motionViewport.maxX
+    else {
+      XCTFail("Accessibility table must have a visible Motion column below its navigation heading.")
+      return
+    }
+    for _ in 0..<6 {
+      guard motions.count <= 1 else {
+        XCTFail("Expected one Motion row in the Accessibility table.")
+        return
+      }
+      if motion.exists && motion.isHittable && motionViewport.contains(motion.frame) { break }
+      let scrollDown = motion.exists && motion.frame.minY < motionViewport.minY
+      let start = table.coordinate(
+        withNormalizedOffset: CGVector(
+          dx: (motionX - table.frame.minX) / table.frame.width,
+          dy: (motionViewport.minY + motionViewport.height * 0.65 - table.frame.minY)
+            / table.frame.height))
+      let end = start.withOffset(
+        CGVector(dx: 0, dy: motionViewport.height * (scrollDown ? 0.25 : -0.25)))
+      start.press(forDuration: 0.01, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+    }
+    guard motions.count == 1, motion.wait(for: \.isHittable, toEqual: true, timeout: 5),
+      motionViewport.contains(motion.frame),
+      motion.wait(for: \.isEnabled, toEqual: true, timeout: 5)
+    else {
+      XCTFail("Settings Motion row is unreachable; Reduce Motion was not applied.")
+      return
+    }
     motion.tap()
     let toggle = settings.switches["Reduce Motion"]
     XCTAssertTrue(toggle.waitForExistence(timeout: 5))
