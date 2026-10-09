@@ -305,15 +305,42 @@ private struct AnnotationHubFiltersView: View {
         .fixedSize(horizontal: false, vertical: true)
       }
       .navigationTitle("Annotation filters")
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel", action: dismiss.callAsFunction)
+      .safeAreaInset(edge: .top) {
+        ViewThatFits(in: .horizontal) {
+          HStack {
+            cancelButton
+            Spacer()
+            applyButton
+          }
+          VStack(alignment: .leading, spacing: 8) {
+            cancelButton
+            applyButton
+          }
         }
-        ToolbarItem(placement: .confirmationAction) {
-          Button("Apply", action: apply).accessibilityIdentifier("annotationHubApplyFilters")
-        }
+        .padding(.horizontal).padding(.vertical, 8).background(.background)
       }
     }
+  }
+
+  private var cancelButton: some View {
+    Button(action: dismiss.callAsFunction) {
+      Text("Cancel")
+        .font(.body)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+    }
+  }
+
+  private var applyButton: some View {
+    Button(action: apply) {
+      Text("Apply")
+        .font(.body)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+    }
+    .accessibilityIdentifier("annotationHubApplyFilters")
   }
 
   private func apply() {

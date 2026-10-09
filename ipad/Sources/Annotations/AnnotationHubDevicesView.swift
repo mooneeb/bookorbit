@@ -43,10 +43,16 @@ struct AnnotationHubDevicesView: View {
         }
       }.font(.body).buttonStyle(.plain).foregroundStyle(Color(uiColor: .label))
         .navigationTitle("Annotation devices")
-        .toolbar {
-          ToolbarItem(placement: .cancellationAction) {
-            Button("Done", action: dismiss.callAsFunction)
+        .safeAreaInset(edge: .top) {
+          Button(action: dismiss.callAsFunction) {
+            Text("Done")
+              .font(.body)
+              .fixedSize(horizontal: false, vertical: true)
+              .frame(minWidth: 44, minHeight: 44)
+              .contentShape(Rectangle())
           }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal).padding(.vertical, 8).background(.background)
         }
         .task { await load() }
     }
