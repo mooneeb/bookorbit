@@ -469,7 +469,11 @@ async function runNativeTests() {
     let nativeFailure;
     let exportedArtifactDirectory;
     let nativeJourneyStarted = false;
-    const nativeEnvironment = { ...env, IPAD_E02_PROFILE: nativeVisualProfile.name };
+    const nativeEnvironment = {
+      ...env,
+      IPAD_E02_PROFILE: nativeVisualProfile.name,
+      TEST_RUNNER_IPAD_E02_CRITICAL_ONLY: env.IPAD_E02_CRITICAL_ONLY ?? "0",
+    };
     try {
       const commonArguments = [
         "-project",

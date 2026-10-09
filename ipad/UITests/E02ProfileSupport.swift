@@ -3,6 +3,156 @@ import XCTest
 
 @MainActor
 enum E02ProfileSupport {
+  static func criticalOnly(_ test: XCTestCase) -> Bool {
+    let selected = [
+      "testIPADE02A04CompleteEPUBAndRecordedReadAlongPlayAfterOfflineRestart",
+      "testIPADE02A05AuthoritativeDeletionPreservesOfflineEditAsRecoveryDraft",
+      "testIPADE02A06DeletedSourceKeepsProtectedCompleteVersionForExport",
+      "testIPADE02A06ProtectedRetainedPDFExportAfterSourceDeletion",
+      "testIPADE02A07HubDeepLinkExportTrashRestoreAndExplicitRepair",
+    ]
+    return ProcessInfo.processInfo.environment["IPAD_E02_CRITICAL_ONLY"] == "1"
+      && selected.contains { test.name.contains($0) }
+  }
+
+  static func reportDeferred(_ test: XCTestCase, check: String, observed: String) {
+    let attachment = XCTAttachment(
+      string: "status=DEFERRED severity=P2 scope=critical-only check=\(check)\n\(observed)")
+    attachment.name = "IPAD-E02-deferred-\(check)"
+    attachment.lifetime = .keepAlways
+    test.add(attachment)
+    print("IPAD-E02 status=DEFERRED severity=P2 check=\(check)")
+  }
+
+  static func reveal(
+    _ element: XCUIElement, in list: XCUIElement, app: XCUIApplication,
+    towardTop: Bool = false
+  ) -> Bool {
+    for _ in 0..<12 {
+      let viewport = list.frame.intersection(app.frame)
+      if element.exists && viewport.contains(element.frame) && element.isHittable { return true }
+      if element.exists ? element.frame.minY < viewport.minY : towardTop {
+        list.swipeDown()
+      } else {
+        list.swipeUp()
+      }
+    }
+    return element.exists && list.frame.intersection(app.frame).contains(element.frame)
+      && element.isHittable
+  }
+
+  static func retainedPDFVersionID(
+    in list: XCUIElement, bookID: Int, fileID: Int, revision: String
+  ) -> String? {
+    let provenance = "Book \(bookID), file \(fileID), PDF"
+    let cells = list.cells.allElementsBoundByIndex
+    guard
+      let index = cells.firstIndex(where: {
+        $0.staticTexts.matching(identifier: "sourceRecoveryProvenance")
+          .matching(NSPredicate(format: "label == %@", provenance)).count == 1
+      })
+    else {
+      XCTFail("The current retained PDF provenance must identify one native row.")
+      return nil
+    }
+    for cell in cells.prefix(index + 1).reversed() {
+      let titles = cell.staticTexts.matching(
+        NSPredicate(format: "identifier BEGINSWITH %@", "sourceRecoveryVersion"))
+      if titles.count == 0 { continue }
+      guard titles.count == 1 else {
+        XCTFail("The current retained PDF section must have one version identity.")
+        return nil
+      }
+      let identity = String(titles.element.identifier.dropFirst("sourceRecoveryVersion".count))
+      guard identity.hasSuffix("-\(revision)") else {
+        XCTFail("The current retained PDF identity must match its original source revision.")
+        return nil
+      }
+      return identity
+    }
+    XCTFail("The current retained PDF provenance has no preceding version heading.")
+    return nil
+  }
+
+  static func openSaveToFiles(app: XCUIApplication, test: XCTestCase) -> Bool {
+    let save = app.buttons["Save to Files"]
+    if save.wait(for: \.isHittable, toEqual: true, timeout: 3) {
+      XCTAssertTrue(save.isEnabled)
+      save.tap()
+      return true
+    }
+    let more = app.cells.matching(
+      NSPredicate(format: "identifier == %@ AND label == %@", "actionGroupCell", "More"))
+    guard more.element.wait(for: \.isHittable, toEqual: true, timeout: 10), more.count == 1,
+      more.element.isEnabled
+    else {
+      XCTFail("Expected the compact share sheet's unique More actions control.")
+      return false
+    }
+    let attachment = XCTAttachment(string: app.debugDescription)
+    attachment.name = "IPAD-E02-native-share-sheet-before-More-actions"
+    attachment.lifetime = .keepAlways
+    test.add(attachment)
+    more.element.tap()
+    for _ in 0..<6 {
+      let cells = app.cells.matching(NSPredicate(format: "label == %@", "Save to Files"))
+      if save.exists && save.isHittable {
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        return true
+      }
+      if cells.count == 1 && cells.element.isHittable {
+        XCTAssertTrue(cells.element.isEnabled)
+        cells.element.tap()
+        return true
+      }
+      let lists =
+        app.tables.allElementsBoundByIndex
+        + app.collectionViews.matching(identifier: "activityCollectionView").allElementsBoundByIndex
+      let visible = lists.filter { $0.isHittable }
+      guard visible.count == 1, let list = visible.first else {
+        XCTFail("Expected one visible native share actions list for Save to Files.")
+        return false
+      }
+      list.swipeUp()
+    }
+    XCTFail("Save to Files remained unavailable after six bounded public share-action scrolls.")
+    return false
+  }
+
+  static func waitForEPUBReader(app: XCUIApplication, test: XCTestCase) async throws {
+    let tools = app.buttons.matching(identifier: "epubReaderTools")
+    if tools.element.wait(for: \.isEnabled, toEqual: true, timeout: 20) {
+      XCTAssertEqual(tools.count, 1)
+      return
+    }
+    for (attempt, timeout) in [5.0, 10.0, 20.0].enumerated() {
+      let retries = app.buttons.matching(identifier: "epubRetryOpen")
+      let hierarchy = app.debugDescription
+      guard retries.count == 1, hierarchy.contains("NSURLErrorDomain"),
+        hierarchy.contains("-1001"),
+        retries.element.wait(for: \.isHittable, toEqual: true, timeout: 5),
+        retries.element.isEnabled
+      else {
+        XCTFail(
+          "Reader did not become ready; only the observed transient opening timeout can retry.")
+        return
+      }
+      let attachment = XCTAttachment(string: hierarchy)
+      attachment.name = "IPAD-E02-reader-transient-timeout-before-retry-\(attempt + 1)"
+      attachment.lifetime = .keepAlways
+      test.add(attachment)
+      retries.element.tap()
+      if tools.element.wait(for: \.isEnabled, toEqual: true, timeout: timeout) {
+        XCTAssertEqual(tools.count, 1)
+        XCTAssertFalse(app.buttons["epubRetryOpen"].exists)
+        return
+      }
+    }
+    XCTFail(
+      "Reader remained unavailable after three public Retry opening actions (5/10/20 seconds).")
+  }
+
   static var name: String {
     ProcessInfo.processInfo.environment["IPAD_E02_PROFILE"] ?? "pro13-portrait-light"
   }

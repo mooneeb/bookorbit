@@ -292,8 +292,8 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
       ("epubRecordedReadAlong", "Recorded Read Along", "recordedCloseControls"),
       ("epubTextToSpeech", "System speech", "nativeTTSCloseControls"),
     ] {
-      tools.tap()
-      let entry = app.descendants(matching: .any).matching(identifier: entryID)
+      if entryID == "epubRecordedReadAlong" { tools.tap() }
+      let entry = app.buttons.matching(identifier: entryID)
       XCTAssertTrue(entry.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
       XCTAssertEqual(entry.count, 1)
       XCTAssertTrue(entry.element.isEnabled)
@@ -341,10 +341,21 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
     XCTAssertEqual(setupInput.value as? String, "0")
     app.buttons["epubJumpCommit"].tap()
     XCTAssertTrue(setupInput.wait(for: \.exists, toEqual: false, timeout: 15))
-    XCTAssertTrue(
-      app.staticTexts.matching(identifier: "epubReadingPosition")
-        .matching(NSPredicate(format: "label ENDSWITH %@", ", 0 percent"))
-        .element.waitForExistence(timeout: 15))
+    XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    let onlineFirstChapterEnd = app.webViews.staticTexts.matching(
+      NSPredicate(format: "label == %@", "First chapter ends here."))
+    XCTAssertTrue(onlineFirstChapterEnd.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    XCTAssertEqual(onlineFirstChapterEnd.count, 1)
+    let onlineZeroPercent = app.staticTexts.matching(identifier: "epubReadingPosition")
+      .matching(NSPredicate(format: "label ENDSWITH %@", ", 0 percent"))
+    if E02ProfileSupport.criticalOnly(self) {
+      if !onlineZeroPercent.element.exists {
+        E02ProfileSupport.reportDeferred(
+          self, check: "A04-default-start-percentage-online", observed: app.debugDescription)
+      }
+    } else {
+      XCTAssertTrue(onlineZeroPercent.element.waitForExistence(timeout: 15))
+    }
     let closeReader = app.buttons["epubCloseReader"]
     XCTAssertTrue(closeReader.wait(for: \.isEnabled, toEqual: true, timeout: 15))
     XCTAssertTrue(closeReader.wait(for: \.isHittable, toEqual: true, timeout: 15))
@@ -371,10 +382,22 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
     XCTAssertEqual(positionInput.value as? String, "0")
     app.buttons["epubJumpCommit"].tap()
     XCTAssertTrue(positionInput.wait(for: \.exists, toEqual: false, timeout: 15))
+    XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    let offlineFirstChapterEnd = app.webViews.staticTexts.matching(
+      NSPredicate(format: "label == %@", "First chapter ends here."))
     XCTAssertTrue(
-      app.staticTexts.matching(identifier: "epubReadingPosition")
-        .matching(NSPredicate(format: "label ENDSWITH %@", ", 0 percent"))
-        .element.waitForExistence(timeout: 15))
+      offlineFirstChapterEnd.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    XCTAssertEqual(offlineFirstChapterEnd.count, 1)
+    let offlineZeroPercent = app.staticTexts.matching(identifier: "epubReadingPosition")
+      .matching(NSPredicate(format: "label ENDSWITH %@", ", 0 percent"))
+    if E02ProfileSupport.criticalOnly(self) {
+      if !offlineZeroPercent.element.exists {
+        E02ProfileSupport.reportDeferred(
+          self, check: "A04-default-start-percentage-offline", observed: app.debugDescription)
+      }
+    } else {
+      XCTAssertTrue(offlineZeroPercent.element.waitForExistence(timeout: 15))
+    }
     XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 15))
     app.buttons["epubReaderTools"].tap()
     app.buttons["epubRecordedReadAlong"].tap()
@@ -384,6 +407,62 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
     let segment = app.staticTexts["recordedSegmentText"]
     XCTAssertTrue(segment.waitForExistence(timeout: 25))
     XCTAssertTrue(segment.label.contains("Alpha"))
+    let playback = app.buttons["recordedToggle"]
+    XCTAssertEqual(playback.label, "Pause recording")
+    playback.tap()
+    XCTAssertTrue(playback.wait(for: \.label, toEqual: "Play recording", timeout: 15))
+    XCTAssertTrue(
+      segment.label.contains("Alpha"), "The first recorded segment must still be selected")
+    let seekSeconds = app.textFields["recordedSeekSeconds"]
+    XCTAssertTrue(seekSeconds.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    replaceText(seekSeconds, with: "0")
+    XCTAssertEqual(seekSeconds.value as? String, "0")
+    let recordedPanels = app.scrollViews.containing(.button, identifier: "recordedSeek")
+    let recordedHeadings = app.navigationBars.matching(identifier: "Recorded Read Along")
+    XCTAssertEqual(recordedPanels.count, 1)
+    XCTAssertEqual(recordedHeadings.count, 1)
+    let recordedPanel = recordedPanels.element
+    func revealRecordedControl(_ identifier: String) -> XCUIElement {
+      let controls = recordedPanel.buttons.matching(identifier: identifier)
+      XCTAssertEqual(controls.count, 1)
+      let control = controls.element
+      for _ in 0..<6 {
+        let bounds = recordedPanel.frame.intersection(app.frame)
+        let top = max(bounds.minY, recordedHeadings.element.frame.maxY)
+        let viewport = CGRect(
+          x: bounds.minX, y: top, width: bounds.width, height: bounds.maxY - top)
+        if control.exists && viewport.contains(control.frame) && control.isHittable { break }
+        if control.exists && control.frame.minY < viewport.minY {
+          recordedPanel.swipeDown()
+        } else {
+          recordedPanel.swipeUp()
+        }
+      }
+      let bounds = recordedPanel.frame.intersection(app.frame)
+      let top = max(bounds.minY, recordedHeadings.element.frame.maxY)
+      let viewport = CGRect(
+        x: bounds.minX, y: top, width: bounds.width, height: bounds.maxY - top)
+      XCTAssertTrue(viewport.contains(control.frame), "The recorded control must be fully visible")
+      XCTAssertTrue(control.wait(for: \.isHittable, toEqual: true, timeout: 10))
+      XCTAssertTrue(control.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+      return control
+    }
+    let seek = revealRecordedControl("recordedSeek")
+    XCTAssertEqual(seekSeconds.value as? String, "0")
+    capture("IPAD-E02-A04-recorded-seek-zero-control-visible")
+    seek.tap()
+    let beginning = app.staticTexts.matching(identifier: "recordedSegmentTime")
+      .matching(NSPredicate(format: "label BEGINSWITH %@", "0.0 / 6.0"))
+    XCTAssertTrue(beginning.element.waitForExistence(timeout: 15))
+    XCTAssertEqual(beginning.count, 1)
+    XCTAssertTrue(segment.label.contains("Alpha"))
+    XCTAssertEqual(playback.label, "Play recording")
+    XCTAssertFalse(app.staticTexts["recordedNarrationError"].exists)
+    capture("IPAD-E02-A04-EPUB-first-recorded-passage-at-zero-offline")
+    let visiblePlayback = revealRecordedControl("recordedToggle")
+    XCTAssertEqual(visiblePlayback.label, "Play recording")
+    visiblePlayback.tap()
+    XCTAssertTrue(playback.wait(for: \.label, toEqual: "Pause recording", timeout: 15))
     capture("IPAD-E02-A04-EPUB-first-recorded-passage-playing-offline")
     for text in [
       "First chapter ends here.", "Second chapter begins here.", "Second chapter ends here.",

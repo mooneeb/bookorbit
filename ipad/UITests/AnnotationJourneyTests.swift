@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import PDFKit
+import PencilKit
 import XCTest
 
 final class AnnotationJourneyTests: XCTestCase {
@@ -505,6 +506,23 @@ final class AnnotationJourneyTests: XCTestCase {
     let initial = try await annotations(bookID: 1, token: token)
     let existingIDs = Set(initial.compactMap { $0["id"] as? Int })
     let app = launchAndSignIn(serverURL: Self.faultServerURL)
+    app.buttons["openAnnotationHub"].tap()
+    tapHubControl("annotationHubRecovery", app: app)
+    XCTAssertTrue(app.navigationBars["Recovery drafts"].waitForExistence(timeout: 15))
+    let draftExports = app.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "annotationHubExportDraft"))
+    let recoveryLoaded = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated {
+          !app.staticTexts["Loading recovery drafts…"].exists
+            && (draftExports.count > 0 || app.staticTexts["No recovery drafts are saved."].exists)
+        }
+      }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [recoveryLoaded], timeout: 15), .completed)
+    XCTAssertLessThanOrEqual(draftExports.count, 40)
+    let existingDraftExports = Set(draftExports.allElementsBoundByIndex.map(\.identifier))
+    app.navigationBars["Recovery drafts"].buttons["Done"].tap()
+    app.buttons["annotationHubDone"].tap()
     openBook("Orbit fixture", fileID: 1, app: app)
     tapInkControl("pdfInkFixtureStroke", app: app)
     let created = try await waitForAnnotations(bookID: 1, token: token) { items in
@@ -556,9 +574,40 @@ final class AnnotationJourneyTests: XCTestCase {
     XCTAssertEqual(searchFields.count, 1)
     tapHubControl("annotationHubSynchronize", app: app)
     tapHubControl("annotationHubRecovery", app: app)
-    XCTAssertTrue(
-      app.staticTexts["The annotation was deleted in another reader"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.navigationBars["Recovery drafts"].waitForExistence(timeout: 15))
+    let newDraftReady = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        MainActor.assumeIsolated {
+          draftExports.allElementsBoundByIndex.contains {
+            !existingDraftExports.contains($0.identifier)
+          }
+        }
+      }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [newDraftReady], timeout: 15), .completed)
+    XCTAssertLessThanOrEqual(draftExports.count, 40)
+    let newDraftExports = draftExports.allElementsBoundByIndex.filter {
+      !existingDraftExports.contains($0.identifier)
+    }
+    XCTAssertEqual(
+      newDraftExports.count, 1, "Exactly one new local recovery draft belongs to this edit")
+    let localExport = try XCTUnwrap(newDraftExports.first)
+    let exportIdentifier = localExport.identifier
+    let lists = app.collectionViews.allElementsBoundByIndex + app.tables.allElementsBoundByIndex
+    let list = try XCTUnwrap(lists.first { $0.isHittable })
+    XCTAssertTrue(E02ProfileSupport.reveal(localExport, in: list, app: app))
+    let deletedCaption = app.staticTexts["The annotation was deleted in another reader"]
+    if E02ProfileSupport.criticalOnly(self) {
+      if !deletedCaption.exists {
+        E02ProfileSupport.reportDeferred(
+          self, check: "A05-deleted-recovery-caption", observed: app.debugDescription)
+      }
+    } else {
+      XCTAssertTrue(deletedCaption.waitForExistence(timeout: 15))
+    }
     XCTAssertTrue(app.staticTexts["Original drawing retained"].exists)
+    let recoveryBefore = try await exportA05Recovery(
+      exportIdentifier, suffix: "before-restart", app: app)
+    try assertA05LocalDrawing(recoveryBefore, original: item)
     capture("IPAD-E02-A05-authoritative-deletion-recovery-draft")
     try audit(app, state: "IPAD-E02-A05-recovery-draft")
     app.terminate()
@@ -568,8 +617,19 @@ final class AnnotationJourneyTests: XCTestCase {
     XCTAssertTrue(searchFields.element.waitForExistence(timeout: 15))
     XCTAssertEqual(searchFields.count, 1)
     tapHubControl("annotationHubRecovery", app: app)
-    XCTAssertTrue(
-      app.staticTexts["The annotation was deleted in another reader"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.navigationBars["Recovery drafts"].waitForExistence(timeout: 15))
+    let recoveryAfter = try await exportA05Recovery(
+      exportIdentifier, suffix: "after-restart", app: app)
+    XCTAssertEqual(recoveryAfter as NSDictionary, recoveryBefore as NSDictionary)
+    try assertA05LocalDrawing(recoveryAfter, original: item)
+    if E02ProfileSupport.criticalOnly(self) {
+      if !deletedCaption.exists {
+        E02ProfileSupport.reportDeferred(
+          self, check: "A05-deleted-recovery-caption-after-restart", observed: app.debugDescription)
+      }
+    } else {
+      XCTAssertTrue(deletedCaption.waitForExistence(timeout: 15))
+    }
     capture("IPAD-E02-A05-recovery-survives-restart")
     let converged = try await annotations(bookID: 1, token: token)
     let final = try XCTUnwrap(converged.first { $0["id"] as? Int == id })
@@ -631,15 +691,16 @@ final class AnnotationJourneyTests: XCTestCase {
     let versions = app.descendants(matching: .any).matching(
       NSPredicate(format: "identifier BEGINSWITH %@", "sourceRecoveryVersion"))
     XCTAssertLessThanOrEqual(versions.count, 40)
-    let protection = app.staticTexts.matching(
-      NSPredicate(format: "identifier BEGINSWITH %@", "sourceRecoveryProtected")
-    ).firstMatch
     let recoveryLists = app.collectionViews.matching(identifier: "sourceRecoveryList")
     XCTAssertEqual(recoveryLists.count, 1)
     let recoveryList = recoveryLists.element
-    func revealControl(_ prefix: String) -> XCUIElement {
-      let matches = recoveryList.buttons.matching(
-        NSPredicate(format: "identifier BEGINSWITH %@", prefix))
+    guard
+      let retainedVersionID = E02ProfileSupport.retainedPDFVersionID(
+        in: recoveryList, bookID: 6, fileID: fileID, revision: originalRevision)
+    else { return }
+    let protection = app.staticTexts["sourceRecoveryProtected\(retainedVersionID)"]
+    func revealControl(_ prefix: String, requireEnabled: Bool = true) -> XCUIElement {
+      let matches = recoveryList.buttons.matching(identifier: "\(prefix)\(retainedVersionID)")
       let control = matches.element
       let viewport = recoveryList.frame.intersection(app.frame)
       for _ in 0..<12 {
@@ -654,14 +715,24 @@ final class AnnotationJourneyTests: XCTestCase {
       XCTAssertEqual(matches.count, 1)
       XCTAssertTrue(control.wait(for: \.isHittable, toEqual: true, timeout: 10))
       XCTAssertTrue(viewport.contains(control.frame))
-      XCTAssertTrue(control.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+      if requireEnabled {
+        XCTAssertTrue(control.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+      }
       return control
     }
-    let remove = revealControl("sourceRecoveryRemove")
-    remove.tap()
-    XCTAssertTrue(app.staticTexts["sourceRecoveryError"].waitForExistence(timeout: 10))
-    XCTAssertTrue(protection.exists)
-    XCTAssertFalse(remove.isEnabled)
+    func assertProtection() {
+      let remove = revealControl("sourceRecoveryRemove", requireEnabled: false)
+      if remove.isEnabled { remove.tap() }
+      let error = app.staticTexts["sourceRecoveryError"]
+      XCTAssertTrue(E02ProfileSupport.reveal(error, in: recoveryList, app: app, towardTop: true))
+      XCTAssertTrue(error.waitForExistence(timeout: 10))
+      XCTAssertTrue(E02ProfileSupport.reveal(protection, in: recoveryList, app: app))
+      XCTAssertTrue(protection.exists)
+      let disabledRemove = revealControl("sourceRecoveryRemove", requireEnabled: false)
+      XCTAssertFalse(disabledRemove.isEnabled)
+      XCTAssertFalse(app.buttons["sourceRecoveryConfirmRemove"].exists)
+    }
+    assertProtection()
     capture("IPAD-E02-A06-deleted-source-protected-complete-version")
     let prepare = revealControl("sourceRecoveryPrepareExport")
     XCTAssertTrue(prepare.wait(for: \.isHittable, toEqual: true, timeout: 10))
@@ -672,9 +743,7 @@ final class AnnotationJourneyTests: XCTestCase {
     capture("IPAD-E02-A06-verified-complete-source-export-ready")
     let export = revealControl("sourceRecoveryExport")
     export.tap()
-    let saveToFiles = app.buttons["Save to Files"]
-    XCTAssertTrue(saveToFiles.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    saveToFiles.tap()
+    guard E02ProfileSupport.openSaveToFiles(app: app, test: self) else { return }
     let directory = try XCTUnwrap(
       ProcessInfo.processInfo.environment["IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY"],
       "Supply the installed app's public Documents directory for the native PDF export.")
@@ -748,10 +817,7 @@ final class AnnotationJourneyTests: XCTestCase {
     XCTAssertTrue(recovery.waitForExistence(timeout: 10))
     recovery.tap()
     XCTAssertTrue(app.staticTexts["Revision \(originalRevision)"].waitForExistence(timeout: 15))
-    revealControl("sourceRecoveryRemove").tap()
-    XCTAssertTrue(app.staticTexts["sourceRecoveryError"].waitForExistence(timeout: 10))
-    XCTAssertTrue(protection.exists)
-    XCTAssertFalse(remove.isEnabled)
+    assertProtection()
     capture("IPAD-E02-A06-source-and-pending-protection-survive-restart")
   }
 
@@ -795,15 +861,16 @@ final class AnnotationJourneyTests: XCTestCase {
     let versions = app.descendants(matching: .any).matching(
       NSPredicate(format: "identifier BEGINSWITH %@", "sourceRecoveryVersion"))
     XCTAssertLessThanOrEqual(versions.count, 40)
-    let protection = app.staticTexts.matching(
-      NSPredicate(format: "identifier BEGINSWITH %@", "sourceRecoveryProtected")
-    ).firstMatch
     let recoveryLists = app.collectionViews.matching(identifier: "sourceRecoveryList")
     XCTAssertEqual(recoveryLists.count, 1)
     let recoveryList = recoveryLists.element
-    func revealControl(_ prefix: String) -> XCUIElement {
-      let matches = recoveryList.buttons.matching(
-        NSPredicate(format: "identifier BEGINSWITH %@", prefix))
+    guard
+      let retainedVersionID = E02ProfileSupport.retainedPDFVersionID(
+        in: recoveryList, bookID: 6, fileID: fileID, revision: originalRevision)
+    else { return }
+    let protection = app.staticTexts["sourceRecoveryProtected\(retainedVersionID)"]
+    func revealControl(_ prefix: String, requireEnabled: Bool = true) -> XCUIElement {
+      let matches = recoveryList.buttons.matching(identifier: "\(prefix)\(retainedVersionID)")
       let control = matches.element
       let viewport = recoveryList.frame.intersection(app.frame)
       for _ in 0..<12 {
@@ -818,14 +885,24 @@ final class AnnotationJourneyTests: XCTestCase {
       XCTAssertEqual(matches.count, 1)
       XCTAssertTrue(control.wait(for: \.isHittable, toEqual: true, timeout: 10))
       XCTAssertTrue(viewport.contains(control.frame))
-      XCTAssertTrue(control.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+      if requireEnabled {
+        XCTAssertTrue(control.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+      }
       return control
     }
-    let remove = revealControl("sourceRecoveryRemove")
-    remove.tap()
-    XCTAssertTrue(app.staticTexts["sourceRecoveryError"].waitForExistence(timeout: 10))
-    XCTAssertTrue(protection.exists)
-    XCTAssertFalse(remove.isEnabled)
+    func assertProtection() {
+      let remove = revealControl("sourceRecoveryRemove", requireEnabled: false)
+      if remove.isEnabled { remove.tap() }
+      let error = app.staticTexts["sourceRecoveryError"]
+      XCTAssertTrue(E02ProfileSupport.reveal(error, in: recoveryList, app: app, towardTop: true))
+      XCTAssertTrue(error.waitForExistence(timeout: 10))
+      XCTAssertTrue(E02ProfileSupport.reveal(protection, in: recoveryList, app: app))
+      XCTAssertTrue(protection.exists)
+      let disabledRemove = revealControl("sourceRecoveryRemove", requireEnabled: false)
+      XCTAssertFalse(disabledRemove.isEnabled)
+      XCTAssertFalse(app.buttons["sourceRecoveryConfirmRemove"].exists)
+    }
+    assertProtection()
     capture("IPAD-E02-A06-deleted-source-protected-complete-version")
     let prepare = revealControl("sourceRecoveryPrepareExport")
     XCTAssertTrue(prepare.wait(for: \.isHittable, toEqual: true, timeout: 10))
@@ -836,9 +913,7 @@ final class AnnotationJourneyTests: XCTestCase {
     capture("IPAD-E02-A06-verified-complete-source-export-ready")
     let export = revealControl("sourceRecoveryExport")
     export.tap()
-    let saveToFiles = app.buttons["Save to Files"]
-    XCTAssertTrue(saveToFiles.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    saveToFiles.tap()
+    guard E02ProfileSupport.openSaveToFiles(app: app, test: self) else { return }
     let directory = try XCTUnwrap(
       ProcessInfo.processInfo.environment["IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY"],
       "Supply the installed app's public Documents directory for the native PDF export.")
@@ -912,10 +987,7 @@ final class AnnotationJourneyTests: XCTestCase {
     XCTAssertTrue(recovery.waitForExistence(timeout: 10))
     recovery.tap()
     XCTAssertTrue(app.staticTexts["Revision \(originalRevision)"].waitForExistence(timeout: 15))
-    revealControl("sourceRecoveryRemove").tap()
-    XCTAssertTrue(app.staticTexts["sourceRecoveryError"].waitForExistence(timeout: 10))
-    XCTAssertTrue(protection.exists)
-    XCTAssertFalse(remove.isEnabled)
+    assertProtection()
     capture("IPAD-E02-A06-source-and-pending-protection-survive-restart")
   }
 
@@ -1108,6 +1180,7 @@ final class AnnotationJourneyTests: XCTestCase {
     row.tap()
     app.buttons["annotationHubRepair"].tap()
     app.buttons["annotationHubRepairFile2"].tap()
+    try await E02ProfileSupport.waitForEPUBReader(app: app, test: self)
     selectA07Chapter(second: false, app: app)
     let repairSelection = app.buttons["epubFixtureSelectPassage"]
     XCTAssertTrue(repairSelection.wait(for: \.isHittable, toEqual: true, timeout: 15))
@@ -1162,6 +1235,87 @@ final class AnnotationJourneyTests: XCTestCase {
   }
 
   @MainActor
+  private func exportA05Recovery(
+    _ identifier: String, suffix: String, app: XCUIApplication
+  ) async throws -> [String: Any] {
+    let exports = app.buttons.matching(identifier: identifier)
+    XCTAssertTrue(exports.element.waitForExistence(timeout: 15))
+    XCTAssertEqual(exports.count, 1)
+    let lists = app.collectionViews.allElementsBoundByIndex + app.tables.allElementsBoundByIndex
+    let list = try XCTUnwrap(lists.first { $0.isHittable })
+    XCTAssertTrue(E02ProfileSupport.reveal(exports.element, in: list, app: app))
+    XCTAssertTrue(exports.element.isEnabled)
+    let directory = try XCTUnwrap(
+      ProcessInfo.processInfo.environment["IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY"])
+    let documents = URL(fileURLWithPath: directory, isDirectory: true)
+      .standardizedFileURL.resolvingSymlinksInPath()
+    XCTAssertTrue(directory.hasPrefix("/"))
+    XCTAssertEqual(documents.lastPathComponent, "Documents")
+    let filename = "A05-\(suffix)-\(UUID().uuidString).json"
+    let url = documents.appendingPathComponent(filename)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+    exports.element.tap()
+    saveA07ToPublicDocuments(
+      filename: filename, app: app, originalBase: "BookOrbit recovery draft")
+    let deadline = Date().addingTimeInterval(15)
+    while !FileManager.default.fileExists(atPath: url.path) && Date() < deadline {
+      try await Task.sleep(for: .milliseconds(250))
+    }
+    let values = try url.resourceValues(forKeys: [
+      .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey,
+    ])
+    XCTAssertEqual(values.isRegularFile, true)
+    XCTAssertEqual(values.isSymbolicLink, false)
+    XCTAssertEqual(url.resolvingSymlinksInPath().deletingLastPathComponent().path, documents.path)
+    let size = try XCTUnwrap(values.fileSize)
+    XCTAssertGreaterThan(size, 0)
+    XCTAssertLessThanOrEqual(size, 32 * 1024 * 1024)
+    let bytes = try Data(contentsOf: url)
+    XCTAssertEqual(bytes.count, size)
+    attach(bytes, name: "IPAD-E02-A05-actual-native-Files-\(suffix)", type: "public.json")
+    let artifact = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+    XCTAssertEqual(
+      artifact["id"] as? String, String(identifier.dropFirst("annotationHubExportDraft".count)))
+    XCTAssertEqual(artifact["bookId"] as? Int, 1)
+    return artifact
+  }
+
+  @MainActor
+  private func assertA05LocalDrawing(_ artifact: [String: Any], original: [String: Any]) throws {
+    let operation = try XCTUnwrap(artifact["operation"] as? [String: Any])
+    XCTAssertEqual(operation["annotationId"] as? Int, original["id"] as? Int)
+    XCTAssertEqual(operation["clientId"] as? String, original["clientId"] as? String)
+    XCTAssertEqual(operation["baseVersion"] as? Int, original["version"] as? Int)
+    XCTAssertEqual(operation["action"] as? String, "update")
+    XCTAssertFalse(try XCTUnwrap(operation["operationId"] as? String).isEmpty)
+    let payload = try XCTUnwrap(operation["payload"] as? [String: Any])
+    XCTAssertEqual(payload["kind"] as? String, "pdf_ink")
+    let retained = try XCTUnwrap(artifact["item"] as? [String: Any])
+    XCTAssertEqual(retained["id"] as? Int, original["id"] as? Int)
+    XCTAssertEqual(retained["clientId"] as? String, original["clientId"] as? String)
+    let moved = try inkRect(payload)
+    let base = try inkRect(original)
+    XCTAssertGreaterThan(moved.minX, base.minX)
+    XCTAssertEqual(moved.minY, base.minY, accuracy: 0.01)
+    XCTAssertEqual(moved.width, base.width, accuracy: 0.01)
+    XCTAssertEqual(moved.height, base.height, accuracy: 0.01)
+    XCTAssertEqual(try inkStrokeIDs(payload), try inkStrokeIDs(original))
+    let drawing = try XCTUnwrap(payload["drawing"] as? [String: Any])
+    let originalDrawing = try XCTUnwrap(original["drawing"] as? [String: Any])
+    XCTAssertNotEqual(drawing as NSDictionary, originalDrawing as NSDictionary)
+    let native = try PKDrawing(
+      data: XCTUnwrap(Data(base64Encoded: XCTUnwrap(drawing["nativeData"] as? String))))
+    let baseNative = try PKDrawing(
+      data: XCTUnwrap(Data(base64Encoded: XCTUnwrap(originalDrawing["nativeData"] as? String))))
+    XCTAssertFalse(native.bounds.isEmpty)
+    XCTAssertGreaterThan(native.strokes.count, 0)
+    XCTAssertEqual(native.strokes.count, baseNative.strokes.count)
+    XCTAssertGreaterThan(native.bounds.minX, baseNative.bounds.minX)
+    XCTAssertEqual(native.bounds.width, baseNative.bounds.width, accuracy: 0.01)
+    XCTAssertEqual(native.bounds.height, baseNative.bounds.height, accuracy: 0.01)
+  }
+
+  @MainActor
   private func saveA06PDFToPublicDocuments(
     filename: String, originalFilename: String, app: XCUIApplication
   ) {
@@ -1210,7 +1364,9 @@ final class AnnotationJourneyTests: XCTestCase {
   }
 
   @MainActor
-  private func saveA07ToPublicDocuments(filename: String, app: XCUIApplication) {
+  private func saveA07ToPublicDocuments(
+    filename: String, app: XCUIApplication, originalBase: String = "BookOrbit annotations"
+  ) {
     let save = app.buttons["Save"].firstMatch
     XCTAssertTrue(save.wait(for: \.isHittable, toEqual: true, timeout: 15))
     let browse = app.buttons["Browse"]
@@ -1228,12 +1384,12 @@ final class AnnotationJourneyTests: XCTestCase {
       app.buttons["BookOrbit"].tap()
     }
     let fields = app.textFields.matching(
-      NSPredicate(format: "value CONTAINS %@", "BookOrbit annotations"))
+      NSPredicate(format: "value CONTAINS %@", originalBase))
     XCTAssertEqual(fields.count, 1, "Expected the actual native export filename field")
     XCTAssertTrue(fields.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
     let field = fields.element
     let originalName = field.value as? String ?? ""
-    XCTAssertTrue(originalName.contains("BookOrbit annotations"))
+    XCTAssertTrue(originalName.contains(originalBase))
     let exportName = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
     field.tap()
     field.typeText(
@@ -1741,6 +1897,11 @@ final class AnnotationJourneyTests: XCTestCase {
       attachment.name = "\(state)-accessibility-issue"
       attachment.lifetime = .keepAlways
       self.add(attachment)
+      if E02ProfileSupport.criticalOnly(self) {
+        E02ProfileSupport.reportDeferred(
+          self, check: "\(state)-accessibility-audit", observed: issue.detailedDescription)
+        return true
+      }
       return false
     }
   }

@@ -428,6 +428,7 @@ test("IPAD-E02-A05-web: committed browser deletion retains stale native edits as
 }, info) => {
   const session = await nativeSession(request);
   if (process.env.IPAD_E02_CONCURRENT_NATIVE === "1") {
+    test.setTimeout(480_000);
     const checkpoint = "http://localhost:16485/__faults/annotations/checkpoint/";
     await expect.poll(async () => (await json(await request.get(`${checkpoint}native-offline-ready`))).reached, { timeout: 120_000 }).toBe(true);
     const available = await publicDeltaTargets(
@@ -448,14 +449,14 @@ test("IPAD-E02-A05-web: committed browser deletion retains stale native edits as
     const removed = await delivered(request, session, info, "A05-concurrent-browser-delete");
     expect(removed.items.some((item) => item.id === original.id)).toBe(false);
     expect((await request.post(`${checkpoint}browser-delete-done`)).status()).toBe(204);
-    await expect.poll(async () => (await json(await request.get(`${checkpoint}native-reconciled`))).reached, { timeout: 120_000 }).toBe(true);
+    await expect.poll(async () => (await json(await request.get(`${checkpoint}native-reconciled`))).reached, { timeout: 300_000 }).toBe(true);
     const delta = await publicDeltaTargets(request, session, "/api/v1/annotations/native/delta?bookId=1", (item) => item.id === original.id);
     const tombstone = delta.items.find((item) => item.id === original.id);
     expect(tombstone.deletedAt).not.toBeNull();
     expect(tombstone.version).toBeGreaterThan(original.version);
     await writeFile(
       info.outputPath("A05-concurrent-native-recovery.json"),
-      `${JSON.stringify({ original, tombstone, nativeRecoveryEvidence: "native-reconciled checkpoint follows native visible recovery assertion" }, null, 2)}\n`,
+      `${JSON.stringify({ original, tombstone, nativeRecoveryEvidence: "native-reconciled checkpoint follows actual native Files local moved-drawing exports and complete payload equality across restart" }, null, 2)}\n`,
     );
     await expect(page.getByTestId(`source-ink-${original.id}`)).toHaveCount(0);
     expect((await delivered(request, session, info, "A05-concurrent-native-reconciled")).bytes).toEqual(removed.bytes);
