@@ -463,9 +463,23 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
   func preserveLayout(at cfi: String) async {
     guard isReady, !isClosed, !isNavigating else { return }
+    let started = Date()
+    if annotationInputFixture {
+      Self.fixtureLogger.info(
+        "[epub.fixture_layout] [start] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) selectionPresent=\(self.selectionCFI != nil, privacy: .public) - layout preservation navigation requested"
+      )
+    }
     isNavigating = true
     let preservesNarration = narrationLocation?.cfi == cfi
-    defer { isNavigating = false }
+    defer {
+      isNavigating = false
+      if annotationInputFixture {
+        let durationMs = max(0, Int(Date().timeIntervalSince(started) * 1000))
+        Self.fixtureLogger.info(
+          "[epub.fixture_layout] [end] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) durationMs=\(durationMs, privacy: .public) selectionPresent=\(self.selectionCFI != nil, privacy: .public) - layout preservation navigation completed"
+        )
+      }
+    }
     do {
       let raw = try await webView.callAsyncJavaScript(
         "return await window.epubGo(target)",
@@ -503,7 +517,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     Task {
       do {
         let value = try await webView.callAsyncJavaScript(
-          "window.epubFixtureSelectPassage()", arguments: [:], in: nil, contentWorld: .page)
+          "return window.epubFixtureSelectPassage()", arguments: [:], in: nil, contentWorld: .page)
         let result = value as? [String: Any] ?? [:]
         let contents = result["contentsCount"] as? Int ?? -1
         let section = result["sectionIndex"] as? Int ?? -1
