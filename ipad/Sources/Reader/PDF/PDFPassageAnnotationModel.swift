@@ -78,7 +78,7 @@ final class PDFPassageAnnotationModel {
       let user: AuthUser = try await api.boundedJSON("auth/me", byteLimit: 1024 * 1024)
       canManage =
         user.isSuperuser || user.permissions.contains(Permission.annotationManageOwn.rawValue)
-      try? await repository.synchronize(bookID: bookID)
+      if !(await api.isOffline) { try? await repository.synchronize(bookID: bookID) }
       await reloadItems()
     } catch { self.error = error.localizedDescription }
   }
@@ -97,6 +97,13 @@ final class PDFPassageAnnotationModel {
       return
     } catch {
       guard generation == bindingGeneration, self.repository === repository else { return }
+      if PDFReadRefreshError.isCancellation(error) { return }
+      if PDFReadRefreshError.isConnectivity(error), document != nil,
+        source?.loadedSourceRevision != nil
+      {
+        await reloadItems()
+        return
+      }
       self.error = error.localizedDescription
     }
   }

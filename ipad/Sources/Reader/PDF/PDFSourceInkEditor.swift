@@ -80,7 +80,9 @@ final class PDFSourceInkEditor {
     do {
       repository = try await NativeAnnotationRepository.shared(api: api)
       try await refreshSource(page: currentPage)
-      try? await repository?.synchronizeSourceInk(bookID: bookID, fileID: fileID)
+      if !(await api.isOffline) {
+        try? await repository?.synchronizeSourceInk(bookID: bookID, fileID: fileID)
+      }
       await refreshItems()
       loaded = true
     } catch { self.error = error.localizedDescription }
@@ -98,7 +100,10 @@ final class PDFSourceInkEditor {
         self.selectedIdentity = nil
       }
       if let syncError = repository.error { self.error = syncError }
-      if pendingCount == 0 && loaded && repository.error == nil { status = "Ink synchronized" }
+      let isOffline = await api.isOffline
+      if pendingCount == 0 && loaded && repository.error == nil && !isOffline {
+        status = "Ink synchronized"
+      }
     } catch { self.error = error.localizedDescription }
   }
 
@@ -115,6 +120,15 @@ final class PDFSourceInkEditor {
     } catch is CancellationError {
       return nil
     } catch {
+      if PDFReadRefreshError.isCancellation(error) { return nil }
+      if PDFReadRefreshError.isConnectivity(error), !sourceRecoveryRequired,
+        let source = sources[currentPage],
+        source.sourceRevision == loadedSourceRevision
+          || source.matchedSourceRevision == loadedSourceRevision
+      {
+        await refreshItems()
+        return nil
+      }
       if case ConnectionError.http(404) = error {
         sourceRecoveryRequired = true
         retainedSourceReason = "source_deleted"
