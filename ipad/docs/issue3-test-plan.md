@@ -171,3 +171,19 @@ Actual final A05 cleanup completed at 15:21:12 UTC: public CAS deleted/published
 The [final code review](evidence/issue3-bounded-20261009/code-review-ac4.md) reviewed `2ef2962b...ac4e8a6dad3732fa11b36b7776541a1086b6ddb3`: zero documented Standards breaches, zero Spec findings and zero Critical/High findings. One Low duplication heuristic concerns the two A06 protection helpers at lines 723/893; it is a nonblocking follow-up and no refactor is required for this round. `ac4e8a6d` is a documentation-only amendment of tested `dd49f06f`, with all 296 compiled inputs still identical. This review does not pass the incomplete runtime gates.
 
 Historical full workspace results remain 22,713 passed, 26 failed, 8 skipped and one environment-related unhandled error; no latest full-suite green is claimed. Physical Pencil/Scribble, human VoiceOver/walkthrough/video, approved visual baselines, narrow native windows and the unexecuted broad matrix are nonblocking under the approved critical scope, remain unverified, and are not passes.
+
+## Single combined QA4, QA5 and QA6 journey
+
+Run one representative 13-inch portrait iPad and one browser collaborator:
+
+```sh
+node scripts/ipad/run-harness.mjs --annotations --ui --web --case=QA456 --profile=pro13-portrait-light
+```
+
+Append `--list-journey` to print the exact one-native and one-browser selection without starting services. Use `IPAD_TEST_DESTINATION` to select an existing 13-inch test simulator when its name differs from `BookOrbit Test iPad`.
+
+The single native method `testIPADE02QA456OfflineReadAlongAndAuthoritativeRecovery` downloads the actual EPUB and a uniquely named PDF uploaded through the public API. After an offline relaunch it plays all four real six-second Recorded Read Along clips through the final passage, requiring no successful offline response bytes. It then moves its current PDF ink offline while the browser commits deletion of that exact ink. Two distinct native Files JSON exports must preserve the full local changed drawing and operation across another relaunch; canonical deletion and the parsed served PDF must show no resurrection. Finally, a new pending ink edit protects the same complete PDF when its owner deletes the source. The native Files PDF must match the actual pre-deletion served bytes, SHA-256, all three pages and five page boxes, text and independent PDFKit rendering, and remain protected after relaunch.
+
+This uses a fresh isolated database and temporary server content, plus a separate per-run native proxy URL. It updates the installed app without uninstalling or purging earlier caches, retained versions or journals. Fresh fixture IDs do not restore the historical run's deleted Source 3, 8, 9 or 10. Owned subprocesses, temporary content and the fresh database are cleaned by the harness on failure as well as success. The initial browser checkpoint allows 420 seconds for the native prefix, including genuine 24-second playback; this is an orchestration bound, not a product performance criterion. The native case is bounded to 600 seconds and the browser to 660 seconds.
+
+Only static selection, JavaScript syntax, Swift formatting and parsing were checked when adding this case. Runtime remains unverified, and PR 9 remains a draft. Earlier RED evidence and unexecuted broad, physical Pencil/Scribble, human VoiceOver and approved visual-baseline checks retain their recorded status.

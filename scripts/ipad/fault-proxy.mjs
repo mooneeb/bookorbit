@@ -1,7 +1,7 @@
 import { createServer, request } from "node:http";
 import { pipeline } from "node:stream/promises";
 
-export async function startFaultProxy({ captureProgressCAS = false } = {}) {
+export async function startFaultProxy({ captureProgressCAS = false, port = 16485 } = {}) {
   let annotationOffline = false;
   let annotationWriteArmed = false;
   let annotationTransferPath;
@@ -506,7 +506,7 @@ export async function startFaultProxy({ captureProgressCAS = false } = {}) {
   });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(16485, "127.0.0.1", resolve);
+    server.listen(port, "127.0.0.1", resolve);
   });
   return async () => {
     annotationRelease?.();

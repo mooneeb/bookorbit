@@ -70,6 +70,427 @@ final class AnnotationJourneyTests: XCTestCase {
   }
 
   @MainActor
+  func testIPADE02QA456OfflineReadAlongAndAuthoritativeRecovery() async throws {
+    executionTimeAllowance = 600
+    XCTAssertEqual(ProcessInfo.processInfo.environment["IPAD_E02_CONCURRENT_NATIVE"], "1")
+    try await fault("reset")
+    let token = try await loginAPI()
+    let fixtureBytes = try await api("books/files/1/serve", token: token)
+    let fixture = try XCTUnwrap(PDFDocument(data: fixtureBytes))
+    XCTAssertEqual(fixture.pageCount, 3)
+    fixture.documentAttributes = [PDFDocumentAttribute.titleAttribute: "QA456-\(UUID().uuidString)"]
+    let uploadBytes = try XCTUnwrap(fixture.dataRepresentation())
+    let boundary = UUID().uuidString
+    let fixtureName = "QA456-\(UUID().uuidString).pdf"
+    var upload = URLRequest(
+      url: try XCTUnwrap(URL(string: "\(Self.fixtureServerURL)/api/v1/books/6/files")))
+    upload.httpMethod = "POST"
+    upload.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    upload.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+    var multipart = Data(
+      "--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(fixtureName)\"\r\nContent-Type: application/pdf\r\n\r\n"
+        .utf8)
+    multipart.append(uploadBytes)
+    multipart.append(Data("\r\n--\(boundary)--\r\n".utf8))
+    upload.httpBody = multipart
+    let (uploaded, response) = try await Self.networkResponse(for: upload)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 201)
+    let result = try XCTUnwrap(JSONSerialization.jsonObject(with: uploaded) as? [String: Any])
+    let fileID = try XCTUnwrap(result["id"] as? Int)
+    XCTAssertNotEqual(fileID, 3)
+    let servedUpload = try await api("books/files/\(fileID)/serve", token: token)
+    XCTAssertEqual(servedUpload, uploadBytes)
+    let detailBytes = try await api("books/6", token: token)
+    let details = try XCTUnwrap(JSONSerialization.jsonObject(with: detailBytes) as? [String: Any])
+    let title = try XCTUnwrap(details["title"] as? String)
+    let app = launchAndSignIn(serverURL: Self.faultServerURL)
+
+    // Both resources belong to this server namespace and remain available through the same offline restart.
+    openBookDetail("Native renderer proof", bookID: 2, app: app)
+    try qa456Download(2, app: app)
+    app.buttons["Done"].tap()
+    openBookDetail(title, bookID: 6, app: app)
+    try qa456Download(fileID, app: app)
+    guard E02ProfileSupport.openBookFile(app: app, fileID: fileID) else { return }
+    tapInkControl("pdfInkFixtureStroke", app: app)
+    let items = try await waitForAnnotations(bookID: 6, token: token) { entries in
+      entries.contains {
+        $0["bookFileId"] as? Int == fileID && $0["kind"] as? String == "pdf_ink"
+          && $0["deletedAt"] is NSNull
+      }
+    }
+    let ownItems = items.filter { $0["bookFileId"] as? Int == fileID && $0["deletedAt"] is NSNull }
+    XCTAssertEqual(ownItems.count, 1)
+    let item = try XCTUnwrap(ownItems.first)
+    let id = try XCTUnwrap(item["id"] as? Int)
+    let clientID = try XCTUnwrap(item["clientId"] as? String)
+    app.buttons["Close reader"].tap()
+    app.buttons["Done"].tap()
+    let onlineTraffic = try await qa456Traffic()
+    try await fault("offline")
+    app.terminate()
+    app.launch()
+    qa456OpenOffline(bookID: 2, fileID: 2, app: app)
+    let first = app.webViews.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS %@", "Alpha 😀 cafe\u{301} omega.")
+    ).firstMatch
+    XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 25))
+    app.buttons["epubReaderTools"].tap()
+    app.buttons["epubRecordedReadAlong"].tap()
+    let start = app.buttons["recordedStartPassage"]
+    XCTAssertTrue(start.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    XCTAssertTrue(start.isEnabled)
+    let playbackStarted = Date()
+    start.tap()
+    let segment = app.staticTexts["recordedSegmentText"]
+    XCTAssertTrue(segment.waitForExistence(timeout: 15))
+    XCTAssertTrue(segment.label.contains("Alpha"))
+    XCTAssertEqual(app.buttons["recordedToggle"].label, "Pause recording")
+    for passage in [
+      "First chapter ends here.", "Second chapter begins here.", "Second chapter ends here.",
+    ] {
+      XCTAssertTrue(
+        app.staticTexts.matching(identifier: "recordedSegmentText").matching(
+          NSPredicate(format: "label CONTAINS %@", passage)
+        ).element.waitForExistence(timeout: 15), passage)
+      XCTAssertFalse(app.staticTexts["recordedNarrationError"].exists)
+    }
+    XCTAssertTrue(
+      app.buttons["recordedToggle"].wait(for: \.label, toEqual: "Play recording", timeout: 15))
+    XCTAssertTrue(app.staticTexts["recordedSegmentTime"].label.hasPrefix("6.0 / 6.0"))
+    XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(playbackStarted), 22)
+    app.buttons["recordedCloseControls"].tap()
+    XCTAssertTrue(
+      app.webViews.staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "Second chapter ends here.")
+      ).firstMatch.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    let offlineTraffic = try await qa456Traffic()
+    XCTAssertEqual(
+      offlineTraffic.dropFirst(onlineTraffic.count).reduce(0) { sum, record in
+        sum
+          + (((200..<300).contains(record["status"] as? Int ?? 0))
+            ? record["bytes"] as? Int ?? 0 : 0)
+      }, 0)
+    capture("IPAD-E02-QA456-four-complete-recorded-clips-after-offline-restart")
+    app.buttons["epubCloseReader"].tap()
+    app.buttons["Done"].tap()
+    qa456OpenOffline(bookID: 6, fileID: fileID, app: app)
+    tapInkControl("pdfInkSelect", app: app)
+    app.buttons["pdfInkSelectItem\(clientID)"].tap()
+    tapInkControl("pdfInkMoveRight", app: app)
+    XCTAssertTrue(app.staticTexts["Ink saved locally"].waitForExistence(timeout: 15))
+    try await checkpoint("native-offline-ready", reach: true)
+    try await checkpoint("browser-delete-done")
+    let deleted = try await waitForAnnotations(bookID: 6, token: token) {
+      $0.contains { $0["id"] as? Int == id && $0["deletedAt"] is String }
+    }
+    let tombstone = try XCTUnwrap(deleted.first { $0["id"] as? Int == id })
+    let committedBytes = try await api("books/files/\(fileID)/serve", token: token)
+    try await fault("online")
+    XCUIDevice.shared.press(.home)
+    app.activate()
+    app.buttons["Close reader"].tap()
+    app.buttons["Done"].tap()
+    app.buttons["openAnnotationHub"].tap()
+    tapHubControl("annotationHubSynchronize", app: app)
+    tapHubControl("annotationHubRecovery", app: app)
+    XCTAssertTrue(app.navigationBars["Recovery drafts"].waitForExistence(timeout: 15))
+    let exports = app.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "annotationHubExportDraft"))
+    XCTAssertTrue(exports.element.waitForExistence(timeout: 20))
+    XCTAssertEqual(exports.count, 1, "Fresh server namespace has exactly this local edit")
+    let exportID = exports.element.identifier
+    let before = try await exportA05Recovery(exportID, suffix: "qa456-before", app: app, bookID: 6)
+    try assertA05LocalDrawing(before, original: item)
+    try qa456AssertMovedStrokePoints(before, original: item)
+    app.terminate()
+    app.launch()
+    XCTAssertTrue(app.buttons["openAnnotationHub"].waitForExistence(timeout: 25))
+    app.buttons["openAnnotationHub"].tap()
+    tapHubControl("annotationHubRecovery", app: app)
+    let after = try await exportA05Recovery(exportID, suffix: "qa456-after", app: app, bookID: 6)
+    XCTAssertEqual(after as NSDictionary, before as NSDictionary)
+    try assertA05LocalDrawing(after, original: item)
+    try qa456AssertMovedStrokePoints(after, original: item)
+    let finalItems = try await annotations(bookID: 6, token: token)
+    let final = try XCTUnwrap(finalItems.first { $0["id"] as? Int == id })
+    XCTAssertEqual(final["deletedAt"] as? String, tombstone["deletedAt"] as? String)
+    XCTAssertEqual(final["version"] as? Int, tombstone["version"] as? Int)
+    let convergedBytes = try await api("books/files/\(fileID)/serve", token: token)
+    XCTAssertEqual(convergedBytes, committedBytes)
+    try await checkpoint("native-reconciled", reach: true)
+    try await checkpoint("browser-verification-done")
+    app.navigationBars["Recovery drafts"].buttons["Done"].tap()
+    app.buttons["annotationHubDone"].tap()
+    openBookDetail(title, bookID: 6, app: app)
+    try qa456Download(fileID, app: app)
+    guard E02ProfileSupport.openBookFile(app: app, fileID: fileID) else { return }
+    let originalBytes = try await api("books/files/\(fileID)/serve", token: token)
+    XCTAssertEqual(originalBytes, committedBytes)
+    try await fault("offline")
+    tapInkControl("pdfInkFixtureStroke", app: app)
+    XCTAssertTrue(app.staticTexts["Ink saved locally"].waitForExistence(timeout: 15))
+    _ = try await api("books/files/\(fileID)", method: "DELETE", token: token)
+    var gone = URLRequest(
+      url: try XCTUnwrap(URL(string: "\(Self.fixtureServerURL)/api/v1/books/files/\(fileID)/serve"))
+    )
+    gone.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    let (_, goneResponse) = try await Self.networkResponse(for: gone)
+    XCTAssertEqual((goneResponse as? HTTPURLResponse)?.statusCode, 404)
+    try await fault("online")
+    app.terminate()
+    app.launch()
+    try await qa456ExportRetained(fileID: fileID, originalBytes: originalBytes, app: app)
+    try await checkpoint("journey-complete", reach: true)
+  }
+
+  @MainActor
+  private func qa456AssertMovedStrokePoints(_ artifact: [String: Any], original: [String: Any])
+    throws
+  {
+    let operation = try XCTUnwrap(artifact["operation"] as? [String: Any])
+    let payload = try XCTUnwrap(operation["payload"] as? [String: Any])
+    let drawing = try XCTUnwrap(payload["drawing"] as? [String: Any])
+    let baseDrawing = try XCTUnwrap(original["drawing"] as? [String: Any])
+    let local = try PKDrawing(
+      data: XCTUnwrap(Data(base64Encoded: XCTUnwrap(drawing["nativeData"] as? String))))
+    let base = try PKDrawing(
+      data: XCTUnwrap(Data(base64Encoded: XCTUnwrap(baseDrawing["nativeData"] as? String))))
+    let shift = try inkRect(payload).minX - inkRect(original).minX
+    XCTAssertGreaterThan(shift, 0)
+    XCTAssertEqual(local.strokes.count, base.strokes.count)
+    for (current, prior) in zip(local.strokes, base.strokes) {
+      XCTAssertEqual(current.ink.inkType, prior.ink.inkType)
+      XCTAssertEqual(current.ink.color, prior.ink.color)
+      XCTAssertEqual(current.path.count, prior.path.count)
+      for index in 0..<prior.path.count {
+        let point = current.path[index]
+        let originalPoint = prior.path[index]
+        let actual = point.location.applying(current.transform)
+        let expected = originalPoint.location.applying(prior.transform)
+        XCTAssertEqual(actual.x, expected.x + shift, accuracy: 0.01)
+        XCTAssertEqual(actual.y, expected.y, accuracy: 0.01)
+        XCTAssertEqual(point.size, originalPoint.size)
+        XCTAssertEqual(point.force, originalPoint.force)
+        XCTAssertEqual(point.opacity, originalPoint.opacity)
+        XCTAssertEqual(point.azimuth, originalPoint.azimuth)
+        XCTAssertEqual(point.altitude, originalPoint.altitude)
+      }
+    }
+  }
+
+  @MainActor
+  private func qa456Download(_ fileID: Int, app: XCUIApplication) throws {
+    XCTAssertTrue(E02ProfileSupport.openOfflineResources(app: app))
+    let file = app.buttons["offlineSelectFile\(fileID)"]
+    XCTAssertTrue(file.waitForExistence(timeout: 10))
+    if file.value as? String != "Selected" { file.tap() }
+    XCTAssertEqual(file.value as? String, "Selected")
+    XCTAssertTrue(app.buttons["offlineDownload"].wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    app.buttons["offlineDownload"].tap()
+    XCTAssertTrue(
+      app.staticTexts["Verified ready for offline reading"].waitForExistence(timeout: 45))
+    XCTAssertTrue(E02ProfileSupport.closeOfflineResources(app: app))
+  }
+
+  @MainActor
+  private func qa456OpenOffline(bookID: Int, fileID: Int, app: XCUIApplication) {
+    XCTAssertTrue(app.buttons["offlineLibrary"].wait(for: \.isHittable, toEqual: true, timeout: 25))
+    app.buttons["offlineLibrary"].tap()
+    XCTAssertTrue(app.buttons["offlineBook\(bookID)"].waitForExistence(timeout: 15))
+    app.buttons["offlineBook\(bookID)"].tap()
+    XCTAssertTrue(E02ProfileSupport.openBookFile(app: app, fileID: fileID))
+  }
+
+  @MainActor
+  private func qa456Traffic() async throws -> [[String: Any]] {
+    let request = URLRequest(
+      url: try XCTUnwrap(URL(string: "\(Self.faultServerURL)/__faults/annotations/traffic")))
+    let (data, response) = try await Self.networkResponse(for: request)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+    let value = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    XCTAssertEqual(value["truncated"] as? Bool, false)
+    return try XCTUnwrap(value["items"] as? [[String: Any]])
+  }
+
+  @MainActor
+  private func qa456ExportRetained(fileID: Int, originalBytes: Data, app: XCUIApplication)
+    async throws
+  {
+    let original = try XCTUnwrap(PDFDocument(data: originalBytes))
+    XCTAssertEqual(original.pageCount, 3)
+    let originalRevision = SHA256.hash(data: originalBytes).map { String(format: "%02x", $0) }
+      .joined()
+    XCTAssertTrue(app.buttons["offlineLibrary"].wait(for: \.isHittable, toEqual: true, timeout: 25))
+    app.buttons["offlineLibrary"].tap()
+    let recovery = app.buttons["offlineSourceRecovery"]
+    XCTAssertTrue(recovery.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    recovery.tap()
+    let versions = app.descendants(matching: .any).matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "sourceRecoveryVersion"))
+    XCTAssertLessThanOrEqual(versions.count, 40)
+    let recoveryLists = app.collectionViews.matching(identifier: "sourceRecoveryList")
+    XCTAssertEqual(recoveryLists.count, 1)
+    let recoveryList = recoveryLists.element
+    let matchingVersions = recoveryList.staticTexts.matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@", "sourceRecoveryVersion",
+        "-\(originalRevision)"))
+    for _ in 0..<12 {
+      if matchingVersions.element.waitForExistence(timeout: 2) { break }
+      recoveryList.swipeUp()
+    }
+    XCTAssertEqual(
+      matchingVersions.count, 1, "Exactly the captured current source revision must arrive")
+    XCTAssertTrue(E02ProfileSupport.reveal(matchingVersions.element, in: recoveryList, app: app))
+    let retainedVersionID = String(
+      matchingVersions.element.identifier.dropFirst("sourceRecoveryVersion".count))
+    let cells = recoveryList.cells.allElementsBoundByIndex
+    var selectedVersion = false
+    var foundCurrentFile = false
+    for cell in cells {
+      let headings = cell.staticTexts.matching(
+        NSPredicate(format: "identifier BEGINSWITH %@", "sourceRecoveryVersion"))
+      if headings.count > 0 {
+        selectedVersion = headings.element.identifier == "sourceRecoveryVersion\(retainedVersionID)"
+      }
+      if selectedVersion
+        && cell.staticTexts.matching(identifier: "sourceRecoveryProvenance")
+          .matching(NSPredicate(format: "label == %@", "Book 6, file \(fileID), PDF")).count == 1
+      {
+        foundCurrentFile = true
+      }
+    }
+    XCTAssertTrue(foundCurrentFile, "The captured revision must belong to this uploaded file")
+    let protection = app.staticTexts["sourceRecoveryProtected\(retainedVersionID)"]
+    func revealControl(_ prefix: String, requireEnabled: Bool = true) -> XCUIElement {
+      let matches = recoveryList.buttons.matching(identifier: "\(prefix)\(retainedVersionID)")
+      let control = matches.element
+      let viewport = recoveryList.frame.intersection(app.frame)
+      for _ in 0..<12 {
+        XCTAssertLessThanOrEqual(matches.count, 1)
+        if control.exists && control.isHittable && viewport.contains(control.frame) { break }
+        if control.exists && control.frame.minY < viewport.minY {
+          recoveryList.swipeDown()
+        } else {
+          recoveryList.swipeUp()
+        }
+      }
+      XCTAssertEqual(matches.count, 1)
+      XCTAssertTrue(control.wait(for: \.isHittable, toEqual: true, timeout: 10))
+      XCTAssertTrue(viewport.contains(control.frame))
+      if requireEnabled {
+        XCTAssertTrue(control.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+      }
+      return control
+    }
+    func assertProtection() {
+      let remove = revealControl("sourceRecoveryRemove", requireEnabled: false)
+      if remove.isEnabled { remove.tap() }
+      XCTAssertTrue(E02ProfileSupport.reveal(protection, in: recoveryList, app: app))
+      XCTAssertTrue(protection.exists)
+      let disabledRemove = revealControl("sourceRecoveryRemove", requireEnabled: false)
+      XCTAssertFalse(disabledRemove.isEnabled)
+      XCTAssertFalse(app.buttons["sourceRecoveryConfirmRemove"].exists)
+    }
+    XCTAssertTrue(recoveryList.staticTexts["Book 6, file \(fileID), PDF"].exists)
+    assertProtection()
+    capture("IPAD-E02-A06-deleted-source-protected-complete-version")
+    let prepare = revealControl("sourceRecoveryPrepareExport")
+    XCTAssertTrue(prepare.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    prepare.tap()
+    let ready = app.staticTexts["sourceRecoveryExportReady"]
+    XCTAssertTrue(ready.waitForExistence(timeout: 10))
+    XCTAssertTrue(ready.label.hasPrefix("Verified complete export: "))
+    capture("IPAD-E02-A06-verified-complete-source-export-ready")
+    let export = revealControl("sourceRecoveryExport")
+    export.tap()
+    guard E02ProfileSupport.openSaveToFiles(app: app, test: self) else { return }
+    let directory = try XCTUnwrap(
+      ProcessInfo.processInfo.environment["IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY"],
+      "Supply the installed app's public Documents directory for the native PDF export.")
+    let documents = URL(fileURLWithPath: directory, isDirectory: true)
+      .standardizedFileURL.resolvingSymlinksInPath()
+    XCTAssertTrue(directory.hasPrefix("/"))
+    XCTAssertEqual(documents.lastPathComponent, "Documents")
+    let directoryValues = try documents.resourceValues(forKeys: [
+      .isDirectoryKey, .isSymbolicLinkKey,
+    ])
+    XCTAssertEqual(directoryValues.isDirectory, true)
+    XCTAssertEqual(directoryValues.isSymbolicLink, false)
+    let filename = "Deleted source A06-\(UUID().uuidString).pdf"
+    let exportURL = documents.appendingPathComponent(filename)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: exportURL.path))
+    let originalFilename = String(ready.label.dropFirst("Verified complete export: ".count))
+    saveA06PDFToPublicDocuments(filename: filename, originalFilename: originalFilename, app: app)
+    let deadline = Date().addingTimeInterval(15)
+    while !FileManager.default.fileExists(atPath: exportURL.path) && Date() < deadline {
+      try await Task.sleep(for: .milliseconds(250))
+    }
+    XCTAssertTrue(
+      FileManager.default.fileExists(atPath: exportURL.path), "Read the actual native Files PDF")
+    let values = try exportURL.resourceValues(forKeys: [
+      .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey,
+    ])
+    XCTAssertEqual(values.isRegularFile, true)
+    XCTAssertEqual(values.isSymbolicLink, false)
+    XCTAssertEqual(
+      exportURL.resolvingSymlinksInPath().deletingLastPathComponent().path, documents.path)
+    let size = try XCTUnwrap(values.fileSize)
+    XCTAssertGreaterThan(size, 0)
+    XCTAssertLessThanOrEqual(size, 16 * 1024 * 1024)
+    let savedBytes = try Data(contentsOf: exportURL)
+    XCTAssertEqual(savedBytes.count, size)
+    XCTAssertEqual(savedBytes, originalBytes)
+    let savedRevision = SHA256.hash(data: savedBytes).map { String(format: "%02x", $0) }.joined()
+    XCTAssertEqual(savedRevision, originalRevision)
+    let savedPDF = try XCTUnwrap(PDFDocument(data: savedBytes))
+    XCTAssertEqual(savedPDF.pageCount, original.pageCount)
+    var pageFacts: [[String: Any]] = []
+    for index in 0..<original.pageCount {
+      let originalPage = try XCTUnwrap(original.page(at: index))
+      let savedPage = try XCTUnwrap(savedPDF.page(at: index))
+      XCTAssertEqual(savedPage.rotation, originalPage.rotation)
+      var boxes: [[String: Any]] = []
+      for box in [PDFDisplayBox.mediaBox, .cropBox, .bleedBox, .trimBox, .artBox] {
+        let bounds = savedPage.bounds(for: box)
+        XCTAssertEqual(bounds, originalPage.bounds(for: box))
+        boxes.append([
+          "box": box.rawValue, "x": bounds.minX, "y": bounds.minY, "width": bounds.width,
+          "height": bounds.height,
+        ])
+      }
+      XCTAssertEqual(savedPage.string, originalPage.string)
+      XCTAssertTrue(savedPage.string?.contains("Orbit fixture: passage \(index + 1)") == true)
+      XCTAssertEqual(
+        savedPage.thumbnail(of: CGSize(width: 600, height: 800), for: .mediaBox).pngData(),
+        originalPage.thumbnail(of: CGSize(width: 600, height: 800), for: .mediaBox).pngData())
+      pageFacts.append(["page": index, "rotation": savedPage.rotation, "boxes": boxes])
+    }
+    attach(
+      savedBytes, name: "IPAD-E02-A06-actual-native-Files-complete-source", type: "com.adobe.pdf")
+    attach(
+      try JSONSerialization.data(
+        withJSONObject: [
+          "filename": filename, "sha256": savedRevision, "bytes": size,
+          "pageCount": savedPDF.pageCount, "pages": pageFacts,
+        ], options: [.sortedKeys]),
+      name: "IPAD-E02-A06-actual-native-Files-PDF-hash-and-geometry", type: "public.json")
+    XCTAssertTrue(app.staticTexts["Source deleted"].waitForExistence(timeout: 10))
+    app.terminate()
+    app.launch()
+    XCTAssertTrue(app.buttons["offlineLibrary"].waitForExistence(timeout: 25))
+    app.buttons["offlineLibrary"].tap()
+    XCTAssertTrue(recovery.waitForExistence(timeout: 10))
+    recovery.tap()
+    XCTAssertTrue(matchingVersions.element.waitForExistence(timeout: 20))
+    XCTAssertEqual(matchingVersions.count, 1)
+    XCTAssertTrue(E02ProfileSupport.reveal(matchingVersions.element, in: recoveryList, app: app))
+    assertProtection()
+    capture("IPAD-E02-A06-source-and-pending-protection-survive-restart")
+  }
+
+  @MainActor
   func testIPADE02A01NativePassageToolsReachable() throws {
     let app = launchAndSignIn()
     openBook("Native renderer proof", fileID: 2, app: app)
@@ -1236,7 +1657,7 @@ final class AnnotationJourneyTests: XCTestCase {
 
   @MainActor
   private func exportA05Recovery(
-    _ identifier: String, suffix: String, app: XCUIApplication
+    _ identifier: String, suffix: String, app: XCUIApplication, bookID: Int = 1
   ) async throws -> [String: Any] {
     let exports = app.buttons.matching(identifier: identifier)
     XCTAssertTrue(exports.element.waitForExistence(timeout: 15))
@@ -1276,7 +1697,7 @@ final class AnnotationJourneyTests: XCTestCase {
     let artifact = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
     XCTAssertEqual(
       artifact["id"] as? String, String(identifier.dropFirst("annotationHubExportDraft".count)))
-    XCTAssertEqual(artifact["bookId"] as? Int, 1)
+    XCTAssertEqual(artifact["bookId"] as? Int, bookID)
     return artifact
   }
 

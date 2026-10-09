@@ -34,13 +34,38 @@ if (nativeOnly && (!annotationsProof || !process.argv.includes("--ui") || proces
   throw new Error("--native-only requires --annotations --ui and runs a focused native seam");
 }
 const annotationCase = process.argv.find((argument) => argument.startsWith("--case="))?.slice(7);
-const annotationConcurrent = annotationsProof && annotationCase === "A05" && process.argv.includes("--ui") && process.argv.includes("--web");
-if (annotationCase && (!annotationsProof || !/^A0[1-7]$/.test(annotationCase))) {
-  throw new Error("--case requires --annotations and one of A01 through A07");
+const combinedRecovery = annotationsProof && annotationCase === "QA456";
+const annotationConcurrent =
+  annotationsProof && ["A05", "QA456"].includes(annotationCase) && process.argv.includes("--ui") && process.argv.includes("--web");
+if (annotationCase && (!annotationsProof || !/^(?:A0[1-7]|QA456)$/.test(annotationCase))) {
+  throw new Error("--case requires --annotations and one of A01 through A07 or QA456");
 }
 if (process.argv.includes("--list-annotations")) {
   console.log(
-    "IPAD-E02-A01 passage notes\nIPAD-E02-A02 source PDF publication\nIPAD-E02-A03 source ink edits and Undo\nIPAD-E02-A04 explicit offline resources\nIPAD-E02-A05 concurrent reconciliation\nIPAD-E02-A06 source recovery\nIPAD-E02-A07 annotation hub",
+    "IPAD-E02-A01 passage notes\nIPAD-E02-A02 source PDF publication\nIPAD-E02-A03 source ink edits and Undo\nIPAD-E02-A04 explicit offline resources\nIPAD-E02-A05 concurrent reconciliation\nIPAD-E02-A06 source recovery\nIPAD-E02-A07 annotation hub\nIPAD-E02-QA456 combined offline reading and recovery",
+  );
+  process.exit(0);
+}
+if (
+  combinedRecovery &&
+  (!annotationConcurrent ||
+    annotationVisualProfile.name !== "pro13-portrait-light" ||
+    nativeOnly ||
+    process.argv.includes("--serve") ||
+    process.env.IPAD_TEST_ONLY)
+) {
+  throw new Error("QA456 requires --annotations --ui --web --profile=pro13-portrait-light without selector overrides or retained-server modes");
+}
+const combinedNative = "BookOrbitUITests/AnnotationJourneyTests/testIPADE02QA456OfflineReadAlongAndAuthoritativeRecovery";
+const combinedFaultPort = combinedRecovery ? 16585 + (process.pid % 1000) : 16485;
+if (process.argv.includes("--list-journey")) {
+  if (!combinedRecovery) throw new Error("--list-journey requires --case=QA456");
+  console.log(
+    JSON.stringify(
+      { native: [combinedNative], browser: ["IPAD-E02-QA456-web: one browser collaborates with the combined offline recovery journey"] },
+      null,
+      2,
+    ),
   );
   process.exit(0);
 }
@@ -83,7 +108,7 @@ if (
 if ([metadataProof, metadataClearsProof, coverProof, pdfReader, organizationProof].filter(Boolean).length > 1)
   throw new Error("Select one focused journey");
 let nativeTests =
-  process.env.IPAD_TEST_ONLY?.split(",") ??
+  (combinedRecovery ? [combinedNative] : process.env.IPAD_TEST_ONLY?.split(",")) ??
   (annotationsProof ? ["BookOrbitUITests/AnnotationJourneyTests", "BookOrbitUITests/AnnotationHubJourneyTests"] : []);
 if (nativeTests.some((name) => !new RegExp(`^${nativeTestBundle}/[A-Za-z_]\\w*(?:/[A-Za-z_]\\w*)?$`).test(name))) {
   throw new Error(`IPAD_TEST_ONLY must contain comma-separated ${nativeTestBundle} classes or methods`);
@@ -97,6 +122,9 @@ const env = {
   IPAD_TEST_RUN: runID,
   IPAD_ANNOTATIONS_PROOF: annotationsProof ? "1" : "0",
   IPAD_ANNOTATION_CASE: annotationCase ?? "",
+  IPAD_ANNOTATION_FAULT_URL: `http://127.0.0.1:${combinedFaultPort}`,
+  TEST_RUNNER_IPAD_ANNOTATION_FAULT_URL: `http://127.0.0.1:${combinedFaultPort}`,
+  TEST_RUNNER_IPAD_ANNOTATION_SERVER_URL: "http://127.0.0.1:16482",
   IPAD_E02_PROFILE: annotationVisualProfile.name,
   IPAD_E02_CONCURRENT_NATIVE: annotationConcurrent ? "1" : "0",
   IPAD_E02_EXPECT_NATIVE:
@@ -197,7 +225,13 @@ async function collectNativeFiles(directory, artifacts, requireRecovery) {
   for await (const entry of await opendir(directory)) {
     if (++examined > 256) throw new Error("Public Documents export scan exceeded 256 entries");
     const sourcePDF = /^Deleted source A06-[A-Fa-f0-9-]+\.pdf$/.test(entry.name);
-    if (!sourcePDF && !/^RecoveryUI-[A-Fa-f0-9-]+-recovery\.json$/.test(entry.name) && !/^BookOrbit annotations.*\.json$/.test(entry.name)) continue;
+    if (
+      !sourcePDF &&
+      !/^RecoveryUI-[A-Fa-f0-9-]+-recovery\.json$/.test(entry.name) &&
+      !/^A05-qa456-(?:before|after)-[A-Fa-f0-9-]+\.json$/.test(entry.name) &&
+      !/^BookOrbit annotations.*\.json$/.test(entry.name)
+    )
+      continue;
     const source = join(directory, entry.name);
     const information = await lstat(source);
     if (!information.isFile() || information.isSymbolicLink() || dirname(await realpath(source)) !== directory)
@@ -431,7 +465,7 @@ async function runNativeTests() {
         await command("xcrun", ["simctl", "get_app_container", device, "com.mooneeb.bookorbit.private", "data"], { capture: true });
         installed = true;
       } catch {}
-      if (installed) await command("xcrun", ["simctl", "uninstall", device, "com.mooneeb.bookorbit.private"]);
+      if (installed && !combinedRecovery) await command("xcrun", ["simctl", "uninstall", device, "com.mooneeb.bookorbit.private"]);
       await command("xcrun", [
         "simctl",
         "status_bar",
@@ -452,7 +486,7 @@ async function runNativeTests() {
       ]);
     }
     await command("xcodegen", ["generate", "--spec", "ipad/project.yml"]);
-    if (annotationsProof && !process.env.IPAD_TEST_ONLY) {
+    if (annotationsProof && !combinedRecovery && !process.env.IPAD_TEST_ONLY) {
       nativeTests = [];
       for (const file of await readdir(`${root}/ipad/UITests`)) {
         if (!file.endsWith(".swift")) continue;
@@ -492,7 +526,7 @@ async function runNativeTests() {
         "CODE_SIGNING_ALLOWED=YES",
         "CODE_SIGN_IDENTITY=-",
       ];
-      if (annotationsProof) {
+      if (annotationsProof && !combinedRecovery) {
         const preflight = "BookOrbitUITests/AnnotationProfilePerformanceTests/testIPADE02A01ApplySystemProfile";
         await command(
           "xcodebuild",
@@ -533,6 +567,12 @@ async function runNativeTests() {
           "--output-path",
           `${artifacts}/profile-attachments`,
         ]);
+      }
+      if (combinedRecovery) {
+        await command("xcodebuild", ["build-for-testing", ...commonArguments], { env: nativeEnvironment });
+        exportedArtifactDirectory = await publicExportDirectory(selectedDevice.udid);
+        nativeEnvironment.IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
+        nativeEnvironment.TEST_RUNNER_IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
       }
       nativeJourneyStarted = true;
       await command(
@@ -586,10 +626,11 @@ async function runNativeTests() {
           { capture: true },
         );
         await writeFile(`${artifacts}/native-attachments.log`, exported);
-        if (annotationsProof) await compareNativeAnnotationVisuals(artifacts, nativeVisualProfile.name);
+        if (annotationsProof && !combinedRecovery) await compareNativeAnnotationVisuals(artifacts, nativeVisualProfile.name);
         const summary = JSON.parse(summaryText);
         if (
           summary.totalTestCount < 1 ||
+          (combinedRecovery && summary.totalTestCount !== 1) ||
           summary.failedTests !== 0 ||
           summary.skippedTests !== 0 ||
           summary.expectedFailures !== 0 ||
@@ -653,7 +694,7 @@ try {
       }
     });
   });
-  if (annotationsProof) stopFaultProxy = await startFaultProxy();
+  if (annotationsProof) stopFaultProxy = await startFaultProxy({ port: combinedFaultPort });
   if (process.argv.includes("--serve")) {
     const servingAt = Date.now();
     console.log(`[ipad.harness_serve] [start] runId=${runID} - retaining isolated test surfaces`);
@@ -663,7 +704,7 @@ try {
     );
     await interrupt;
   } else {
-    if (annotationsProof && !nativeOnly) {
+    if (annotationsProof && !nativeOnly && !combinedRecovery) {
       await command(process.execPath, [
         "--test",
         "--test-concurrency=1",
@@ -684,7 +725,7 @@ try {
     if (organizationProof || crossClient) await command(process.execPath, ["--test", "scripts/ipad/organization-http.test.mjs"]);
     if (!annotationsProof) await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);
     if (comicProof) await command(process.execPath, ["--test", "scripts/ipad/comic-http.test.mjs"]);
-    if (process.argv.includes("--ui") && !stopFaultProxy) stopFaultProxy = await startFaultProxy();
+    if (process.argv.includes("--ui") && !stopFaultProxy) stopFaultProxy = await startFaultProxy({ port: combinedFaultPort });
     if (annotationConcurrent) {
       await startWeb();
       const outcomes = await Promise.allSettled([
@@ -695,7 +736,7 @@ try {
       if (failed.length)
         throw new AggregateError(
           failed.map((outcome) => outcome.reason),
-          "Concurrent native/browser A05 failed",
+          "Concurrent native/browser annotation journey failed",
         );
       await runAdditionalAnnotationBrowserTests();
     }

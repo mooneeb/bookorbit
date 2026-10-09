@@ -10,7 +10,9 @@ export default defineConfig({
   testDir: ".",
   testMatch:
     process.env.IPAD_ANNOTATIONS_PROOF === "1"
-      ? "annotations-cross-client.test.mjs"
+      ? process.env.IPAD_ANNOTATION_CASE === "QA456"
+        ? "combined-offline-recovery.test.mjs"
+        : "annotations-cross-client.test.mjs"
       : process.env.IPAD_ORGANIZATION_PROOF === "1"
         ? "organization-cross-client.test.mjs"
         : process.env.IPAD_COMIC_PROOF === "1"
