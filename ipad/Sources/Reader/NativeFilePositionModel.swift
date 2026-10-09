@@ -251,7 +251,9 @@ final class NativeFilePositionModel {
     isResolving = true
     defer { isResolving = false }
     do {
-      if pendingChoice == local, let pending, pending.baseVersion == version(remoteCandidate) {
+      if pendingChoice == local, let pending, pending.source == source,
+        pending.baseVersion == version(remoteCandidate)
+      {
         return await flush()
       }
       let current = try await fetch()
@@ -271,6 +273,7 @@ final class NativeFilePositionModel {
         return current
       }
       var chosen = local ? localCandidate : payload(current)
+      chosen.source = source
       chosen.baseVersion = version(current)
       pending = chosen
       pendingBody = nil
