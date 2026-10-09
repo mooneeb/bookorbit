@@ -3,6 +3,7 @@ import SwiftUI
 
 struct PassageAnnotationView: View {
   @Bindable var model: PassageAnnotationModel
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
   var body: some View {
     NavigationStack {
@@ -85,17 +86,16 @@ struct PassageAnnotationView: View {
       .navigationTitle(model.presentation?.item == nil ? "Mark passage" : "Edit passage note")
       .navigationBarTitleDisplayMode(.inline)
       .safeAreaInset(edge: .top) {
-        ViewThatFits(in: .horizontal) {
-          HStack {
-            cancelButton
-            Spacer()
-            saveButton
-          }
-          VStack(alignment: .leading, spacing: 8) {
-            cancelButton
-            saveButton
-          }
+        let layout =
+          dynamicTypeSize.isAccessibilitySize
+          ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+          : AnyLayout(HStackLayout())
+        layout {
+          cancelButton
+          if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+          saveButton
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal).padding(.vertical, 8).background(.background)
       }
     }
