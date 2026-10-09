@@ -482,7 +482,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     }
     do {
       let raw = try await webView.callAsyncJavaScript(
-        "return await window.epubGo(target)",
+        "return await window.epubPreserveLayout(target)",
         arguments: ["target": cfi], in: nil, contentWorld: .page)
       guard !isClosed else { return }
       let restored = try decodedLocation(raw)

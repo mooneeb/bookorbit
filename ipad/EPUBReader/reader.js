@@ -469,6 +469,15 @@ window.epubLocation = () => {
   return location();
 };
 window.epubGo = go;
+window.epubPreserveLayout = async (target) => {
+  const hasSelection = view.renderer.getContents().some(({ doc }) => {
+    const selected = doc.getSelection();
+    return selected?.rangeCount === 1 && !selected.isCollapsed;
+  });
+  if (!hasSelection) return go(target);
+  await settle();
+  return location();
+};
 window.epubGoFraction = (fraction, smooth) => go(fractionTarget(fraction), smooth);
 window.epubPositionPreview = (target) => {
   const opened = publication;
