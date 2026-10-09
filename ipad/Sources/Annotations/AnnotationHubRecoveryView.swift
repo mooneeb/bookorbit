@@ -65,7 +65,8 @@ struct AnnotationHubRecoveryView: View {
               )
               .accessibilityIdentifier("annotationHubRecoverySnapshotUnavailable\(draft.id)")
             }
-          }.accessibilityIdentifier("annotationHubRecoveryDraft\(draft.id)")
+          }.accessibilityElement(children: .contain)
+            .accessibilityIdentifier("annotationHubRecoveryDraft\(draft.id)")
         }
         if !isBusy, drafts.isEmpty, error == nil { Text("No recovery drafts are saved.") }
         Section {
