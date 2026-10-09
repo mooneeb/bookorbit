@@ -534,17 +534,22 @@ actor NativeAnnotationStore {
   }
 
   func protectedSourceRevision(bookID: Int, fileID: Int, revision: String) throws -> Bool {
+    let digest = revision.hasPrefix("sha256:") ? String(revision.dropFirst(7)) : revision
+    guard digest.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil else {
+      throw ConnectionError.invalidResponse
+    }
+    let revisions: [Binding] = [.text(digest), .text("sha256:\(digest)")]
     let pending = try scalar(
       """
       SELECT COUNT(*) FROM changes WHERE bookId=? AND status='pending'
       AND COALESCE(json_extract(CAST(data AS TEXT),'$.after.jumpFileId'),
         json_extract(CAST(data AS TEXT),'$.operation.payload.bookFileId'))=?
       AND (json_extract(CAST(data AS TEXT),'$.after.sourceRevision') IS NULL
-        OR json_extract(CAST(data AS TEXT),'$.after.sourceRevision')=?
-        OR json_extract(CAST(data AS TEXT),'$.before.sourceRevision')=?)
-      """, [.integer(bookID), .integer(fileID), .text(revision), .text(revision)])
+        OR json_extract(CAST(data AS TEXT),'$.after.sourceRevision') IN (?, ?)
+        OR json_extract(CAST(data AS TEXT),'$.before.sourceRevision') IN (?, ?))
+      """, [.integer(bookID), .integer(fileID)] + revisions + revisions)
     if pending != "0" { return true }
-    return try sourceRecoveryExists(bookID: bookID, fileID: fileID, revision: revision)
+    return try sourceRecoveryExists(bookID: bookID, fileID: fileID, revision: digest)
   }
 
   private func sourceRecoveryExists(bookID: Int, fileID: Int, revision: String) throws -> Bool {
@@ -554,11 +559,12 @@ actor NativeAnnotationStore {
         json_extract(CAST(data AS TEXT),'$.operation.payload.bookFileId'))=?
       AND (COALESCE(json_extract(CAST(data AS TEXT),'$.item.sourceRevision'),
         json_extract(CAST(data AS TEXT),'$.operation.payload.sourceRevision')) IS NULL
-        OR json_extract(CAST(data AS TEXT),'$.item.sourceRevision')=?
-        OR json_extract(CAST(data AS TEXT),'$.operation.payload.sourceRevision')=?)
+        OR json_extract(CAST(data AS TEXT),'$.item.sourceRevision') IN (?, ?)
+        OR json_extract(CAST(data AS TEXT),'$.operation.payload.sourceRevision') IN (?, ?))
       LIMIT 1
       """
-    return try scalar(sql, [.integer(bookID), .integer(fileID), .text(revision), .text(revision)])
+    let revisions: [Binding] = [.text(revision), .text("sha256:\(revision)")]
+    return try scalar(sql, [.integer(bookID), .integer(fileID)] + revisions + revisions)
       != nil
   }
 

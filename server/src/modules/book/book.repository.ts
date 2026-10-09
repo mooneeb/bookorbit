@@ -2401,10 +2401,11 @@ export class BookRepository {
     const normalizedKoboLocationValue = this.normalizeKoboLocationPart(koboLocationValue);
     const normalizedKoboContentSourceProgressPercent = this.clampNullableProgressPercentage(koboContentSourceProgressPercent);
     const normalizedKoreaderProgress = this.normalizeKoreaderProgress(koreaderProgress);
-    const narrationColumns = narration
-      ? { narrationPercentage: this.clampProgressPercentage(narration.percentage), narrationUpdatedAt: narration.updatedAt }
-      : {};
-    const textColumns = textUpdatedAt ? { textUpdatedAt } : {};
+    const narrationColumns =
+      narration && condition?.source !== 'text'
+        ? { narrationPercentage: this.clampProgressPercentage(narration.percentage), narrationUpdatedAt: narration.updatedAt }
+        : {};
+    const textColumns = textUpdatedAt && condition?.source !== 'narration' ? { textUpdatedAt } : {};
     const previous = condition?.previous;
     const keys =
       condition?.source === 'narration'
@@ -2435,17 +2436,17 @@ export class BookRepository {
         .values({
           userId,
           bookFileId: fileId,
-          cfi,
-          pageNumber,
-          percentage,
-          positionSeconds: positionSeconds ?? null,
-          mediaOverlayFragment: mediaOverlayFragment ?? null,
-          mediaOverlaySectionIndex: mediaOverlaySectionIndex ?? null,
-          koboLocationSource: normalizedKoboLocationSource,
-          koboLocationType: normalizedKoboLocationType,
-          koboLocationValue: normalizedKoboLocationValue,
-          koboContentSourceProgressPercent: normalizedKoboContentSourceProgressPercent,
-          koreaderProgress: normalizedKoreaderProgress,
+          cfi: condition?.source === 'narration' ? null : cfi,
+          pageNumber: condition?.source === 'narration' ? null : pageNumber,
+          percentage: condition?.source === 'narration' ? 0 : percentage,
+          positionSeconds: condition?.source === 'text' ? null : (positionSeconds ?? null),
+          mediaOverlayFragment: condition?.source === 'text' ? null : (mediaOverlayFragment ?? null),
+          mediaOverlaySectionIndex: condition?.source === 'text' ? null : (mediaOverlaySectionIndex ?? null),
+          koboLocationSource: condition?.source === 'narration' ? null : normalizedKoboLocationSource,
+          koboLocationType: condition?.source === 'narration' ? null : normalizedKoboLocationType,
+          koboLocationValue: condition?.source === 'narration' ? null : normalizedKoboLocationValue,
+          koboContentSourceProgressPercent: condition?.source === 'narration' ? null : normalizedKoboContentSourceProgressPercent,
+          koreaderProgress: condition?.source === 'narration' ? null : normalizedKoreaderProgress,
           updatedAt: now,
           ...narrationColumns,
           ...textColumns,
