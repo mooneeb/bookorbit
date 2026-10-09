@@ -36,13 +36,13 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
     let app = launchAndSignIn()
     openBookDetail(book, app: app)
     downloadSelectedFile(book.fileID, app: app)
-    let downloaded = try await traffic()
     app.navigationBars["Book details"].buttons["Done"].tap()
     let signOuts = app.buttons.matching(identifier: "signOut")
     XCTAssertEqual(signOuts.count, 1)
     let signOut = signOuts.element
     XCTAssertTrue(signOut.wait(for: \.isHittable, toEqual: true, timeout: 10))
     XCTAssertTrue(signOut.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    let downloaded = try await traffic()
     try await fault("offline")
     signOut.tap()
     let failure = app.alerts["Could not sign out"]

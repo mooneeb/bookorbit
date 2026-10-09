@@ -1225,12 +1225,12 @@ final class AnnotationJourneyTests: XCTestCase {
 
   @MainActor
   private func openSelectedPassagePreview(_ app: XCUIApplication) {
-    let marks = app.buttons.matching(identifier: "epubMarkPassage")
+    let marks = app.descendants(matching: .any).matching(identifier: "epubMarkPassage")
     let mark = marks.element
     XCTAssertTrue(mark.wait(for: \.isEnabled, toEqual: true, timeout: 10))
     XCTAssertEqual(marks.count, 1)
-    let panels = app.scrollViews.containing(.button, identifier: "epubMarkPassage")
-    let windows = app.windows.containing(.button, identifier: "epubMarkPassage")
+    let panels = app.scrollViews.containing(.any, identifier: "epubMarkPassage")
+    let windows = app.windows.containing(.any, identifier: "epubMarkPassage")
     guard panels.count == 1, windows.count == 1 else {
       XCTFail(
         "Expected one reader controls scroll view and window containing Mark selected passage.")
