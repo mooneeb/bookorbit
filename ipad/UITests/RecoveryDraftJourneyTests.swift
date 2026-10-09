@@ -351,7 +351,7 @@ final class RecoveryDraftJourneyTests: XCTestCase {
       NSPredicate(format: "label == %@", "Second chapter begins here."))
     XCTAssertTrue(tools.element.wait(for: \.isHittable, toEqual: true, timeout: 25))
     XCTAssertEqual(tools.count, 1)
-    XCTAssertTrue(tools.element.isEnabled)
+    XCTAssertTrue(tools.element.wait(for: \.isEnabled, toEqual: true, timeout: 20))
     tools.element.tap()
     XCTAssertTrue(previous.element.waitForExistence(timeout: 10))
     XCTAssertEqual(previous.count, 1)
