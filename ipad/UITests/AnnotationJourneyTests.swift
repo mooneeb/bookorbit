@@ -286,8 +286,16 @@ final class AnnotationJourneyTests: XCTestCase {
     XCTAssertTrue(file.waitForExistence(timeout: 10))
     if file.value as? String != "Selected" { file.tap() }
     XCTAssertEqual(file.value as? String, "Selected")
-    XCTAssertTrue(app.buttons["offlineDownload"].wait(for: \.isEnabled, toEqual: true, timeout: 10))
-    app.buttons["offlineDownload"].tap()
+    let sheets = app.collectionViews.allElementsBoundByIndex.filter {
+      $0.isHittable && $0.buttons["offlineSelectFile\(fileID)"].exists
+    }
+    XCTAssertEqual(sheets.count, 1, "Expected the visible Offline resources sheet for this file")
+    let sheet = try XCTUnwrap(sheets.first)
+    let download = sheet.buttons["offlineDownload"]
+    XCTAssertTrue(E02ProfileSupport.reveal(download, in: sheet, app: app))
+    XCTAssertTrue(download.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(download.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    download.tap()
     XCTAssertTrue(
       app.staticTexts["Verified ready for offline reading"].waitForExistence(timeout: 45))
     XCTAssertTrue(E02ProfileSupport.closeOfflineResources(app: app))
@@ -406,9 +414,7 @@ final class AnnotationJourneyTests: XCTestCase {
     let export = revealControl("sourceRecoveryExport")
     export.tap()
     guard E02ProfileSupport.openSaveToFiles(app: app, test: self) else { return }
-    let directory = try XCTUnwrap(
-      ProcessInfo.processInfo.environment["IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY"],
-      "Supply the installed app's public Documents directory for the native PDF export.")
+    let directory = try await currentPublicDocumentsDirectory()
     let documents = URL(fileURLWithPath: directory, isDirectory: true)
       .standardizedFileURL.resolvingSymlinksInPath()
     XCTAssertTrue(directory.hasPrefix("/"))
@@ -1656,6 +1662,20 @@ final class AnnotationJourneyTests: XCTestCase {
   }
 
   @MainActor
+  private func currentPublicDocumentsDirectory() async throws -> String {
+    if ProcessInfo.processInfo.environment["IPAD_E02_CURRENT_PUBLIC_FILES"] == "1" {
+      let endpoint = try XCTUnwrap(
+        URL(string: "\(Self.faultServerURL)/__faults/annotations/public-files-directory"))
+      let (bytes, response) = try await Self.networkResponse(for: URLRequest(url: endpoint))
+      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+      let result = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+      return try XCTUnwrap(result["directory"] as? String)
+    }
+    return try XCTUnwrap(
+      ProcessInfo.processInfo.environment["IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY"])
+  }
+
+  @MainActor
   private func exportA05Recovery(
     _ identifier: String, suffix: String, app: XCUIApplication, bookID: Int = 1
   ) async throws -> [String: Any] {
@@ -1666,8 +1686,7 @@ final class AnnotationJourneyTests: XCTestCase {
     let list = try XCTUnwrap(lists.first { $0.isHittable })
     XCTAssertTrue(E02ProfileSupport.reveal(exports.element, in: list, app: app))
     XCTAssertTrue(exports.element.isEnabled)
-    let directory = try XCTUnwrap(
-      ProcessInfo.processInfo.environment["IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY"])
+    let directory = try await currentPublicDocumentsDirectory()
     let documents = URL(fileURLWithPath: directory, isDirectory: true)
       .standardizedFileURL.resolvingSymlinksInPath()
     XCTAssertTrue(directory.hasPrefix("/"))

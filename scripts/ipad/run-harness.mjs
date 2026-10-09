@@ -56,6 +56,7 @@ if (
 ) {
   throw new Error("QA456 requires --annotations --ui --web --profile=pro13-portrait-light without selector overrides or retained-server modes");
 }
+let currentNativeDeviceID;
 const combinedNative = "BookOrbitUITests/AnnotationJourneyTests/testIPADE02QA456OfflineReadAlongAndAuthoritativeRecovery";
 const combinedFaultPort = combinedRecovery ? 16585 + (process.pid % 1000) : 16485;
 if (process.argv.includes("--list-journey")) {
@@ -409,6 +410,7 @@ async function runNativeTests() {
       .filter((device) => (explicitID ? device.udid === explicitID : device.name === explicitName));
     if (matches.length !== 1) throw new Error("Select exactly one available test simulator with IPAD_TEST_DESTINATION");
     const selectedDevice = matches[0];
+    currentNativeDeviceID = selectedDevice.udid;
     if (selectedDevice.state === "Shutdown") await command("xcrun", ["simctl", "boot", selectedDevice.udid]);
     await command("xcrun", ["simctl", "bootstatus", selectedDevice.udid, "-b"]);
     if (annotationsProof) {
@@ -571,9 +573,8 @@ async function runNativeTests() {
       if (combinedRecovery) {
         await command("xcodebuild", ["build-for-testing", ...commonArguments], { env: nativeEnvironment });
         await command("xcrun", ["simctl", "install", selectedDevice.udid, "ipad/DerivedData/Build/Products/Debug-iphonesimulator/BookOrbit.app"]);
-        exportedArtifactDirectory = await publicExportDirectory(selectedDevice.udid);
-        nativeEnvironment.IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
-        nativeEnvironment.TEST_RUNNER_IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
+        nativeEnvironment.IPAD_E02_CURRENT_PUBLIC_FILES = "1";
+        nativeEnvironment.TEST_RUNNER_IPAD_E02_CURRENT_PUBLIC_FILES = "1";
       }
       nativeJourneyStarted = true;
       await command(
@@ -598,8 +599,9 @@ async function runNativeTests() {
     } catch (error) {
       nativeFailure = error;
     }
-    if (exportedArtifactDirectory && nativeJourneyStarted) {
+    if ((exportedArtifactDirectory || combinedRecovery) && nativeJourneyStarted) {
       try {
+        if (combinedRecovery) exportedArtifactDirectory = await publicExportDirectory(selectedDevice.udid);
         const recoverySelected = nativeTests.some(
           (name) =>
             name === "BookOrbitUITests/RecoveryDraftJourneyTests" ||
@@ -695,7 +697,19 @@ try {
       }
     });
   });
-  if (annotationsProof) stopFaultProxy = await startFaultProxy({ port: combinedFaultPort });
+  if (annotationsProof) {
+    stopFaultProxy = await startFaultProxy({
+      port: combinedFaultPort,
+      ...(combinedRecovery
+        ? {
+            currentDocuments: async () => {
+              if (!currentNativeDeviceID) throw new Error("Native device has not been selected");
+              return publicExportDirectory(currentNativeDeviceID);
+            },
+          }
+        : {}),
+    });
+  }
   if (process.argv.includes("--serve")) {
     const servingAt = Date.now();
     console.log(`[ipad.harness_serve] [start] runId=${runID} - retaining isolated test surfaces`);

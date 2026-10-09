@@ -1,7 +1,7 @@
 import { createServer, request } from "node:http";
 import { pipeline } from "node:stream/promises";
 
-export async function startFaultProxy({ captureProgressCAS = false, port = 16485 } = {}) {
+export async function startFaultProxy({ captureProgressCAS = false, port = 16485, currentDocuments } = {}) {
   let annotationOffline = false;
   let annotationWriteArmed = false;
   let annotationTransferPath;
@@ -56,6 +56,14 @@ export async function startFaultProxy({ captureProgressCAS = false, port = 16485
     if (path.startsWith("/__faults/")) {
       if (path.startsWith("/__faults/annotations/")) {
         const action = path.slice("/__faults/annotations/".length);
+        if (action === "public-files-directory" && incoming.method === "GET" && currentDocuments) {
+          try {
+            const directory = await currentDocuments();
+            return outgoing.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify({ directory }));
+          } catch {
+            return outgoing.writeHead(503).end("Current public Files directory unavailable");
+          }
+        }
         if (action === "traffic" && incoming.method === "GET") {
           return outgoing
             .writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" })
