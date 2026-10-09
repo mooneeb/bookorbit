@@ -352,6 +352,17 @@ final class PrivateAnnotationSyncJourneyTests: XCTestCase {
           break
         }
       }
+      let details = app.navigationBars.matching(identifier: "Book details")
+      if details.firstMatch.exists {
+        XCTAssertEqual(details.count, 1)
+        XCTAssertTrue(details.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        let done = details.element.buttons.matching(identifier: "Done")
+        XCTAssertEqual(done.count, 1)
+        XCTAssertTrue(done.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+        XCTAssertTrue(done.element.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+        done.element.tap()
+        XCTAssertTrue(details.element.wait(for: \.exists, toEqual: false, timeout: 10))
+      }
       if app.buttons["signOut"].exists { app.buttons["signOut"].tap() }
       if app.buttons["Change server"].exists { app.buttons["Change server"].tap() }
     }
