@@ -570,6 +570,7 @@ async function runNativeTests() {
       }
       if (combinedRecovery) {
         await command("xcodebuild", ["build-for-testing", ...commonArguments], { env: nativeEnvironment });
+        await command("xcrun", ["simctl", "install", selectedDevice.udid, "ipad/DerivedData/Build/Products/Debug-iphonesimulator/BookOrbit.app"]);
         exportedArtifactDirectory = await publicExportDirectory(selectedDevice.udid);
         nativeEnvironment.IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
         nativeEnvironment.TEST_RUNNER_IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
