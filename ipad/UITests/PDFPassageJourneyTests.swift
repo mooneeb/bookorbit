@@ -269,6 +269,26 @@ final class PDFPassageJourneyTests: XCTestCase {
 
   @MainActor private func tap(_ id: String, _ app: XCUIApplication) {
     let element = app.buttons[id]
+    let editorBodyControls = [
+      "pdfPassageFixtureStroke", "pdfPassageFixtureScribble", "pdfPassageDelete",
+    ]
+    if editorBodyControls.contains(id) {
+      guard element.waitForExistence(timeout: 15) else {
+        XCTFail("Expected passage editor control \(id)")
+        return
+      }
+      let editors = app.scrollViews
+        .containing(.staticText, identifier: "pdfPassageSelectionPreview")
+        .containing(.button, identifier: id)
+      guard editors.count == 1 else {
+        XCTFail("Expected one outer passage editor scroll view for \(id), found \(editors.count)")
+        return
+      }
+      let editor = editors.element
+      for _ in 0..<4 where !element.isHittable {
+        editor.swipeUp()
+      }
+    }
     XCTAssertTrue(element.wait(for: \.isHittable, toEqual: true, timeout: 15), id)
     XCTAssertTrue(element.wait(for: \.isEnabled, toEqual: true, timeout: 10), id)
     element.tap()
