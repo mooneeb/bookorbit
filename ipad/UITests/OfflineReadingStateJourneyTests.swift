@@ -169,7 +169,7 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
     guard E02ProfileSupport.openOfflineResources(app: app) else { return }
     XCTAssertTrue(
       app.staticTexts["Verified ready for offline reading"].waitForExistence(timeout: 15))
-    app.buttons["Done"].tap()
+    guard E02ProfileSupport.closeOfflineResources(app: app) else { return }
     try await fault("offline")
     app.terminate()
     app.launch()
