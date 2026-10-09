@@ -16,12 +16,12 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
     continueAfterFailure = false
   }
 
-  override func tearDown() async throws {
+  override func tearDownWithError() throws {
     if let testRun, testRun.failureCount > 0 {
-      let data = await MainActor.run { XCUIScreen.main.screenshot().pngRepresentation }
+      let data = XCUIScreen.main.screenshot().pngRepresentation
       attach(data, name: "IPAD-E02-A04-reading-state-failure-\(name)", type: "public.png")
     }
-    try await super.tearDown()
+    try super.tearDownWithError()
   }
 
   @MainActor
@@ -166,7 +166,7 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
     XCTAssertFalse(app.staticTexts["sourceRecoveryError"].exists)
     capture("IPAD-E02-A04-PDF-known-publication-has-no-false-source-recovery")
     app.buttons["sourceRecoveryClose"].tap()
-    app.buttons["offlineResources"].tap()
+    guard E02ProfileSupport.openOfflineResources(app: app) else { return }
     XCTAssertTrue(
       app.staticTexts["Verified ready for offline reading"].waitForExistence(timeout: 15))
     app.buttons["Done"].tap()
@@ -532,7 +532,7 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
 
   @MainActor
   private func downloadSelectedFile(_ id: Int, excluding: [Int] = [], app: XCUIApplication) {
-    app.buttons["offlineResources"].tap()
+    guard E02ProfileSupport.openOfflineResources(app: app) else { return }
     for unselected in excluding {
       let row = app.buttons["offlineSelectFile\(unselected)"]
       XCTAssertTrue(row.waitForExistence(timeout: 10))

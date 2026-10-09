@@ -222,11 +222,7 @@ final class OfflineRemovalJourneyTests: XCTestCase {
 
   @MainActor
   private func openResources(_ app: XCUIApplication) {
-    let action = app.buttons["offlineResources"]
-    let content = app.descendants(matching: .any)["bookDetailContent"].firstMatch
-    for _ in 0..<6 where !action.isHittable { content.swipeDown() }
-    XCTAssertTrue(action.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    action.tap()
+    guard E02ProfileSupport.openOfflineResources(app: app) else { return }
     XCTAssertTrue(app.staticTexts["offlineStatus"].waitForExistence(timeout: 10))
   }
 
@@ -355,7 +351,7 @@ final class OfflineRemovalJourneyTests: XCTestCase {
 
   @MainActor
   private func downloadSelectedFile(_ id: Int, excluding: [Int] = [], app: XCUIApplication) {
-    app.buttons["offlineResources"].tap()
+    guard E02ProfileSupport.openOfflineResources(app: app) else { return }
     for unselected in excluding {
       let row = app.buttons["offlineSelectFile\(unselected)"]
       XCTAssertTrue(row.waitForExistence(timeout: 10))

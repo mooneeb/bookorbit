@@ -121,6 +121,58 @@ enum E02ProfileSupport {
     return true
   }
 
+  static func openOfflineResources(app: XCUIApplication) -> Bool {
+    let containers = app.collectionViews.matching(identifier: "bookDetailContent")
+    let content = containers.element
+    let navigationBars = app.navigationBars.matching(identifier: "Book details")
+    guard content.wait(for: \.isHittable, toEqual: true, timeout: 10), containers.count == 1,
+      navigationBars.count == 1
+    else {
+      XCTFail("Expected one visible Book details collection and navigation bar.")
+      return false
+    }
+    let contentFrame = content.frame.intersection(app.frame)
+    let visibleTop = max(contentFrame.minY, navigationBars.element.frame.maxY)
+    let viewport = CGRect(
+      x: contentFrame.minX, y: visibleTop, width: contentFrame.width,
+      height: contentFrame.maxY - visibleTop)
+    guard viewport.width > 0, viewport.height > 0 else {
+      XCTFail("Book details must have a visible content viewport below its navigation bar.")
+      return false
+    }
+    let matches = content.buttons.matching(identifier: "offlineResources")
+    let resources = matches.element
+    for _ in 0..<12 {
+      guard matches.count <= 1 else {
+        XCTFail("Expected one Offline resources action in Book details.")
+        return false
+      }
+      if resources.exists && resources.isHittable && viewport.contains(resources.frame) { break }
+      let scrollDown = resources.exists && resources.frame.minY < viewport.minY
+      let start = content.coordinate(
+        withNormalizedOffset: CGVector(
+          dx: 0.02,
+          dy: (viewport.minY + viewport.height * 0.65 - content.frame.minY) / content.frame.height))
+      let end = start.withOffset(CGVector(dx: 0, dy: viewport.height * (scrollDown ? 0.25 : -0.25)))
+      start.press(forDuration: 0.01, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+    }
+    guard matches.count == 1, resources.wait(for: \.isHittable, toEqual: true, timeout: 10),
+      viewport.contains(resources.frame),
+      resources.wait(for: \.isEnabled, toEqual: true, timeout: 10)
+    else {
+      XCTFail(
+        "Offline resources action is not fully visible after twelve bounded content scrolls.")
+      return false
+    }
+    resources.tap()
+    let headings = app.navigationBars.matching(identifier: "Offline resources")
+    guard headings.element.waitForExistence(timeout: 10), headings.count == 1 else {
+      XCTFail("Opening Offline resources must show its unique navigation heading.")
+      return false
+    }
+    return true
+  }
+
   static func applyMotionInSettings(_ test: XCTestCase) {
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
     settings.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]

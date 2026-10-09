@@ -347,9 +347,7 @@ final class AnnotationJourneyTests: XCTestCase {
     try await fault("reset")
     let app = launchAndSignIn(serverURL: Self.faultServerURL)
     openBookDetail("Orbit fixture", bookID: 1, app: app)
-    let resources = app.buttons["offlineResources"]
-    XCTAssertTrue(resources.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    resources.tap()
+    guard E02ProfileSupport.openOfflineResources(app: app) else { return }
     let choice = app.buttons["offlineSelectFile1"]
     XCTAssertTrue(choice.waitForExistence(timeout: 10))
     XCTAssertEqual(choice.value as? String, "Not selected")
@@ -598,7 +596,7 @@ final class AnnotationJourneyTests: XCTestCase {
       .joined()
     let app = launchAndSignIn(serverURL: Self.faultServerURL)
     openBookDetail(try XCTUnwrap(detail["title"] as? String), bookID: 6, app: app)
-    app.buttons["offlineResources"].tap()
+    guard E02ProfileSupport.openOfflineResources(app: app) else { return }
     let selection = app.buttons["offlineSelectFile\(fileID)"]
     XCTAssertTrue(selection.waitForExistence(timeout: 10))
     XCTAssertEqual(selection.value as? String, "Not selected")
