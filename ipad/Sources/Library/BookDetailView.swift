@@ -88,8 +88,13 @@ struct BookDetailView: View {
             }
             if canRead {
               Section("Offline reading") {
-                Button("Offline resources") { isChoosingOffline = true }
-                  .frame(minHeight: 44).accessibilityIdentifier("offlineResources")
+                Button {
+                  isChoosingOffline = true
+                } label: {
+                  Text("Offline resources")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+                }.accessibilityIdentifier("offlineResources")
                 Button("Source recovery") { isReviewingSourceRecovery = true }
                   .frame(minHeight: 44).accessibilityIdentifier("sourceRecovery")
               }

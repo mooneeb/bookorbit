@@ -327,7 +327,15 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     capture("IPAD-E02-A06-files-functional-new-passage-awaits-explicit-confirmation")
     confirmation.tap()
     XCTAssertTrue(reattach.waitForExistence(timeout: 15))
-    app.buttons["Done"].tap()
+    let recoveryBars = app.navigationBars.matching(identifier: "Recovery drafts")
+    XCTAssertEqual(recoveryBars.count, 1)
+    let recoveryDone = recoveryBars.element.buttons.matching(
+      NSPredicate(format: "label == %@", "Done"))
+    XCTAssertEqual(recoveryDone.count, 1)
+    XCTAssertTrue(recoveryDone.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(recoveryDone.element.isEnabled)
+    recoveryDone.element.tap()
+    XCTAssertTrue(recoveryBars.element.wait(for: \.exists, toEqual: false, timeout: 10))
     tapHubControl("annotationHubSynchronize", app: app)
     let attached = try await waitForAttached(marker: marker, token: token)
     let newID = try XCTUnwrap(attached["id"] as? Int)
@@ -361,7 +369,12 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     openRecovery(app)
     reveal(reattach, app: app)
     capture("IPAD-E02-A06-files-functional-recovery-draft-retained-after-explicit-attachment")
-    app.buttons["Done"].tap()
+    XCTAssertEqual(recoveryBars.count, 1)
+    XCTAssertEqual(recoveryDone.count, 1)
+    XCTAssertTrue(recoveryDone.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(recoveryDone.element.isEnabled)
+    recoveryDone.element.tap()
+    XCTAssertTrue(recoveryBars.element.wait(for: \.exists, toEqual: false, timeout: 10))
   }
 
   @MainActor
