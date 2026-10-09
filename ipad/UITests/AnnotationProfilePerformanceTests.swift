@@ -73,9 +73,9 @@ final class AnnotationProfilePerformanceTests: XCTestCase {
     } operation: {
       app.buttons["pdfNextPage"].tap()
       XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 2))
+    } cleanup: {
       XCTAssertTrue(
         app.buttons["pdfPreviousPage"].wait(for: \.isEnabled, toEqual: true, timeout: 2))
-    } cleanup: {
       app.buttons["pdfPreviousPage"].tap()
       XCTAssertTrue(first.waitForExistence(timeout: 5))
     }
