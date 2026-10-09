@@ -84,37 +84,49 @@ struct PassageAnnotationView: View {
       }
       .navigationTitle(model.presentation?.item == nil ? "Mark passage" : "Edit passage note")
       .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button(action: model.cancel) {
-            Text("Cancel")
-              .font(.body)
-              .fixedSize(horizontal: false, vertical: true)
-              .frame(minWidth: 44, minHeight: 44)
-              .contentShape(Rectangle())
+      .safeAreaInset(edge: .top) {
+        ViewThatFits(in: .horizontal) {
+          HStack {
+            cancelButton
+            Spacer()
+            saveButton
           }
-          .accessibilityShowsLargeContentViewer()
-          .disabled(model.isSaving)
-          .accessibilityIdentifier("passageCancel")
-        }
-        ToolbarItem(placement: .confirmationAction) {
-          if model.canManage {
-            Button(action: model.save) {
-              Text("Save")
-                .font(.body)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .accessibilityShowsLargeContentViewer()
-            .disabled(!model.canSave)
-            .accessibilityIdentifier("passageSave")
+          VStack(alignment: .leading, spacing: 8) {
+            cancelButton
+            saveButton
           }
         }
+        .padding(.horizontal).padding(.vertical, 8).background(.background)
       }
     }
     .interactiveDismissDisabled(model.isSaving)
     .presentationDetents([.large])
+  }
+
+  private var cancelButton: some View {
+    Button(action: model.cancel) {
+      Text("Cancel")
+        .font(.body)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+    }
+    .disabled(model.isSaving)
+    .accessibilityIdentifier("passageCancel")
+  }
+
+  @ViewBuilder private var saveButton: some View {
+    if model.canManage {
+      Button(action: model.save) {
+        Text("Save")
+          .font(.body)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(minWidth: 44, minHeight: 44)
+          .contentShape(Rectangle())
+      }
+      .disabled(!model.canSave)
+      .accessibilityIdentifier("passageSave")
+    }
   }
 }
 

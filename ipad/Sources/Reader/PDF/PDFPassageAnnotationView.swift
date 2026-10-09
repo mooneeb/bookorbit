@@ -71,8 +71,14 @@ struct PDFPassageAnnotationView: View {
             )
             .frame(minHeight: 180).disabled(!model.canManage)
             if annotationInputFixture {
-              Button("Complete fixture English Scribble", action: model.completeFixtureScribble)
-                .disabled(!model.canManage).accessibilityIdentifier("pdfPassageFixtureScribble")
+              Button(action: model.completeFixtureScribble) {
+                Text("Complete fixture English Scribble")
+                  .font(.body)
+                  .fixedSize(horizontal: false, vertical: true)
+                  .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                  .contentShape(Rectangle())
+              }
+              .disabled(!model.canManage).accessibilityIdentifier("pdfPassageFixtureScribble")
             }
           }
           if model.kind == "handwriting" {
@@ -89,15 +95,26 @@ struct PDFPassageAnnotationView: View {
             Text("\(model.drawing.strokes.count) retained strokes")
               .accessibilityIdentifier("pdfPassageRetainedStrokeCount")
             if annotationInputFixture {
-              Button("Add fixture Pencil stroke", action: model.addFixtureStroke)
-                .disabled(!model.canManage).accessibilityIdentifier("pdfPassageFixtureStroke")
+              Button(action: model.addFixtureStroke) {
+                Text("Add fixture Pencil stroke")
+                  .font(.body)
+                  .fixedSize(horizontal: false, vertical: true)
+                  .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                  .contentShape(Rectangle())
+              }
+              .disabled(!model.canManage).accessibilityIdentifier("pdfPassageFixtureStroke")
             }
           }
           if let error = model.error { Text(error).accessibilityIdentifier("pdfPassageSaveError") }
           if model.presentation?.item != nil {
-            Button("Delete annotation", role: .destructive, action: model.delete)
-              .disabled(!model.canManage || model.isBusy).accessibilityIdentifier(
-                "pdfPassageDelete")
+            Button(role: .destructive, action: model.delete) {
+              Text("Delete annotation")
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .disabled(!model.canManage || model.isBusy).accessibilityIdentifier("pdfPassageDelete")
           }
         }.padding()
       }
@@ -105,16 +122,44 @@ struct PDFPassageAnnotationView: View {
         model.presentation?.item == nil ? "Mark PDF passage" : "Edit PDF passage note"
       )
       .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel", action: model.cancel).disabled(model.isBusy).accessibilityIdentifier(
-            "pdfPassageCancel")
+      .safeAreaInset(edge: .top) {
+        ViewThatFits(in: .horizontal) {
+          HStack {
+            cancelButton
+            Spacer()
+            saveButton
+          }
+          VStack(alignment: .leading, spacing: 8) {
+            cancelButton
+            saveButton
+          }
         }
-        ToolbarItem(placement: .confirmationAction) {
-          Button("Save", action: model.save).disabled(!model.canSave).accessibilityIdentifier(
-            "pdfPassageSave")
-        }
+        .padding(.horizontal).padding(.vertical, 8).background(.background)
       }
     }.interactiveDismissDisabled(model.isBusy).presentationDetents([.large])
+  }
+
+  private var cancelButton: some View {
+    Button(action: model.cancel) {
+      Text("Cancel")
+        .font(.body)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+    }
+    .disabled(model.isBusy)
+    .accessibilityIdentifier("pdfPassageCancel")
+  }
+
+  private var saveButton: some View {
+    Button(action: model.save) {
+      Text("Save")
+        .font(.body)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+    }
+    .disabled(!model.canSave)
+    .accessibilityIdentifier("pdfPassageSave")
   }
 }

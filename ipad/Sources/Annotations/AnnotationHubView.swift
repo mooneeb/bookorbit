@@ -28,6 +28,12 @@ struct AnnotationHubView: View {
           submit: search, identifier: "annotationHubSearch"
         )
         .padding()
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 16) { headerButtons }
+          VStack(alignment: .leading, spacing: 8) { headerButtons }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal).padding(.bottom, 8)
         if let bookID = model.bookID {
           HStack {
             Text(model.bookTitle ?? String(localized: "Selected book"))
@@ -87,34 +93,6 @@ struct AnnotationHubView: View {
         }.padding().font(.body).buttonStyle(.plain).foregroundStyle(Color(uiColor: .label))
       }
       .navigationTitle("Annotations")
-      .toolbar {
-        ToolbarItem(placement: .topBarLeading) {
-          Button("Done", action: dismiss.callAsFunction).accessibilityIdentifier(
-            "annotationHubDone")
-        }
-        ToolbarItemGroup(placement: .topBarTrailing) {
-          Button(action: openFilters) {
-            Text("Filters")
-              .font(.body)
-              .fixedSize(horizontal: false, vertical: true)
-              .frame(minWidth: 44, minHeight: 44)
-              .contentShape(Rectangle())
-          }
-          .accessibilityShowsLargeContentViewer()
-          .accessibilityIdentifier("annotationHubFilters")
-          if canManage {
-            Button(action: openDevices) {
-              Text("Devices")
-                .font(.body)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .accessibilityShowsLargeContentViewer()
-            .accessibilityIdentifier("annotationHubDevices")
-          }
-        }
-      }
       .task { await model.load() }
       .sheet(isPresented: $showingFilters) {
         AnnotationHubFiltersView(model: model)
@@ -144,6 +122,35 @@ struct AnnotationHubView: View {
       .fileExporter(
         isPresented: $showingExporter, document: exportDocument, contentTypes: [.json],
         defaultFilename: "BookOrbit annotations", onCompletion: exported)
+    }
+  }
+
+  @ViewBuilder private var headerButtons: some View {
+    Button(action: dismiss.callAsFunction) {
+      Text("Done")
+        .font(.body)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+    }
+    .accessibilityIdentifier("annotationHubDone")
+    Button(action: openFilters) {
+      Text("Filters")
+        .font(.body)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+    }
+    .accessibilityIdentifier("annotationHubFilters")
+    if canManage {
+      Button(action: openDevices) {
+        Text("Devices")
+          .font(.body)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(minWidth: 44, minHeight: 44)
+          .contentShape(Rectangle())
+      }
+      .accessibilityIdentifier("annotationHubDevices")
     }
   }
 
