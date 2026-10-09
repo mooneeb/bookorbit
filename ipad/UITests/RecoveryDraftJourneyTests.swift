@@ -37,12 +37,12 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     XCTAssertEqual(URL(fileURLWithPath: directory).lastPathComponent, "Documents")
     let token = try await login()
     let marker = "RecoveryUI-\(UUID().uuidString)"
-    let clientID = UUID().uuidString
+    let requestedClientID = UUID().uuidString.lowercased()
     let drawing = retainedDrawing()
     let created = try await apply(
       token: token,
       operation: [
-        "operationId": UUID().uuidString, "clientId": clientID, "bookId": 2,
+        "operationId": UUID().uuidString.lowercased(), "clientId": requestedClientID, "bookId": 2,
         "baseVersion": 0, "action": "create",
         "payload": [
           "bookFileId": 2, "cfi": "epubcfi(/6/2[c1ref]!/4/2[p1],/1:0,/1:5)",
@@ -52,19 +52,22 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     XCTAssertEqual(created["status"] as? String, "applied")
     addTeardownBlock { try await Self.cleanUpActiveFixture(marker: marker, token: token) }
     let original = try XCTUnwrap(created["annotation"] as? [String: Any])
+    let clientID = try XCTUnwrap(original["clientId"] as? String)
+    XCTAssertEqual(clientID, requestedClientID)
     let originalID = try XCTUnwrap(original["id"] as? Int)
     let originalVersion = try XCTUnwrap(original["version"] as? Int)
     let deleted = try await apply(
       token: token,
       operation: [
-        "operationId": UUID().uuidString, "clientId": clientID, "annotationId": originalID,
+        "operationId": UUID().uuidString.lowercased(), "clientId": clientID,
+        "annotationId": originalID,
         "bookId": 2, "baseVersion": originalVersion, "action": "delete",
       ])
     XCTAssertEqual(deleted["status"] as? String, "applied")
     let tombstone = try XCTUnwrap(deleted["annotation"] as? [String: Any])
     let deletedAt = try XCTUnwrap(tombstone["deletedAt"] as? String)
     let deletedVersion = try XCTUnwrap(tombstone["version"] as? Int)
-    let operationID = UUID().uuidString
+    let operationID = UUID().uuidString.lowercased()
     let recoveredNote = "\(marker) offline intended note"
     let recovered = try await apply(
       token: token,
@@ -98,10 +101,12 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     XCTAssertEqual(artifact["bookId"] as? Int, 2)
     let exportedOperation = try XCTUnwrap(artifact["operation"] as? [String: Any])
     XCTAssertEqual(exportedOperation["operationId"] as? String, operationID)
+    XCTAssertEqual(exportedOperation["clientId"] as? String, clientID)
     XCTAssertEqual(exportedOperation["annotationId"] as? Int, originalID)
     XCTAssertEqual(exportedOperation["baseVersion"] as? Int, originalVersion)
     let exportedItem = try XCTUnwrap(artifact["item"] as? [String: Any])
     XCTAssertEqual(exportedItem["id"] as? Int, originalID)
+    XCTAssertEqual(exportedItem["clientId"] as? String, clientID)
     XCTAssertEqual(exportedItem["note"] as? String, recoveredNote)
     XCTAssertEqual(exportedItem["kind"] as? String, "handwriting")
     let exportedDrawing = try XCTUnwrap(exportedItem["drawing"] as? [String: Any])
@@ -468,7 +473,7 @@ final class RecoveryDraftJourneyTests: XCTestCase {
           "deviceId": "Recovery UI fixture cleanup",
           "operations": [
             [
-              "operationId": UUID().uuidString,
+              "operationId": UUID().uuidString.lowercased(),
               "clientId": try XCTUnwrap(item["clientId"] as? String),
               "annotationId": try XCTUnwrap(item["id"] as? Int), "bookId": 2,
               "baseVersion": try XCTUnwrap(item["version"] as? Int), "action": "delete",
