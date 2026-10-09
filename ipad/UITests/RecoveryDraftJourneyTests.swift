@@ -89,7 +89,24 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Original drawing retained"].exists)
     XCTAssertTrue(app.staticTexts[recoveredNote].exists)
     capture("IPAD-E02-A05-A06-deleted-original-retained-recovery")
-    try app.performAccessibilityAudit()
+    try app.performAccessibilityAudit { issue in
+      var diagnostic =
+        "auditType=\(issue.auditType.rawValue)\ncompactDescription=\(issue.compactDescription)"
+      if let element = issue.element {
+        let exists = element.exists
+        diagnostic += "\nelementExists=\(exists)"
+        if exists {
+          diagnostic +=
+            "\nelementType=\(element.elementType.rawValue)\nidentifier=\(element.identifier)\nlabel=\(element.label)\nvalue=\(String(describing: element.value))\nframe=\(element.frame)"
+        }
+      } else {
+        diagnostic += "\nelement=nil"
+      }
+      self.attach(
+        Data(diagnostic.utf8), name: "IPAD-E02-A06-recovery-accessibility-audit-issue",
+        type: "public.plain-text")
+      return false
+    }
     export.tap()
     let filename = "\(marker)-recovery.json"
     saveToPublicDocuments(filename: filename, app: app)
