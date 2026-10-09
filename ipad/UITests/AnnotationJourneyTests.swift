@@ -92,9 +92,7 @@ final class AnnotationJourneyTests: XCTestCase {
     let selection = app.buttons["epubFixtureSelectPassage"]
     XCTAssertTrue(selection.wait(for: \.isHittable, toEqual: true, timeout: 20))
     selection.tap()
-    let mark = app.buttons["epubMarkPassage"]
-    XCTAssertTrue(mark.wait(for: \.isEnabled, toEqual: true, timeout: 10))
-    mark.tap()
+    openSelectedPassagePreview(app)
     let preview = app.staticTexts["passageSelectionPreview"]
     XCTAssertTrue(preview.waitForExistence(timeout: 10))
     XCTAssertTrue(preview.label.contains("Alpha"))
@@ -752,9 +750,7 @@ final class AnnotationJourneyTests: XCTestCase {
     XCTAssertTrue(selection.wait(for: \.isHittable, toEqual: true, timeout: 20))
     selection.tap()
     XCTAssertFalse(app.buttons["passageCancel"].exists, "A07 must select an unowned passage")
-    let mark = app.buttons["epubMarkPassage"]
-    XCTAssertTrue(mark.wait(for: \.isHittable, toEqual: true, timeout: 10))
-    mark.tap()
+    openSelectedPassagePreview(app)
     XCTAssertTrue(app.staticTexts["passageSelectionPreview"].waitForExistence(timeout: 10))
     XCTAssertEqual(app.staticTexts["passageSelectionPreview"].label, "Second chapter begins here.")
     app.buttons["Handwriting"].tap()
@@ -1223,8 +1219,23 @@ final class AnnotationJourneyTests: XCTestCase {
     let selection = app.buttons["epubFixtureSelectPassage"]
     XCTAssertTrue(selection.wait(for: \.isHittable, toEqual: true, timeout: 20))
     selection.tap()
-    app.buttons["epubMarkPassage"].tap()
-    XCTAssertTrue(app.staticTexts["passageSelectionPreview"].waitForExistence(timeout: 10))
+    openSelectedPassagePreview(app)
+    let preview = app.staticTexts["passageSelectionPreview"]
+    XCTAssertTrue(preview.label.contains("Alpha"))
+    XCTAssertTrue(preview.label.contains("omega."))
+  }
+
+  @MainActor
+  private func openSelectedPassagePreview(_ app: XCUIApplication) {
+    let marks = app.buttons.matching(identifier: "epubMarkPassage")
+    let mark = marks.element
+    XCTAssertTrue(mark.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    XCTAssertEqual(marks.count, 1)
+    XCTAssertTrue(mark.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    mark.tap()
+    let previews = app.staticTexts.matching(identifier: "passageSelectionPreview")
+    XCTAssertTrue(previews.element.waitForExistence(timeout: 10))
+    XCTAssertEqual(previews.count, 1)
   }
 
   @MainActor
