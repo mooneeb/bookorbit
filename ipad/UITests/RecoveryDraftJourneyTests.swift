@@ -297,7 +297,31 @@ final class RecoveryDraftJourneyTests: XCTestCase {
     XCTAssertTrue(select.wait(for: \.isHittable, toEqual: true, timeout: 15))
     select.tap()
     let confirmation = app.buttons["passageRepairHere"]
+    XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
+    let panels = app.scrollViews.containing(.button, identifier: "passageRepairHere")
+    let windows = app.windows.containing(.button, identifier: "passageRepairHere")
+    XCTAssertEqual(panels.count, 1)
+    XCTAssertEqual(windows.count, 1)
+    let panel = panels.element
+    let window = windows.element
+    let positions = panel.staticTexts.matching(identifier: "epubReadingPosition")
+    XCTAssertEqual(positions.count, 1)
+    let position = positions.element.label
+    let windowFrame = window.frame
+    let visible = panel.frame.intersection(windowFrame)
+    for _ in 0..<6 {
+      if confirmation.isHittable && visible.contains(confirmation.frame) { break }
+      if confirmation.frame.minY < visible.minY {
+        panel.swipeDown()
+      } else {
+        panel.swipeUp()
+      }
+      XCTAssertEqual(window.frame, windowFrame)
+      XCTAssertEqual(positions.element.label, position)
+    }
     XCTAssertTrue(confirmation.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(visible.contains(confirmation.frame))
+    XCTAssertTrue(confirmation.isEnabled)
     let beforeConfirming = try await activeItems(marker: marker, token: token)
     XCTAssertEqual(beforeConfirming.count, 0)
     capture("IPAD-E02-A06-files-functional-new-passage-awaits-explicit-confirmation")

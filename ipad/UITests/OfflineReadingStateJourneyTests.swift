@@ -271,18 +271,58 @@ final class OfflineReadingStateJourneyTests: XCTestCase {
     let app = launchAndSignIn()
     openBookDetail(book, app: app)
     downloadSelectedFile(book.fileID, app: app)
+    readFile(book.fileID, app: app)
+    let first = app.webViews.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS %@", "Alpha 😀 cafe\u{301} omega.")
+    ).firstMatch
+    XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 25))
+    let conflict = app.staticTexts["readerPositionConflict"]
+    if conflict.waitForExistence(timeout: 5) {
+      let localChoice = app.buttons.matching(identifier: "readerPositionChooseLocal")
+      XCTAssertEqual(localChoice.count, 1)
+      XCTAssertTrue(localChoice.element.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+      XCTAssertTrue(localChoice.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+      localChoice.element.tap()
+    }
+    XCTAssertTrue(conflict.wait(for: \.exists, toEqual: false, timeout: 15))
+    let tools = app.buttons["epubReaderTools"]
+    XCTAssertTrue(tools.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+    XCTAssertTrue(tools.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    tools.tap()
+    let setupPosition = app.descendants(matching: .any).matching(identifier: "epubGoToPosition")
+    XCTAssertTrue(setupPosition.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    XCTAssertEqual(setupPosition.count, 1)
+    setupPosition.element.tap()
+    let setupInput = app.textFields["epubJumpInput"]
+    XCTAssertTrue(setupInput.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    replaceText(setupInput, with: "0")
+    XCTAssertEqual(setupInput.value as? String, "0")
+    app.buttons["epubJumpCommit"].tap()
+    XCTAssertTrue(setupInput.wait(for: \.exists, toEqual: false, timeout: 15))
+    XCTAssertTrue(
+      app.staticTexts.matching(identifier: "epubReadingPosition")
+        .matching(NSPredicate(format: "label ENDSWITH %@", ", 0 percent"))
+        .element.waitForExistence(timeout: 15))
+    let closeReader = app.buttons["epubCloseReader"]
+    XCTAssertTrue(closeReader.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+    XCTAssertTrue(closeReader.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    closeReader.tap()
+    XCTAssertTrue(closeReader.wait(for: \.exists, toEqual: false, timeout: 15))
     let downloaded = try await traffic()
     try await fault("offline")
     app.terminate()
     app.launch()
     openOfflineBook(book, app: app)
     readFile(book.fileID, app: app)
-    let first = app.webViews.staticTexts.matching(
-      NSPredicate(format: "label CONTAINS %@", "Alpha 😀 cafe\u{301} omega.")
-    ).firstMatch
     XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 25))
+    XCTAssertTrue(conflict.wait(for: \.exists, toEqual: false, timeout: 15))
+    XCTAssertTrue(tools.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+    XCTAssertTrue(tools.wait(for: \.isHittable, toEqual: true, timeout: 15))
     app.buttons["epubReaderTools"].tap()
-    app.buttons["epubGoToPosition"].tap()
+    let goToPosition = app.descendants(matching: .any).matching(identifier: "epubGoToPosition")
+    XCTAssertTrue(goToPosition.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    XCTAssertEqual(goToPosition.count, 1)
+    goToPosition.element.tap()
     let positionInput = app.textFields["epubJumpInput"]
     XCTAssertTrue(positionInput.wait(for: \.isHittable, toEqual: true, timeout: 15))
     replaceText(positionInput, with: "0")
