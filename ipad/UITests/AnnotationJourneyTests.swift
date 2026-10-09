@@ -597,8 +597,13 @@ final class AnnotationJourneyTests: XCTestCase {
     let app = launchAndSignIn(serverURL: Self.faultServerURL)
     openBookDetail(try XCTUnwrap(detail["title"] as? String), bookID: 6, app: app)
     guard E02ProfileSupport.openOfflineResources(app: app) else { return }
-    let selection = app.buttons["offlineSelectFile\(fileID)"]
+    let selections = app.buttons.matching(identifier: "offlineSelectFile\(fileID)")
+    let selection = selections.element
     XCTAssertTrue(selection.waitForExistence(timeout: 10))
+    XCTAssertEqual(selections.count, 1)
+    XCTAssertTrue(selection.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(selection.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    if selection.value as? String == "Selected" { selection.tap() }
     XCTAssertEqual(selection.value as? String, "Not selected")
     selection.tap()
     app.buttons["offlineDownload"].tap()
@@ -1089,7 +1094,17 @@ final class AnnotationJourneyTests: XCTestCase {
     let picker = app.buttons[id]
     XCTAssertTrue(picker.wait(for: \.isHittable, toEqual: true, timeout: 5))
     picker.tap()
-    app.buttons[option].tap()
+    let optionPredicate = NSPredicate(
+      format: "elementType == %d AND label == %@ AND identifier == %@",
+      Int(XCUIElement.ElementType.button.rawValue), option, "")
+    let menus = app.collectionViews.containing(optionPredicate)
+    XCTAssertTrue(menus.element.waitForExistence(timeout: 5))
+    XCTAssertEqual(menus.count, 1)
+    let choices = menus.element.buttons.matching(NSPredicate(format: "label == %@", option))
+    XCTAssertEqual(choices.count, 1)
+    XCTAssertTrue(choices.element.wait(for: \.isEnabled, toEqual: true, timeout: 5))
+    XCTAssertTrue(choices.element.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    choices.element.tap()
   }
 
   @MainActor

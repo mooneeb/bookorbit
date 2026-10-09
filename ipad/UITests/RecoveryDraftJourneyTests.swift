@@ -366,7 +366,11 @@ final class RecoveryDraftJourneyTests: XCTestCase {
       try JSONSerialization.data(withJSONObject: ["new": attached, "deleted": preserved]),
       name: "IPAD-E02-A06-files-functional-new-identity-and-preserved-tombstone",
       type: "public.json")
-    openRecovery(app)
+    XCTAssertEqual(app.buttons.matching(identifier: "annotationHubRecovery").count, 1)
+    tapHubControl("annotationHubRecovery", app: app)
+    let storage = app.segmentedControls["annotationHubRecoveryStorage"]
+    XCTAssertTrue(storage.waitForExistence(timeout: 10))
+    storage.buttons["Server"].tap()
     reveal(reattach, app: app)
     capture("IPAD-E02-A06-files-functional-recovery-draft-retained-after-explicit-attachment")
     XCTAssertEqual(recoveryBars.count, 1)
