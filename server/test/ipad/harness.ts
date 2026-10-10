@@ -28,6 +28,11 @@ import { SourcePdfFaultsModule } from './source-pdf-faults.module';
 class IpadHarnessModule {}
 
 const started = Date.now();
+let disposableFixtureFolder: string | undefined;
+
+async function cleanupFixture() {
+  if (disposableFixtureFolder) await rm(disposableFixtureFolder, { recursive: true, force: true });
+}
 
 async function main() {
   const fixtureBookCount =
@@ -45,6 +50,7 @@ async function main() {
     throw new Error('Fixture reuse requires an existing isolated temporary content folder');
   }
   const folder = reuseFixture ? resumeFolder! : await mkdtemp(join(tmpdir(), 'bookorbit-ipad-'));
+  if (!reuseFixture) disposableFixtureFolder = folder;
   if (reuseFixture) await stat(folder);
   const progressOnly = process.env.IPAD_PROGRESS_ONLY === '1';
   const apiPort = progressOnly ? 16487 : 16482;
@@ -260,18 +266,22 @@ async function main() {
   const close = async () => {
     await app.close();
     if (oidc) await new Promise<void>((resolve, reject) => oidc.close((error) => (error ? reject(error) : resolve())));
-    await rm(folder, { recursive: true, force: true });
+    await cleanupFixture();
     process.exit(0);
   };
   process.once('SIGTERM', () => void close());
   process.once('SIGINT', () => void close());
 }
 
-void main().catch((error: unknown) => {
+void main().catch(async (error: unknown) => {
   const errorClass = error instanceof Error ? error.name : 'UnknownError';
   const message = error instanceof Error ? error.message : 'Unknown error';
   console.error(
     `[ipad.harness] [fail] runId=${process.pid} durationMs=${Date.now() - started} errorClass=${errorClass} error="${sanitizeLogValue(message)}" - harness failed`,
   );
-  process.exit(1);
+  try {
+    await cleanupFixture();
+  } finally {
+    process.exit(1);
+  }
 });
