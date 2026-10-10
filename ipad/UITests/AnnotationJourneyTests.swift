@@ -70,6 +70,260 @@ final class AnnotationJourneyTests: XCTestCase {
   }
 
   @MainActor
+  func testRetainedPDFContinuationPreparesOwnedDeletedSource() async throws {
+    executionTimeAllowance = 240
+    XCTAssertEqual(
+      ProcessInfo.processInfo.environment["IPAD_RETAINED_PDF_OWNED_FRESH_FIXTURE"], "1")
+    let fixture = try await retainedPDFContinuation(requireDeleted: false)
+    try await fault("reset")
+    let app = launchAndSignIn(
+      serverURL: Self.faultServerURL, expectedBookCountLabel: fixture.bookCountLabel)
+    openBookDetail(fixture.title, bookID: fixture.bookID, app: app)
+    let resources = app.buttons["offlineResources"]
+    try revealRetainedPDFElement(resources, app: app)
+    resources.tap()
+    let file = app.buttons["offlineSelectFile\(fixture.fileID)"]
+    XCTAssertTrue(file.waitForExistence(timeout: 10))
+    if file.value as? String != "Selected" { file.tap() }
+    let download = app.buttons["offlineDownload"]
+    try revealRetainedPDFElement(download, app: app)
+    XCTAssertTrue(download.isEnabled)
+    download.tap()
+    XCTAssertTrue(
+      app.staticTexts["Verified ready for offline reading"].waitForExistence(timeout: 45))
+    app.navigationBars["Offline resources"].buttons["Done"].tap()
+    let read = app.buttons["readFile\(fixture.fileID)"]
+    try revealRetainedPDFElement(read, app: app)
+    read.tap()
+    XCTAssertTrue(app.staticTexts["Page 1 of \(fixture.pageCount)"].waitForExistence(timeout: 15))
+    try await fault("offline")
+    tapInkControl("pdfInkFixtureStroke", app: app)
+    XCTAssertTrue(app.staticTexts["Ink saved locally"].waitForExistence(timeout: 15))
+    _ = try await api("books/files/\(fixture.fileID)", method: "DELETE", token: fixture.token)
+    try await fault("online")
+    app.terminate()
+    app.launch()
+    _ = try openRetainedPDFContinuation(fixture, app: app)
+    capture("retained-PDF-isolated-owned-fixture-ready")
+  }
+
+  @MainActor
+  func testRetainedPDFContinuationExportsToNativeFiles() async throws {
+    executionTimeAllowance = 180
+    let fixture = try await retainedPDFContinuation()
+    let app = launchAndSignIn(
+      serverURL: Self.faultServerURL, expectedBookCountLabel: fixture.bookCountLabel)
+    let retained = try openRetainedPDFContinuation(fixture, app: app)
+    let versionID = retained.versionID
+    let prepare = retained.prepare
+    XCTAssertTrue(prepare.isEnabled)
+    prepare.tap()
+    let ready = app.staticTexts["sourceRecoveryExportReady"]
+    XCTAssertTrue(ready.waitForExistence(timeout: 10))
+    XCTAssertTrue(ready.label.hasPrefix("Verified complete export: "))
+    let originalFilename = String(ready.label.dropFirst("Verified complete export: ".count))
+    XCTAssertFalse(originalFilename.isEmpty)
+    XCTAssertFalse(originalFilename.contains("/") || originalFilename.contains("\\"))
+    XCTAssertEqual(URL(fileURLWithPath: originalFilename).lastPathComponent, originalFilename)
+    XCTAssertEqual(URL(fileURLWithPath: originalFilename).pathExtension.lowercased(), "pdf")
+    let export = app.buttons["sourceRecoveryExport\(versionID)"]
+    try revealRetainedPDFElement(export, app: app)
+    XCTAssertTrue(export.isEnabled)
+    let documents = try await retainedPDFPublicDocuments()
+    let exportedURL = documents.appendingPathComponent(fixture.filename)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: exportedURL.path))
+    export.tap()
+    XCTAssertTrue(E02ProfileSupport.openSaveToFiles(app: app, test: self))
+    saveA06PDFToPublicDocuments(
+      filename: fixture.filename, originalFilename: originalFilename, app: app)
+    let deadline = Date().addingTimeInterval(15)
+    while !FileManager.default.fileExists(atPath: exportedURL.path) && Date() < deadline {
+      try await Task.sleep(for: .milliseconds(250))
+    }
+    let exported = try retainedPDFExportBytes(exportedURL, documents: documents)
+    XCTAssertEqual(exported, fixture.originalBytes)
+    let digest = SHA256.hash(data: exported).map { String(format: "%02x", $0) }.joined()
+    attach(exported, name: "retained-PDF-continuation-actual-Files-export", type: "com.adobe.pdf")
+    attach(
+      try JSONSerialization.data(
+        withJSONObject: [
+          "filename": fixture.filename, "versionID": versionID, "bookID": fixture.bookID,
+          "fileID": fixture.fileID, "accountUserID": fixture.userID,
+          "serverURL": Self.faultServerURL, "sha256": digest, "bytes": exported.count,
+        ], options: [.sortedKeys]), name: "retained-PDF-continuation-export-receipt",
+      type: "public.json")
+    capture("retained-PDF-continuation-native-Files-export-complete")
+  }
+
+  @MainActor
+  func testRetainedPDFContinuationPersistsAfterExportRestart() async throws {
+    executionTimeAllowance = 120
+    let fixture = try await retainedPDFContinuation()
+    let app = launchAndSignIn(
+      serverURL: Self.faultServerURL, expectedBookCountLabel: fixture.bookCountLabel)
+    app.terminate()
+    app.launch()
+    let versionID = try openRetainedPDFContinuation(fixture, app: app).versionID
+    let remove = app.buttons["sourceRecoveryRemove\(versionID)"]
+    try revealRetainedPDFElement(remove, app: app)
+    if remove.isEnabled { remove.tap() }
+    let confirmation = app.buttons["sourceRecoveryConfirmRemove"]
+    if confirmation.waitForExistence(timeout: 2) {
+      let cancel = app.buttons["Cancel"]
+      XCTAssertTrue(cancel.isHittable)
+      cancel.tap()
+      XCTFail("The pinned retained version must reject removal while pending work exists.")
+      return
+    }
+    let protection = app.staticTexts["sourceRecoveryProtected\(versionID)"]
+    try revealRetainedPDFElement(protection, app: app)
+    XCTAssertTrue(protection.exists)
+    try revealRetainedPDFElement(remove, app: app)
+    XCTAssertFalse(remove.isEnabled)
+    XCTAssertFalse(confirmation.exists)
+    let documents = try await retainedPDFPublicDocuments()
+    let exported = try retainedPDFExportBytes(
+      documents.appendingPathComponent(fixture.filename), documents: documents)
+    XCTAssertEqual(exported, fixture.originalBytes)
+    capture("retained-PDF-continuation-export-and-protection-survive-restart")
+  }
+
+  private struct RetainedPDFContinuation {
+    let originalBytes: Data
+    let revision: String
+    let filename: String
+    let sourceFilename: String
+    let title: String
+    let bookCountLabel: String
+    let bookID: Int
+    let fileID: Int
+    let userID: Int
+    let pageCount: Int
+    let token: String
+  }
+
+  @MainActor
+  private func retainedPDFContinuation(requireDeleted: Bool = true) async throws
+    -> RetainedPDFContinuation
+  {
+    let environment = ProcessInfo.processInfo.environment
+    XCTAssertEqual(try XCTUnwrap(environment["IPAD_RETAINED_PDF_CONTINUATION"]), "1")
+    XCTAssertEqual(
+      Self.faultServerURL,
+      Self.loopbackURL(try XCTUnwrap(environment["IPAD_RETAINED_PDF_NATIVE_ORIGIN"])))
+    let baseline = try XCTUnwrap(environment["IPAD_E02_A06_SOURCE_BASELINE_PATH"])
+    let originalBytes = try Data(contentsOf: URL(fileURLWithPath: baseline))
+    XCTAssertGreaterThan(originalBytes.count, 0)
+    XCTAssertLessThanOrEqual(originalBytes.count, 16 * 1024 * 1024)
+    let revision = SHA256.hash(data: originalBytes).map { String(format: "%02x", $0) }.joined()
+    XCTAssertEqual(revision, try XCTUnwrap(environment["IPAD_RETAINED_PDF_EXPECTED_REVISION"]))
+    let pdf = try XCTUnwrap(PDFDocument(data: originalBytes))
+    let bookID = try XCTUnwrap(Int(try XCTUnwrap(environment["IPAD_RETAINED_PDF_BOOK_ID"])))
+    let fileID = try XCTUnwrap(Int(try XCTUnwrap(environment["IPAD_RETAINED_PDF_FILE_ID"])))
+    let userID = try XCTUnwrap(Int(try XCTUnwrap(environment["IPAD_RETAINED_PDF_USER_ID"])))
+    XCTAssertGreaterThan(bookID, 0)
+    XCTAssertGreaterThan(fileID, 0)
+    let sourceFilename = try XCTUnwrap(environment["IPAD_RETAINED_PDF_SOURCE_FILENAME"])
+    let token = try await loginAPI()
+    let meBytes = try await api("auth/me", token: token)
+    let me = try XCTUnwrap(JSONSerialization.jsonObject(with: meBytes) as? [String: Any])
+    XCTAssertEqual(me["id"] as? Int, userID)
+    let detailBytes = try await api("books/\(bookID)", token: token)
+    let detail = try XCTUnwrap(JSONSerialization.jsonObject(with: detailBytes) as? [String: Any])
+    let title = try XCTUnwrap(detail["title"] as? String)
+    let files = try XCTUnwrap(detail["files"] as? [[String: Any]])
+    let file = files.first { $0["id"] as? Int == fileID }
+    if requireDeleted {
+      XCTAssertNil(file)
+    } else {
+      let source = try XCTUnwrap(file)
+      XCTAssertEqual(source["filename"] as? String, sourceFilename)
+      XCTAssertEqual((source["format"] as? String)?.lowercased(), "pdf")
+    }
+    var request = URLRequest(
+      url: try XCTUnwrap(URL(string: "\(Self.fixtureServerURL)/api/v1/books/files/\(fileID)/serve"))
+    )
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    let (served, response) = try await Self.networkResponse(for: request)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, requireDeleted ? 404 : 200)
+    if !requireDeleted { XCTAssertEqual(served, originalBytes) }
+    let exportID = try XCTUnwrap(environment["IPAD_RETAINED_PDF_EXPORT_ID"])
+    XCTAssertNotNil(UUID(uuidString: exportID))
+    return RetainedPDFContinuation(
+      originalBytes: originalBytes, revision: revision,
+      filename: "Deleted source isolated-\(exportID).pdf", sourceFilename: sourceFilename,
+      title: title,
+      bookCountLabel: try XCTUnwrap(environment["IPAD_RETAINED_PDF_BOOK_COUNT_LABEL"]),
+      bookID: bookID, fileID: fileID, userID: userID, pageCount: pdf.pageCount, token: token)
+  }
+
+  @MainActor
+  private func openRetainedPDFContinuation(_ fixture: RetainedPDFContinuation, app: XCUIApplication)
+    throws -> (versionID: String, prepare: XCUIElement)
+  {
+    let offline = app.buttons["offlineLibrary"]
+    XCTAssertTrue(offline.wait(for: \.isHittable, toEqual: true, timeout: 25))
+    offline.tap()
+    let recovery = app.buttons["offlineSourceRecovery"]
+    XCTAssertTrue(recovery.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    recovery.tap()
+    let revision = app.staticTexts["Revision \(fixture.revision)"]
+    try revealRetainedPDFElement(revision, app: app)
+    XCTAssertTrue(app.staticTexts["Book \(fixture.bookID), file \(fixture.fileID), PDF"].exists)
+    XCTAssertTrue(app.staticTexts[fixture.sourceFilename].exists)
+    XCTAssertTrue(app.staticTexts["Source deleted"].exists)
+    let prepare = app.buttons["Prepare retained source export"]
+    try revealRetainedPDFElement(prepare, app: app)
+    let prefix = "sourceRecoveryPrepareExport"
+    let identifier = prepare.identifier
+    XCTAssertTrue(identifier.hasPrefix(prefix))
+    let versionID = String(identifier.dropFirst(prefix.count))
+    XCTAssertTrue(versionID.hasSuffix("-\(fixture.revision)"))
+    return (versionID, prepare)
+  }
+
+  @MainActor
+  private func revealRetainedPDFElement(_ element: XCUIElement, app: XCUIApplication) throws {
+    for _ in 0..<12 {
+      if element.exists && element.isHittable && app.frame.contains(element.frame) { return }
+      if element.exists && element.frame.minY < app.frame.minY {
+        app.swipeDown()
+      } else {
+        app.swipeUp()
+      }
+    }
+    _ = try XCTUnwrap(
+      element.exists && element.isHittable ? true : nil,
+      "The pinned retained PDF control must be uniquely visible after bounded scrolling.")
+  }
+
+  @MainActor
+  private func retainedPDFPublicDocuments() async throws -> URL {
+    let directory = try await currentPublicDocumentsDirectory()
+    XCTAssertTrue(directory.hasPrefix("/"))
+    let documents = URL(fileURLWithPath: directory, isDirectory: true).standardizedFileURL
+    let values = try documents.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+    XCTAssertEqual(documents.lastPathComponent, "Documents")
+    XCTAssertEqual(values.isDirectory, true)
+    XCTAssertEqual(values.isSymbolicLink, false)
+    return documents.resolvingSymlinksInPath()
+  }
+
+  @MainActor
+  private func retainedPDFExportBytes(_ url: URL, documents: URL) throws -> Data {
+    let values = try url.resourceValues(forKeys: [
+      .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey,
+    ])
+    XCTAssertEqual(values.isRegularFile, true)
+    XCTAssertEqual(values.isSymbolicLink, false)
+    XCTAssertEqual(url.resolvingSymlinksInPath().deletingLastPathComponent(), documents)
+    let size = try XCTUnwrap(values.fileSize)
+    XCTAssertGreaterThan(size, 0)
+    XCTAssertLessThanOrEqual(size, 16 * 1024 * 1024)
+    return try Data(contentsOf: url)
+  }
+
+  @MainActor
   func testDeletedPDFRetainedExportSurvivesRestart() async throws {
     executionTimeAllowance = 360
     XCTAssertEqual(ProcessInfo.processInfo.environment["IPAD_PDF_RECOVERY_ONLY"], "1")
