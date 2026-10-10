@@ -37,6 +37,9 @@ export class AnnotationService {
     if (query.bookFileId != null) {
       const file = await this.bookService.verifyFileAccess(query.bookFileId, user);
       if (file.bookId !== bookId) throw new BadRequestException('The selected file does not belong to this book');
+      if (query.pdfPage !== undefined && file.format?.toLowerCase() !== 'pdf') {
+        throw new BadRequestException('PDF page filters require a PDF book file');
+      }
     }
 
     const filters = this.buildFilters(query);
@@ -55,6 +58,13 @@ export class AnnotationService {
         const dto = AnnotationResponseDto.from(row);
         return {
           id: dto.id,
+          clientId: dto.clientId,
+          kind: dto.kind,
+          drawing: dto.drawing,
+          version: dto.version,
+          deletedAt: dto.deletedAt?.toISOString() ?? null,
+          sourceRevision: dto.sourceRevision,
+          pageFingerprint: dto.pageFingerprint,
           bookId: dto.bookId,
           cfi: dto.cfi,
           jumpFileId: dto.jumpFileId,
@@ -130,6 +140,8 @@ export class AnnotationService {
 
   async updateAnnotation(bookId: number, annotationId: number, user: RequestUser, dto: UpdateAnnotationDto): Promise<AnnotationResponseDto> {
     await this.bookService.verifyBookAccess(bookId, user);
+    const existing = await this.annotationRepo.findById(bookId, annotationId, user.id);
+    if (existing?.kind === 'pdf_ink') throw new BadRequestException('Source PDF ink must use versioned annotation operations');
     const content = {
       ...(dto.note !== undefined && { note: dto.note }),
       ...(dto.color !== undefined && { color: dto.color }),
@@ -145,12 +157,15 @@ export class AnnotationService {
 
   async deleteAnnotation(bookId: number, annotationId: number, user: RequestUser): Promise<void> {
     await this.bookService.verifyBookAccess(bookId, user);
+    const existing = await this.annotationRepo.findById(bookId, annotationId, user.id);
+    if (existing?.kind === 'pdf_ink') throw new BadRequestException('Source PDF ink must use versioned annotation operations');
     const deleted = await this.annotationRepo.softDelete(bookId, annotationId, user.id);
     if (!deleted) throw new NotFoundException(this.notFoundMessage(bookId, annotationId));
   }
 
   private buildFilters(query: AnnotationQueryDto): AnnotationFilters {
     return {
+      excludeSourceInk: query.excludeSourceInk,
       colors: query.colors
         ? query.colors
             .split(',')
@@ -164,6 +179,7 @@ export class AnnotationService {
       hasNote: query.hasNote || undefined,
       needsReview: query.needsReview || undefined,
       bookFileId: query.bookFileId,
+      pdfPage: query.pdfPage,
     };
   }
 

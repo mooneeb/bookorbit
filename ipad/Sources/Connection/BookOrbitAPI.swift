@@ -28,6 +28,11 @@ actor BookOrbitAPI {
   private var refreshTask: (id: UUID, task: Task<NativeCredentials, Error>)?
   private var sessionGeneration = UUID()
   private var activeBookFileWrites: Set<String> = []
+  private var resourceStore: OfflineResourceStore?
+  private var pdfPublicationRefreshes:
+    [Int: (id: UUID, session: UUID, previous: String, current: String?, task: Task<Bool, Error>)] =
+      [:]
+  private(set) var isOffline = false
 
   init(profile: ServerProfile) throws {
     self.profile = profile
@@ -87,6 +92,8 @@ actor BookOrbitAPI {
     refreshTask?.task.cancel()
     refreshTask = nil
     saved = session
+    resourceStore = nil
+    isOffline = false
     return response.user
   }
 
@@ -112,8 +119,12 @@ actor BookOrbitAPI {
     guard let saved else { return }
     let body = try JSONEncoder().encode(
       RefreshRequest(refreshToken: saved.credentials.refreshToken))
-    let (_, response) = try await raw("auth/logout", method: "POST", body: body)
-    try validate(response)
+    do {
+      let (_, response) = try await raw("auth/logout", method: "POST", body: body)
+      try validate(response)
+    } catch let error as URLError where error.code != .cancelled {
+      // A server outage must not prevent removing this device's credentials.
+    }
     try invalidateSession()
   }
 
@@ -132,9 +143,396 @@ actor BookOrbitAPI {
     refreshTask?.task.cancel()
     refreshTask = nil
     saved = nil
+    resourceStore = nil
+    isOffline = false
+  }
+
+  func offlineStore() throws -> OfflineResourceStore {
+    let namespace = try storageNamespace()
+    if let resourceStore { return resourceStore }
+    let store = try OfflineResourceStore(namespace: namespace)
+    resourceStore = store
+    return store
+  }
+
+  func resumeOfflineUser() async throws -> AuthUser? {
+    guard let saved, !(try await offlineStore().summaries()).isEmpty else { return nil }
+    isOffline = true
+    return saved.user
   }
 
   func send<T: Decodable & Sendable>(
+    _ path: String, method: String = "GET", body: Data? = nil,
+    query: [URLQueryItem] = [], authenticated: Bool = true
+  ) async throws -> T {
+    do {
+      return try await sendOnline(
+        path, method: method, body: body, query: query, authenticated: authenticated)
+    } catch {
+      if method == "GET", authenticated, error is URLError,
+        let data = try await offlineStore().read(path: path, query: query, limit: 8 * 1024 * 1024)
+      {
+        return try JSONDecoder().decode(T.self, from: data)
+      }
+      throw error
+    }
+  }
+
+  func boundedJSON<T: Decodable & Sendable>(
+    _ path: String, method: String = "GET", body: Data? = nil, query: [URLQueryItem] = [],
+    byteLimit: Int = 1024 * 1024, session: UUID? = nil, expectedStatus: Int? = nil
+  ) async throws -> T {
+    do {
+      return try await boundedJSONOnline(
+        path, method: method, body: body, query: query,
+        byteLimit: byteLimit, session: session, expectedStatus: expectedStatus)
+    } catch {
+      if method == "GET", error is URLError,
+        let data = try await offlineStore().read(path: path, query: query, limit: byteLimit)
+      {
+        return try JSONDecoder().decode(T.self, from: data)
+      }
+      throw error
+    }
+  }
+
+  private func reconcileOfflineMetadata(path: String, data: Data) async throws {
+    let parts = path.split(separator: "/")
+    guard parts.count == 2, parts[0] == "books", let bookID = Int(parts[1]),
+      var snapshot = try await offlineStore().snapshot(bookID: bookID),
+      let fresh = try? JSONDecoder().decode(BookDetail.self, from: data)
+    else { return }
+    let resourceStore = try offlineStore()
+    let current = Dictionary(uniqueKeysWithValues: fresh.files.map { ($0.id, $0) })
+    for previous in snapshot.book.files {
+      let replacement = current[previous.id]
+      guard
+        replacement == nil || replacement?.absolutePath != previous.absolutePath
+          || replacement?.sizeBytes != previous.sizeBytes
+      else { continue }
+      if let replacement, replacement.absolutePath == previous.absolutePath,
+        previous.format?.lowercased() == "pdf",
+        let revision = try await resourceStore.sourceResource(fileID: previous.id)?.digest,
+        try await refreshKnownPdfPublication(
+          fileID: previous.id, previousRevision: revision,
+          session: authenticatedSessionGeneration())
+      {
+        snapshot = try await resourceStore.snapshot(bookID: bookID) ?? snapshot
+        continue
+      }
+      let repository = try await NativeAnnotationRepository.shared(api: self)
+      try await repository.retainSourceRecovery(
+        bookID: bookID, fileID: previous.id,
+        reason: replacement == nil ? "source_deleted" : "source_replaced")
+      try await resourceStore.retainCurrentSource(
+        fileID: previous.id,
+        reason: replacement == nil ? "source_deleted" : "source_replaced")
+      try await resourceStore.invalidateDerivedResources(bookID: bookID, fileID: previous.id)
+      snapshot.state = "recovery"
+      snapshot.message =
+        "Source content changed. Retained local copies and pending annotations require explicit review."
+    }
+    if snapshot.book.coverVersion != fresh.coverVersion && snapshot.state == "ready" {
+      snapshot.state = "paused"
+      snapshot.message =
+        "The cover changed. Resume the offline download to verify the updated cover."
+    }
+    if snapshot.book != fresh || snapshot.state == "recovery" {
+      snapshot.book = fresh
+      try await resourceStore.save(snapshot)
+    }
+  }
+
+  private func retainOfflineBookUnavailable(path: String) async throws {
+    let parts = path.split(separator: "/")
+    guard parts.count == 2, parts[0] == "books", let bookID = Int(parts[1]),
+      var snapshot = try await offlineStore().snapshot(bookID: bookID)
+    else { return }
+    let repository = try await NativeAnnotationRepository.shared(api: self)
+    for file in snapshot.book.files {
+      try await repository.retainSourceRecovery(
+        bookID: bookID, fileID: file.id, reason: "source_deleted")
+      try await offlineStore().retainCurrentSource(fileID: file.id, reason: "source_deleted")
+    }
+    snapshot.state = "recovery"
+    snapshot.message =
+      "This book is unavailable on the server. Retained source versions and pending annotations can be recovered explicitly."
+    try await offlineStore().save(snapshot)
+  }
+
+  func sourceRevision(fileID: Int, session: UUID) async throws -> String {
+    guard fileID > 0 else { throw ConnectionError.invalidResponse }
+    try ensureSession(session)
+    let resource = try await offlineStore().sourceResource(fileID: fileID)
+    let path = resource?.path ?? "books/files/\(fileID)/serve"
+    do {
+      var request = URLRequest(url: profile.endpoint(path))
+      request.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+      request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+      request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+      var delivery = try await networkBytes(for: request)
+      if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+        delivery.0.task.cancel()
+        request.setValue(
+          "Bearer \(try await refresh().accessToken)", forHTTPHeaderField: "Authorization")
+        delivery = try await networkBytes(for: request)
+      }
+      let (bytes, response) = delivery
+      defer { bytes.task.cancel() }
+      try ensureSession(session)
+      guard let response = response as? HTTPURLResponse else {
+        throw ConnectionError.invalidResponse
+      }
+      if [403, 404].contains(response.statusCode) {
+        try await retainOfflineSource(fileID: fileID, reason: "source_deleted")
+      }
+      try validate(response)
+      guard response.statusCode == 206, response.expectedContentLength == 1,
+        response.value(forHTTPHeaderField: "Content-Range")?.hasPrefix("bytes 0-0/") == true,
+        let revision = response.value(forHTTPHeaderField: "X-Content-SHA256"),
+        revision.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil,
+        response.value(forHTTPHeaderField: "ETag") == "\"\(revision)\""
+      else { throw ConnectionError.invalidResponse }
+      var received = 0
+      for try await _ in bytes {
+        received += 1
+        guard received <= 1 else { throw ConnectionError.invalidResponse }
+      }
+      guard received == 1 else { throw ConnectionError.fileChanged }
+      try ensureSession(session)
+      if let local = resource?.digest, revision != local {
+        if try await !refreshKnownPdfPublication(
+          fileID: fileID, previousRevision: local, currentRevision: revision, session: session)
+        {
+          try await retainOfflineSource(fileID: fileID, reason: "source_replaced")
+        }
+      }
+      return revision
+    } catch {
+      guard error is URLError, let revision = resource?.digest else { throw error }
+      try ensureSession(session)
+      return revision
+    }
+  }
+
+  func retainOpenedPdfSource(
+    book: BookDetail, fileID: Int, source: URL, revision: String, reason: String, session: UUID
+  ) async throws {
+    try ensureSession(session)
+    try await offlineStore().retainOpenedPdfSource(
+      book: book, fileID: fileID, source: source, revision: revision, reason: reason)
+    try ensureSession(session)
+  }
+
+  func reconciledSourceRevision(fileID: Int, previous: String, session: UUID) async throws
+    -> String
+  {
+    let current = try await sourceRevision(fileID: fileID, session: session)
+    if previous.replacingOccurrences(of: "sha256:", with: "") == current { return current }
+    guard
+      try await publicationProof(
+        fileID: fileID, previousRevision: previous, currentRevision: current, session: session)
+        != nil
+    else { throw ConnectionError.fileChanged }
+    return current
+  }
+
+  private func publicationProof(
+    fileID: Int, previousRevision: String, currentRevision: String? = nil, session: UUID
+  ) async throws -> NativePdfPageSource? {
+    try ensureSession(session)
+    let store = try offlineStore()
+    guard let bookID = try await store.bookID(fileID: fileID),
+      let snapshot = try await store.snapshot(bookID: bookID),
+      snapshot.book.files.first(where: { $0.id == fileID })?.format?.lowercased() == "pdf"
+    else { return nil }
+    let previous = "sha256:" + previousRevision.replacingOccurrences(of: "sha256:", with: "")
+    let proof: NativePdfPageSource = try await boundedJSONOnline(
+      "annotations/native/files/\(fileID)/source",
+      query: [
+        .init(name: "bookId", value: String(bookID)), .init(name: "page", value: "0"),
+        .init(name: "sourceRevision", value: previous),
+      ], session: session)
+    try ensureSession(session)
+    guard proof.matchedSourceRevision == previous,
+      proof.sourceRevision != previous,
+      currentRevision.map({ proof.sourceRevision == "sha256:\($0)" }) ?? true
+    else { return nil }
+    return proof
+  }
+
+  private func refreshKnownPdfPublication(
+    fileID: Int, previousRevision: String, currentRevision: String? = nil, session: UUID
+  ) async throws -> Bool {
+    if let pending = pdfPublicationRefreshes[fileID] {
+      if pending.session == session, pending.previous == previousRevision,
+        pending.current == currentRevision
+      {
+        let result = try await pending.task.value
+        try ensureSession(session)
+        return result
+      }
+      do { _ = try await pending.task.value } catch {
+        if pending.session == session { throw error }
+      }
+      if pdfPublicationRefreshes[fileID]?.id == pending.id { pdfPublicationRefreshes[fileID] = nil }
+      return try await refreshKnownPdfPublication(
+        fileID: fileID, previousRevision: previousRevision,
+        currentRevision: currentRevision, session: session)
+    }
+    let id = UUID()
+    let task = Task {
+      try await self.refreshKnownPdfPublicationNow(
+        fileID: fileID, previousRevision: previousRevision,
+        currentRevision: currentRevision, session: session)
+    }
+    pdfPublicationRefreshes[fileID] = (id, session, previousRevision, currentRevision, task)
+    defer {
+      if pdfPublicationRefreshes[fileID]?.id == id { pdfPublicationRefreshes[fileID] = nil }
+    }
+    return try await task.value
+  }
+
+  private func refreshKnownPdfPublicationNow(
+    fileID: Int, previousRevision: String, currentRevision: String? = nil, session: UUID
+  ) async throws -> Bool {
+    guard
+      let proof = try await publicationProof(
+        fileID: fileID, previousRevision: previousRevision,
+        currentRevision: currentRevision, session: session)
+    else { return false }
+    let store = try offlineStore()
+    guard var resource = try await store.sourceResource(fileID: fileID),
+      let bookID = try await store.bookID(fileID: fileID)
+    else { return false }
+    let digest = proof.sourceRevision.replacingOccurrences(of: "sha256:", with: "")
+    resource.expectedBytes = nil
+    resource.validator = nil
+    resource.sourceDigest = digest
+    resource.bookID = bookID
+    resource.fileID = fileID
+    let destination = await store.destination(
+      path: resource.path, query: resource.query.map(\.item))
+    let refreshed = try await downloadOfflineResource(
+      resource, destination: destination, expectedPublicationRevision: digest, progress: { _ in })
+    try ensureSession(session)
+    try await store.advancePublishedSource(bookID: bookID, fileID: fileID, resource: refreshed)
+    return true
+  }
+
+  private func retainOfflineSource(fileID: Int, reason: String) async throws {
+    let store = try offlineStore()
+    guard let bookID = try await store.bookID(fileID: fileID),
+      var snapshot = try await store.snapshot(bookID: bookID)
+    else { return }
+    let repository = try await NativeAnnotationRepository.shared(api: self)
+    try await repository.retainSourceRecovery(bookID: bookID, fileID: fileID, reason: reason)
+    try await store.retainCurrentSource(fileID: fileID, reason: reason)
+    try await store.invalidateDerivedResources(bookID: bookID, fileID: fileID)
+    snapshot.state = "recovery"
+    snapshot.message =
+      "Source content changed. Retained versions and pending annotations require explicit review."
+    try await store.save(snapshot)
+  }
+
+  func reconcileOfflineBooks(limit: Int = 20) async {
+    do {
+      guard (1...20).contains(limit) else { throw ConnectionError.invalidResponse }
+      let namespace = try storageNamespace()
+      let store = try offlineStore()
+      let books = try await store.summaries().sorted { $0.id < $1.id }
+      guard !books.isEmpty else { return }
+      let key = "bookorbit.offline-source-scan.\(OfflineResourceStore.hash(Data(namespace.utf8)))"
+      let cursor = UserDefaults.standard.array(forKey: key) as? [Int] ?? [0, 0]
+      var remaining = limit
+      let session = try authenticatedSessionGeneration()
+      for book in books where book.id >= (cursor.first ?? 0) {
+        do { let _: BookDetail = try await boundedJSON("books/\(book.id)", session: session) } catch
+        {
+          if error is URLError { return }
+          if case ConnectionError.http(404) = error {
+          } else if case ConnectionError.denied = error {
+          } else {
+            throw error
+          }
+        }
+        if isOffline { return }
+        guard let snapshot = try await store.snapshot(bookID: book.id) else { continue }
+        for fileID in snapshot.selectedFileIDs.sorted()
+        where book.id != cursor.first || fileID > (cursor.last ?? 0) {
+          do { _ = try await sourceRevision(fileID: fileID, session: session) } catch {
+            if error is URLError { return }
+            if case ConnectionError.http(404) = error {
+            } else if case ConnectionError.denied = error {
+            } else {
+              throw error
+            }
+          }
+          if isOffline { return }
+          UserDefaults.standard.set([book.id, fileID], forKey: key)
+          remaining -= 1
+          if remaining == 0 { return }
+        }
+        UserDefaults.standard.set([book.id + 1, 0], forKey: key)
+      }
+      UserDefaults.standard.removeObject(forKey: key)
+    } catch {}
+  }
+
+  func canRemoveSourceVersion(id: String) async throws -> Bool {
+    let generation = try authenticatedSessionGeneration()
+    let namespace = try storageNamespace()
+    let version = try await offlineStore().sourceVersion(id: id)
+    let repository = try await NativeAnnotationRepository.shared(api: self)
+    let allowed = try await repository.canRemoveSourceVersion(
+      bookID: version.bookID, fileID: version.fileID, revision: version.revision)
+    let protectsReadingState: Bool
+    do {
+      protectsReadingState = try OfflineReadingStateJournal.hasProtectedWork(
+        namespace: namespace, fileID: version.fileID, revision: version.revision)
+    } catch {
+      try ensureSession(generation)
+      throw OfflineStorageError.unverifiedProtection
+    }
+    try ensureSession(generation)
+    return allowed && !protectsReadingState
+  }
+
+  func removeSourceVersion(id: String) async throws {
+    let generation = try authenticatedSessionGeneration()
+    guard try await canRemoveSourceVersion(id: id) else {
+      throw OfflineStorageError.protectedVersion
+    }
+    try ensureSession(generation)
+    try await offlineStore().removeSourceVersion(id: id)
+  }
+
+  func removeOfflineBook(bookID: Int, namespace: String) async throws {
+    let generation = try authenticatedSessionGeneration()
+    guard bookID > 0, try storageNamespace() == namespace else {
+      throw ConnectionError.expiredSession
+    }
+    let resources = try offlineStore()
+    _ = try await NativeAnnotationRepository.shared(api: self)
+    try ensureSession(generation)
+    try await resources.removeBook(bookID: bookID)
+    try ensureSession(generation)
+  }
+
+  private func networkBytes(for request: URLRequest) async throws -> (
+    URLSession.AsyncBytes, URLResponse
+  ) {
+    do {
+      let result = try await transport.bytes(for: request)
+      isOffline = false
+      return result
+    } catch {
+      if error is URLError { isOffline = true }
+      throw error
+    }
+  }
+
+  private func sendOnline<T: Decodable & Sendable>(
     _ path: String, method: String = "GET", body: Data? = nil,
     query: [URLQueryItem] = [],
     authenticated: Bool = true
@@ -148,13 +546,22 @@ actor BookOrbitAPI {
         path, method: method, body: body, query: query, token: credentials.accessToken)
       if response.statusCode == 401 { throw ConnectionError.expiredSession }
     }
+    if method == "GET", [403, 404].contains(response.statusCode) {
+      try await retainOfflineBookUnavailable(path: path)
+    }
     try validate(response)
+    if method == "GET" { try await reconcileOfflineMetadata(path: path, data: data) }
+    if method == "GET", authenticated, let resourceStore,
+      await resourceStore.contains(path: path, query: query)
+    {
+      _ = try await resourceStore.writeData(data, path: path, query: query)
+    }
     do { return try JSONDecoder().decode(T.self, from: data) } catch {
       throw ConnectionError.invalidResponse
     }
   }
 
-  func boundedJSON<T: Decodable & Sendable>(
+  private func boundedJSONOnline<T: Decodable & Sendable>(
     _ path: String, method: String = "GET", body: Data? = nil, query: [URLQueryItem] = [],
     byteLimit: Int = 1024 * 1024, session: UUID? = nil, expectedStatus: Int? = nil
   ) async throws -> T {
@@ -168,18 +575,21 @@ actor BookOrbitAPI {
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(generation)
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       let credentials = try await refresh()
       try ensureSession(generation)
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
     guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
     if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    if method == "GET", [403, 404].contains(response.statusCode) {
+      try await retainOfflineBookUnavailable(path: path)
+    }
     try validate(response)
     if let expectedStatus, response.statusCode != expectedStatus {
       throw ConnectionError.invalidResponse
@@ -197,6 +607,10 @@ actor BookOrbitAPI {
     }
     try Task.checkCancellation()
     try ensureSession(generation)
+    if method == "GET" { try await reconcileOfflineMetadata(path: path, data: data) }
+    if method == "GET", let resourceStore, await resourceStore.contains(path: path, query: query) {
+      _ = try await resourceStore.writeData(data, path: path, query: query)
+    }
     do { return try JSONDecoder().decode(T.self, from: data) } catch {
       throw ConnectionError.invalidResponse
     }
@@ -259,14 +673,14 @@ actor BookOrbitAPI {
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(session)
     try Task.checkCancellation()
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       let credentials = try await refresh()
       try ensureSession(session)
       try Task.checkCancellation()
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
@@ -302,14 +716,14 @@ actor BookOrbitAPI {
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(session)
     try Task.checkCancellation()
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       let credentials = try await refresh()
       try ensureSession(session)
       try Task.checkCancellation()
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
@@ -396,13 +810,13 @@ actor BookOrbitAPI {
     request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(session)
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       let credentials = try await refresh()
       try ensureSession(session)
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
@@ -545,7 +959,7 @@ actor BookOrbitAPI {
     return "\(profile.url.absoluteString).user.\(saved.user.id)"
   }
 
-  private func authenticatedImage(
+  private func authenticatedImageOnline(
     path: String, query: [URLQueryItem],
     cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy, namespace: String? = nil
   ) async throws -> Data {
@@ -555,13 +969,13 @@ actor BookOrbitAPI {
     request.cachePolicy = cachePolicy
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(generation)
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       let credentials = try await refresh()
       try ensureSession(generation)
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
@@ -587,7 +1001,7 @@ actor BookOrbitAPI {
     return data
   }
 
-  func comicPage(fileID: Int, pageIndex: Int) async throws -> Data {
+  private func comicPageOnline(fileID: Int, pageIndex: Int) async throws -> Data {
     guard pageIndex >= 0 else { throw ConnectionError.invalidResponse }
     let limit = 20 * 1024 * 1024
     let generation = sessionGeneration
@@ -595,13 +1009,13 @@ actor BookOrbitAPI {
     request.cachePolicy = .reloadIgnoringLocalCacheData
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(generation)
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       let credentials = try await refresh()
       try ensureSession(generation)
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
@@ -640,13 +1054,13 @@ actor BookOrbitAPI {
     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(generation)
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       let credentials = try await refresh()
       try ensureSession(generation)
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
@@ -703,7 +1117,7 @@ actor BookOrbitAPI {
     guard line.isEmpty, data.isEmpty else { throw MetadataSearchError.interrupted }
   }
 
-  func deliveredFile(
+  private func deliveredFileOnline(
     fileID: Int, expectedSize: Double?, mimeType: String, maximumSize: Int64? = nil,
     session: UUID? = nil
   ) async throws -> URL {
@@ -724,14 +1138,14 @@ actor BookOrbitAPI {
     request.setValue(mimeType, forHTTPHeaderField: "Accept")
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(generation)
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       try ensureSession(generation)
       let credentials = try await refresh()
       try ensureSession(generation)
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
@@ -792,6 +1206,24 @@ actor BookOrbitAPI {
     fileID: Int, kind: BookFileDownloadKind, session: UUID,
     progress: @MainActor @Sendable (BookFileTransferProgress) -> Void
   ) async throws -> StagedBookFile {
+    do {
+      return try await downloadBookFileOnline(
+        fileID: fileID, kind: kind, session: session, progress: progress)
+    } catch {
+      guard error is URLError, kind == .original,
+        saved?.user.hasPermission(.libraryDownload) == true
+      else { throw error }
+      try ensureSession(session)
+      let artifact = try await offlineStore().exportDownloadedResource(fileID: fileID)
+      await progress(.init(received: artifact.size, total: artifact.size))
+      return artifact
+    }
+  }
+
+  private func downloadBookFileOnline(
+    fileID: Int, kind: BookFileDownloadKind, session: UUID,
+    progress: @MainActor @Sendable (BookFileTransferProgress) -> Void
+  ) async throws -> StagedBookFile {
     guard fileID > 0 else { throw ConnectionError.invalidResponse }
     try Task.checkCancellation()
     try ensureSession(session)
@@ -801,13 +1233,13 @@ actor BookOrbitAPI {
     request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(session)
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       let credentials = try await refresh()
       try ensureSession(session)
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
@@ -889,6 +1321,29 @@ actor BookOrbitAPI {
 
   func readerFontFile(
     scope: String, font: UserFont, cached: ReaderFontFile?, directory: URL, session: UUID
+  ) async throws -> ReaderFontFile {
+    do {
+      return try await readerFontFileOnline(
+        scope: scope, font: font, cached: cached, directory: directory, session: session)
+    } catch {
+      guard error is URLError, ["user", "server"].contains(scope),
+        let mimeType = ReaderFontVocabulary.mimeTypes[font.format]
+      else { throw error }
+      try ensureSession(session)
+      let path = "\(scope == "server" ? "server-fonts" : "fonts")/\(font.id)/file"
+      guard let file = try await offlineStore().verifiedURL(path: path),
+        let receipt = try await offlineStore().receipt(path: path),
+        receipt.receivedBytes == Int64(font.fileSize), let validator = receipt.validator
+      else { throw EPUBFontError.invalidFile }
+      let copy = directory.appendingPathComponent(
+        "offline-font-\(UUID().uuidString).\(font.format)")
+      try FileManager.default.copyItem(at: file, to: copy)
+      return ReaderFontFile(url: copy, size: font.fileSize, etag: validator, mimeType: mimeType)
+    }
+  }
+
+  private func readerFontFileOnline(
+    scope: String, font: UserFont, cached: ReaderFontFile?, directory: URL, session: UUID
   )
     async throws -> ReaderFontFile
   {
@@ -906,13 +1361,13 @@ actor BookOrbitAPI {
     if let cached { request.setValue(cached.etag, forHTTPHeaderField: "If-None-Match") }
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(session)
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       let credentials = try await refresh()
       try ensureSession(session)
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
@@ -970,7 +1425,7 @@ actor BookOrbitAPI {
     return ReaderFontFile(url: destination, size: received, etag: etag, mimeType: mimeType)
   }
 
-  func audioChunk(
+  private func audioChunkOnline(
     bookID: Int, assetID: String, format: String, offset: Int64, length: Int,
     expectedSize: Int64?, generation: UUID
   ) async throws -> AudioByteChunk {
@@ -991,14 +1446,14 @@ actor BookOrbitAPI {
     request.setValue(mimeType, forHTTPHeaderField: "Accept")
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(generation)
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       try ensureSession(generation)
       let credentials = try await refresh()
       try ensureSession(generation)
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
@@ -1029,7 +1484,7 @@ actor BookOrbitAPI {
     return .init(data: data, totalBytes: total, mimeType: mimeType)
   }
 
-  func recordedAudioChunk(
+  private func recordedAudioChunkOnline(
     bookID: Int, fileID: Int, clip: EpubMediaOverlayClip, offset: Int64, length: Int,
     expectedSize: Int64?, generation: UUID
   ) async throws -> AudioByteChunk {
@@ -1054,13 +1509,13 @@ actor BookOrbitAPI {
     request.setValue(clip.audioMimeType, forHTTPHeaderField: "Accept")
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(generation)
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       let credentials = try await refresh()
       try ensureSession(generation)
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
@@ -1093,13 +1548,307 @@ actor BookOrbitAPI {
       data: data, totalBytes: size, mimeType: clip.audioMimeType, sourceValidator: validator)
   }
 
+  func deliveredFile(
+    fileID: Int, expectedSize: Double?, mimeType: String, maximumSize: Int64? = nil,
+    session: UUID? = nil
+  ) async throws -> URL {
+    do {
+      return try await deliveredFileOnline(
+        fileID: fileID, expectedSize: expectedSize,
+        mimeType: mimeType, maximumSize: maximumSize, session: session)
+    } catch {
+      guard error is URLError,
+        let cached = try await offlineStore().verifiedURL(path: "books/files/\(fileID)/serve")
+      else { throw error }
+      let copy = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "offline-\(UUID().uuidString).content")
+      try FileManager.default.copyItem(at: cached, to: copy)
+      return copy
+    }
+  }
+
+  func epubResource(
+    bookID: Int, fileID: Int, path: String, expectedSize: Int?, byteLimit: Int = 8 * 1024 * 1024,
+    session: UUID? = nil
+  ) async throws -> Data {
+    guard bookID > 0, fileID > 0, EPUBPublicationResources.validPath(path) else {
+      throw ConnectionError.invalidResponse
+    }
+    guard (1...(8 * 1024 * 1024)).contains(byteLimit),
+      expectedSize.map({ (0...byteLimit).contains($0) }) ?? true
+    else { throw ConnectionError.resourceTooLarge }
+    let generation = session ?? sessionGeneration
+    try ensureSession(generation)
+    if isOffline {
+      return try await localEPUBResource(
+        bookID: bookID, fileID: fileID, path: path, expectedSize: expectedSize,
+        byteLimit: byteLimit, generation: generation)
+    }
+    do {
+      return try await epubResourceOnline(
+        bookID: bookID, fileID: fileID, path: path,
+        expectedSize: expectedSize, byteLimit: byteLimit, session: generation)
+    } catch {
+      guard error is URLError else { throw error }
+      return try await localEPUBResource(
+        bookID: bookID, fileID: fileID, path: path, expectedSize: expectedSize,
+        byteLimit: byteLimit, generation: generation)
+    }
+  }
+
+  private func localEPUBResource(
+    bookID: Int, fileID: Int, path: String, expectedSize: Int?, byteLimit: Int,
+    generation: UUID
+  ) async throws -> Data {
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    guard
+      let data = try await offlineStore().read(
+        path: "epub/\(bookID)/file/\(path)",
+        query: [URLQueryItem(name: "fileId", value: String(fileID))], limit: byteLimit),
+      expectedSize.map({ data.count == $0 }) ?? true
+    else { throw ConnectionError.fileChanged }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    return data
+  }
+
+  func comicPage(fileID: Int, pageIndex: Int) async throws -> Data {
+    do { return try await comicPageOnline(fileID: fileID, pageIndex: pageIndex) } catch {
+      guard error is URLError,
+        let data = try await offlineStore().read(
+          path: "cbz/files/\(fileID)/pages/\(pageIndex)", limit: 20 * 1024 * 1024)
+      else { throw error }
+      return data
+    }
+  }
+
+  private func authenticatedImage(
+    path: String, query: [URLQueryItem],
+    cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy,
+    namespace: String? = nil
+  ) async throws -> Data {
+    do {
+      return try await authenticatedImageOnline(
+        path: path, query: query, cachePolicy: cachePolicy, namespace: namespace)
+    } catch {
+      guard error is URLError,
+        let data = try await offlineStore().read(
+          path: path, query: query, limit: CoverImageImport.byteLimit)
+      else { throw error }
+      return data
+    }
+  }
+
+  func audioChunk(
+    bookID: Int, assetID: String, format: String, offset: Int64, length: Int,
+    expectedSize: Int64?, generation: UUID
+  ) async throws -> AudioByteChunk {
+    do {
+      return try await audioChunkOnline(
+        bookID: bookID, assetID: assetID, format: format,
+        offset: offset, length: length, expectedSize: expectedSize, generation: generation)
+    } catch {
+      guard error is URLError else { throw error }
+      return try await localAudioChunk(
+        path: "audiobooks/\(bookID)/assets/\(assetID)/content",
+        query: [], offset: offset, length: length, expectedSize: expectedSize,
+        mimeType: AudioStreamFormat.mimeTypes[format] ?? "application/octet-stream",
+        generation: generation)
+    }
+  }
+
+  func recordedClipsPage(
+    bookID: Int, fileID: Int, section: Int, cursor: Int, generation: UUID
+  ) async throws -> EpubMediaOverlayClipsPage {
+    try ensureSession(generation)
+    guard bookID > 0, fileID > 0, section >= 0, cursor >= 0 else {
+      throw ConnectionError.invalidResponse
+    }
+    let path = "epub/\(bookID)/media-overlay/clips"
+    let query = [
+      URLQueryItem(name: "fileId", value: String(fileID)),
+      URLQueryItem(name: "sectionIndex", value: String(section)),
+      URLQueryItem(name: "cursor", value: String(cursor)),
+      URLQueryItem(name: "limit", value: "64"),
+    ]
+    if isOffline,
+      let data = try await offlineStore().read(path: path, query: query, limit: 512 * 1024)
+    {
+      try ensureSession(generation)
+      return try JSONDecoder().decode(EpubMediaOverlayClipsPage.self, from: data)
+    }
+    return try await boundedJSON(
+      path, query: query, byteLimit: 512 * 1024, session: generation)
+  }
+
+  func recordedAudioChunk(
+    bookID: Int, fileID: Int, clip: EpubMediaOverlayClip, offset: Int64, length: Int,
+    expectedSize: Int64?, generation: UUID
+  ) async throws -> AudioByteChunk {
+    try ensureSession(generation)
+    guard bookID > 0, fileID > 0, clip.sectionIndex >= 0,
+      EPUBPublicationResources.validPath(clip.audioHref), clip.audioMimeType.hasPrefix("audio/")
+    else { throw ConnectionError.invalidResponse }
+    if isOffline {
+      return try await localAudioChunk(
+        path: "epub/\(bookID)/file/\(clip.audioHref)",
+        query: [URLQueryItem(name: "fileId", value: String(fileID))], offset: offset,
+        length: length, expectedSize: expectedSize, mimeType: clip.audioMimeType,
+        generation: generation)
+    }
+    do {
+      return try await recordedAudioChunkOnline(
+        bookID: bookID, fileID: fileID, clip: clip,
+        offset: offset, length: length, expectedSize: expectedSize, generation: generation)
+    } catch {
+      guard error is URLError else { throw error }
+      return try await localAudioChunk(
+        path: "epub/\(bookID)/file/\(clip.audioHref)",
+        query: [URLQueryItem(name: "fileId", value: String(fileID))], offset: offset,
+        length: length,
+        expectedSize: expectedSize, mimeType: clip.audioMimeType, generation: generation)
+    }
+  }
+
+  private func localAudioChunk(
+    path: String, query: [URLQueryItem], offset: Int64, length: Int, expectedSize: Int64?,
+    mimeType: String, generation: UUID
+  ) async throws -> AudioByteChunk {
+    try ensureSession(generation)
+    guard offset >= 0, (1...AudioStreamFormat.chunkLimit).contains(length),
+      let file = try await offlineStore().verifiedURL(path: path, query: query),
+      let count = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+      expectedSize.map({ $0 == Int64(count) }) ?? true, offset <= Int64(count) - Int64(length)
+    else { throw ConnectionError.fileChanged }
+    let handle = try FileHandle(forReadingFrom: file)
+    defer { try? handle.close() }
+    try handle.seek(toOffset: UInt64(offset))
+    let data = try handle.read(upToCount: length) ?? Data()
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    guard data.count == length else { throw ConnectionError.fileChanged }
+    return AudioByteChunk(
+      data: data, totalBytes: Int64(count), mimeType: mimeType,
+      sourceValidator: "offline-\(file.lastPathComponent)")
+  }
+
+  func downloadOfflineResource(
+    _ input: OfflineResource, destination: URL,
+    expectedPublicationRevision: String? = nil,
+    progress: @MainActor @Sendable (BookFileTransferProgress) -> Void
+  ) async throws -> OfflineResource {
+    let generation = try authenticatedSessionGeneration()
+    var resource = input
+    let partial = destination.appendingPathExtension("partial")
+    let transfer = destination.appendingPathExtension("transfer")
+    if expectedPublicationRevision != nil {
+      try? FileManager.default.removeItem(at: partial)
+      try? FileManager.default.removeItem(at: transfer)
+    }
+    if let data = try? Data(contentsOf: transfer), data.count < 64 * 1024,
+      let retained = try? JSONDecoder().decode(OfflineResource.self, from: data),
+      retained.id == input.id,
+      retained.expectedBytes == input.expectedBytes || input.expectedBytes == nil
+    {
+      resource.validator = retained.validator
+      resource.expectedBytes = retained.expectedBytes
+      resource.sourceDigest = retained.sourceDigest
+    }
+    var offset = Int64((try? partial.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+    if resource.validator == nil || resource.expectedBytes.map({ offset >= $0 }) ?? false {
+      try? FileManager.default.removeItem(at: partial)
+      offset = 0
+    }
+    var request = URLRequest(
+      url: profile.endpoint(resource.path, query: resource.query.map(\.item)))
+    request.timeoutInterval = 120
+    request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    if offset > 0 {
+      request.setValue("bytes=\(offset)-", forHTTPHeaderField: "Range")
+      request.setValue(resource.validator, forHTTPHeaderField: "If-Range")
+    }
+    try ensureSession(generation)
+    var delivery = try await networkBytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      request.setValue(
+        "Bearer \(try await refresh().accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await networkBytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    try validate(response)
+    if response.statusCode == 200 { offset = 0 }
+    let total = response.expectedContentLength + offset
+    guard [200, 206].contains(response.statusCode), response.expectedContentLength >= 0,
+      total >= 0, total <= OfflineResourceStore.byteLimit,
+      resource.expectedBytes.map({ $0 == total }) ?? true,
+      offset == 0
+        || (response.value(forHTTPHeaderField: "Content-Range")?.hasPrefix("bytes \(offset)-")
+          == true
+          && response.value(forHTTPHeaderField: "ETag") == resource.validator)
+    else { throw ConnectionError.fileChanged }
+    resource.expectedBytes = total
+    resource.validator = response.value(forHTTPHeaderField: "ETag")
+    resource.sourceDigest = response.value(forHTTPHeaderField: "X-Content-SHA256")
+    if let digest = resource.sourceDigest {
+      guard digest.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil,
+        resource.validator == "\"\(digest)\""
+      else { throw ConnectionError.invalidResponse }
+    }
+    try await offlineStore().reserveTransfer(destination: destination, total: total)
+    try await offlineStore().saveTransfer(resource, destination: destination)
+    if offset == 0 {
+      guard FileManager.default.createFile(atPath: partial.path, contents: nil) else {
+        throw ConnectionError.insufficientStorage
+      }
+    }
+    let handle = try FileHandle(forWritingTo: partial)
+    defer { try? handle.close() }
+    try handle.seek(toOffset: UInt64(offset))
+    var received = offset
+    var buffer = Data()
+    buffer.reserveCapacity(64 * 1024)
+    await progress(.init(received: received, total: total))
+    for try await byte in bytes {
+      guard received < total else { throw ConnectionError.fileChanged }
+      buffer.append(byte)
+      received += 1
+      if buffer.count == 64 * 1024 {
+        try handle.write(contentsOf: buffer)
+        buffer.removeAll(keepingCapacity: true)
+        await progress(.init(received: received, total: total))
+        try Task.checkCancellation()
+        try ensureSession(generation)
+      }
+    }
+    if !buffer.isEmpty { try handle.write(contentsOf: buffer) }
+    try handle.synchronize()
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    guard received == total else { throw ConnectionError.fileChanged }
+    guard expectedPublicationRevision.map({ $0 == resource.sourceDigest }) ?? true else {
+      throw ConnectionError.fileChanged
+    }
+    try handle.close()
+    resource = try await offlineStore().publish(
+      resource, partial: partial, destination: destination,
+      knownPublication: expectedPublicationRevision != nil)
+    try await offlineStore().finishTransfer(destination: destination)
+    await progress(.init(received: received, total: total))
+    return resource
+  }
+
   private func ensureSession(_ generation: UUID) throws {
     guard generation == sessionGeneration, saved != nil else {
       throw ConnectionError.expiredSession
     }
   }
 
-  func epubResource(
+  private func epubResourceOnline(
     bookID: Int, fileID: Int, path: String, expectedSize: Int?, byteLimit: Int = 8 * 1024 * 1024,
     session: UUID? = nil
   ) async throws -> Data {
@@ -1118,13 +1867,13 @@ actor BookOrbitAPI {
     )
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(generation)
-    var delivery = try await transport.bytes(for: request)
+    var delivery = try await networkBytes(for: request)
     if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
       delivery.0.task.cancel()
       let credentials = try await refresh()
       try ensureSession(generation)
       request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
-      delivery = try await transport.bytes(for: request)
+      delivery = try await networkBytes(for: request)
     }
     let (bytes, response) = delivery
     defer { bytes.task.cancel() }
@@ -1199,7 +1948,14 @@ actor BookOrbitAPI {
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
     if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-    let (data, response) = try await transport.data(for: request)
+    let (data, response): (Data, URLResponse)
+    do {
+      (data, response) = try await transport.data(for: request)
+      isOffline = false
+    } catch {
+      if error is URLError { isOffline = true }
+      throw error
+    }
     guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
     return (data, response)
   }

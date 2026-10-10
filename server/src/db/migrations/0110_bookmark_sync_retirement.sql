@@ -1,0 +1,4 @@
+ALTER TABLE "bookmarks" ADD COLUMN "sync_retired" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE INDEX "bookmarks_sync_working_idx" ON "bookmarks" USING btree ("user_id","book_id","id") WHERE "bookmarks"."sync_retired" = false;--> statement-breakpoint
+CREATE INDEX "bookmarks_sync_cleanup_idx" ON "bookmarks" USING btree ("user_id","deleted_at","id") WHERE "bookmarks"."sync_retired" = false and "bookmarks"."deleted_at" is not null;--> statement-breakpoint
+ALTER TABLE "bookmarks" ADD CONSTRAINT "bookmarks_sync_retired_chk" CHECK ("bookmarks"."sync_retired" = false or "bookmarks"."deleted_at" is not null);

@@ -3,6 +3,9 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { StickyNote, Trash2 } from '@lucide/vue'
 import type { AnnotationItem } from '@bookorbit/types'
+import { Permission } from '@bookorbit/types'
+import { usePermissions } from '@/features/auth/composables/usePermissions'
+import RetainedHandwriting from '../../shared/components/RetainedHandwriting.vue'
 
 const props = defineProps<{
   annotation: AnnotationItem
@@ -14,6 +17,8 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { hasPermission } = usePermissions()
+const canDelete = computed(() => hasPermission(props.annotation.kind === 'pdf_ink' ? Permission.LibraryEditMetadata : Permission.AnnotationManageOwn))
 
 const pageLabel = computed(() => (props.annotation.pdf ? props.annotation.pdf.page + 1 : props.annotation.pageno))
 
@@ -35,6 +40,7 @@ function handleDelete() {
       @click="handleNavigate"
     >
       <span class="line-clamp-3 break-words text-xs leading-relaxed text-foreground">{{ props.annotation.text }}</span>
+      <RetainedHandwriting v-if="props.annotation.drawing" :drawing="props.annotation.drawing" />
       <span
         v-if="props.annotation.note"
         class="mt-1.5 flex items-start gap-1.5 border-t border-dashed border-border pt-1.5 text-[11px] text-muted-foreground"
@@ -52,6 +58,7 @@ function handleDelete() {
       </span>
       <span class="flex-1" />
       <button
+        v-if="canDelete"
         type="button"
         class="flex size-6 items-center justify-center rounded text-muted-foreground opacity-100 transition-opacity hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:focus-visible:opacity-100 [@media(pointer:fine)]:group-hover:opacity-100"
         :aria-label="t('reader.sidebar.deleteHighlight')"

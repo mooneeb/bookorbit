@@ -8,6 +8,7 @@ final class PDFReaderModel {
   let file: BookDetailFile
   let position: NativeFilePositionModel
   private(set) var document: PDFDocument?
+  private(set) var sourceRevision: String?
   private(set) var pageIndex = 0
   private(set) var searchSelection: PDFSelection?
   private(set) var status = ""
@@ -28,14 +29,19 @@ final class PDFReaderModel {
   private var saveTask: Task<Void, Never>?
   private var isClosed = false
   private var isLoading = false
+  private var isRefreshingSource = false
+  private var sourceBook: BookDetail?
+  private var sourceRecoveryRetained = false
 
   init(api: BookOrbitAPI, file: BookDetailFile) {
     self.api = api
     self.file = file
-    position = NativeFilePositionModel(api: api, fileID: file.id)
+    position = NativeFilePositionModel(
+      api: api, fileID: file.id,
+      sourceIdentity: file.absolutePath)
   }
 
-  func load() async {
+  func load(bookID: Int? = nil) async {
     guard document == nil, lockedDocument == nil, !isLoading, !isClosed else { return }
     isLoading = true
     error = nil
@@ -45,11 +51,18 @@ final class PDFReaderModel {
       try Task.checkCancellation()
       guard !isClosed else { return }
       self.session = session
+      if let bookID {
+        sourceBook = try await api.boundedJSON(
+          "books/\(bookID)", byteLimit: 2 * 1024 * 1024, session: session)
+      }
       let progress: FileReadingProgress = try await api.boundedJSON(
         "books/files/\(file.id)/progress", byteLimit: 16 * 1024, session: session)
       try await checkSession()
-      try position.accept(progress, session: session)
-      guard let size = file.sizeBytes else { throw ConnectionError.invalidResponse }
+      try await position.accept(progress, session: session)
+      let cached = try await api.offlineStore().sourceResource(fileID: file.id)
+      guard let size = cached?.expectedBytes.map(Double.init) ?? file.sizeBytes else {
+        throw ConnectionError.invalidResponse
+      }
       let url = try await api.deliveredFile(
         fileID: file.id, expectedSize: size, mimeType: "application/pdf", session: session)
       if isClosed || Task.isCancelled {
@@ -57,12 +70,14 @@ final class PDFReaderModel {
         return
       }
       localFile = url
+      sourceRevision = try await PDFSourceInkSource.revision(of: url)
+      try await position.bindSourceRevision(sourceRevision)
       try await checkSession()
       guard let pdf = PDFDocument(url: url) else {
         throw ConnectionError.invalidResponse
       }
       try await checkSession()
-      openingPageNumber = progress.pageNumber
+      openingPageNumber = position.resumePageNumber
       if pdf.isLocked {
         lockedDocument = pdf
       } else {
@@ -138,6 +153,12 @@ final class PDFReaderModel {
     if saveTask == nil { saveTask = Task { await savePendingPosition() } }
   }
 
+  func reveal(page index: Int) {
+    guard !isClosed, let document, (0..<document.pageCount).contains(index) else { return }
+    pageIndex = index
+    searchSelection = nil
+  }
+
   func openSearchMatch(_ match: PDFSearchMatch) {
     guard !isClosed, !isPositionResetting, !isClosing, let document,
       let page = document.page(at: match.pageIndex)
@@ -198,7 +219,7 @@ final class PDFReaderModel {
         }
         guard !isClosed else { return }
         if pendingPage == nil {
-          status = "Position saved"
+          status = position.hasPendingSync ? "Position saved on this iPad" : "Position saved"
           error = nil
         }
       } catch {
@@ -221,6 +242,69 @@ final class PDFReaderModel {
     await position.refresh(local)
   }
 
+  func refreshPublishedSource(
+    bookID: Int, proof: NativePdfPageSource, canReload: @MainActor () -> Bool
+  ) async {
+    guard !isClosed, !isRefreshingSource, let session, let sourceRevision, let document,
+      proof.sourceRevision != sourceRevision,
+      proof.matchedSourceRevision == sourceRevision, canReload()
+    else { return }
+    isRefreshingSource = true
+    defer { isRefreshingSource = false }
+    var replacement: URL?
+    do {
+      let book: BookDetail = try await api.boundedJSON(
+        "books/\(bookID)", byteLimit: 2 * 1024 * 1024, session: session)
+      try await checkSession()
+      guard let current = book.files.first(where: { $0.id == file.id }),
+        current.absolutePath == file.absolutePath, current.format?.lowercased() == "pdf"
+      else { throw ConnectionError.fileChanged }
+      let url = try await api.deliveredFile(
+        fileID: file.id, expectedSize: current.sizeBytes, mimeType: "application/pdf",
+        maximumSize: 100 * 1024 * 1024, session: session)
+      replacement = url
+      let revision = try await PDFSourceInkSource.revision(of: url)
+      try await checkSession()
+      try Task.checkCancellation()
+      guard !isClosed, revision == proof.sourceRevision,
+        let refreshed = PDFDocument(url: url), !refreshed.isLocked,
+        refreshed.pageCount == document.pageCount
+      else { throw ConnectionError.fileChanged }
+      guard canReload() else {
+        try? FileManager.default.removeItem(at: url)
+        return
+      }
+      try await position.bindSourceRevision(revision, matchedRevision: proof.matchedSourceRevision)
+      try await checkSession()
+      guard canReload() else {
+        try? FileManager.default.removeItem(at: url)
+        return
+      }
+      removeLocalFile()
+      localFile = url
+      replacement = nil
+      self.document = refreshed
+      self.sourceRevision = revision
+      searchSelection = nil
+    } catch is CancellationError {
+    } catch {
+      self.error = error.localizedDescription
+    }
+    if let replacement { try? FileManager.default.removeItem(at: replacement) }
+  }
+
+  func retainChangedSource(reason: String) async {
+    guard !sourceRecoveryRetained, let sourceBook, let localFile, let sourceRevision,
+      let session
+    else { return }
+    do {
+      try await api.retainOpenedPdfSource(
+        book: sourceBook, fileID: file.id, source: localFile,
+        revision: sourceRevision, reason: reason, session: session)
+      sourceRecoveryRetained = true
+    } catch { self.error = error.localizedDescription }
+  }
+
   func choosePosition(local: Bool) async {
     guard !isClosed, !isPositionResetting, !isClosing, saveTask == nil, let document,
       let saved = await position.choose(local: local),
@@ -228,7 +312,9 @@ final class PDFReaderModel {
     else { return }
     pageIndex = Int(page) - 1
     pendingPage = nil
-    status = "Chosen reading position saved."
+    status =
+      position.hasPendingSync
+      ? "Chosen position saved on this iPad." : "Chosen reading position saved."
     error = nil
     searchSelection = nil
   }
@@ -276,6 +362,7 @@ final class PDFReaderModel {
     saveTask?.cancel()
     searchSelection = nil
     document = nil
+    sourceRevision = nil
     session = nil
     discardOpeningDocument()
   }

@@ -1,0 +1,146 @@
+{
+  "candidate": "6125f1eb50b278c2fec3a0384151f2c71bd055e6",
+  "buildManifest": "/tmp/bookorbit-issue-3-bounded-native-build-evidence.json",
+  "actualSelector": "BookOrbitUITests/AnnotationJourneyTests/testIPADE02A07HubDeepLinkExportTrashRestoreAndExplicitRepair",
+  "actualXcodePID": 5975,
+  "actualRunnerPID": 6122,
+  "profile": "pro13-portrait-light",
+  "device": "DAC90D1E-5E78-46A7-A87C-023F9351FBD9",
+  "mode": {
+    "IPAD_E02_CRITICAL_ONLY": "1",
+    "TEST_RUNNER_IPAD_E02_CRITICAL_ONLY": "1"
+  },
+  "criticalCriteriaPass": true,
+  "fullAcceptancePass": false,
+  "allSelectedCaseAssertionsExecuted": true,
+  "actualCounts": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "testcaseDurationSeconds": 262.417,
+  "watchdog": {
+    "pid": 5975,
+    "wrapperPID": 5691,
+    "failureDetected": false,
+    "signals": [],
+    "runnerPID": 6122,
+    "exitCode": 0,
+    "elapsedSeconds": 277.48,
+    "completedAt": "2026-10-09T14:13:16.659467+00:00",
+    "observerStopped": true,
+    "observerErrors": [],
+    "actualDocumentsAtObserverStop": "/Users/moon/Library/Developer/CoreSimulator/Devices/DAC90D1E-5E78-46A7-A87C-023F9351FBD9/data/Containers/Data/Application/327616A2-1F1C-4085-A336-20A573D8FD42/Documents"
+  },
+  "compiledPinsAfterMatch": true,
+  "actualGates": [
+    "Unique native second-chapter passage marked with one retained handwriting stroke",
+    "All26baseline annotation rows exactly preserved",
+    "Hub search/handwriting filter/month grouping bounded40 rows",
+    "Actual retained drawing detail and exact known-passage deep link",
+    "Unique fresh Files Save8529B artifact; parsed format/id/version/CFI/jumpFile/text/fullDrawing matches canonical created row",
+    "Trash v2 removes active row; Trash filter retains row/drawing",
+    "Restore v3 active, native drawing unchanged",
+    "Explicit Repair Here confirmation creates v4 firstchapterCFI/text/repaired status; drawing unchanged"
+  ],
+  "publicCanonicalCheckpoints": [
+    {
+      "timestamp": 1791555041.222,
+      "id": 109,
+      "version": 1,
+      "deletedAt": null,
+      "cfi": "epubcfi(/6/4[c2ref]!/4,/2[p3],/2[p3])",
+      "text": "Second chapter begins here.",
+      "positionStatus": "exact",
+      "drawingSHA256": "0ac1f0b561083fe50a6ae24c4edeeacbbbac3a5a1e6a0b2d7e2db4cac0b4dfb7"
+    },
+    {
+      "timestamp": 1791555122.101,
+      "id": 109,
+      "version": 2,
+      "deletedAt": "2026-10-09T14:12:01.995Z",
+      "cfi": "epubcfi(/6/4[c2ref]!/4,/2[p3],/2[p3])",
+      "text": "Second chapter begins here.",
+      "positionStatus": "exact",
+      "drawingSHA256": "0ac1f0b561083fe50a6ae24c4edeeacbbbac3a5a1e6a0b2d7e2db4cac0b4dfb7"
+    },
+    {
+      "timestamp": 1791555140.268,
+      "id": 109,
+      "version": 3,
+      "deletedAt": null,
+      "cfi": "epubcfi(/6/4[c2ref]!/4,/2[p3],/2[p3])",
+      "text": "Second chapter begins here.",
+      "positionStatus": "exact",
+      "drawingSHA256": "0ac1f0b561083fe50a6ae24c4edeeacbbbac3a5a1e6a0b2d7e2db4cac0b4dfb7"
+    },
+    {
+      "timestamp": 1791555193.484,
+      "id": 109,
+      "version": 4,
+      "deletedAt": null,
+      "cfi": "epubcfi(/6/2[c1ref]!/4,/2[p1],/2[p1])",
+      "text": "Alpha \ud83d\ude00 cafe\u0301 omega.",
+      "positionStatus": "repaired",
+      "drawingSHA256": "0ac1f0b561083fe50a6ae24c4edeeacbbbac3a5a1e6a0b2d7e2db4cac0b4dfb7"
+    }
+  ],
+  "actualFilesInspection": {
+    "actualFile": "/Users/moon/Library/Developer/CoreSimulator/Devices/DAC90D1E-5E78-46A7-A87C-023F9351FBD9/data/Containers/Data/Application/327616A2-1F1C-4085-A336-20A573D8FD42/Documents/BookOrbit annotations A07-35F9F113-391B-4C11-A3D6-BF3238859D45.json",
+    "regularFile": true,
+    "symlink": false,
+    "bytes": 8529,
+    "sha256": "075c56f5af2275609e04d9a4f48bebac9a78d5b33389476d72dc4fd02404de9a",
+    "format": "bookorbit-annotations-v1",
+    "itemCount": 1,
+    "id": 109,
+    "version": 1,
+    "cfi": "epubcfi(/6/4[c2ref]!/4,/2[p3],/2[p3])",
+    "jumpFileId": 2,
+    "kind": "handwriting",
+    "text": "Second chapter begins here.",
+    "drawingExactAgainstPublicCreatedItem": true,
+    "drawingStrokeCount": 1,
+    "nativeDataLength": 408
+  },
+  "actualExportAttachmentEntireJSONMatchesFiles": true,
+  "openedPNGArtifacts": [
+    "live-hub-foreground.png",
+    "attachments/FF545FC2-A4A7-481E-8B97-607255469DF9.png",
+    "attachments/1CDDA6FF-C909-45A2-A539-A98A30FF6ED7.png"
+  ],
+  "deferredAttachmentTags": [],
+  "sourceOpeningRetryCount": 0,
+  "sourceOpeningRetryNote": "First actual source readiness succeeded; bounded transient retry code not exercised.",
+  "artifactExportRetryNote": "First parallel xcresult read/export hit database busy; one5s infrastructure retry succeeded. No native test retry.",
+  "criticalHighBugs": [],
+  "cleanup": {
+    "completedAt": "2026-10-09T14:14:16.360Z",
+    "events": ["revision-aware-delete-own-native-item"],
+    "checks": {
+      "accountExact": true,
+      "audioProgressExact": true,
+      "allBaselineAnnotationsExact": true,
+      "ownNewRowsAllTombstoned": true,
+      "bookmarksExact": true,
+      "sourceBytesExact": true,
+      "progressSemanticsExact": true,
+      "fileMetadataExact": true,
+      "narrationVersionUnchanged": true
+    },
+    "baselineAnnotationCount": 26,
+    "ownedNewRows": [
+      {
+        "id": 109,
+        "clientId": "7895ec45-9123-430e-a81e-5f174de48d10"
+      }
+    ],
+    "observerLogout": 200,
+    "proxyControlsUsed": false,
+    "localPendingDisposition": "No private journals or local drafts inspected or purged."
+  },
+  "leaseReleasedAt": "2026-10-09T14:14:16.360Z",
+  "checkLimit": "No unit tests/lints/broad default acceptance checks run per role. No product/test code changes by Tester. Critical-only mode explicitly selected; no deferred tags emitted by this A07 case.",
+  "priorReadAlongRED": "Preserved in original bounded-readalong-6125 evidence; not rerun."
+}

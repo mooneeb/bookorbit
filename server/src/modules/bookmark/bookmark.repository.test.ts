@@ -53,6 +53,7 @@ function makeDb() {
   deleteWhereResult.returning.mockResolvedValue([]);
 
   const db = {
+    transaction: vi.fn(),
     select: vi.fn().mockReturnValue(selectResult),
     insert: vi.fn().mockReturnValue(insertResult),
     update: vi.fn().mockReturnValue(updateResult),
@@ -66,6 +67,7 @@ function makeDb() {
     _updateWhere: updateWhereResult,
     _deleteWhere: deleteWhereResult,
   };
+  db.transaction.mockImplementation((callback) => Promise.resolve(callback(db)));
   return db;
 }
 
@@ -184,6 +186,7 @@ describe('BookmarkRepository', () => {
         devicePos: '/body/DocFragment[2]',
         pageno: 12,
         deletedAt: null,
+        syncRetired: false,
       });
       expect(result).toEqual(row);
     });

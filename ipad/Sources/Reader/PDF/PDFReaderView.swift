@@ -5,6 +5,12 @@ struct PDFReaderView: View {
   let bookID: Int
   let fileID: Int
   @State private var model: PDFReaderModel
+  @State private var ink: PDFSourceInkEditor
+  @State private var passageRepair: PDFPassageRepairModel?
+  @State private var passages: PDFPassageAnnotationModel
+  let annotation: NativeAnnotationItem?
+  let repairAnnotation: NativeAnnotationItem?
+  let onRepairSelection: ((NativeAnnotationPayload) -> Void)?
   @State private var preferences: ReaderPreferencesModel
   @State private var positionReset: NativePositionResetModel?
   @State private var confirmsDiscard = false
@@ -20,11 +26,25 @@ struct PDFReaderView: View {
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.dismiss) private var dismiss
 
-  init(api: BookOrbitAPI, bookID: Int, file: BookDetailFile) {
+  init(
+    api: BookOrbitAPI, bookID: Int, file: BookDetailFile,
+    annotation: NativeAnnotationItem? = nil, repairAnnotation: NativeAnnotationItem? = nil,
+    onRepairSelection: ((NativeAnnotationPayload) -> Void)? = nil
+  ) {
     self.api = api
     self.bookID = bookID
     fileID = file.id
+    self.annotation = annotation
+    self.repairAnnotation = repairAnnotation
+    self.onRepairSelection = onRepairSelection
     _model = State(initialValue: PDFReaderModel(api: api, file: file))
+    _ink = State(initialValue: PDFSourceInkEditor(api: api, bookID: bookID, fileID: file.id))
+    _passageRepair = State(
+      initialValue: repairAnnotation.flatMap {
+        $0.kind == "pdf_ink" ? nil : PDFPassageRepairModel(original: $0)
+      })
+    _passages = State(
+      initialValue: PDFPassageAnnotationModel(api: api, bookID: bookID, fileID: file.id))
     _preferences = State(
       initialValue: ReaderPreferencesModel(api: api, fileID: file.id, group: "pdf"))
   }
@@ -41,19 +61,77 @@ struct PDFReaderView: View {
       .navigationTitle("PDF reader")
       .navigationBarTitleDisplayMode(.inline)
     }
-    .task { await model.load() }
-    .onChange(of: scenePhase) { _, phase in
-      if phase == .active { Task { await model.refreshPosition() } }
+    .task {
+      await model.load(bookID: bookID)
+      if let page = annotation?.pdf?.page ?? annotation?.pageno.map({ $0 - 1 }),
+        let document = model.document,
+        (0..<document.pageCount).contains(page)
+      {
+        model.reveal(page: page)
+      }
+      ink.currentPage = model.pageIndex
+      ink.loadedSourceRevision = model.sourceRevision
+      await ink.load()
+      if let document = model.document { passageRepair?.bind(document: document, source: ink) }
+      await ink.preparePages(Set(pageLayout.pages(in: pageLayout.unit(for: model.pageIndex))))
+      if let annotation, annotation.kind == "pdf_ink" { ink.select(annotation) }
+    }
+    .task(id: "\(model.pageIndex)|\(pageLayout.facing)|\(pageLayout.pageCount)") {
+      await ink.openPage(model.pageIndex)
+      await ink.preparePages(Set(pageLayout.pages(in: pageLayout.unit(for: model.pageIndex))))
+    }
+    .onChange(of: model.pageIndex) { _, _ in passageRepair?.changedPage() }
+    .task(id: ink.repositoryGeneration) { await ink.refreshItems() }
+    .task(id: scenePhase) {
+      guard scenePhase == .active else { return }
+      await model.refreshPosition()
+      while !Task.isCancelled {
+        await passages.refreshRemote()
+        if let proof = await ink.refreshRemote() {
+          await model.refreshPublishedSource(
+            bookID: bookID, proof: proof,
+            canReload: {
+              !ink.hasUncommittedDrawing && !isTurning && passages.presentation == nil
+                && !passages.isBusy && passages.selectedText.isEmpty
+            })
+          ink.loadedSourceRevision = model.sourceRevision
+        } else if let reason = ink.sourceRecoveryReason {
+          await model.retainChangedSource(reason: reason)
+        }
+        do { try await Task.sleep(for: .seconds(3)) } catch { return }
+      }
     }
     .task { await preferences.load() }
     .onDisappear {
       if !isNavigating && !isSearching && !isBrowsingContents && !isEditingPreferences
         && !isBrowsingBookmarks && !isBrowsingThumbnails && positionReset == nil
       {
-        model.close()
+        if let reason = ink.sourceRecoveryReason {
+          Task {
+            await model.retainChangedSource(reason: reason)
+            model.close()
+          }
+        } else {
+          model.close()
+        }
+        ink.close()
         preferences.close()
       }
     }
+    .task(id: ink.loadedSourceRevision) {
+      guard let document = model.document, ink.loadedSourceRevision != nil else { return }
+      passages.bind(document: document, source: ink)
+      await passages.load()
+      await passages.preparePages(Set(pageLayout.pages(in: pageLayout.unit(for: model.pageIndex))))
+      if let annotation, annotation.kind != "pdf_ink", repairAnnotation == nil {
+        passages.open(annotation)
+      }
+    }
+    .task(id: "private:\(model.pageIndex)|\(pageLayout.facing)|\(pageLayout.pageCount)") {
+      await passages.preparePages(Set(pageLayout.pages(in: pageLayout.unit(for: model.pageIndex))))
+    }
+    .task(id: ink.repositoryGeneration) { await passages.reloadItems() }
+    .sheet(item: $passages.presentation) { _ in PDFPassageAnnotationView(model: passages) }
     .sheet(item: $positionReset) { reset in
       NativePositionResetView(model: reset, closed: positionResetClosed)
     }
@@ -101,12 +179,27 @@ struct PDFReaderView: View {
   private var readerBody: some View {
     VStack(spacing: 0) {
       if let document = model.document {
+        if let passageRepair {
+          PDFPassageRepairControls(model: passageRepair, confirm: confirmPassageRepair)
+        } else {
+          PDFSourceInkControls(editor: ink)
+          PDFPassageAnnotationControls(model: passages)
+        }
+        if repairAnnotation?.kind == "pdf_ink" {
+          Button("Attach ink to this page", action: repairHere)
+            .frame(minHeight: 44)
+            .disabled(!ink.canEdit || ink.isSaving)
+            .accessibilityIdentifier("pdfRepairHere")
+        }
         PDFCurlView(
           document: document, pageIndex: model.pageIndex, selection: model.searchSelection,
           onTurn: model.didTurn, settings: preferences.value.pdf,
           animation: preferences.value.pageAnimation, onLayout: { pageLayout = $0 },
-          onTransition: { isTurning = $0 }
+          onTransition: { isTurning = $0 }, inkEditor: ink, passageRepair: passageRepair,
+          passages: repairAnnotation == nil ? passages : nil
         )
+        .id(model.sourceRevision)
+        .onAppear { passageRepair?.bind(document: document, source: ink) }
         .allowsHitTesting(!model.isClosing && !model.position.conflict.isBlocked)
       } else if model.error == nil {
         ProgressView("Opening PDF…")
@@ -161,7 +254,7 @@ struct PDFReaderView: View {
         .disabled(
           model.document == nil
             || pageLayout.adjacentPage(to: model.pageIndex, delta: -1) == nil
-            || model.isClosing || isTurning)
+            || model.isClosing || isTurning || passageRepair?.locksPage == true)
       Button("Next page", action: nextPage)
         .frame(minHeight: 44)
         .keyboardShortcut(.rightArrow, modifiers: [])
@@ -169,7 +262,7 @@ struct PDFReaderView: View {
         .disabled(
           model.document == nil
             || pageLayout.adjacentPage(to: model.pageIndex, delta: 1) == nil
-            || model.isClosing || isTurning)
+            || model.isClosing || isTurning || passageRepair?.locksPage == true)
       Button("Go to page") { isNavigating = true }
         .frame(minHeight: 44)
         .accessibilityIdentifier("pdfNavigate")
@@ -212,6 +305,7 @@ struct PDFReaderView: View {
   }
 
   private func cancelOpening() {
+    ink.close()
     model.close()
     preferences.close()
     dismiss()
@@ -247,6 +341,21 @@ struct PDFReaderView: View {
     }
     Task {
       if await model.prepareToClose() { dismiss() }
+    }
+  }
+  private func repairHere() {
+    guard let repairAnnotation,
+      let payload = ink.repairPayload(repairAnnotation, page: model.pageIndex)
+    else { return }
+    onRepairSelection?(payload)
+    dismiss()
+  }
+  private func confirmPassageRepair() {
+    guard let passageRepair, onRepairSelection != nil else { return }
+    Task {
+      guard let payload = await passageRepair.confirmedPayload() else { return }
+      onRepairSelection?(payload)
+      dismiss()
     }
   }
   private func previousPage() {

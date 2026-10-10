@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  bigserial,
+  boolean,
   date,
   doublePrecision,
   index,
@@ -17,7 +19,15 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
-import type { ReadStatus, ReadStatusSource, ReadingAttemptOrigin, ReadingAttemptOutcome, ReadingSessionSource } from '@bookorbit/types';
+import type {
+  NativeAnnotationDrawing,
+  NativeAnnotationKind,
+  ReadStatus,
+  ReadStatusSource,
+  ReadingAttemptOrigin,
+  ReadingAttemptOutcome,
+  ReadingSessionSource,
+} from '@bookorbit/types';
 
 import { bookFiles, books } from './books';
 import { timestamptz } from './columns';
@@ -459,6 +469,8 @@ export const bookmarks = pgTable(
   {
     id: serial('id').primaryKey(),
     clientId: uuid('client_id').notNull().defaultRandom(),
+    retryProtected: boolean('retry_protected').notNull().default(false),
+    syncRetired: boolean('sync_retired').notNull().default(false),
     userId: integer('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -494,6 +506,13 @@ export const bookmarks = pgTable(
   (t) => [
     uniqueIndex('bookmarks_user_book_client_id_uidx').on(t.userId, t.bookId, t.clientId),
     index('bookmarks_user_book_idx').on(t.userId, t.bookId),
+    index('bookmarks_sync_working_idx')
+      .on(t.userId, t.bookId, t.id)
+      .where(sql`${t.syncRetired} = false`),
+    index('bookmarks_sync_cleanup_idx')
+      .on(t.userId, t.deletedAt, t.id)
+      .where(sql`${t.syncRetired} = false and ${t.deletedAt} is not null`),
+    check('bookmarks_sync_retired_chk', sql`${t.syncRetired} = false or ${t.deletedAt} is not null`),
     index('bookmarks_user_book_file_id_idx').on(t.userId, t.bookId, t.fileId, t.id),
     index('bookmarks_epub_created_idx')
       .on(t.userId, t.bookId, t.createdAt, t.id)
@@ -504,7 +523,7 @@ export const bookmarks = pgTable(
       .where(sql`${t.fileId} is null and ${t.cfi} is not null and ${t.deletedAt} is null`),
     uniqueIndex('bookmarks_user_book_file_page_uidx')
       .on(t.userId, t.bookId, t.fileId, t.pageNumber)
-      .where(sql`${t.fileId} is not null and ${t.pageNumber} is not null`),
+      .where(sql`${t.fileId} is not null and ${t.pageNumber} is not null and ${t.deletedAt} is null`),
     check(
       'bookmarks_fixed_page_chk',
       sql`(${t.fileId} is null and ${t.pageNumber} is null) or (${t.fileId} is not null and ${t.pageNumber} is not null and ${t.pageNumber} between 1 and 1000000 and ${t.cfi} is null and ${t.positionSeconds} is null)`,
@@ -515,7 +534,7 @@ export const bookmarks = pgTable(
       .where(sql`${t.deletedAt} is not null`),
     uniqueIndex('bookmarks_user_book_cfi_uidx')
       .on(t.userId, t.bookId, t.cfi)
-      .where(sql`${t.cfi} is not null`),
+      .where(sql`${t.cfi} is not null and ${t.deletedAt} is null`),
     uniqueIndex('bookmarks_user_book_pos_uidx')
       .on(t.userId, t.bookId, t.positionSeconds)
       .where(sql`${t.positionSeconds} is not null and ${t.cfi} is null and ${t.deletedAt} is null`),
@@ -530,6 +549,14 @@ export const annotations = pgTable(
   'annotations',
   {
     id: serial('id').primaryKey(),
+    clientId: uuid('client_id'),
+    kind: varchar('kind', { length: 20 }).$type<NativeAnnotationKind>().notNull().default('highlight'),
+    drawing: jsonb('drawing').$type<NativeAnnotationDrawing>(),
+    sourceRevision: varchar('source_revision', { length: 128 }),
+    pageFingerprint: varchar('page_fingerprint', { length: 128 }),
+    changeSequence: bigserial('change_sequence', { mode: 'number' })
+      .notNull()
+      .$onUpdateFn(() => sql`nextval(pg_get_serial_sequence('annotations', 'change_sequence'))`),
     userId: integer('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -561,6 +588,14 @@ export const annotations = pgTable(
       .$onUpdateFn(() => new Date()),
   },
   (t) => [
+    uniqueIndex('annotations_user_client_uidx').on(t.userId, t.clientId),
+    index('annotations_user_change_idx').on(t.userId, t.changeSequence),
+    index('annotations_user_book_change_idx').on(t.userId, t.bookId, t.changeSequence),
+    index('annotations_book_kind_change_idx').on(t.bookId, t.kind, t.changeSequence),
+    index('annotations_user_book_id_idx').on(t.userId, t.bookId, t.id.desc()),
+    index('annotations_user_kind_id_idx').on(t.userId, t.kind, t.id.desc()),
+    index('annotations_user_origin_id_idx').on(t.userId, t.origin, t.id.desc()),
+    check('annotations_kind_chk', sql`${t.kind} in ('highlight', 'text_note', 'handwriting', 'pdf_ink')`),
     index('annotations_user_id_idx').on(t.userId),
     index('annotations_user_id_id_idx').on(t.userId, t.id),
     index('annotations_user_book_idx').on(t.userId, t.bookId),
@@ -613,6 +648,13 @@ export const annotationPositions = pgTable(
     uniqueIndex('annotation_positions_annotation_format_uidx').on(t.annotationId, t.format),
     index('annotation_positions_user_idx').on(t.userId),
     index('annotation_positions_book_file_id_idx').on(t.bookFileId),
+    index('annotation_positions_file_annotation_idx').on(t.bookFileId, t.annotationId),
+    index('annotation_positions_user_file_pdf_page_idx')
+      .on(t.userId, t.bookFileId, sql`(${t.extras}->>'pageno')`, t.annotationId)
+      .where(sql`${t.format} = 'pdf'`),
+    index('annotation_positions_file_pdf_page_idx')
+      .on(t.bookFileId, sql`(${t.extras}->>'pageno')`, t.annotationId)
+      .where(sql`${t.format} = 'pdf'`),
     index('annotation_positions_format_status_idx').on(t.format, t.status),
     check('annotation_positions_format_chk', sql`${t.format} in ('cfi', 'xpointer', 'pdf', 'kobo_span')`),
     check('annotation_positions_status_chk', sql`${t.status} in ('exact', 'repaired', 'failed', 'pending')`),

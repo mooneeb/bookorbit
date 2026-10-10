@@ -1,9 +1,12 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Query, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
+import { Permission } from '@bookorbit/types';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { AnnotationHubService } from './annotation-hub.service';
+import { AnnotationHubMutationService } from './annotation-hub-mutation.service';
 import {
   AnnotationBulkDto,
   AnnotationExportQueryDto,
@@ -14,7 +17,10 @@ import {
 
 @Controller('annotations')
 export class AnnotationHubController {
-  constructor(private readonly hubService: AnnotationHubService) {}
+  constructor(
+    private readonly hubService: AnnotationHubService,
+    private readonly mutations: AnnotationHubMutationService,
+  ) {}
 
   @Get()
   list(@CurrentUser() user: RequestUser, @Query() query: AnnotationHubQueryDto) {
@@ -37,15 +43,17 @@ export class AnnotationHubController {
   }
 
   @Post('bulk')
+  @RequirePermission(Permission.AnnotationManageOwn)
   @HttpCode(200)
   bulk(@CurrentUser() user: RequestUser, @Body() dto: AnnotationBulkDto) {
-    return this.hubService.bulk(user.id, dto);
+    return this.mutations.bulk(user, dto);
   }
 
   @Post(':annotationId/restore')
+  @RequirePermission(Permission.AnnotationManageOwn)
   @HttpCode(200)
   restore(@CurrentUser() user: RequestUser, @Param('annotationId', ParseIntPipe) annotationId: number) {
-    return this.hubService.restore(user.id, annotationId);
+    return this.mutations.restore(user, annotationId);
   }
 
   @Get(':annotationId/sync-detail')
@@ -54,16 +62,18 @@ export class AnnotationHubController {
   }
 
   @Post(':annotationId/positions/retry')
+  @RequirePermission(Permission.AnnotationManageOwn)
   @HttpCode(200)
   retryPosition(
     @CurrentUser() user: RequestUser,
     @Param('annotationId', ParseIntPipe) annotationId: number,
     @Body() dto: AnnotationPositionRetryDto,
   ) {
-    return this.hubService.retryPosition(user.id, annotationId, dto.format);
+    return this.mutations.retryPosition(user, annotationId, dto.format);
   }
 
   @Delete(':annotationId')
+  @RequirePermission(Permission.AnnotationManageOwn)
   @HttpCode(204)
   async purge(@CurrentUser() user: RequestUser, @Param('annotationId', ParseIntPipe) annotationId: number) {
     await this.hubService.purge(user.id, annotationId);

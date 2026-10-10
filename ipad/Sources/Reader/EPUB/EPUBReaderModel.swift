@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Observation
 import UIKit
 import WebKit
@@ -34,6 +35,8 @@ struct EPUBSearchPage: Codable {
 
 @MainActor @Observable
 final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+  private static let fixtureLogger = Logger(
+    subsystem: "com.mooneeb.bookorbit.private", category: "epub.fixture_selection")
   let api: BookOrbitAPI
   let bookID: Int
   let file: BookDetailFile
@@ -56,6 +59,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   private(set) var isReady = false
   private(set) var isLoading = false
   private(set) var isNavigating = false
+  @ObservationIgnored private var publicationCommandsInFlight = 0
   private(set) var isPositionResetting = false
   private(set) var isSaving = false
   private(set) var isSearching = false
@@ -68,6 +72,8 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   @ObservationIgnored var prepareTurn: (@MainActor (UIImage) -> Void)?
   @ObservationIgnored var commitTurn: (@MainActor (Bool, ReaderTurnAnimation) async -> Void)?
   @ObservationIgnored var cancelTurn: (@MainActor () -> Void)?
+  @ObservationIgnored var openPassageAnnotation: (@MainActor (Int) -> Void)?
+  @ObservationIgnored var commitPencilHighlight: (@MainActor (EPUBSelectedPassage, UUID) -> Void)?
   private var navigationWait: CheckedContinuation<Void, any Error>?
   private var expectedNavigation: WKNavigation?
   private var navigationTimeout: Task<Void, Never>?
@@ -78,6 +84,10 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   private var sessionTask: Task<Void, Never>?
   private var isClosed = false
   private var reduceMotion = false
+  private(set) var annotationWriting = false
+  private(set) var isPencilMarking = false
+  private var revealingAnnotation = false
+  private var annotationRevealOrigin: EPUBReadingLocation?
   private let openedAt = Date()
 
   init(
@@ -88,7 +98,9 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
     self.bookID = bookID
     self.file = file
     self.continuation = continuation
-    position = NativeFilePositionModel(api: api, fileID: file.id)
+    position = NativeFilePositionModel(
+      api: api, fileID: file.id,
+      sourceIdentity: file.absolutePath + ":" + String(file.sizeBytes ?? -1))
     preferences = EPUBPreferencesModel(api: api, fileID: file.id)
     let resources = EPUBPublicationResources(api: api, bookID: bookID, fileID: file.id)
     self.resources = resources
@@ -108,7 +120,13 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       resources, contentWorld: .page, name: "resource")
     configuration.userContentController.add(self, name: "location")
     configuration.userContentController.add(self, name: "selection")
+    configuration.userContentController.add(self, name: "passageAnnotation")
+    configuration.userContentController.add(self, name: "pencilRelease")
+    configuration.userContentController.add(self, name: "pencilMarking")
     configuration.userContentController.add(self, name: "readerError")
+    #if DEBUG
+      configuration.userContentController.add(self, name: "recordedTransition")
+    #endif
     preferences.validateFont = { [weak self] requested in
       guard let self, self.isReady, !self.isClosed else { throw EPUBFontError.loadFailed }
       try await self.prepareFontSelection(requested)
@@ -185,9 +203,11 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       guard progress.percentage.isFinite, (0...100).contains(progress.percentage),
         progress.cfi.map({ $0.hasPrefix("epubcfi(") && $0.utf16.count <= 2000 }) ?? true
       else { throw ConnectionError.invalidResponse }
-      try position.accept(progress, session: session)
+      try await position.accept(progress, session: session)
       if let continuation {
-        guard continuation.fileId == file.id, continuation.cfi == progress.cfi else {
+        guard continuation.fileId == file.id, continuation.cfi == progress.cfi,
+          continuation.cfi == position.resumeCFI
+        else {
           throw NativeContinuationError(
             message:
               "The destination reading position changed. Close this reader and save the source again before continuing."
@@ -256,7 +276,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       try Task.checkCancellation()
       guard !isClosed else { return }
       var arguments: [String: Any] = [
-        "cfi": progress.cfi as Any? ?? NSNull(),
+        "cfi": position.resumeCFI as Any? ?? NSNull(),
         "settings": try renderSettings(hideCustomFont: true),
         "formatting": preferences.useFormatting,
       ]
@@ -294,7 +314,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
         throw ConnectionError.expiredSession
       }
       isReady = true
-      if progress.cfi == nil, let location {
+      if position.resumeCFI == nil, let location {
         var beginning = SaveFileProgressPayload(percentage: location.percentage)
         beginning.cfi = location.cfi
         position.setBeginning(beginning)
@@ -428,12 +448,14 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       if preservesNarration { narrationLocation = restored } else { self.location = restored }
       selectionCFI = nil
       selectionText = ""
-      if !preservesNarration { scheduleSave() }
+      if !preservesNarration && annotationRevealOrigin == nil { scheduleSave() }
     } catch { self.error = error.localizedDescription }
   }
 
   func layoutAnchor() async -> String? {
-    guard isReady, !isClosed, !isNavigating else { return visibleLocation?.cfi }
+    guard isReady, !isClosed, !isNavigating, publicationCommandsInFlight == 0 else {
+      return visibleLocation?.cfi
+    }
     guard isContinuous, narrationLocation == nil else { return visibleLocation?.cfi }
     do {
       let raw = try await webView.callAsyncJavaScript(
@@ -446,13 +468,29 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   func preserveLayout(at cfi: String) async {
-    guard isReady, !isClosed, !isNavigating else { return }
+    guard isReady, !isClosed, !isNavigating, publicationCommandsInFlight == 0,
+      cfi == visibleLocation?.cfi
+    else { return }
+    let started = Date()
+    if annotationInputFixture {
+      Self.fixtureLogger.info(
+        "[epub.fixture_layout] [start] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) selectionPresent=\(self.selectionCFI != nil, privacy: .public) - layout preservation navigation requested"
+      )
+    }
     isNavigating = true
     let preservesNarration = narrationLocation?.cfi == cfi
-    defer { isNavigating = false }
+    defer {
+      isNavigating = false
+      if annotationInputFixture {
+        let durationMs = max(0, Int(Date().timeIntervalSince(started) * 1000))
+        Self.fixtureLogger.info(
+          "[epub.fixture_layout] [end] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) durationMs=\(durationMs, privacy: .public) selectionPresent=\(self.selectionCFI != nil, privacy: .public) - layout preservation navigation completed"
+        )
+      }
+    }
     do {
       let raw = try await webView.callAsyncJavaScript(
-        "return await window.epubGo(target)",
+        "return await window.epubPreserveLayout(target)",
         arguments: ["target": cfi], in: nil, contentWorld: .page)
       guard !isClosed else { return }
       let restored = try decodedLocation(raw)
@@ -461,6 +499,88 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   func setReduceMotion(_ enabled: Bool) { reduceMotion = enabled }
+
+  func setAnnotationWriting(_ enabled: Bool) {
+    annotationWriting = enabled
+    webView.scrollView.isScrollEnabled = !isPencilMarking
+    let touchTypes =
+      [UITouch.TouchType.direct, .indirect, .indirectPointer] + (enabled ? [] : [.pencil])
+    webView.scrollView.panGestureRecognizer.allowedTouchTypes = touchTypes.map {
+      NSNumber(value: $0.rawValue)
+    }
+    guard isReady else { return }
+    Task {
+      _ = try? await webView.callAsyncJavaScript(
+        "window.epubAnnotationWriting(enabled)", arguments: ["enabled": enabled], in: nil,
+        contentWorld: .page)
+    }
+  }
+
+  func selectFixturePassage() {
+    guard annotationInputFixture, isReady else { return }
+    let started = Date()
+    Self.fixtureLogger.info(
+      "[epub.fixture_selection] [start] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) - fixture DOM selection requested"
+    )
+    Task {
+      do {
+        let value = try await webView.callAsyncJavaScript(
+          "return window.epubFixtureSelectPassage()", arguments: [:], in: nil, contentWorld: .page)
+        let result = value as? [String: Any] ?? [:]
+        let contents = result["contentsCount"] as? Int ?? -1
+        let section = result["sectionIndex"] as? Int ?? -1
+        let paragraphs = result["paragraphCount"] as? Int ?? -1
+        let ranges = result["rangeCount"] as? Int ?? -1
+        let collapsed = result["collapsed"] as? Bool ?? true
+        let visible = result["targetVisible"] as? Bool ?? false
+        let textChars = result["textChars"] as? Int ?? 0
+        let cfiChars = result["cfiChars"] as? Int ?? 0
+        let roundTrip = result["cfiRoundTrip"] as? Bool ?? false
+        let durationMs = max(0, Int(Date().timeIntervalSince(started) * 1000))
+        Self.fixtureLogger.info(
+          "[epub.fixture_selection] [end] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) durationMs=\(durationMs, privacy: .public) contents=\(contents, privacy: .public) section=\(section, privacy: .public) paragraphs=\(paragraphs, privacy: .public) ranges=\(ranges, privacy: .public) collapsed=\(collapsed, privacy: .public) targetVisible=\(visible, privacy: .public) textChars=\(textChars, privacy: .public) cfiChars=\(cfiChars, privacy: .public) cfiRoundTrip=\(roundTrip, privacy: .public) - fixture DOM selection observed"
+        )
+      } catch {
+        let durationMs = max(0, Int(Date().timeIntervalSince(started) * 1000))
+        let errorClass = String(reflecting: type(of: error))
+        Self.fixtureLogger.error(
+          "[epub.fixture_selection] [fail] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) durationMs=\(durationMs, privacy: .public) errorCode=\((error as NSError).code, privacy: .public) errorClass=\(errorClass, privacy: .public) error=\"fixture DOM selection invocation failed\" - fixture DOM selection invocation failed"
+        )
+      }
+    }
+  }
+
+  func releaseFixturePencil() { fixturePencil(repeating: false) }
+  func repeatFixturePencil() { fixturePencil(repeating: true) }
+  private func fixturePencil(repeating: Bool) {
+    guard annotationInputFixture, isReady else { return }
+    Task {
+      _ = try? await webView.callAsyncJavaScript(
+        "window.epubFixturePencilRelease(repeating)", arguments: ["repeating": repeating], in: nil,
+        contentWorld: .page)
+    }
+  }
+
+  func setPassageAnnotations(_ annotations: [NativeAnnotationItem]) async {
+    guard isReady else { return }
+    let items = annotations.compactMap { item -> [String: Any]? in
+      guard let cfi = item.cfi else { return nil }
+      return ["id": item.id, "cfi": cfi, "kind": item.kind]
+    }
+    _ = try? await webView.callAsyncJavaScript(
+      "window.epubSetPassageAnnotations(items)", arguments: ["items": items], in: nil,
+      contentWorld: .page)
+  }
+
+  func openAnnotationPassage(cfi: String) async {
+    guard cfi.hasPrefix("epubcfi("), cfi.utf16.count <= 2000, canNavigate else { return }
+    revealingAnnotation = true
+    annotationRevealOrigin = location
+    defer { revealingAnnotation = false }
+    _ = await navigate(
+      "return await window.epubGo(target, smooth)", arguments: ["target": cfi], forward: true,
+      programmatic: true, preserveContentOnFailure: true, savesPosition: false)
+  }
 
   func search(_ query: String) async {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -513,6 +633,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
   @discardableResult
   func saveProgress() async -> Bool {
+    if annotationRevealOrigin != nil && pendingProgress == nil { return true }
     guard canSave, let generation else { return false }
     isSaving = true
     error = nil
@@ -551,7 +672,8 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       else { throw ConnectionError.invalidResponse }
       pendingProgress = nil
       if let progressKey { UserDefaults.standard.removeObject(forKey: progressKey) }
-      status = "Reading position saved."
+      status =
+        position.hasPendingSync ? "Reading position saved on this iPad." : "Reading position saved."
       return true
     } catch {
       if !isClosed {
@@ -564,8 +686,9 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
 
   func refreshPosition() async {
     guard !isClosed, !isPositionResetting, isReady, !isNavigating, !isSaving else { return }
-    var local = SaveFileProgressPayload(percentage: location?.percentage ?? 0)
-    local.cfi = location?.cfi
+    let readingLocation = annotationRevealOrigin ?? location
+    var local = SaveFileProgressPayload(percentage: readingLocation?.percentage ?? 0)
+    local.cfi = readingLocation?.cfi
     await position.refresh(local)
     await describePositionConflict(position)
   }
@@ -690,9 +813,65 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   func userContentController(
     _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
   ) {
+    if annotationInputFixture, message.name == "selection" {
+      let value = message.body as? [String: Any]
+      let cfi = value?["cfi"] as? String ?? ""
+      let text = value?["text"] as? String ?? ""
+      let entryMatches = message.frameInfo.request.url == resources.entry
+      let callbackKind = value == nil ? "empty" : "range"
+      Self.fixtureLogger.info(
+        "[epub.fixture_selection_callback] [end] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) durationMs=0 callbackKind=\(callbackKind, privacy: .public) mainFrame=\(message.frameInfo.isMainFrame, privacy: .public) entryMatches=\(entryMatches, privacy: .public) closed=\(self.isClosed, privacy: .public) resetting=\(self.isPositionResetting, privacy: .public) textChars=\(text.utf16.count, privacy: .public) cfiChars=\(cfi.utf16.count, privacy: .public) cfiPrefixValid=\(cfi.hasPrefix("epubcfi("), privacy: .public) - fixture selection bridge callback observed"
+      )
+    }
     guard !isClosed, !isPositionResetting, message.frameInfo.isMainFrame,
       message.frameInfo.request.url == resources.entry
     else { return }
+    #if DEBUG
+      if message.name == "recordedTransition" {
+        let steps: Set<String> = [
+          "sectionLoad", "iframeLoad", "sectionRender", "navigation1", "navigation2",
+          "customFonts1", "customFonts2", "fonts1",
+          "fonts2",
+          "images1", "images2", "frameA1", "frameA2", "frameB1", "frameB2",
+        ]
+        if let value = message.body as? [String: Any], value.count == 9,
+          value["step"] as? String == "highlightException", value["phase"] as? String == "fail",
+          let index = value["index"] as? Int, (0..<chapterCount).contains(index),
+          let durationMs = value["durationMs"] as? Int, durationMs >= 0,
+          let statement = value["statement"] as? String,
+          ["resolve", "follow", "clearPaint", "document", "range", "cfi", "paint", "result"]
+            .contains(statement),
+          let errorName = value["errorName"] as? String,
+          [
+            "Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "SecurityError",
+            "InvalidStateError", "WrongDocumentError", "NotFoundError", "UnknownError",
+          ].contains(errorName),
+          let line = value["line"] as? Int, (0...10000).contains(line),
+          let column = value["column"] as? Int, (0...10000).contains(column),
+          let messageCode = value["messageCode"] as? String,
+          [
+            "readingPosition", "cancelled", "segmentUnavailable", "anchorUnavailable",
+            "highlightUnavailable", "passageUnavailable", "closed", "engineException",
+          ].contains(messageCode)
+        {
+          Logger(subsystem: "com.mooneeb.bookorbit.private", category: "RecordedPlayback").error(
+            "[recorded.transition] [fail] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) sectionIndex=\(index, privacy: .public) durationMs=\(durationMs, privacy: .public) errorClass=\(errorName, privacy: .public) error=\"recorded renderer exception\" step=highlightException statement=\(statement, privacy: .public) sourceLine=\(line, privacy: .public) sourceColumn=\(column, privacy: .public) messageCode=\(messageCode, privacy: .public) - recorded renderer exception observed"
+          )
+          return
+        }
+        guard let value = message.body as? [String: Any], value.count == 4,
+          let step = value["step"] as? String, steps.contains(step),
+          let phase = value["phase"] as? String,
+          phase == "start" || phase == "end",
+          let index = value["index"] as? Int, (0..<chapterCount).contains(index),
+          let durationMs = value["durationMs"] as? Int, durationMs >= 0
+        else { return }
+        Logger(subsystem: "com.mooneeb.bookorbit.private", category: "RecordedPlayback").info(
+          "[recorded.transition] [\(phase, privacy: .public)] bookId=\(self.bookID, privacy: .public) fileId=\(self.file.id, privacy: .public) sectionIndex=\(index, privacy: .public) durationMs=\(durationMs, privacy: .public) step=\(step, privacy: .public) - recorded renderer await observed"
+        )
+        return
+      }
+    #endif
     if message.name == "location" {
       if !isNavigating, let value = try? decodedLocation(message.body) {
         if (message.body as? [String: Any])?["source"] as? String == "narration" {
@@ -701,13 +880,26 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
           let moved = location?.cfi != value.cfi || location?.percentage != value.percentage
           location = value
           narrationLocation = nil
-          if moved { scheduleSave() }
+          if moved && !revealingAnnotation { scheduleSave() }
         }
       }
     } else if message.name == "readerError" {
       if let message = message.body as? String, !message.isEmpty, message.utf16.count <= 500 {
         error = message
       }
+    } else if message.name == "pencilMarking", let marking = message.body as? Bool {
+      isPencilMarking = marking
+      webView.scrollView.isScrollEnabled = !marking
+    } else if message.name == "pencilRelease", let value = message.body as? [String: Any],
+      let identifier = value["operationId"] as? String,
+      let operation = UUID(uuidString: identifier),
+      let cfi = value["cfi"] as? String, cfi.hasPrefix("epubcfi("), cfi.utf16.count <= 2000,
+      let text = value["text"] as? String, !text.isEmpty, text.utf16.count <= 16000
+    {
+      commitPencilHighlight?(
+        .init(publicationID: publicationID, cfi: cfi, text: text, language: "en"), operation)
+    } else if message.name == "passageAnnotation", let id = message.body as? Int {
+      openPassageAnnotation?(id)
     } else if message.name == "selection" {
       if let value = message.body as? [String: Any], let cfi = value["cfi"] as? String,
         let text = value["text"] as? String, cfi.hasPrefix("epubcfi("), cfi.utf16.count <= 2000,
@@ -729,7 +921,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   private func navigate(
     _ script: String, arguments: [String: Any], forward: Bool, animate: Bool = true,
     allowPendingSave: Bool = false, programmatic: Bool = false,
-    preserveContentOnFailure: Bool = false
+    preserveContentOnFailure: Bool = false, savesPosition: Bool = true
   ) async -> Bool {
     guard isReady, !isNavigating, !isSearching, !isPositionResetting, !isClosed,
       allowPendingSave || (!isSaving && pendingProgress == nil)
@@ -773,7 +965,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
       narrationLocation = nil
       selectionCFI = nil
       selectionText = ""
-      scheduleSave()
+      if savesPosition { scheduleSave() }
       return true
     } catch {
       cancelTurn?()
@@ -798,6 +990,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   private func scheduleSave() {
+    annotationRevealOrigin = nil
     guard isReady, !isClosed, !isPositionResetting, !isSaving, pendingProgress == nil,
       !position.conflict.isBlocked
     else { return }
@@ -869,9 +1062,20 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   func publicationCommand(_ script: String, arguments: [String: Any]) async throws -> Any? {
-    guard isReady, !isClosed, !isNavigating, !isSearching, let generation,
-      try await api.authenticatedSessionGeneration() == generation
-    else { throw ConnectionError.expiredSession }
+    try Task.checkCancellation()
+    while isNavigating || publicationCommandsInFlight > 0 {
+      try await Task.sleep(for: .milliseconds(50))
+      guard isReady, !isClosed else { throw ConnectionError.expiredSession }
+    }
+    try Task.checkCancellation()
+    guard isReady, !isClosed, !isNavigating, !isSearching, let generation else {
+      throw ConnectionError.expiredSession
+    }
+    publicationCommandsInFlight += 1
+    defer { publicationCommandsInFlight -= 1 }
+    guard try await api.authenticatedSessionGeneration() == generation else {
+      throw ConnectionError.expiredSession
+    }
     let result = try await webView.callAsyncJavaScript(
       script, arguments: arguments, in: nil, contentWorld: .page)
     guard !isClosed, try await api.authenticatedSessionGeneration() == generation else {
@@ -890,6 +1094,7 @@ final class EPUBReaderModel: NSObject, WKNavigationDelegate, WKScriptMessageHand
   }
 
   private func clearContent() {
+    isPencilMarking = false
     publicationID = UUID()
     selectionLanguage = nil
     saveTask?.cancel()

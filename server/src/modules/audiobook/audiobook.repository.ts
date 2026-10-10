@@ -142,7 +142,7 @@ export class AudiobookRepository {
       .limit(limit + 1);
   }
 
-  async findAudioBookmark(userId: number, bookId: number, clientId: string) {
+  async findAudioBookmark(userId: number, bookId: number, clientId: string, includeDeleted = false) {
     const [row] = await this.db
       .select()
       .from(bookmarks)
@@ -153,7 +153,7 @@ export class AudiobookRepository {
           eq(bookmarks.clientId, clientId),
           isNull(bookmarks.cfi),
           isNotNull(bookmarks.positionSeconds),
-          isNull(bookmarks.deletedAt),
+          includeDeleted ? undefined : isNull(bookmarks.deletedAt),
         ),
       )
       .limit(1);
@@ -167,10 +167,10 @@ export class AudiobookRepository {
   ) {
     const [row] = await this.db
       .insert(bookmarks)
-      .values({ userId, bookId, cfi: null, ...values })
+      .values({ userId, bookId, cfi: null, retryProtected: true, ...values })
       .onConflictDoNothing()
       .returning();
-    return row ?? (await this.findAudioBookmark(userId, bookId, values.clientId));
+    return row ?? (await this.findAudioBookmark(userId, bookId, values.clientId, true));
   }
 
   async updateAudioBookmark(userId: number, bookId: number, clientId: string, values: { title?: string; note?: string | null }) {
@@ -206,6 +206,7 @@ export class AudiobookRepository {
         ),
       )
       .returning({ id: bookmarks.id });
-    return rows.length > 0;
+    if (rows.length > 0) return true;
+    return (await this.findAudioBookmark(userId, bookId, clientId, true))?.deletedAt != null;
   }
 }

@@ -121,7 +121,7 @@ struct EPUBBookmarksView: View {
               .disabled(!model.canSelect).accessibilityIdentifier("epubOpenBookmark\(bookmark.id)")
               .accessibilityAddTraits(bookmark.id == model.currentBookmarkID ? .isSelected : [])
               Button("Remove bookmark") { removing = bookmark }
-                .frame(minHeight: 44).disabled(!model.canSelect)
+                .frame(minHeight: 44).disabled(!model.canRemove)
                 .accessibilityIdentifier("epubRemoveBookmark\(bookmark.id)")
             }
           }

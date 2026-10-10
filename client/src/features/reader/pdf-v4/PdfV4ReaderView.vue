@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, shallowRef } from 'vue'
+import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { EmbedPDF } from '@embedpdf/core/vue'
@@ -31,6 +31,7 @@ import { useReadingSession } from '../shared/composables/useReadingSession'
 import { useReaderSettings } from '../shared/composables/useReaderSettings'
 import PdfReaderContent from './components/PdfReaderContent.vue'
 import { toRotation, toScrollStrategy, toSpreadMode, toZoomLevel } from './pdf-viewer-utils'
+import { useSourcePdfInk } from './composables/useSourcePdfInk'
 
 const { t } = useI18n()
 
@@ -38,6 +39,7 @@ const props = defineProps<{ bookId: number; fileId: number; peekMode?: boolean }
 const route = useRoute()
 const router = useRouter()
 const trackingEnabled = computed(() => !props.peekMode)
+const sourceInk = useSourcePdfInk(props.bookId, props.fileId)
 
 const bookSettings = useReaderSettings(props.fileId, 'pdf')
 const effectiveSettings = computed(() => bookSettings.effective.value as PdfReaderSettings)
@@ -177,7 +179,7 @@ function handleBack() {
   router.back()
 }
 
-async function loadReader() {
+async function loadReader(preservePage?: number) {
   const sequence = ++loadSequence
   documentAbortController?.abort()
   const abortController = new AbortController()
@@ -196,7 +198,7 @@ async function loadReader() {
     if (buffer.byteLength === 0) throw new Error(t('reader.pdf.emptyDocument'))
     if (sequence !== loadSequence || abortController.signal.aborted) return
     const settings = bookSettings.effective.value as PdfReaderSettings
-    initialPage.value = parseDeepLinkPage() ?? progress.pageNumber.value ?? 1
+    initialPage.value = preservePage ?? parseDeepLinkPage() ?? progress.pageNumber.value ?? 1
     documentBuffer.value = buffer
     plugins.value = buildPlugins(settings)
     readerReady.value = true
@@ -257,6 +259,13 @@ function handleRetry() {
   void loadReader()
 }
 
+watch(sourceInk.sourceRevision, (revision, previous) => {
+  if (!revision || !previous || revision === previous) return
+  const page = pendingPageUpdate?.pageNumber ?? progress.pageNumber.value ?? initialPage.value
+  flushProgress()
+  void loadReader(page)
+})
+
 onMounted(loadReader)
 
 onUnmounted(() => {
@@ -310,6 +319,7 @@ onUnmounted(() => {
           :initial-page="initialPage"
           :settings="effectiveSettings"
           :peek-mode="props.peekMode"
+          :source-ink="sourceInk"
           @back="handleBack"
           @page-change="handlePageChange"
           @retry="handleRetry"

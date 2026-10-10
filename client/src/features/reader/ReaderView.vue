@@ -56,6 +56,8 @@ import { getFormatGroup } from '@bookorbit/types'
 import { resolveReaderResumeTarget } from '@/lib/reading-checkpoint'
 import { api } from '@/lib/api'
 import { useCoverVersions } from '@/features/book/composables/useCoverVersions'
+import { usePermissions } from '@/features/auth/composables/usePermissions'
+import { Permission } from '@bookorbit/types'
 
 const PdfV4ReaderView = defineAsyncComponent(() => import('./pdf-v4/PdfV4ReaderView.vue'))
 
@@ -63,6 +65,8 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const { coverUrl } = useCoverVersions()
+const { hasPermission } = usePermissions()
+const canManageAnnotations = computed(() => hasPermission(Permission.AnnotationManageOwn))
 const bookId = Number(route.params.bookId)
 const fileId = Number(route.params.fileId)
 const fileFormat = (route.query.format as string) || 'epub'
@@ -154,6 +158,9 @@ const search = useSearch()
 const { results: searchResults, isSearching, search: doSearch, clear: clearSearch } = search
 
 const selection = useReaderSelection()
+const selectedHandwriting = computed(
+  () => annotations.annotations.value.find((annotation) => annotation.id === selection.overlappingAnnotationId.value)?.drawing ?? null,
+)
 const { isSidebarPinned, toggleSidebarPinned, shouldCloseAfterNavigation } = useReaderSidebarPin(fileId)
 
 function closeAnyPanel() {
@@ -877,7 +884,11 @@ const {
   getMediaActiveClass,
 } = useFoliate(() => containerRef.value, onRelocateHandler, onApplyStylesHandler, onMiddleTapHandler, onChapterLoadHandler, canRunManualNavigation)
 
-const { handleHighlight, handleOpenNoteDialog, handleSaveNote } = useReaderAnnotationActions({
+const {
+  handleHighlight,
+  handleOpenNoteDialog,
+  handleSaveNote: savePassageNote,
+} = useReaderAnnotationActions({
   bookId,
   fileId,
   chapterTitle,
@@ -886,6 +897,10 @@ const { handleHighlight, handleOpenNoteDialog, handleSaveNote } = useReaderAnnot
   addAnnotation,
   redrawAnnotation,
 })
+
+async function handleSaveNote(note: string) {
+  if (!(await savePassageNote(note))) toast.error(t('annotations.sync.status.failed'))
+}
 
 function handleTextSelected(detail: SelectionDetail) {
   const match = findMatchingCfiRange(annotations.annotations.value, detail.cfi)
@@ -896,11 +911,25 @@ function handleAnnotationClick(cfi: string, popupPosition: { x: number; y: numbe
   const ann = annotations.annotations.value.find((a) => a.cfi === cfi)
   if (!ann) return
   selection.show({ text: ann.text, cfi, range: null, popupPosition }, ann.id)
+  if (ann.drawing) handleOpenNoteDialog()
 }
 
 setTextSelectedHandler(handleTextSelected)
 setSelectionInteractionStartHandler(selection.dismiss)
 setAnnotationClickHandler(handleAnnotationClick)
+
+watch(annotations.annotations, (current, previous) => {
+  const next = new Map(current.map((annotation) => [annotation.id, annotation]))
+  for (const annotation of previous) {
+    if (annotation.cfi && next.get(annotation.id)?.cfi !== annotation.cfi) deleteAnnotation(annotation.cfi)
+  }
+  for (const annotation of current) {
+    if (annotation.cfi) redrawAnnotation(annotation.cfi, annotation.color, annotation.style)
+  }
+  if (selection.overlappingAnnotationId.value !== null && !next.has(selection.overlappingAnnotationId.value)) {
+    selection.dismiss()
+  }
+})
 
 onUnmounted(clearFoliateSource)
 
@@ -954,7 +983,7 @@ onMounted(async () => {
   setChapters(getChapters())
   sectionFractions.value = getSectionFractions()
   await bookmarks.load(bookId)
-  await annotations.load(bookId)
+  await annotations.load(bookId, fileId)
   const drawableAnnotations = annotations.annotations.value.filter((a): a is typeof a & { cfi: string } => a.cfi != null)
   if (drawableAnnotations.length > 0) {
     addAnnotations(
@@ -1107,21 +1136,69 @@ watch(() => [customFonts.fonts.value, customFonts.serverFonts.value], refreshFon
 
 watch(() => state.value.fontFamily, refreshFontFaces)
 
-function handleDeleteAnnotation(id: number) {
-  const ann = annotations.annotations.value.find((a) => a.id === id)
-  if (ann) {
-    if (ann.cfi) deleteAnnotation(ann.cfi)
-    annotations.remove(bookId, id)
-  }
+async function handleDeleteAnnotation(id: number) {
+  await annotations.remove(bookId, id)
   selection.dismiss()
 }
 
 function handleSidebarDeleteAnnotation(id: number) {
-  const ann = annotations.annotations.value.find((a) => a.id === id)
-  if (ann) {
-    if (ann.cfi) deleteAnnotation(ann.cfi)
-    annotations.remove(bookId, id)
-  }
+  void annotations.remove(bookId, id)
+}
+
+function handleLoadMoreAnnotations() {
+  void annotations.loadMore()
+}
+
+function handlePreviousAnnotations() {
+  void annotations.loadPrevious()
+}
+
+function handleNoteText(value: string) {
+  selection.noteText.value = value
+}
+
+function handleCancelNote() {
+  selection.showNoteDialog.value = false
+}
+
+function handleReaderBack() {
+  router.back()
+}
+function handleToggleSidebar() {
+  showSidebar.value = !showSidebar.value
+}
+function handleToggleSearch() {
+  showSearch.value = !showSearch.value
+}
+function handleToggleBookmark() {
+  void bookmarks.toggle(bookId, cfi.value ?? '', chapterTitle.value)
+}
+function handleToggleTapZones() {
+  showTapZones.value = !showTapZones.value
+}
+function handleCloseTapZones() {
+  showTapZones.value = false
+}
+function handleCloseSidebar() {
+  showSidebar.value = false
+}
+function handlePreviousSection() {
+  navigateToSection(sectionIndex.value - 1)
+}
+function handleNextSection() {
+  navigateToSection(sectionIndex.value + 1)
+}
+function handleSearchSelection() {
+  openSearchWithText(selection.text.value)
+}
+function handleCloseDictionary() {
+  showDictionary.value = false
+}
+function handleCloseTranslation() {
+  showTranslation.value = false
+}
+function handleCloseHelp() {
+  showHelpModal.value = false
 }
 
 function handleSidebarDeleteBookmark(id: number) {
@@ -1306,10 +1383,10 @@ onUnmounted(() => {
       :showTapZones="showTapZones"
       class="transition-all duration-300"
       :class="headerVisible && !showTapZones ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full pointer-events-none'"
-      @back="router.back()"
-      @toggleSidebar="showSidebar = !showSidebar"
-      @toggleSearch="showSearch = !showSearch"
-      @toggleBookmark="bookmarks.toggle(bookId, cfi ?? '', chapterTitle)"
+      @back="handleReaderBack"
+      @toggleSidebar="handleToggleSidebar"
+      @toggleSearch="handleToggleSearch"
+      @toggleBookmark="handleToggleBookmark"
       @update:settings-open="setSettingsOpen"
       @toggleFullscreen="toggleFullscreen"
       @toggleHelp="toggleHelpModal"
@@ -1317,7 +1394,7 @@ onUnmounted(() => {
       @startReading="startTrackedReading"
       @startTts="handleStartListen"
       @togglePin="togglePinned"
-      @toggleTapZones="showTapZones = !showTapZones"
+      @toggleTapZones="handleToggleTapZones"
     >
       <template #settingsPanel>
         <ReaderSettingsPanel
@@ -1371,7 +1448,7 @@ onUnmounted(() => {
           <!-- Floating Exit Button -->
           <button
             class="absolute top-4 right-4 z-50 px-3.5 py-2 rounded-xl bg-background/90 text-foreground border border-border/80 shadow-lg hover:bg-background pointer-events-auto flex items-center gap-2 text-xs font-semibold cursor-pointer transition-all duration-200 active:scale-95 animate-pulse"
-            @click="showTapZones = false"
+            @click="handleCloseTapZones"
             title="Close Guide"
           >
             <svg
@@ -1618,9 +1695,9 @@ onUnmounted(() => {
       :navigationLocked="isNavigationLocked"
       class="transition-all duration-300"
       :class="footerVisible && !showTapZones ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full pointer-events-none'"
-      @prevSection="navigateToSection(sectionIndex - 1)"
-      @nextSection="navigateToSection(sectionIndex + 1)"
-      @seek="navigateToFraction($event)"
+      @prevSection="handlePreviousSection"
+      @nextSection="handleNextSection"
+      @seek="navigateToFraction"
     />
 
     <ReaderSidebar
@@ -1634,7 +1711,11 @@ onUnmounted(() => {
       :expandedHrefs="expandedHrefs"
       :pinned="isSidebarPinned"
       :navigationLocked="isNavigationLocked"
-      @close="showSidebar = false"
+      :has-more="annotations.hasMore.value"
+      :loading-more="annotations.loadingMore.value"
+      :annotation-page="annotations.page.value"
+      :can-manage-annotations="canManageAnnotations"
+      @close="handleCloseSidebar"
       @togglePinned="toggleSidebarPinned"
       @navigateChapter="navigateChapterFromSidebar"
       @navigateBookmark="navigateFromSidebar"
@@ -1642,6 +1723,8 @@ onUnmounted(() => {
       @navigateAnnotationChapter="navigateAnnotationChapterFromSidebar"
       @deleteBookmark="handleSidebarDeleteBookmark"
       @deleteAnnotation="handleSidebarDeleteAnnotation"
+      @load-more-annotations="handleLoadMoreAnnotations"
+      @previous-annotations="handlePreviousAnnotations"
       @toggleExpand="toggleExpand"
     />
 
@@ -1653,7 +1736,7 @@ onUnmounted(() => {
       :navigationLocked="isNavigationLocked"
       @search="onSearchQuery"
       @clear="onSearchClear"
-      @navigate="navigateSearch($event)"
+      @navigate="navigateSearch"
       @close="closeSearch"
     />
 
@@ -1661,9 +1744,11 @@ onUnmounted(() => {
       v-if="selection.showNoteDialog.value"
       :selectedText="selection.text.value"
       :modelValue="selection.noteText.value"
-      @update:modelValue="selection.noteText.value = $event"
+      :drawing="selectedHandwriting"
+      :readonly="!canManageAnnotations"
+      @update:modelValue="handleNoteText"
       @save="handleSaveNote"
-      @cancel="selection.showNoteDialog.value = false"
+      @cancel="handleCancelNote"
     />
 
     <SelectionPopup
@@ -1673,14 +1758,15 @@ onUnmounted(() => {
       :selectedText="selection.text.value"
       :overlappingAnnotationId="selection.overlappingAnnotationId.value"
       :isTtsAvailable="isTtsAvailable"
-      @copy="selection.dismiss()"
+      :can-annotate="canManageAnnotations"
+      @copy="selection.dismiss"
       @highlight="handleHighlight"
-      @search="() => openSearchWithText(selection.text.value)"
+      @search="handleSearchSelection"
       @translate="handleTranslate"
       @define="handleDefine"
       @note="handleOpenNoteDialog"
       @deleteAnnotation="handleDeleteAnnotation"
-      @dismiss="selection.dismiss()"
+      @dismiss="selection.dismiss"
       @readFromHere="handleReadFromHere"
     />
 
@@ -1704,19 +1790,14 @@ onUnmounted(() => {
       :word="dictionaryWord"
       :position="dictionaryPosition"
       :lang="bookLanguage"
-      @close="showDictionary = false"
+      @close="handleCloseDictionary"
     />
 
-    <TranslationPopover
-      v-if="showTranslation && !isMobile"
-      :text="translationText"
-      :position="translationPosition"
-      @close="showTranslation = false"
-    />
+    <TranslationPopover v-if="showTranslation && !isMobile" :text="translationText" :position="translationPosition" @close="handleCloseTranslation" />
 
-    <TranslationSheet v-if="showTranslation && isMobile" :text="translationText" @close="showTranslation = false" />
+    <TranslationSheet v-if="showTranslation && isMobile" :text="translationText" @close="handleCloseTranslation" />
 
-    <KeyboardShortcutsModal v-if="showHelpModal" @close="showHelpModal = false" />
+    <KeyboardShortcutsModal v-if="showHelpModal" @close="handleCloseHelp" />
   </div>
 </template>
 

@@ -24,19 +24,109 @@ final class NativeFilePositionModel {
   private var pendingChoice: Bool?
   private var pendingBody: Data?
   private var beginning: SaveFileProgressPayload?
+  private let sourceIdentity: String
+  private var journal: OfflineReadingStateJournal?
+  private var sourceRevision: String?
+  private var sourceBlocked = false
+  private struct Journal: Codable {
+    let fileID: Int?
+    let acknowledged: FileReadingProgress?
+    let pending: OfflineProgressDraft?
+    let local: OfflineProgressDraft?
+    let remote: FileReadingProgress?
+    let choice: Bool?
+    let body: Data?
+    let sourceRevision: String?
+  }
+  var hasPendingSync: Bool { pending != nil }
+  var resumePageNumber: Double? { pending?.pageNumber ?? acknowledged?.pageNumber }
+  var resumeCFI: String? { pending?.cfi ?? acknowledged?.cfi }
 
-  init(api: BookOrbitAPI, fileID: Int, source: String = "text") {
+  init(api: BookOrbitAPI, fileID: Int, source: String = "text", sourceIdentity: String = "") {
     self.api = api
     self.fileID = fileID
     self.source = source
+    self.sourceIdentity = sourceIdentity
   }
 
-  func accept(_ value: FileReadingProgress, session: UUID) throws {
+  func accept(_ value: FileReadingProgress, session: UUID) async throws {
     guard !isClosed, Self.validVersion(version(value)), value.percentage.isFinite,
       (0...100).contains(value.percentage), valid(value)
     else { throw ConnectionError.invalidResponse }
     self.session = session
-    acknowledged = value
+    let namespace = try await api.storageNamespace()
+    let store = try OfflineReadingStateJournal(
+      namespace: namespace, key: "progress.\(fileID).\(source).\(sourceIdentity)")
+    journal = store
+    if let saved = try store.readMigratingPending(Journal.self, fileID: fileID) {
+      pending = saved.pending?.payload
+      pendingBody = saved.body
+      pendingChoice = saved.choice
+      localCandidate = saved.local?.payload
+      remoteCandidate = saved.remote
+      sourceRevision = saved.sourceRevision
+      acknowledged = value
+      if pending != nil || localCandidate != nil {
+        guard saved.fileID == fileID, sourceRevision != nil else {
+          sourceBlocked = true
+          throw ConnectionError.fileChanged
+        }
+      }
+      if let sourceRevision, pending != nil || localCandidate != nil {
+        let current = try await api.reconciledSourceRevision(
+          fileID: fileID, previous: sourceRevision, session: session)
+        try await checkSession()
+        self.sourceRevision = current
+      }
+      if let pending {
+        if matches(value, pending) {
+          self.pending = nil
+          pendingBody = nil
+          pendingChoice = nil
+          localCandidate = nil
+          remoteCandidate = nil
+        } else if saved.remote != nil || version(value) != pending.baseVersion {
+          present(local: localCandidate ?? pending, remote: value)
+        }
+      }
+    } else {
+      acknowledged = value
+    }
+    if sourceRevision == nil {
+      sourceRevision = try await api.sourceRevision(fileID: fileID, session: session)
+    }
+    try persist()
+  }
+
+  func bindSourceRevision(_ revision: String?, matchedRevision: String? = nil) async throws {
+    guard let revision else { return }
+    let digest = revision.replacingOccurrences(of: "sha256:", with: "")
+    if let sourceRevision, sourceRevision.replacingOccurrences(of: "sha256:", with: "") != digest,
+      pending != nil || localCandidate != nil
+    {
+      let previous = sourceRevision.replacingOccurrences(of: "sha256:", with: "")
+      if matchedRevision != "sha256:\(previous)" {
+        guard let session,
+          try await api.reconciledSourceRevision(
+            fileID: fileID, previous: sourceRevision, session: session) == digest
+        else { throw ConnectionError.fileChanged }
+      }
+    }
+    sourceRevision = digest
+    try persist()
+  }
+
+  private func persist() throws {
+    guard let journal else { throw ConnectionError.invalidResponse }
+    if pending == nil, localCandidate == nil, remoteCandidate == nil {
+      try journal.remove()
+      return
+    }
+    try journal.save(
+      Journal(
+        fileID: fileID, acknowledged: acknowledged, pending: pending.map(OfflineProgressDraft.init),
+        local: localCandidate.map(OfflineProgressDraft.init), remote: remoteCandidate,
+        choice: pendingChoice, body: pendingBody, sourceRevision: sourceRevision))
   }
 
   func setBeginning(_ value: SaveFileProgressPayload) {
@@ -54,27 +144,39 @@ final class NativeFilePositionModel {
 
   @discardableResult
   func save(_ value: SaveFileProgressPayload) async -> FileReadingProgress? {
-    guard !isClosed, !resetSuspended, !isSaving, !isResolving, !conflict.isBlocked, let acknowledged
+    guard !isClosed, !sourceBlocked, !resetSuspended, !isSaving, !isResolving, !conflict.isBlocked,
+      let acknowledged
     else { return nil }
-    if pending == nil {
+    let offline = await api.isOffline
+    if pending == nil || offline {
       var payload = value
       payload.source = source
       payload.baseVersion = version(acknowledged)
       pending = payload
       pendingBody = nil
     }
+    do { try persist() } catch {
+      message = "Position could not be saved on this iPad. \(error.localizedDescription)"
+      return nil
+    }
     return await flush()
   }
 
   private func flush() async -> FileReadingProgress? {
-    guard !isClosed, !resetSuspended, !isSaving, let pending else { return nil }
+    guard !isClosed, !sourceBlocked, !resetSuspended, !isSaving, let pending else { return nil }
     isSaving = true
     message = nil
     defer { isSaving = false }
     do {
       try await checkSession()
+      if let sourceRevision, let session {
+        self.sourceRevision = try await api.reconciledSourceRevision(
+          fileID: fileID, previous: sourceRevision, session: session)
+        try persist()
+      }
       let body = try pendingBody ?? JSONEncoder().encode(pending)
       pendingBody = body
+      try persist()
       let saved: FileReadingProgress = try await api.boundedJSON(
         "books/files/\(fileID)/progress", method: "POST", body: body,
         byteLimit: 16 * 1024, session: session)
@@ -94,6 +196,7 @@ final class NativeFilePositionModel {
       conflict.clear()
       localCandidate = nil
       remoteCandidate = nil
+      try persist()
       return saved
     } catch ConnectionError.http(409) {
       pendingChoice = nil
@@ -102,6 +205,21 @@ final class NativeFilePositionModel {
         if !isClosed { message = error.localizedDescription }
       }
     } catch {
+      if error is URLError, let acknowledged {
+        var local = acknowledged
+        if source == "text" {
+          local.cfi = pending.cfi
+          local.pageNumber = pending.pageNumber
+          local.percentage = pending.percentage
+        } else {
+          local.mediaOverlayFragment = pending.mediaOverlayFragment
+          local.mediaOverlaySectionIndex = pending.mediaOverlaySectionIndex
+          local.positionSeconds = pending.positionSeconds
+          local.narrationPercentage = pending.percentage
+        }
+        message = "Position saved on this iPad. It will sync when connected."
+        return local
+      }
       if !isClosed {
         message =
           "Position could not be confirmed. Retry sends the same saved request. \(error.localizedDescription)"
@@ -111,18 +229,21 @@ final class NativeFilePositionModel {
   }
 
   func refresh(_ local: SaveFileProgressPayload? = nil) async {
-    guard !isClosed, !resetSuspended, !isSaving, !isResolving, !conflict.isBlocked, let acknowledged
+    guard !isClosed, !sourceBlocked, !resetSuspended, !isSaving, !isResolving, !conflict.isBlocked,
+      let acknowledged
     else { return }
     do {
       let current = try await fetch()
-      if version(current) != version(acknowledged) {
+      if let pending, version(current) == pending.baseVersion {
+        _ = await flush()
+      } else if version(current) != version(acknowledged) {
         present(local: pending ?? local ?? payload(acknowledged), remote: current)
       }
     } catch { if !isClosed { message = error.localizedDescription } }
   }
 
   func choose(local: Bool) async -> FileReadingProgress? {
-    guard !isClosed, !resetSuspended, !isSaving, !isResolving, conflict.isBlocked,
+    guard !isClosed, !sourceBlocked, !resetSuspended, !isSaving, !isResolving, conflict.isBlocked,
       let localCandidate, let remoteCandidate
     else {
       return nil
@@ -130,7 +251,11 @@ final class NativeFilePositionModel {
     isResolving = true
     defer { isResolving = false }
     do {
-      if pendingChoice == local, pending != nil { return await flush() }
+      if pendingChoice == local, let pending, pending.source == source,
+        pending.baseVersion == version(remoteCandidate)
+      {
+        return await flush()
+      }
       let current = try await fetch()
       guard version(current) == version(remoteCandidate) else {
         present(local: localCandidate, remote: current)
@@ -144,14 +269,17 @@ final class NativeFilePositionModel {
         conflict.clear()
         self.localCandidate = nil
         self.remoteCandidate = nil
+        try persist()
         return current
       }
       var chosen = local ? localCandidate : payload(current)
+      chosen.source = source
       chosen.baseVersion = version(current)
       pending = chosen
       pendingBody = nil
       pendingChoice = local
       acknowledged = current
+      try persist()
       return await flush()
     } catch { if !isClosed { message = error.localizedDescription } }
     return nil
@@ -168,6 +296,7 @@ final class NativeFilePositionModel {
     acknowledged = nil
     conflict.clear()
     message = nil
+    do { try journal?.remove() } catch { message = error.localizedDescription }
   }
 
   func close() { isClosed = true }
@@ -197,6 +326,9 @@ final class NativeFilePositionModel {
     remoteCandidate = remote
     conflict.present(local: label(local), remote: label(payload(remote)))
     message = "Saving is paused until you choose a resume position."
+    do { try persist() } catch {
+      message = "Resume choices could not be saved. \(error.localizedDescription)"
+    }
   }
 
   private func version(_ value: FileReadingProgress) -> String? {

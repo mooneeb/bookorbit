@@ -1,0 +1,286 @@
+{
+  "candidate": "094887ad74be720a829d78b0676e102a62fea702",
+  "buildManifest": "/tmp/bookorbit-issue-3-bounded-media-native-build-evidence.json",
+  "selector": "BookOrbitUITests/OfflineReadingStateJourneyTests/testIPADE02A04CompleteEPUBAndRecordedReadAlongPlayAfterOfflineRestart",
+  "actualXcodePID": 20504,
+  "startedAt": "2026-10-09T14:22:25.356817+00:00",
+  "mode": {
+    "IPAD_E02_CRITICAL_ONLY": "1",
+    "TEST_RUNNER_IPAD_E02_CRITICAL_ONLY": "1"
+  },
+  "result": "RED - single actual justified changed candidate attempt",
+  "actualCounts": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0
+  },
+  "testcaseDurationSeconds": 213.447,
+  "criticalCriteriaPass": false,
+  "fullAcceptancePass": false,
+  "failure": {
+    "line": 409,
+    "expected": "Alpha as initial recorded segment",
+    "observed": "First chapter ends here. at0.7/6.0 whileplaying",
+    "firstChapterAlphaAndEndBothVisibleAfterGo0": true,
+    "tapSynthesisAtTestSecond": 211.09,
+    "labelReadAtTestSecond": 212.66,
+    "elapsedBeforeReadSeconds": 1.57,
+    "AlphaDeclaredClipSeconds": 6,
+    "playbackStarted": true,
+    "narrationErrorShown": false,
+    "progressFooter": "Page1of1 in chapter,50percent",
+    "classification": "High candidate: public Go0 firstchapter view still starts recorded narration at its second passage, skipping the Alpha clip; critical first recorded passage gate reproducibly failed in the authorized single attempt. Exact internal cause unproven."
+  },
+  "criticalHighBugs": [
+    {
+      "severity": "High",
+      "title": "Go0 first-chapter start omits first recorded passage",
+      "reproduction": [
+        "Baseline Book2 text CFI epubcfi(/6/2[c1ref]!/4/4[p2]/1:24),50.614754,narrationNull; verified EPUB offline download.",
+        "Native Go0 online andoffline afterfaultedrestart; both Alpha and firstchapterend remain visible, Go0dialogdismisses.",
+        "Open RecordedReadAlong and Start at chosen passage. Within1.57seconds label is Firstchapterends here., image0.7/6.0 andPause recording; Alpha sixsecondclip is skipped."
+      ],
+      "fixValidationTests": [
+        "Using the preserved Book2 first-chapter p2/50.614754 baseline, public Go0 must show Alpha plus firstchapterend AND Start at chosen passage must select Alpha with0.0/6.0 before playing. Canonical text POST must use current textVersion and preserve narrationVersion.",
+        "After verified offline download and native app restart with proxy disconnected, repeat Go0, Start/Pause/Seek0/Play; require Alpha0.0/6.0 then all four declared6-second segments and final publication passage. No successful bytes may pass the fault proxy.",
+        "After offline chosen passage and narration change, reconnect, resolve actual text/Recorded/Speech conflicts via native buttons, require source-specific CAS201withotherlaneunchanged, restartofflineagain and confirm the selected first passage and pause/seek position survive."
+      ]
+    }
+  ],
+  "executedGates": [
+    "Real sign in50000books",
+    "Selected EPUB completeoffline download",
+    "Unique onlineRecorded andSpeech panels",
+    "Online Go0 dismissed; Alpha andfirstchapterend hardchecks",
+    "Offline app terminate/launch andofflinebookread",
+    "Offline Go0 dismissed; Alpha andfirstchapterend hardchecks",
+    "RecordedStart enabled; native recordingactuallyplayingoffline"
+  ],
+  "notExecuted": [
+    "Optional textlocalchoice",
+    "Optional Recordedremotechoice",
+    "Optional Speechremotechoice",
+    "PublicPause/Seek0actual0.0/6.0/Play sequence",
+    "Allfourrecordedpassagescomplete",
+    "Final6.0/6.0",
+    "Finalpublicationpassageaftercontrolsclose",
+    "Finalzero-successful-byteXCTestassertion"
+  ],
+  "deferredAttachmentTags": [
+    "IPAD-E02-deferred-A04-default-start-percentage-offline_0_C4225F3A-263A-4B7F-A5E4-3A6AB89AFCC6.txt",
+    "IPAD-E02-deferred-A04-default-start-percentage-online_0_0F60FF57-2873-4EEF-8486-35CBE46F1D73.txt"
+  ],
+  "publicProgressTraffic": [
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 508,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "d589c2e98d6658f0570c7c02182b7da8f792f9852a5bef9b2e6d4f55945414ee",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 0
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 508,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "d589c2e98d6658f0570c7c02182b7da8f792f9852a5bef9b2e6d4f55945414ee",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 0
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 508,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "d589c2e98d6658f0570c7c02182b7da8f792f9852a5bef9b2e6d4f55945414ee",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 0
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "POST",
+      "range": null,
+      "status": 201,
+      "bytes": 675,
+      "complete": true,
+      "progressRequest": {
+        "baseVersion": "d589c2e98d6658f0570c7c02182b7da8f792f9852a5bef9b2e6d4f55945414ee",
+        "source": "text",
+        "percentage": 50.614754098360656
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 675,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "8022ac2f1cb565d70d2130713dcb155a78705070ae2901f38b71e6914689c1f3",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 50.614754
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "POST",
+      "range": null,
+      "status": 201,
+      "bytes": 675,
+      "complete": true,
+      "progressRequest": {
+        "baseVersion": "8022ac2f1cb565d70d2130713dcb155a78705070ae2901f38b71e6914689c1f3",
+        "source": "text",
+        "percentage": 50.614754098360656
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 675,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "8022ac2f1cb565d70d2130713dcb155a78705070ae2901f38b71e6914689c1f3",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 50.614754
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "POST",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "POST",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    }
+  ],
+  "partialOfflineTransport": {
+    "downloadedCheckpointItemCount": 88,
+    "actualPostCheckpointItemCount": 146,
+    "successfulBytesUntilFailure": 0,
+    "truncated": false,
+    "fullcaseFinalAssertionReached": false
+  },
+  "publicSourceSMIL": {
+    "OPS/c1.smil": "<smil xmlns=\"http://www.w3.org/ns/SMIL\" version=\"3.0\"><body><seq><par><text src=\"c1.xhtml#p1\"/><audio src=\"narration.m4a\" clipBegin=\"0s\" clipEnd=\"6s\"/></par><par><text src=\"c1.xhtml#p2\"/><audio src=\"narration.m4a\" clipBegin=\"6s\" clipEnd=\"12s\"/></par></seq></body></smil>",
+    "OPS/c2.smil": "<smil xmlns=\"http://www.w3.org/ns/SMIL\" version=\"3.0\"><body><seq><par><text src=\"c2.xhtml#p3\"/><audio src=\"narration.m4a\" clipBegin=\"12s\" clipEnd=\"18s\"/></par><par><text src=\"c2.xhtml#p4\"/><audio src=\"narration.m4a\" clipBegin=\"18s\" clipEnd=\"24s\"/></par></seq></body></smil>"
+  },
+  "compiledPinsBeforeAndAfterMatch": true,
+  "actualOpenedFailurePNG": "native/attachments/6516777E-1B97-441F-BF55-776581643C42.png",
+  "liveObserverScreenshotLimitation": "CapturedafterimmediateXCTestteardown;originalXCTestfailurescreenshotprovidesactualrecordingUI.",
+  "cleanup": {
+    "completedAt": "2026-10-09T14:26:33.671Z",
+    "events": [],
+    "checks": {
+      "accountExact": true,
+      "audioProgressExact": true,
+      "annotationsAllBaselineRowsExact": true,
+      "bookmarksExact": true,
+      "sourceBytesExact": true,
+      "progressSemanticsExact": true,
+      "fileMetadataExact": true
+    },
+    "proxyReset": 204,
+    "observerLogout": 200,
+    "finalProgress": {
+      "bookFileId": 2,
+      "userId": 1,
+      "percentage": 50.614754,
+      "cfi": "epubcfi(/6/2[c1ref]!/4/4[p2]/1:24)",
+      "pageNumber": null,
+      "positionSeconds": null,
+      "mediaOverlayFragment": null,
+      "mediaOverlaySectionIndex": null,
+      "koboLocationSource": null,
+      "koboLocationType": null,
+      "koboLocationValue": null,
+      "koboContentSourceProgressPercent": null,
+      "koreaderProgress": null,
+      "narrationPercentage": null,
+      "narrationUpdatedAt": null,
+      "textUpdatedAt": "2026-10-09T14:25:01.809Z",
+      "updatedAt": "2026-10-09T14:25:01.810Z",
+      "lastReadAt": "2026-10-09T14:25:01.812Z",
+      "textVersion": "8022ac2f1cb565d70d2130713dcb155a78705070ae2901f38b71e6914689c1f3",
+      "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090"
+    },
+    "localPendingDisposition": "No private state inspected or deleted. Test-created local progress journals preserved; native reconnection drain not established."
+  },
+  "leaseReleasedAt": "2026-10-09T14:26:33.671Z",
+  "checksSkipped": "Unit tests/lint/broad default acceptance skipped per role. No native replay of unchanged candidate. No product/testcode edits by Tester; no private journals/drafts purged.",
+  "priorEvidence": "ReadAlong6125REDandHub6125criticalPASSretained."
+}

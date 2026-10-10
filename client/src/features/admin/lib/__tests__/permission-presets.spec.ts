@@ -37,9 +37,10 @@ describe('permission-presets', () => {
     expect(granting.length).toBeGreaterThan(0)
   })
 
-  it('limits the standard preset to reading and device access', () => {
+  it('limits the standard preset to reading, own annotations and device access', () => {
     expect(presetPermissions('standard')).toEqual([
       Permission.LibraryDownload,
+      Permission.AnnotationManageOwn,
       Permission.KoboSync,
       Permission.KoreaderSync,
       Permission.HardcoverSync,

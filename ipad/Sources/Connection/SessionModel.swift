@@ -10,16 +10,23 @@ final class SessionModel {
       guard let user, let api else {
         seriesCollapse?.receive(user: nil)
         seriesCollapse = nil
+        if let api { Task { await NativeAnnotationRepository.disconnect(api: api) } }
         return
       }
       if seriesCollapse?.api !== api { seriesCollapse = SeriesCollapsePreferenceModel(api: api) }
       seriesCollapse?.receive(user: user)
+      Task {
+        guard self.api === api, self.user?.id == user.id else { return }
+        await self.synchronizeAnnotations(api: api)
+        await api.reconcileOfflineBooks()
+      }
     }
   }
   private(set) var seriesCollapse: SeriesCollapsePreferenceModel?
   private(set) var options: LoginOptionsResponse?
   private(set) var isBusy = false
   var error: String?
+  var signOutError: String?
   var serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? ""
   private let oidc = OIDCSignIn()
   private var sessionOperationID = UUID()
@@ -29,12 +36,16 @@ final class SessionModel {
     await perform {
       let profile = try ServerProfile(self.serverURL)
       let api = try BookOrbitAPI(profile: profile)
-      let options = try await api.loginOptions()
       self.api = api
-      self.options = options
       self.serverURL = profile.url.absoluteString
       UserDefaults.standard.set(self.serverURL, forKey: "serverURL")
-      self.user = try await api.resume()
+      do {
+        self.options = try await api.loginOptions()
+        self.user = try await api.resume()
+      } catch {
+        guard error is URLError, let user = try await api.resumeOfflineUser() else { throw error }
+        self.user = user
+      }
     }
   }
 
@@ -53,6 +64,8 @@ final class SessionModel {
       guard self.api === api, operationID == sessionOperationID else { return }
       user = resumedUser
       await seriesCollapse?.reconcile()
+      await synchronizeAnnotations(api: api)
+      await api.reconcileOfflineBooks()
     } catch {
       guard self.api === api, operationID == sessionOperationID else { return }
       switch error {
@@ -98,9 +111,14 @@ final class SessionModel {
   }
 
   func signOut() async {
-    guard let api else { return }
+    guard let api, !isBusy else { return }
     await perform {
-      try await api.logout()
+      do {
+        try await api.logout()
+      } catch {
+        self.signOutError = error.localizedDescription
+        throw error
+      }
       self.user = nil
       self.api = nil
       self.options = nil
@@ -128,6 +146,18 @@ final class SessionModel {
     api = nil
     options = nil
     error = nil
+    signOutError = nil
+  }
+
+  private func synchronizeAnnotations(api: BookOrbitAPI) async {
+    do {
+      let repository = try await NativeAnnotationRepository.shared(api: api)
+      guard self.api === api, user != nil else { return }
+      await repository.synchronizePending()
+    } catch {
+      guard self.api === api, user != nil else { return }
+      self.error = error.localizedDescription
+    }
   }
 
   private func perform(_ work: () async throws -> Void) async {
@@ -135,6 +165,7 @@ final class SessionModel {
     sessionOperationID = UUID()
     isBusy = true
     error = nil
+    signOutError = nil
     defer { isBusy = false }
     do { try await work() } catch { self.error = error.localizedDescription }
   }

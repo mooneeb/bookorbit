@@ -10,6 +10,7 @@ struct AudioBookmarkPosition {
 final class AudioBookmarksModel {
   let api: BookOrbitAPI
   let bookID: Int
+  let fileID: Int?
   var title = ""
   var note = ""
   private(set) var items: [AudiobookBookmark] = []
@@ -29,19 +30,24 @@ final class AudioBookmarksModel {
   private var pendingUpdate: (String, UpdateAudiobookBookmark)?
   private var pendingDelete: String?
   private var isClosed = false
+  private var outbox: OfflineBookmarkOutbox?
 
-  init(api: BookOrbitAPI, bookID: Int, capture: @escaping () -> AudioBookmarkPosition?) {
+  init(
+    api: BookOrbitAPI, bookID: Int, fileID: Int? = nil,
+    capture: @escaping () -> AudioBookmarkPosition?
+  ) {
     self.api = api
     self.bookID = bookID
+    self.fileID = fileID
     self.capture = capture
   }
 
   var isBusy: Bool { isLoading || isSaving }
   var hasPrevious: Bool { !previous.isEmpty }
   var hasPendingWrite: Bool { pendingCreate != nil || pendingUpdate != nil || pendingDelete != nil }
-  var canClose: Bool { !isBusy && !hasPendingWrite }
+  var canClose: Bool { !isBusy }
   var canSave: Bool {
-    !isBusy && hasLoaded && !isClosed && pendingDelete == nil
+    !isBusy && hasLoaded && !isClosed && outbox?.canWrite == true && pendingDelete == nil
       && (editingID != nil || pendingCreate != nil || capture() != nil)
       && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       && title.unicodeScalars.count <= 500 && note.unicodeScalars.count <= 4000
@@ -100,113 +106,116 @@ final class AudioBookmarksModel {
   }
 
   func save() async {
-    guard canSave, let generation else { return }
+    guard canSave, let generation, let outbox else { return }
     isSaving = true
     error = nil
     status = nil
     defer { isSaving = false }
     do {
+      try await outbox.checkSession(generation)
+      let id = UUID()
+      let audioID: String
+      let body: Data
+      let path: String
+      let method: String
+      var local: AudiobookBookmark
       if let editingID {
         guard let original = items.first(where: { $0.id == editingID }) else {
           throw ConnectionError.invalidResponse
         }
-        let payload =
-          pendingUpdate?.1
-          ?? UpdateAudiobookBookmark(
-            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
-            note: note.isEmpty ? .clear : .set(note))
-        pendingUpdate = (editingID, payload)
-        let saved: AudiobookBookmark = try await api.boundedJSON(
-          "audiobooks/\(bookID)/bookmarks/\(editingID)", method: "PATCH",
-          body: JSONEncoder().encode(payload), session: generation)
-        guard !isClosed else { return }
-        try validate(saved)
-        let expectedNote: String?
-        switch payload.note {
-        case .set(let value): expectedNote = value
-        case .clear: expectedNote = nil
-        case nil: expectedNote = original.note
-        }
-        guard saved.id == editingID, saved.positionMs == original.positionMs,
-          saved.chapterId == original.chapterId, saved.title == payload.title,
-          saved.note == expectedNote
-        else { throw ConnectionError.invalidResponse }
-        if let index = items.firstIndex(where: { $0.id == editingID }) { items[index] = saved }
-        pendingUpdate = nil
-        title = saved.title
-        note = saved.note ?? ""
-        status = "Bookmark changes saved."
+        audioID = editingID
+        let payload = UpdateAudiobookBookmark(
+          title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+          note: note.isEmpty ? .clear : .set(note))
+        body = try JSONEncoder().encode(payload)
+        path = "audiobooks/\(bookID)/bookmarks/\(editingID)"
+        method = "PATCH"
+        local = original
+        local.title = payload.title ?? original.title
+        local.note = note.isEmpty ? nil : note
       } else {
-        if pendingCreate == nil {
-          guard let point = capture() else { throw ConnectionError.invalidResponse }
-          pendingCreate = CreateAudiobookBookmark(
-            clientId: UUID().uuidString, positionMs: point.milliseconds, chapterId: point.chapterID,
-            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
-            note: note.isEmpty ? nil : note)
-        }
-        guard let payload = pendingCreate else { throw ConnectionError.invalidResponse }
-        let saved: AudiobookBookmark = try await api.boundedJSON(
-          "audiobooks/\(bookID)/bookmarks", method: "POST", body: JSONEncoder().encode(payload),
-          session: generation)
-        guard !isClosed else { return }
-        try validate(saved)
-        guard saved.id.lowercased() == payload.clientId.lowercased(),
-          saved.positionMs == payload.positionMs, saved.chapterId == payload.chapterId,
-          saved.title == payload.title, saved.note == payload.note
-        else {
-          throw ConnectionError.invalidResponse
-        }
-        pendingCreate = nil
-        status = "Bookmarked \(AudioPlaybackModel.clock(Double(saved.positionMs) / 1000))."
-        title = ""
-        note = ""
-        isSaving = false
-        await firstPage()
+        guard let point = capture() else { throw ConnectionError.invalidResponse }
+        audioID = id.uuidString
+        let payload = CreateAudiobookBookmark(
+          clientId: audioID, positionMs: point.milliseconds,
+          chapterId: point.chapterID, title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+          note: note.isEmpty ? nil : note)
+        body = try JSONEncoder().encode(payload)
+        path = "audiobooks/\(bookID)/bookmarks"
+        method = "POST"
+        let date = ISO8601DateFormatter().string(from: Date())
+        local = AudiobookBookmark(
+          id: audioID, bookId: bookID, positionMs: payload.positionMs,
+          chapterId: payload.chapterId, title: payload.title, note: payload.note, createdAt: date,
+          updatedAt: date)
       }
-    } catch {
-      if !isClosed {
-        self.error =
-          "The bookmark save could not be confirmed. Retry Save with the same draft. \(error.localizedDescription)"
+      try outbox.update { state in
+        state.operations.append(
+          OfflineBookmarkOperation(
+            id: id, path: path, method: method,
+            body: body, localID: nil, audioID: audioID))
+        state.audioItems.removeAll { $0.id == audioID }
+        state.audioItems.insert(local, at: 0)
+        state.audioItems = Array(state.audioItems.prefix(40))
       }
-    }
+      items = outbox.state.audioItems
+      title = ""
+      note = ""
+      editingID = nil
+      do {
+        try await outbox.flush(session: generation)
+        items = outbox.state.audioItems
+        status = "Bookmark saved."
+      } catch is URLError {
+        status = "Bookmark saved on this iPad. It will sync when connected."
+      }
+    } catch { if !isClosed { self.error = error.localizedDescription } }
   }
 
   func remove(_ item: AudiobookBookmark) async {
-    guard !isBusy, !isClosed, pendingCreate == nil, pendingUpdate == nil,
-      pendingDelete == nil || pendingDelete == item.id, items.contains(item),
-      let generation
-    else { return }
+    guard canRemove(item), items.contains(item), let generation, let outbox else { return }
     isSaving = true
     error = nil
-    status = nil
-    pendingDelete = item.id
     defer { isSaving = false }
     do {
-      do {
-        try await api.sendEmpty(
-          "audiobooks/\(bookID)/bookmarks/\(item.id)", method: "DELETE", session: generation)
-      } catch ConnectionError.http(404) {
+      try await outbox.checkSession(generation)
+      try outbox.update { state in
+        let create = state.operations.first { $0.audioID == item.id && $0.method == "POST" }
+        if let create {
+          if create.transmitted,
+            let index = state.operations.firstIndex(where: { $0.id == create.id })
+          {
+            state.operations[index].cancelAfterCreate = true
+          } else {
+            state.operations.removeAll { $0.id == create.id }
+          }
+        } else {
+          state.operations.append(
+            OfflineBookmarkOperation(
+              id: UUID(),
+              path: "audiobooks/\(bookID)/bookmarks/\(item.id)", method: "DELETE", body: nil,
+              localID: nil, audioID: item.id))
+        }
+        state.recoveryOperations.removeAll { $0.audioID == item.id }
+        state.audioItems.removeAll { $0.id == item.id }
       }
-      guard !isClosed else { return }
-      pendingDelete = nil
-      items.removeAll { $0.id == item.id }
+      items = outbox.state.audioItems
       if editingID == item.id {
         editingID = nil
         title = ""
         note = ""
       }
-      status = "Bookmark removed."
-      isSaving = false
-      await firstPage()
-    } catch {
-      if !isClosed {
-        self.error = "Removal could not be confirmed. Retry Remove. \(error.localizedDescription)"
+      do {
+        try await outbox.flush(session: generation)
+        status = "Bookmark removed."
+      } catch is URLError {
+        status = "Removal saved on this iPad. It will sync when connected."
       }
-    }
+    } catch { if !isClosed { self.error = error.localizedDescription } }
   }
 
   func canRemove(_ item: AudiobookBookmark) -> Bool {
-    !isBusy && !isClosed && pendingCreate == nil && pendingUpdate == nil
+    !isBusy && !isClosed && outbox?.canWrite == true && pendingCreate == nil && pendingUpdate == nil
       && (pendingDelete == nil || pendingDelete == item.id)
   }
 
@@ -241,6 +250,14 @@ final class AudioBookmarksModel {
         session = try await api.authenticatedSessionGeneration()
         generation = session
       }
+      if outbox == nil {
+        outbox = try await OfflineBookmarkOutbox.open(
+          api: api, bookID: bookID, fileID: fileID, channel: "audio")
+      }
+      if let outbox {
+        try await outbox.checkSession(session)
+        do { try await outbox.flush(session: session) } catch is URLError {}
+      }
       var query = [URLQueryItem(name: "limit", value: "40")]
       if let requested { query.append(URLQueryItem(name: "afterId", value: requested)) }
       let response: AudiobookBookmarksPage = try await api.boundedJSON(
@@ -261,7 +278,12 @@ final class AudioBookmarksModel {
       else {
         throw ConnectionError.invalidResponse
       }
-      items = response.items
+      let pendingIDs = Set(
+        (outbox?.state.operations.compactMap(\.audioID) ?? [])
+          + (outbox?.state.deletedAudioIDs ?? []))
+      let local = outbox?.state.audioItems.filter { pendingIDs.contains($0.id) } ?? []
+      items = local + response.items.filter { !pendingIDs.contains($0.id) }
+      try outbox?.update { $0.audioItems = Array(items.prefix(40)) }
       cursor = requested
       nextCursor = response.nextCursor
       hasLoaded = true
@@ -272,6 +294,17 @@ final class AudioBookmarksModel {
       }
       return true
     } catch {
+      if !isClosed, let outbox {
+        items = outbox.state.audioItems
+        hasLoaded = true
+        if error is URLError {
+          status = "Bookmarks saved on this iPad. Connect to sync pending changes."
+        } else {
+          self.error =
+            "Pending bookmarks remain on this iPad for review. \(error.localizedDescription)"
+        }
+        return true
+      }
       if !isClosed { self.error = error.localizedDescription }
       return false
     }

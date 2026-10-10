@@ -107,6 +107,7 @@ export class UserRepository {
         active: schema.users.active,
         isSuperuser: schema.users.isSuperuser,
         isDefaultPassword: schema.users.isDefaultPassword,
+        manageOwnAnnotations: schema.users.manageOwnAnnotations,
         lockedUntil: schema.users.lockedUntil,
         failedLoginAttempts: schema.users.failedLoginAttempts,
         provisioningMethod: schema.users.provisioningMethod,
@@ -156,13 +157,14 @@ export class UserRepository {
           avatarUrl: row.avatarUrl,
           createdAt: row.createdAt,
           lastAuthenticatedAt: row.lastAuthenticatedAt,
-          permissions: [],
+          permissions: row.manageOwnAnnotations ? [Permission.AnnotationManageOwn] : [],
           hasContentFilters: false,
           libraryAccessCount: 0,
         });
       }
       if (row.permissionName) {
-        usersMap.get(row.id)!.permissions.push(row.permissionName as Permission);
+        const permissions = usersMap.get(row.id)!.permissions;
+        if (!permissions.includes(row.permissionName as Permission)) permissions.push(row.permissionName as Permission);
       }
     }
 
@@ -322,6 +324,7 @@ export class UserRepository {
           avatarVersion: schema.users.avatarVersion,
           provisioningMethod: schema.users.provisioningMethod,
           seeOwnRequestedBooks: schema.users.seeOwnRequestedBooks,
+          manageOwnAnnotations: schema.users.manageOwnAnnotations,
           permissionName: schema.userPermissions.permissionName,
         })
         .from(schema.users)
@@ -340,7 +343,7 @@ export class UserRepository {
     if (rows.length === 0) return null;
 
     const first = rows[0];
-    const permissions: Permission[] = [];
+    const permissions: Permission[] = first.manageOwnAnnotations ? [Permission.AnnotationManageOwn] : [];
 
     for (const row of rows) {
       if (row.permissionName && !permissions.includes(row.permissionName as Permission)) {
@@ -466,6 +469,10 @@ export class UserRepository {
     const resolved = withRequiredPermissions(permissionNames);
 
     await this.db.transaction(async (tx) => {
+      await tx
+        .update(schema.users)
+        .set({ manageOwnAnnotations: resolved.includes(Permission.AnnotationManageOwn) })
+        .where(eq(schema.users.id, userId));
       await tx.delete(schema.userPermissions).where(eq(schema.userPermissions.userId, userId));
       if (resolved.length > 0) {
         await tx.insert(schema.userPermissions).values(resolved.map((permissionName) => ({ userId, permissionName })));

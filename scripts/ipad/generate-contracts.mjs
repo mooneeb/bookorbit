@@ -371,6 +371,20 @@ function generateRuleNode() {
 }
 
 function swiftType(type, name, field) {
+  if (name.startsWith("NativePdfPageSource") && field === "nextPage") {
+    return type.isUnion() ? "Int?" : "Int";
+  }
+  const nativeInteger =
+    name.startsWith("NativeAnnotation") && ["version", "baseVersion", "annotationId", "draftId", "pageno", "cursor"].includes(field);
+  const drawingDouble = [
+    "NativeInkStrokeWidth",
+    "AnnotationRectWidth",
+    "AnnotationRectHeight",
+    "NativePdfPageSourceWidth",
+    "NativePdfPageSourceHeight",
+  ].includes(name);
+  if (nativeInteger && type.flags & ts.TypeFlags.NumberLike) return "Int";
+  if (drawingDouble && type.flags & ts.TypeFlags.NumberLike) return "Double";
   if (type.aliasSymbol?.name === "CustomMetadataPrimitiveValue") {
     const expected = ts.TypeFlags.String | ts.TypeFlags.Number | ts.TypeFlags.BooleanLiteral | ts.TypeFlags.Null;
     if (!type.isUnion() || type.types.some((part) => !(part.flags & expected))) throw new Error("Custom metadata primitive contract changed");
@@ -408,12 +422,15 @@ function swiftType(type, name, field) {
     let value;
     if (values.every((part) => part.flags & ts.TypeFlags.StringLike)) value = "String";
     else if (values.every((part) => part.flags & ts.TypeFlags.NumberLike))
-      value =
-        name.startsWith("EpubMediaOverlay") && field === "durationSeconds"
+      value = nativeInteger
+        ? "Int"
+        : drawingDouble
           ? "Double"
-          : integerFields.has(field) || integerFields.has(name)
-            ? "Int"
-            : "Double";
+          : name.startsWith("EpubMediaOverlay") && field === "durationSeconds"
+            ? "Double"
+            : integerFields.has(field) || integerFields.has(name)
+              ? "Int"
+              : "Double";
     else if (values.every((part) => part.flags & ts.TypeFlags.BooleanLike)) value = "Bool";
     else if (values.length === 1) value = swiftType(values[0], name, field);
     else if (name === "GroupRuleRulesItem") value = generateRuleNode();
@@ -471,7 +488,8 @@ function generateModel(name, type) {
       target = `FieldUpdate<${target.replace(/\?$/, "")}>?`;
     }
     if (property.flags & ts.SymbolFlags.Optional && !target.endsWith("?")) target += "?";
-    return `    var \`${field}\`: ${target}`;
+    const nativeDefault = (name.startsWith("NativeAnnotation") || name.startsWith("NativeInk")) && target.endsWith("?") ? " = nil" : "";
+    return `    var \`${field}\`: ${target}${nativeDefault}`;
   });
   const identifiable = selected.includes("id") ? ", Identifiable" : "";
   declarations.set(
@@ -481,6 +499,24 @@ function generateModel(name, type) {
 }
 
 for (const name of [
+  "NativeAnnotationItem",
+  "NativeAnnotationPayload",
+  "NativeAnnotationOperation",
+  "NativeAnnotationOperationsRequest",
+  "NativeAnnotationOperationsResponse",
+  "NativeAnnotationDelta",
+  "NativeAnnotationAck",
+  "NativeAnnotationDraft",
+  "NativeAnnotationHubItem",
+  "NativeAnnotationHubResponse",
+  "NativeAnnotationHubDevice",
+  "NativeAnnotationHubDeviceResponse",
+  "NativeAnnotationDraftResponse",
+  "NativeAnnotationDrawing",
+  "NativeInkStroke",
+  "NativeInkPoint",
+  "NativePdfPageSource",
+  "NativePdfPageSourceBatch",
   "DictionaryResult",
   "TranslationResult",
   "SupportedLanguage",

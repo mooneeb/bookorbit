@@ -284,11 +284,13 @@ class View {
   }
   async load(src, afterLoad, beforeRender) {
     if (typeof src !== 'string') throw new Error(`${src} is not string`)
-    return new Promise((resolve) => {
-      this.#iframe.addEventListener(
-        'load',
-        () => {
-          const doc = this.document
+    return new Promise((resolve, reject) => {
+      const loaded = () => {
+        const doc = this.document
+        if (doc?.URL !== src) return
+        this.#iframe.removeEventListener('load', loaded)
+        this.#iframe.removeEventListener('error', failed)
+        try {
           afterLoad?.(doc)
 
           // it needs to be visible for Firefox to get computed style
@@ -312,9 +314,17 @@ class View {
           doc.fonts.ready.then(() => this.expand())
 
           resolve()
-        },
-        { once: true },
-      )
+        } catch (error) {
+          reject(error)
+        }
+      }
+      const failed = () => {
+        this.#iframe.removeEventListener('load', loaded)
+        this.#iframe.removeEventListener('error', failed)
+        reject(new Error(`Failed to load section document ${src}`))
+      }
+      this.#iframe.addEventListener('load', loaded)
+      this.#iframe.addEventListener('error', failed)
       this.#iframe.src = src
     })
   }
@@ -744,7 +754,6 @@ export class Paginator extends HTMLElement {
       container: this,
       onExpand: () => this.#scrollToAnchor(this.#anchor),
     })
-    this.#container.append(this.#view.element)
     return this.#view
   }
   #beforeRender({ vertical, rtl, blockRtl = this.#blockRtl, background }) {
@@ -1155,7 +1164,10 @@ export class Paginator extends HTMLElement {
         onLoad?.({ doc, index })
       }
       const beforeRender = this.#beforeRender.bind(this)
-      await view.load(src, afterLoad, beforeRender)
+      // Configure navigation before insertion so about:blank cannot own the chapter load.
+      const loading = view.load(src, afterLoad, beforeRender)
+      this.#container.append(view.element)
+      await loading
       this.dispatchEvent(
         new CustomEvent('create-overlayer', {
           detail: {

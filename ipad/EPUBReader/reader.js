@@ -15,12 +15,128 @@ const fontFamilyCSS = (family) => (genericFontFamilies.has(family) ? family : JS
 const view = document.querySelector("foliate-view");
 let closed = false;
 let narrationMovement = 0;
+let recordedSectionLoad;
 let active = 0;
 let publication;
 let publisherSpread;
 let currentStyles = "";
 let searchState;
 let resourceBytes = 0;
+let annotationWriting = false;
+let passageAnnotations = [];
+let pencilMarking = false;
+let lastPencilRelease;
+const pencilOperationID = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 15) | 64;
+  bytes[8] = (bytes[8] & 63) | 128;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
+const setPencilMarking = (marking) => {
+  pencilMarking = marking;
+  view.renderer.style.touchAction = marking ? "none" : "";
+  window.webkit.messageHandlers.pencilMarking.postMessage(marking);
+};
+const matchedPassageAnnotation = (doc, index, selectedRange) => {
+  const matches = [];
+  for (const item of passageAnnotations) {
+    try {
+      const resolved = view.resolveNavigation(item.cfi);
+      if (resolved?.index !== index) continue;
+      const range = resolved.anchor(doc);
+      const overlaps = selectedRange.collapsed
+        ? range.isPointInRange(selectedRange.startContainer, selectedRange.startOffset)
+        : range.comparePoint(selectedRange.startContainer, selectedRange.startOffset) <= 0 &&
+          range.comparePoint(selectedRange.endContainer, selectedRange.endOffset) >= 0;
+      if (overlaps) matches.push(item);
+    } catch {}
+  }
+  return matches.find((item) => item.kind === "handwriting") ?? matches.find((item) => item.kind === "text_note") ?? matches[0];
+};
+const releasePencilPassage = (doc, index, operationId) => {
+  const passage = selection(doc, index);
+  setPencilMarking(false);
+  if (!passage) return;
+  lastPencilRelease = { ...passage, operationId };
+  window.webkit.messageHandlers.selection.postMessage(passage);
+  window.webkit.messageHandlers.pencilRelease.postMessage(lastPencilRelease);
+  const item = matchedPassageAnnotation(doc, index, doc.getSelection().getRangeAt(0));
+  if (item?.kind === "handwriting") window.webkit.messageHandlers.passageAnnotation.postMessage(item.id);
+};
+const renderPassageAnnotations = (doc, index) => {
+  const ranges = [];
+  for (const item of passageAnnotations) {
+    try {
+      const resolved = view.resolveNavigation(item.cfi);
+      if (resolved?.index !== index) continue;
+      const range = resolved.anchor(doc);
+      if (range && !range.collapsed) ranges.push(range);
+    } catch {}
+  }
+  if (doc.defaultView.CSS.highlights && doc.defaultView.Highlight) {
+    doc.defaultView.CSS.highlights.set("bookorbit-annotations", new doc.defaultView.Highlight(...ranges));
+  }
+};
+window.epubSetPassageAnnotations = (items) => {
+  passageAnnotations = items;
+  for (const { doc, index } of view.renderer.getContents()) renderPassageAnnotations(doc, index);
+};
+window.epubAnnotationWriting = (enabled) => {
+  annotationWriting = enabled;
+  if (!enabled) setPencilMarking(false);
+};
+window.epubFixtureSelectPassage = () => {
+  const contents = view.renderer.getContents();
+  for (const { doc, index } of contents) {
+    const paragraph = Array.from(doc.querySelectorAll("p")).find((item) => item.textContent.trim());
+    if (!paragraph) continue;
+    const range = doc.createRange();
+    range.selectNodeContents(paragraph);
+    const selected = doc.getSelection();
+    selected.removeAllRanges();
+    selected.addRange(range);
+    const passage = selection(doc, index);
+    window.webkit.messageHandlers.selection.postMessage(passage);
+    const rect = range.getBoundingClientRect();
+    let cfiRoundTrip = false;
+    try {
+      const resolved = passage && view.resolveCFI(passage.cfi);
+      cfiRoundTrip = resolved?.index === index && resolved.anchor(doc).toString() === passage.text;
+    } catch {}
+    return {
+      contentsCount: contents.length,
+      sectionIndex: index,
+      paragraphCount: doc.querySelectorAll("p").length,
+      rangeCount: selected.rangeCount,
+      collapsed: selected.isCollapsed,
+      targetVisible:
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.bottom > 0 &&
+        rect.right > 0 &&
+        rect.top < doc.defaultView.innerHeight &&
+        rect.left < doc.defaultView.innerWidth,
+      textChars: passage?.text.length ?? 0,
+      cfiChars: passage?.cfi.length ?? 0,
+      cfiRoundTrip,
+    };
+  }
+  return { contentsCount: contents.length, sectionIndex: -1, paragraphCount: 0 };
+};
+window.epubFixturePencilRelease = (repeating) => {
+  if (repeating && lastPencilRelease) {
+    window.webkit.messageHandlers.pencilRelease.postMessage(lastPencilRelease);
+    return;
+  }
+  window.epubFixtureSelectPassage();
+  for (const { doc, index } of view.renderer.getContents()) {
+    if (!selection(doc, index)) continue;
+    setPencilMarking(true);
+    releasePencilPassage(doc, index, pencilOperationID());
+    return;
+  }
+};
 const pending = [];
 const sendResource = (path) =>
   new Promise((resolve, reject) => {
@@ -41,10 +157,24 @@ const drain = () => {
       });
   }
 };
-const settle = async () => {
+const recordedStep = (step, phase, index, started) => {
+  window.webkit.messageHandlers.recordedTransition?.postMessage({ step, phase, index, durationMs: Math.round(performance.now() - started) });
+};
+const settle = async (recordedIndex = null, pass = 1) => {
+  const diagnostic = (step, phase, started) => {
+    if (recordedIndex !== null) recordedStep(`${step}${pass}`, phase, recordedIndex, started);
+  };
   for (const { doc } of view.renderer.getContents()) {
+    let started = performance.now();
+    diagnostic("customFonts", "start", started);
     await settleCustomFonts(doc);
+    diagnostic("customFonts", "end", started);
+    started = performance.now();
+    diagnostic("fonts", "start", started);
     await doc.fonts.ready;
+    diagnostic("fonts", "end", started);
+    started = performance.now();
+    diagnostic("images", "start", started);
     await Promise.all(
       Array.from(doc.images, async (image) => {
         if (!image.complete)
@@ -55,8 +185,21 @@ const settle = async () => {
         if (image.complete && image.naturalWidth) await image.decode().catch(() => {});
       }),
     );
+    diagnostic("images", "end", started);
   }
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const frameStarted = performance.now();
+  diagnostic("frameA", "start", frameStarted);
+  await new Promise((resolve) =>
+    requestAnimationFrame(() => {
+      diagnostic("frameA", "end", frameStarted);
+      const nextFrameStarted = performance.now();
+      diagnostic("frameB", "start", nextFrameStarted);
+      requestAnimationFrame(() => {
+        diagnostic("frameB", "end", nextFrameStarted);
+        resolve();
+      });
+    }),
+  );
 };
 const location = () => {
   const value = view.lastLocation;
@@ -75,7 +218,7 @@ const location = () => {
     ...publicationPosition(value),
   };
 };
-const go = async (target, smooth = false) => {
+const go = async (target, smooth = false, recorded = false) => {
   const opened = publication;
   if (closed || !opened) throw new Error("The reader closed.");
   resourceBytes = 0;
@@ -84,11 +227,35 @@ const go = async (target, smooth = false) => {
     throw new Error("This passage is unavailable in the publication.");
   const renderer = view.renderer;
   await withProgrammaticMovement(renderer, smooth, async () => {
-    await renderer.goTo({ ...resolved, smooth });
-    await settle();
+    let started = performance.now();
+    if (recorded) recordedStep("navigation1", "start", resolved.index, started);
+    const section = publication.sections[resolved.index];
+    const load = section.load;
+    const traceLoad = recorded && window.webkit.messageHandlers.recordedTransition;
+    if (traceLoad)
+      section.load = async (...args) => {
+        const loadStarted = performance.now();
+        recordedStep("sectionLoad", "start", resolved.index, loadStarted);
+        const result = await load.apply(section, args);
+        recordedStep("sectionLoad", "end", resolved.index, loadStarted);
+        recordedSectionLoad = { index: resolved.index, started: performance.now() };
+        recordedStep("iframeLoad", "start", resolved.index, recordedSectionLoad.started);
+        return result;
+      };
+    try {
+      await renderer.goTo({ ...resolved, smooth });
+    } finally {
+      if (traceLoad) section.load = load;
+      recordedSectionLoad = null;
+    }
+    if (recorded) recordedStep("navigation1", "end", resolved.index, started);
+    await settle(recorded ? resolved.index : null, 1);
     if (closed || opened !== publication || renderer !== view.renderer) throw new Error("The reader closed.");
+    started = performance.now();
+    if (recorded) recordedStep("navigation2", "start", resolved.index, started);
     await renderer.goTo(resolved);
-    await settle();
+    if (recorded) recordedStep("navigation2", "end", resolved.index, started);
+    await settle(recorded ? resolved.index : null, 2);
   });
   if (closed || opened !== publication || renderer !== view.renderer) throw new Error("The reader closed.");
   if (!view.renderer.getContents().some((item) => item.index === resolved.index)) throw new Error("The requested passage could not be opened.");
@@ -122,9 +289,65 @@ const applyDocumentStyles = (doc) => {
   style.textContent = currentStyles;
 };
 view.addEventListener("load", ({ detail: { doc, index } }) => {
+  if (recordedSectionLoad?.index === index) {
+    recordedStep("iframeLoad", "end", index, recordedSectionLoad.started);
+    recordedSectionLoad.started = performance.now();
+    recordedStep("sectionRender", "start", index, recordedSectionLoad.started);
+  }
   if (view.isFixedLayout) applyDocumentStyles(doc);
+  renderPassageAnnotations(doc, index);
+  let pencilStart;
+  doc.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (!annotationWriting || event.pointerType !== "pen") return;
+      const caret = doc.caretRangeFromPoint(event.clientX, event.clientY);
+      if (!caret) return;
+      pencilStart = { node: caret.startContainer, offset: caret.startOffset, operationId: pencilOperationID() };
+      setPencilMarking(true);
+      event.preventDefault();
+    },
+    { passive: false },
+  );
+  doc.addEventListener(
+    "pointermove",
+    (event) => {
+      if (!pencilStart || !annotationWriting || event.pointerType !== "pen") return;
+      const caret = doc.caretRangeFromPoint(event.clientX, event.clientY);
+      if (!caret) return;
+      doc.getSelection().setBaseAndExtent(pencilStart.node, pencilStart.offset, caret.startContainer, caret.startOffset);
+      event.preventDefault();
+    },
+    { passive: false },
+  );
+  doc.addEventListener(
+    "pointerup",
+    (event) => {
+      if (!pencilStart || event.pointerType !== "pen") return;
+      const operationId = pencilStart.operationId;
+      pencilStart = null;
+      releasePencilPassage(doc, index, operationId);
+      event.preventDefault();
+    },
+    { passive: false },
+  );
+  doc.addEventListener("pointercancel", () => {
+    pencilStart = null;
+    setPencilMarking(false);
+  });
+  doc.addEventListener("click", (event) => {
+    if (closed || pencilStart || !doc.getSelection()?.isCollapsed) return;
+    const caret = doc.caretRangeFromPoint(event.clientX, event.clientY);
+    if (!caret) return;
+    const item = matchedPassageAnnotation(doc, index, caret);
+    if (item) window.webkit.messageHandlers.passageAnnotation.postMessage(item.id);
+  });
   doc.addEventListener("selectionchange", () => {
     if (!closed) window.webkit.messageHandlers.selection.postMessage(selection(doc, index));
+    const selected = doc.getSelection();
+    if (closed || pencilMarking || !selected?.rangeCount || selected.isCollapsed) return;
+    const item = matchedPassageAnnotation(doc, index, selected.getRangeAt(0));
+    if (item?.kind === "handwriting") window.webkit.messageHandlers.passageAnnotation.postMessage(item.id);
   });
 });
 view.addEventListener("relocate", notify);
@@ -188,6 +411,9 @@ const openPublication = async (book, cfi, settings, formatting) => {
   if (settings.fixedLayoutSpread === "none") publication.rendition.spread = "none";
   await view.open(publication);
   view.renderer.disablePointerNavigation?.();
+  view.renderer.addEventListener("create-overlayer", ({ detail: { index } }) => {
+    if (recordedSectionLoad?.index === index) recordedStep("sectionRender", "end", index, recordedSectionLoad.started);
+  });
   view.renderer.addEventListener("before-section-load", () => {
     resourceBytes = 0;
   });
@@ -286,6 +512,7 @@ window.epubConfigure = async (settings, formatting, cfi) => {
     a { color: ${palette.link}; }
     p { ${paragraph} }
     ::highlight(bookorbit-recorded), ::highlight(bookorbit-speech) { background-color: Highlight; color: HighlightText; }
+    ::highlight(bookorbit-annotations) { background-color: Mark; color: MarkText; }
   `;
   if (renderer.setStyles) renderer.setStyles(currentStyles);
   else for (const { doc } of renderer.getContents()) applyDocumentStyles(doc);
@@ -302,6 +529,15 @@ window.epubLocation = () => {
   return location();
 };
 window.epubGo = go;
+window.epubPreserveLayout = async (target) => {
+  const hasSelection = view.renderer.getContents().some(({ doc }) => {
+    const selected = doc.getSelection();
+    return selected?.rangeCount === 1 && !selected.isCollapsed;
+  });
+  if (!hasSelection) return go(target);
+  await settle();
+  return location();
+};
 window.epubGoFraction = (fraction, smooth) => go(fractionTarget(fraction), smooth);
 window.epubPositionPreview = (target) => {
   const opened = publication;
@@ -346,6 +582,10 @@ window.epubSearchCancel = () => {
   searchState = null;
 };
 window.epubClose = () => {
+  pencilMarking = false;
+  lastPencilRelease = undefined;
+  passageAnnotations = [];
+  annotationWriting = false;
   closed = true;
   window.epubSearchCancel();
   clearCustomFonts();
@@ -627,24 +867,55 @@ window.epubRecordedMatch = async (items, cfi) => {
   return null;
 };
 window.epubRecordedHighlight = async (href, follow) => {
-  const generation = recordedGeneration;
-  const resolved = await view.resolveNavigation(href);
-  if (!resolved || !Number.isInteger(resolved.index)) throw new Error("The recorded segment is unavailable.");
-  if (follow) await go(href);
-  if (closed || generation !== recordedGeneration) throw new Error("Recorded highlighting was cancelled.");
-  clearRecordedPaint();
-  const content = view.renderer.getContents().find((item) => item.index === resolved.index);
-  const doc = content?.doc ?? (await publication.sections[resolved.index].createDocument());
-  if (closed || generation !== recordedGeneration) throw new Error("Recorded highlighting was cancelled.");
-  const range = recordedRange(doc, resolved.anchor);
-  const point = range.cloneRange();
-  point.collapse(true);
-  const cfi = view.getCFI(resolved.index, point);
-  if (content) {
-    if (!doc.defaultView.CSS.highlights || !doc.defaultView.Highlight) throw new Error("Segment highlighting is unavailable on this device.");
-    doc.defaultView.CSS.highlights.set("bookorbit-recorded", new doc.defaultView.Highlight(range));
+  const diagnosticStarted = performance.now();
+  let resolved;
+  let statement = "resolve";
+  try {
+    const generation = recordedGeneration;
+    resolved = await view.resolveNavigation(href);
+    if (!resolved || !Number.isInteger(resolved.index)) throw new Error("The recorded segment is unavailable.");
+    statement = "follow";
+    if (follow) await go(href, false, true);
+    if (closed || generation !== recordedGeneration) throw new Error("Recorded highlighting was cancelled.");
+    statement = "clearPaint";
+    clearRecordedPaint();
+    statement = "document";
+    const content = view.renderer.getContents().find((item) => item.index === resolved.index);
+    const doc = content?.doc ?? (await publication.sections[resolved.index].createDocument());
+    if (closed || generation !== recordedGeneration) throw new Error("Recorded highlighting was cancelled.");
+    statement = "range";
+    const range = recordedRange(doc, resolved.anchor);
+    const point = range.cloneRange();
+    point.collapse(true);
+    statement = "cfi";
+    const cfi = view.getCFI(resolved.index, point);
+    statement = "paint";
+    if (content) {
+      if (!doc.defaultView.CSS.highlights || !doc.defaultView.Highlight) throw new Error("Segment highlighting is unavailable on this device.");
+      doc.defaultView.CSS.highlights.set("bookorbit-recorded", new doc.defaultView.Highlight(range));
+    }
+    statement = "result";
+    return { cfi, chapterIndex: resolved.index, text: range.toString().slice(0, 500), percentage: follow ? location().percentage : null };
+  } catch (error) {
+    const names = new Set(["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "SecurityError", "InvalidStateError", "WrongDocumentError", "NotFoundError"]);
+    const name = names.has(error?.name) ? error.name : "UnknownError";
+    const source = /reader\.js:(\d+):(\d+)/.exec(String(error?.stack ?? "").slice(0, 4096));
+    const messages = new Map([
+      ["The reading position is unavailable.", "readingPosition"],
+      ["Recorded highlighting was cancelled.", "cancelled"],
+      ["The recorded segment is unavailable.", "segmentUnavailable"],
+      ["The recorded segment is unavailable in this publication.", "anchorUnavailable"],
+      ["Segment highlighting is unavailable on this device.", "highlightUnavailable"],
+      ["The requested passage could not be opened.", "passageUnavailable"],
+      ["The reader closed.", "closed"],
+    ]);
+    window.webkit.messageHandlers.recordedTransition?.postMessage({
+      step: "highlightException", phase: "fail", index: resolved?.index ?? 0, statement, durationMs: Math.round(performance.now() - diagnosticStarted),
+      errorName: name, line: source ? Number(source[1]) : 0, column: source ? Number(source[2]) : 0,
+      messageCode: messages.get(error?.message) ?? "engineException",
+    });
+    throw error;
   }
-  return { cfi, chapterIndex: resolved.index, text: range.toString().slice(0, 500), percentage: follow ? location().percentage : null };
 };
 window.epubClearRecordedHighlight = () => {
   recordedGeneration++;

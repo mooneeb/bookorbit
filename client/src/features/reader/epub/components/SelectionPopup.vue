@@ -8,14 +8,18 @@ import { copyToClipboard } from '@/lib/clipboard'
 
 const { t } = useI18n()
 
-const props = defineProps<{
-  visible: boolean
-  position: { x: number; y: number }
-  showBelow: boolean
-  selectedText: string
-  overlappingAnnotationId: number | null
-  isTtsAvailable: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    visible: boolean
+    position: { x: number; y: number }
+    showBelow: boolean
+    selectedText: string
+    overlappingAnnotationId: number | null
+    isTtsAvailable: boolean
+    canAnnotate?: boolean
+  }>(),
+  { canAnnotate: true },
+)
 
 const emit = defineEmits<{
   copy: []
@@ -69,12 +73,42 @@ async function onCopy() {
   copied.value = false
   emit('copy')
 }
+function handleDismiss() {
+  emit('dismiss')
+}
+function handleSearch() {
+  emit('search')
+}
+function handleTranslate() {
+  emit('translate')
+}
+function handleDefine() {
+  emit('define')
+}
+function handleNote() {
+  emit('note')
+}
+function handleDelete() {
+  if (props.overlappingAnnotationId !== null) emit('deleteAnnotation', props.overlappingAnnotationId)
+}
+function handleReadFromHere() {
+  emit('readFromHere')
+}
+function handleApply() {
+  applyHighlight(selectedColor.value, selectedStyle.value)
+}
+function handleColor(color: string) {
+  selectedColor.value = color
+}
+function handleStyle(style: string) {
+  selectedStyle.value = style
+}
 </script>
 
 <template>
   <Teleport to="body">
     <template v-if="visible">
-      <div class="fixed inset-0 z-[59]" @click="emit('dismiss')" />
+      <div class="fixed inset-0 z-[59]" @click="handleDismiss" />
       <div
         class="fixed z-[60] select-none"
         :style="{
@@ -100,7 +134,7 @@ async function onCopy() {
               <TooltipContent>{{ copied ? t('reader.selection.copied') : t('reader.selection.copy') }}</TooltipContent>
             </Tooltip>
 
-            <Tooltip>
+            <Tooltip v-if="props.canAnnotate !== false">
               <TooltipTrigger as-child>
                 <button
                   class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-muted transition-colors"
@@ -117,7 +151,7 @@ async function onCopy() {
               <TooltipTrigger as-child>
                 <button
                   class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                  @click="emit('search')"
+                  @click="handleSearch"
                 >
                   <Search :size="15" />
                 </button>
@@ -129,7 +163,7 @@ async function onCopy() {
               <TooltipTrigger as-child>
                 <button
                   class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                  @click="emit('translate')"
+                  @click="handleTranslate"
                 >
                   <Languages :size="15" />
                 </button>
@@ -141,7 +175,7 @@ async function onCopy() {
               <TooltipTrigger as-child>
                 <button
                   class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                  @click="emit('define')"
+                  @click="handleDefine"
                 >
                   <BookA :size="15" />
                 </button>
@@ -149,11 +183,11 @@ async function onCopy() {
               <TooltipContent>{{ t('reader.selection.define') }}</TooltipContent>
             </Tooltip>
 
-            <Tooltip>
+            <Tooltip v-if="props.canAnnotate !== false">
               <TooltipTrigger as-child>
                 <button
                   class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                  @click="emit('note')"
+                  @click="handleNote"
                 >
                   <FileText :size="15" />
                 </button>
@@ -161,11 +195,11 @@ async function onCopy() {
               <TooltipContent>{{ t('reader.note.title') }}</TooltipContent>
             </Tooltip>
 
-            <Tooltip v-if="overlappingAnnotationId !== null">
+            <Tooltip v-if="overlappingAnnotationId !== null && props.canAnnotate !== false">
               <TooltipTrigger as-child>
                 <button
                   class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-muted transition-colors text-destructive hover:text-destructive"
-                  @click="emit('deleteAnnotation', overlappingAnnotationId!)"
+                  @click="handleDelete"
                 >
                   <Trash2 :size="15" />
                 </button>
@@ -177,7 +211,7 @@ async function onCopy() {
               <TooltipTrigger as-child>
                 <button
                   class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                  @click="emit('readFromHere')"
+                  @click="handleReadFromHere"
                 >
                   <Headphones :size="15" />
                 </button>
@@ -186,7 +220,7 @@ async function onCopy() {
             </Tooltip>
           </div>
 
-          <div v-if="showColorPicker" class="border-t border-border pt-1.5 space-y-1.5">
+          <div v-if="showColorPicker && props.canAnnotate !== false" class="border-t border-border pt-1.5 space-y-1.5">
             <div class="flex gap-1 px-0.5">
               <button
                 v-for="c in colors"
@@ -195,7 +229,7 @@ async function onCopy() {
                 :class="selectedColor === c.hex ? 'border-foreground scale-110' : 'border-transparent'"
                 :style="{ background: c.hex }"
                 :title="c.label"
-                @click="selectedColor = c.hex"
+                @click="handleColor(c.hex)"
               >
                 <span class="sr-only">{{ c.label }}</span>
               </button>
@@ -208,13 +242,13 @@ async function onCopy() {
                 :class="
                   selectedStyle === s.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted text-muted-foreground'
                 "
-                @click="selectedStyle = s.id"
+                @click="handleStyle(s.id)"
               >
                 {{ s.label }}
               </button>
               <button
                 class="flex-1 ml-1 px-2 py-0.5 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                @click="applyHighlight(selectedColor, selectedStyle)"
+                @click="handleApply"
               >
                 {{ t('reader.selection.apply') }}
               </button>

@@ -680,6 +680,9 @@ describe('UserRepository', () => {
   });
 
   it('setPermissions replaces permission rows in one transaction', async () => {
+    const txUpdateWhere = vi.fn().mockResolvedValue(undefined);
+    const txUpdateSet = vi.fn().mockReturnValue({ where: txUpdateWhere });
+    const txUpdate = vi.fn().mockReturnValue({ set: txUpdateSet });
     const txDeleteWhere = vi.fn().mockResolvedValue(undefined);
     const txDelete = vi.fn().mockReturnValue({ where: txDeleteWhere });
     const txInsertValues = vi.fn().mockResolvedValue(undefined);
@@ -687,18 +690,34 @@ describe('UserRepository', () => {
 
     db.transaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) =>
       cb({
+        update: txUpdate,
         delete: txDelete,
         insert: txInsert,
       }),
     );
 
+    await repo.setPermissions(7, [Permission.AnnotationManageOwn]);
+    expect(txUpdate).toHaveBeenCalledWith(schema.users);
+    expect(txUpdateSet).toHaveBeenNthCalledWith(1, { manageOwnAnnotations: true });
+    expect(txUpdateWhere).toHaveBeenCalledWith(expect.objectContaining({ op: 'eq', left: schema.users.id, right: 7 }));
+    expect(txInsertValues).toHaveBeenCalledWith([{ userId: 7, permissionName: Permission.AnnotationManageOwn }]);
+    expect(txUpdateWhere.mock.invocationCallOrder[0]).toBeLessThan(txDeleteWhere.mock.invocationCallOrder[0]!);
+    expect(txDeleteWhere.mock.invocationCallOrder[0]).toBeLessThan(txInsertValues.mock.invocationCallOrder[0]!);
+    txInsert.mockClear();
+
     await repo.setPermissions(7, []);
+    expect(txUpdateSet).toHaveBeenNthCalledWith(2, { manageOwnAnnotations: false });
     expect(txDelete).toHaveBeenCalledWith(schema.userPermissions);
     expect(txDeleteWhere).toHaveBeenCalledWith(expect.objectContaining({ op: 'eq', left: schema.userPermissions.userId, right: 7 }));
     expect(txInsert).not.toHaveBeenCalled();
 
     await repo.setPermissions(7, ['library_download' as never, 'kobo_sync' as never]);
-    expect(txInsertValues).toHaveBeenCalledWith([
+    expect(txUpdateSet).toHaveBeenNthCalledWith(3, { manageOwnAnnotations: false });
+    expect(db.transaction).toHaveBeenCalledTimes(3);
+    expect(db.update).not.toHaveBeenCalled();
+    expect(db.delete).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(txInsertValues).toHaveBeenLastCalledWith([
       { userId: 7, permissionName: 'library_download' },
       { userId: 7, permissionName: 'kobo_sync' },
     ]);
@@ -712,6 +731,7 @@ describe('UserRepository', () => {
     const txInsertValues = vi.fn().mockResolvedValue(undefined);
     db.transaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) =>
       cb({
+        update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
         delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
         insert: vi.fn().mockReturnValue({ values: txInsertValues }),
       }),
@@ -733,6 +753,7 @@ describe('UserRepository', () => {
     const txInsertValues = vi.fn().mockResolvedValue(undefined);
     db.transaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) =>
       cb({
+        update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
         delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
         insert: vi.fn().mockReturnValue({ values: txInsertValues }),
       }),
@@ -755,6 +776,7 @@ describe('UserRepository', () => {
     const txInsertValues = vi.fn().mockResolvedValue(undefined);
     db.transaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) =>
       cb({
+        update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
         delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
         insert: vi.fn().mockReturnValue({ values: txInsertValues }),
       }),

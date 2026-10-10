@@ -24,6 +24,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { contentDispositionHeader } from '../../common/utils/content-disposition.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { serveVerifiedFile } from '../../common/utils/file-delivery.utils';
 import { Auditable } from '../../common/decorators/auditable.decorator';
 import { ForbidPermission } from '../../common/decorators/forbid-permission.decorator';
 import { imageContentTypeFromPath } from '../../common/image-content-type';
@@ -337,7 +338,7 @@ export class BookController {
     const coverPath = await this.bookService.getCoverPath(id, user, { medium: query.medium, strict: query.strict });
     if (!coverPath) throw new NotFoundException(`No cover for book ${id}`);
 
-    const { mtimeMs } = await stat(coverPath);
+    const { mtimeMs, size } = await stat(coverPath);
     const etag = `"${Math.floor(mtimeMs)}"`;
     const cacheControl = 'private, no-store';
 
@@ -350,6 +351,7 @@ export class BookController {
     reply.header('Cache-Control', cacheControl);
     reply.header('ETag', etag);
     reply.type(contentType);
+    reply.header('Content-Length', size);
     reply.send(createReadStream(coverPath));
   }
 
@@ -389,37 +391,16 @@ export class BookController {
     @CurrentUser() user: RequestUser,
     @Headers('range') rangeHeader: string | undefined,
     @Res() reply: FastifyReply,
+    @Headers('if-range') ifRangeHeader?: string,
   ) {
-    const { path, size, format, originalFilename } = await this.bookService.getFileInfo(fileId, user);
+    const { path, format, originalFilename } = await this.bookService.getFileInfo(fileId, user);
     if (resolveAudioMimeType(format)) throw new NotFoundException('File route not found');
     const mimeType = resolveBookMimeType(format);
     const filename = originalFilename;
 
-    reply.header('Accept-Ranges', 'bytes');
     reply.header('Content-Disposition', contentDispositionHeader('inline', filename, 'download'));
     reply.type(mimeType);
-
-    if (rangeHeader) {
-      const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
-      if (match) {
-        const start = parseInt(match[1], 10);
-        const end = match[2] ? parseInt(match[2], 10) : size - 1;
-        if (start >= size || end < start || end >= size) {
-          reply.status(416);
-          reply.header('Content-Range', `bytes */${size}`);
-          reply.send();
-          return;
-        }
-        reply.status(206);
-        reply.header('Content-Range', `bytes ${start}-${end}/${size}`);
-        reply.header('Content-Length', end - start + 1);
-        reply.send(createReadStream(path, { start, end }));
-        return;
-      }
-    }
-
-    reply.header('Content-Length', size);
-    reply.send(createReadStream(path));
+    await serveVerifiedFile(reply, path, rangeHeader, ifRangeHeader, { userId: user.id, resourceId: fileId });
   }
 
   @Get('files/:fileId/download')

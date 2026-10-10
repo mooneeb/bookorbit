@@ -256,12 +256,22 @@ export class BookmarkRepository {
     return null;
   }
 
-  async create(userId: number, bookId: number, data: Pick<NewBookmark, 'cfi' | 'title' | 'positionSeconds' | 'fileId' | 'pageNumber'>) {
+  async findByClientId(userId: number, bookId: number, clientId: string): Promise<BookmarkRow | null> {
+    const [row] = await this.db
+      .select()
+      .from(bookmarks)
+      .where(and(eq(bookmarks.userId, userId), eq(bookmarks.bookId, bookId), eq(bookmarks.clientId, clientId)))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async create(userId: number, bookId: number, data: Pick<NewBookmark, 'clientId' | 'cfi' | 'title' | 'positionSeconds' | 'fileId' | 'pageNumber'>) {
     const [row] = await this.db
       .insert(bookmarks)
       .values({
         userId,
         bookId,
+        ...(data.clientId ? { clientId: data.clientId, retryProtected: true } : {}),
         cfi: data.cfi ?? null,
         title: data.title,
         positionSeconds: data.positionSeconds ?? null,
@@ -273,11 +283,7 @@ export class BookmarkRepository {
     return row ?? null;
   }
 
-  /**
-   * Re-activates the tombstoned row that owns this location. The unique location
-   * indexes still cover tombstoned rows, so inserting at a deleted bookmark's CFI
-   * would conflict instead of recreating it.
-   */
+  /** Retired tombstones preserve retry identities and cannot be reactivated by device restore. */
   async restoreAtLocation(
     userId: number,
     bookId: number,
@@ -302,8 +308,11 @@ export class BookmarkRepository {
         devicePos: values.devicePos ?? null,
         pageno: values.pageno ?? null,
         deletedAt: null,
+        syncRetired: false,
       })
-      .where(and(eq(bookmarks.userId, userId), eq(bookmarks.bookId, bookId), location, isNotNull(bookmarks.deletedAt)))
+      .where(
+        and(eq(bookmarks.userId, userId), eq(bookmarks.bookId, bookId), location, eq(bookmarks.syncRetired, false), isNotNull(bookmarks.deletedAt)),
+      )
       .returning();
     return row ?? null;
   }
@@ -339,7 +348,13 @@ export class BookmarkRepository {
       .set({ deletedAt: new Date() })
       .where(and(eq(bookmarks.id, bookmarkId), eq(bookmarks.bookId, bookId), eq(bookmarks.userId, userId), isNull(bookmarks.deletedAt)))
       .returning({ id: bookmarks.id });
-    return result.length > 0;
+    if (result.length > 0) return true;
+    const [deleted] = await this.db
+      .select({ id: bookmarks.id })
+      .from(bookmarks)
+      .where(and(eq(bookmarks.id, bookmarkId), eq(bookmarks.bookId, bookId), eq(bookmarks.userId, userId), isNotNull(bookmarks.deletedAt)))
+      .limit(1);
+    return deleted !== undefined;
   }
 
   private liveConditions(bookId: number, bookmarkId: number, userId: number) {
@@ -360,7 +375,7 @@ export class BookmarkRepository {
     return this.db
       .select()
       .from(bookmarks)
-      .where(and(eq(bookmarks.userId, userId), eq(bookmarks.bookId, bookId)))
+      .where(and(eq(bookmarks.userId, userId), eq(bookmarks.bookId, bookId), eq(bookmarks.syncRetired, false)))
       .orderBy(asc(bookmarks.id))
       .limit(limit);
   }
@@ -409,7 +424,9 @@ export class BookmarkRepository {
     const rows = await this.db
       .select({ id: bookmarks.id })
       .from(bookmarks)
-      .where(and(eq(bookmarks.userId, userId), isNotNull(bookmarks.deletedAt), lt(bookmarks.deletedAt, deletedBefore)))
+      .where(
+        and(eq(bookmarks.userId, userId), eq(bookmarks.syncRetired, false), isNotNull(bookmarks.deletedAt), lt(bookmarks.deletedAt, deletedBefore)),
+      )
       .orderBy(asc(bookmarks.deletedAt))
       .limit(limit);
     return rows.map((row) => row.id);
@@ -417,10 +434,34 @@ export class BookmarkRepository {
 
   async purge(userId: number, bookmarkIds: number[]): Promise<number> {
     if (bookmarkIds.length === 0) return 0;
-    const rows = await this.db
-      .delete(bookmarks)
-      .where(and(eq(bookmarks.userId, userId), inArray(bookmarks.id, bookmarkIds), isNotNull(bookmarks.deletedAt)))
-      .returning({ id: bookmarks.id });
-    return rows.length;
+    return this.db.transaction(async (tx) => {
+      const retired = await tx
+        .update(bookmarks)
+        .set({ syncRetired: true })
+        .where(
+          and(
+            eq(bookmarks.userId, userId),
+            inArray(bookmarks.id, bookmarkIds),
+            eq(bookmarks.syncRetired, false),
+            isNotNull(bookmarks.deletedAt),
+            or(eq(bookmarks.retryProtected, true), isNotNull(bookmarks.positionSeconds)),
+          ),
+        )
+        .returning({ id: bookmarks.id });
+      const rows = await tx
+        .delete(bookmarks)
+        .where(
+          and(
+            eq(bookmarks.userId, userId),
+            eq(bookmarks.retryProtected, false),
+            isNull(bookmarks.positionSeconds),
+            eq(bookmarks.syncRetired, false),
+            inArray(bookmarks.id, bookmarkIds),
+            isNotNull(bookmarks.deletedAt),
+          ),
+        )
+        .returning({ id: bookmarks.id });
+      return retired.length + rows.length;
+    });
   }
 }

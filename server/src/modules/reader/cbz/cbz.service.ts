@@ -201,7 +201,7 @@ export class CbzService {
     throw new NotFoundException(`Unsupported comic format: ${fmt}`);
   }
 
-  async streamPage(fileId: number, pageIndex: number, user: RequestUser): Promise<{ stream: NodeJS.ReadableStream; mimeType: string }> {
+  async streamPage(fileId: number, pageIndex: number, user: RequestUser): Promise<{ stream: NodeJS.ReadableStream; mimeType: string; size: number }> {
     const file = await this.getFile(fileId, user);
     const fmt = await this.resolveFormat(fileId, file.absolutePath, file.format);
 
@@ -211,7 +211,7 @@ export class CbzService {
         throw new NotFoundException(`Page ${pageIndex} out of range`);
       }
       const entry = entries[pageIndex];
-      return { stream: createCbzZipEntryReadStream(file.absolutePath, entry), mimeType: mimeForExt(entry.name) };
+      return { stream: createCbzZipEntryReadStream(file.absolutePath, entry), mimeType: mimeForExt(entry.name), size: entry.uncompressedSize };
     }
 
     if (fmt === 'cbr') {
@@ -220,7 +220,7 @@ export class CbzService {
         throw new NotFoundException(`Page ${pageIndex} out of range`);
       }
       const data = await this.extractRarPage(buffer, pages[pageIndex]);
-      return { stream: Readable.from(Buffer.from(data)), mimeType: mimeForExt(pages[pageIndex]) };
+      return { stream: Readable.from(Buffer.from(data)), mimeType: mimeForExt(pages[pageIndex]), size: data.length };
     }
 
     if (fmt === 'cb7') {
@@ -230,7 +230,7 @@ export class CbzService {
       }
       const sz = await getSevenZip();
       const data = sz.FS.readFile(`/p${fileId}/${pages[pageIndex]}`);
-      return { stream: Readable.from(Buffer.from(data)), mimeType: mimeForExt(pages[pageIndex]) };
+      return { stream: Readable.from(Buffer.from(data)), mimeType: mimeForExt(pages[pageIndex]), size: data.length };
     }
 
     throw new NotFoundException(`Unsupported comic format: ${fmt}`);

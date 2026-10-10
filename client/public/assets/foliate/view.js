@@ -40,8 +40,18 @@ export const getKoboSpanValue = (range) => {
 }
 
 export const getReadingProgressRange = (range) => {
-  const point = getRangePoint(range)
+  let point = getRangePoint(range)
   if (!point) return null
+  if (range.startContainer.nodeType === 1) {
+    const doc = range.startContainer.ownerDocument
+    const walker = doc.createTreeWalker(range.startContainer, NodeFilter.SHOW_TEXT)
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.nodeValue?.trim() && !node.parentElement?.closest('script,style,noscript') && range.isPointInRange(node, 0)) {
+        point = { node, offset: 0 }
+        break
+      }
+    }
+  }
   const progressRange = range.cloneRange()
   progressRange.setStart(point.node, point.offset)
   progressRange.collapse(true)

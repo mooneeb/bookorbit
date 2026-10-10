@@ -36,7 +36,9 @@ final class ComicReaderModel {
   init(api: BookOrbitAPI, file: BookDetailFile) {
     self.api = api
     self.file = file
-    position = NativeFilePositionModel(api: api, fileID: file.id)
+    position = NativeFilePositionModel(
+      api: api, fileID: file.id,
+      sourceIdentity: file.absolutePath + ":" + String(file.sizeBytes ?? -1))
     loader = ComicPageLoader(api: api, fileID: file.id)
   }
 
@@ -50,7 +52,7 @@ final class ComicReaderModel {
       let positionSession = try await api.authenticatedSessionGeneration()
       let progress: FileReadingProgress = try await api.boundedJSON(
         "books/files/\(file.id)/progress", byteLimit: 16 * 1024, session: positionSession)
-      try position.accept(progress, session: positionSession)
+      try await position.accept(progress, session: positionSession)
       try Task.checkCancellation()
       guard !isClosed else { return }
       guard (1...100_000).contains(count.pageCount) else { throw ConnectionError.invalidResponse }
@@ -59,7 +61,7 @@ final class ComicReaderModel {
       beginning.pageNumber = 1
       position.setBeginning(beginning)
       updateFacingLayouts()
-      if let page = progress.pageNumber, page.isFinite, page >= 1, page <= Double(pageCount) {
+      if let page = position.resumePageNumber, page.isFinite, page >= 1, page <= Double(pageCount) {
         pageIndex = Int(page.rounded(.down)) - 1
       }
       error = nil
@@ -199,7 +201,7 @@ final class ComicReaderModel {
         }
         guard !isClosed else { return }
         if pendingPage == nil {
-          status = "Position saved"
+          status = position.hasPendingSync ? "Position saved on this iPad" : "Position saved"
           error = nil
         }
       } catch {

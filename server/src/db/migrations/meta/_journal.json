@@ -750,6 +750,55 @@
       "when": 1791474800707,
       "tag": "0106_merge_upstream_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1791482687496,
+      "tag": "0107_ipad_annotations",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1791483166053,
+      "tag": "0108_source_ink_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1791483315088,
+      "tag": "0109_offline_bookmark_retry",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1791484921093,
+      "tag": "0110_bookmark_sync_retirement",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1791485325927,
+      "tag": "0111_annotation_recovery_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1791489820136,
+      "tag": "0112_pdf_annotation_page_filter",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1791492539693,
+      "tag": "0113_source_ink_window_index",
+      "breakpoints": true
     }
   ]
 }

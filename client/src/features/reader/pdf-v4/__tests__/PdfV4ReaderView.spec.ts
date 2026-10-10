@@ -4,7 +4,7 @@ import { defineComponent, h, ref } from 'vue'
 import { ScrollStrategy } from '@embedpdf/plugin-scroll'
 import { SpreadMode } from '@embedpdf/plugin-spread'
 import { ZoomMode } from '@embedpdf/plugin-zoom'
-import type { PdfReaderSettings } from '@bookorbit/types'
+import type { NativeSourceInkWindowResponse, PdfReaderSettings } from '@bookorbit/types'
 
 const mockRouterBack = vi.fn<() => void>()
 const mockRouterReplace = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
@@ -27,6 +27,18 @@ vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
   return { ...actual, api: mockApi }
 })
+
+function mockPdfResponse(serveResponse: () => Response) {
+  mockApi.mockImplementation(async (input) => {
+    const url = new URL(input instanceof Request ? input.url : String(input), 'http://localhost')
+    if (url.pathname === '/api/v1/books/files/101/serve') return serveResponse()
+    if (url.pathname === '/api/v1/annotations/native/source-ink/window') {
+      const window: NativeSourceInkWindowResponse = { items: [], total: 0, window: 1, limit: 100 }
+      return Response.json(window)
+    }
+    throw new Error(`Unexpected reader request: ${url.pathname}`)
+  })
+}
 
 const mockSettingsLoad = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
 const mockUpdateBookSettings = vi.fn<(patch: Partial<PdfReaderSettings>) => void>()
@@ -121,7 +133,7 @@ describe('PdfV4ReaderView', () => {
     vi.clearAllMocks()
     mockSettingsLoad.mockResolvedValue(undefined)
     mockApi.mockReset()
-    mockApi.mockImplementation(async () => new Response(new Uint8Array([37, 80, 68, 70]), { status: 200 }))
+    mockPdfResponse(() => new Response(new Uint8Array([37, 80, 68, 70]), { status: 200 }))
     mockOpenDocumentBuffer.mockReset()
     mockOpenDocumentBuffer.mockImplementation(() => ({
       toPromise: async () => ({
@@ -217,19 +229,23 @@ describe('PdfV4ReaderView', () => {
   })
 
   it('shows a recoverable error when the PDF response is unsuccessful', async () => {
-    mockApi.mockResolvedValueOnce(new Response(null, { status: 503 }))
+    mockPdfResponse(() => new Response(null, { status: 503 }))
 
     const wrapper = await mountReader()
 
+    expect(mockApi).toHaveBeenCalledWith(expect.stringContaining('/api/v1/annotations/native/source-ink/window?'))
+    expect(mockOpenDocumentBuffer).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('The PDF request failed with status 503.')
     expect(wrapper.text()).toContain('Retry')
   })
 
   it('rejects an empty PDF response instead of mounting a zero-page document', async () => {
-    mockApi.mockResolvedValueOnce(new Response(null, { status: 200 }))
+    mockPdfResponse(() => new Response(null, { status: 200 }))
 
     const wrapper = await mountReader()
 
+    expect(mockApi).toHaveBeenCalledWith(expect.stringContaining('/api/v1/annotations/native/source-ink/window?'))
+    expect(mockOpenDocumentBuffer).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('The PDF request returned an empty document.')
     expect(wrapper.find('.mock-embed-pdf').exists()).toBe(false)
   })

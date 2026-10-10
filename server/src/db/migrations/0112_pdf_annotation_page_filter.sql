@@ -1,0 +1,1 @@
+CREATE INDEX "annotation_positions_user_file_pdf_page_idx" ON "annotation_positions" USING btree ("user_id","book_file_id",("extras"->>'pageno'),"annotation_id") WHERE "annotation_positions"."format" = 'pdf';

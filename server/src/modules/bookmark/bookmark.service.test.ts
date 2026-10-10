@@ -47,7 +47,6 @@ function makeService() {
     findByBookId: vi.fn(),
     findLiveByLocation: vi.fn(),
     create: vi.fn(),
-    restoreAtLocation: vi.fn().mockResolvedValue(null),
     softDelete: vi.fn(),
     findLive: vi.fn().mockResolvedValue(null),
     update: vi.fn().mockResolvedValue(null),
@@ -128,24 +127,6 @@ describe('BookmarkService', () => {
 
       expect(bookmarkRepo.findLiveByLocation).toHaveBeenNthCalledWith(2, 1, 5, { cfi: 'epubcfi(/6/8)', positionSeconds: null });
       expect(result.id).toBe(13);
-    });
-
-    it('restores the tombstone that still owns the location instead of failing the insert', async () => {
-      const { service, bookmarkRepo } = makeService();
-      const restored = makeBookmarkRow({ id: 14, deletedAt: null });
-      bookmarkRepo.findLiveByLocation.mockResolvedValue(null);
-      bookmarkRepo.create.mockResolvedValue(null);
-      bookmarkRepo.restoreAtLocation.mockResolvedValue(restored);
-
-      const result = await service.createBookmark(5, makeUser(), { title: 'Chapter 1', cfi: 'epubcfi(/6/4!/4/2/1:0)' });
-
-      expect(bookmarkRepo.restoreAtLocation).toHaveBeenCalledWith(
-        1,
-        5,
-        { cfi: 'epubcfi(/6/4!/4/2/1:0)', positionSeconds: null },
-        { title: 'Chapter 1', origin: 'web', devicePos: null, pageno: null },
-      );
-      expect(result.id).toBe(14);
     });
 
     it('propagates access errors and does not query repository', async () => {

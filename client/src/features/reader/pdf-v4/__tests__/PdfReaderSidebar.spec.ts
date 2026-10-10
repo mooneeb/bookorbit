@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
 import { MatchFlag, type SearchResult } from '@embedpdf/models'
-import type { AnnotationItem } from '@bookorbit/types'
+import { Permission, type AnnotationItem } from '@bookorbit/types'
+import { useAuth } from '@/features/auth/composables/useAuth'
 
 const mocks = vi.hoisted(() => ({
   searchState: {
@@ -190,6 +191,17 @@ function destination(pageIndex: number) {
 
 describe('PdfReaderSidebar', () => {
   beforeEach(() => {
+    useAuth().user.value = {
+      id: 1,
+      username: 'reader',
+      name: 'Reader',
+      active: true,
+      isSuperuser: false,
+      isDefaultPassword: false,
+      settings: {},
+      provisioningMethod: 'local',
+      permissions: [Permission.AnnotationManageOwn],
+    }
     vi.useFakeTimers()
     vi.clearAllMocks()
     mocks.searchScope.searchAllPages.mockReset()
@@ -205,6 +217,10 @@ describe('PdfReaderSidebar', () => {
     mocks.scrollState.value = { currentPage: 1, totalPages: 10 }
     mocks.bookmarkCapability.value = null
     mocks.documentState.value = null
+  })
+
+  afterEach(() => {
+    useAuth().user.value = null
   })
 
   it('debounces full-document searches and cancels superseded work', async () => {

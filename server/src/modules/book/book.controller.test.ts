@@ -282,59 +282,6 @@ describe('BookController', () => {
     expect(mockCreateReadStream).toHaveBeenCalledWith('/tmp/book.epub');
   });
 
-  it('serves inline content-disposition for file stream route', async () => {
-    const { controller, bookService } = makeController();
-    const { reply, headers } = makeReply();
-    bookService.getFileInfo.mockResolvedValue({
-      path: '/tmp/book.epub',
-      size: 100,
-      format: 'epub',
-      bookId: 5,
-      originalFilename: 'book.epub',
-    });
-
-    await controller.serveFile(1, makeUser(), undefined, reply);
-
-    expect(headers['Content-Disposition']).toBe(`inline; filename="book.epub"; filename*=UTF-8''book.epub`);
-  });
-
-  it('serves partial content for valid byte ranges', async () => {
-    const { controller, bookService } = makeController();
-    const { reply, headers } = makeReply();
-    bookService.getFileInfo.mockResolvedValue({
-      path: '/tmp/book.pdf',
-      size: 500,
-      format: 'pdf',
-      bookId: 5,
-      originalFilename: 'book.pdf',
-    });
-
-    await controller.serveFile(1, makeUser(), 'bytes=10-19', reply);
-
-    expect(reply.status).toHaveBeenCalledWith(206);
-    expect(headers['Content-Range']).toBe('bytes 10-19/500');
-    expect(headers['Content-Length']).toBe(10);
-    expect(mockCreateReadStream).toHaveBeenCalledWith('/tmp/book.pdf', { start: 10, end: 19 });
-  });
-
-  it('returns 416 for unsatisfiable ranges instead of attempting stream', async () => {
-    const { controller, bookService } = makeController();
-    const { reply, headers } = makeReply();
-    bookService.getFileInfo.mockResolvedValue({
-      path: '/tmp/book.epub',
-      size: 100,
-      format: 'epub',
-      bookId: 5,
-      originalFilename: 'book.epub',
-    });
-
-    await controller.serveFile(1, makeUser(), 'bytes=120-130', reply);
-
-    expect(reply.status).toHaveBeenCalledWith(416);
-    expect(headers['Content-Range']).toBe('bytes */100');
-    expect(mockCreateReadStream).not.toHaveBeenCalled();
-  });
-
   it('streams server-sent events for bulk metadata refresh progress', async () => {
     const { controller, bookService } = makeController();
     const { reply, raw } = makeReply();

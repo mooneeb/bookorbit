@@ -1,8 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 import type { CreateFixedPageBookmarkPayload } from '@bookorbit/types';
 
 export class CreateFixedPageBookmarkDto implements CreateFixedPageBookmarkPayload {
+  @IsOptional()
+  @IsUUID()
+  clientId?: string;
+
   @IsInt()
   @Min(1)
   @Max(2147483647)

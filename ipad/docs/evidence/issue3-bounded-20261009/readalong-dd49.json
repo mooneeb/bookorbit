@@ -1,0 +1,347 @@
+{
+  "candidate": "dd49f06fc024f15105ddee1104c98a72abbd2a8e",
+  "buildManifest": "/tmp/bookorbit-issue-3-bounded-last-native-build-evidence.json",
+  "actualXcodePID": 63378,
+  "startedAt": "2026-10-09T14:59:38.235317+00:00",
+  "selector": "BookOrbitUITests/OfflineReadingStateJourneyTests/testIPADE02A04CompleteEPUBAndRecordedReadAlongPlayAfterOfflineRestart",
+  "mode": {
+    "IPAD_E02_CRITICAL_ONLY": "1",
+    "TEST_RUNNER_IPAD_E02_CRITICAL_ONLY": "1"
+  },
+  "result": "RED - single actual attempt on this changed candidate",
+  "actualCounts": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0
+  },
+  "testcaseDurationSeconds": 246.001,
+  "criticalCriteriaPass": false,
+  "fullAcceptancePass": false,
+  "originalAlphaProductFixGatePassed": true,
+  "failure": {
+    "line": 456,
+    "expected": "Paused first Alpha clip0.0/6.0 after seek0",
+    "actual": "Paused Alpha clip1.3/6.0 after15secondwait, input0",
+    "seekUniqueFullyVisibleHittableEnabledVerified": true,
+    "tapSynthesisAtTestSecond": 229.02,
+    "automaticScrollDuringTap": false,
+    "beforeTapSoftwareKeyboard": "visible",
+    "afterTapSoftwareKeyboard": "dismissed",
+    "classification": "High candidate: public offline paused Seek0 produces no observed position change after a fully visible enabled/hittable tap. Internal action execution and root cause unproven; keyboard consuming the first tap remains possible. No second tap or runtime probe was performed."
+  },
+  "criticalHighBugs": [
+    {
+      "severity": "High candidate",
+      "title": "Offline paused narration seek0 does not update displayed position",
+      "publicReproduction": [
+        "Verified Book2/file2 offline download, fault server offline, native restart and Go0 with Alpha and firstchapterend hittable.",
+        "Open Recorded ReadAlong, Start at chosen passage; Alpha initial clip verified, Pause succeeds; time1.3/6.0.",
+        "Enter0, reveal unique Seek within native scrollpanel, require full visibility/hittability/enabled, capture preTapPNG and tap. Keyboard dismisses but Alpha remains paused1.3/6.0 for15seconds."
+      ],
+      "fixValidationTests": [
+        "Offline restart Book2/file2, Go0, Start Alpha, Pause, enter0 and tap fully visible enabled/hittable Seek once. Require the paused label0.0/6.0 and the same Alpha passage; inspect before/after PNG including keyboard state.",
+        "Seek to3seconds while paused, verify3.0/6.0, then seek0 and Play. Require all four declared6second segments through final6.0/6.0 and visible final publication passage, with zero successful bytes through the disconnected fault proxy.",
+        "Seek0 offline and terminate/relaunch. The public recorded resume must retain first clip0.0; reconnect and require narration CAS201 using current narrationVersion while textVersion/CFI remain unchanged."
+      ]
+    }
+  ],
+  "actualGatesPassed": [
+    "Selected complete offline EPUB download",
+    "Online Recorded and Speech panels",
+    "Online Go0 firstchapter Alpha and end hardchecks",
+    "Offline app terminate/relaunch and offline bookread",
+    "Offline Go0 firstchapter Alpha and end hardchecks",
+    "Recorded start selects Alpha; previous critical wrong-start defect fixed",
+    "Native Pause holds Alpha",
+    "Seek input exact0; unique fullyvisible/hittable/enabled Seek tap with no automatic scroll"
+  ],
+  "unexecutedGates": [
+    "Text local resume conflict choice: absent",
+    "Recorded remote resume conflict choice: absent",
+    "Speech remote resume conflict choice: absent",
+    "Successful0.0/6.0 seek and Play",
+    "All four6second recorded passages completed",
+    "Final6.0/6.0",
+    "Final publication passage after recordedcontrols close",
+    "Finalzero-successful-byte XCTest assertion"
+  ],
+  "deferredAttachmentTags": [
+    "IPAD-E02-deferred-A04-default-start-percentage-offline_0_E9AC1965-498A-4675-A70B-34CD0D901AC5.txt",
+    "IPAD-E02-deferred-A04-default-start-percentage-online_0_5C38C216-92D1-49AF-A7D3-CF78BD39B807.txt"
+  ],
+  "partialOfflineTraffic": {
+    "checkpointItems": 103,
+    "postCheckpointItems": 171,
+    "successfulBytesUntilFailure": 0,
+    "truncated": false,
+    "fullcaseFinalAssertionReached": false
+  },
+  "publicProgressTraffic": [
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 508,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "d589c2e98d6658f0570c7c02182b7da8f792f9852a5bef9b2e6d4f55945414ee",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 0
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 508,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "d589c2e98d6658f0570c7c02182b7da8f792f9852a5bef9b2e6d4f55945414ee",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 0
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 508,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "d589c2e98d6658f0570c7c02182b7da8f792f9852a5bef9b2e6d4f55945414ee",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 0
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 508,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "d589c2e98d6658f0570c7c02182b7da8f792f9852a5bef9b2e6d4f55945414ee",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 0
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "POST",
+      "range": null,
+      "status": 201,
+      "bytes": 674,
+      "complete": true,
+      "progressRequest": {
+        "baseVersion": "d589c2e98d6658f0570c7c02182b7da8f792f9852a5bef9b2e6d4f55945414ee",
+        "source": "text",
+        "percentage": 50.614754098360656
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 674,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "ab56ceba1bc63b10cd1076bf4e1e716bea2894f614c368be032ec774fef8dd88",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 50.614754
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 674,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "ab56ceba1bc63b10cd1076bf4e1e716bea2894f614c368be032ec774fef8dd88",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 50.614754
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "POST",
+      "range": null,
+      "status": 201,
+      "bytes": 674,
+      "complete": true,
+      "progressRequest": {
+        "baseVersion": "ab56ceba1bc63b10cd1076bf4e1e716bea2894f614c368be032ec774fef8dd88",
+        "source": "text",
+        "percentage": 50.614754098360656
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 674,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "ab56ceba1bc63b10cd1076bf4e1e716bea2894f614c368be032ec774fef8dd88",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 50.614754
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "POST",
+      "range": null,
+      "status": 201,
+      "bytes": 674,
+      "complete": true,
+      "progressRequest": {
+        "baseVersion": "ab56ceba1bc63b10cd1076bf4e1e716bea2894f614c368be032ec774fef8dd88",
+        "source": "text",
+        "percentage": 50.614754098360656
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": 200,
+      "bytes": 674,
+      "complete": true,
+      "progressResponse": {
+        "textVersion": "ab56ceba1bc63b10cd1076bf4e1e716bea2894f614c368be032ec774fef8dd88",
+        "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090",
+        "percentage": 50.614754
+      }
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "GET",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "POST",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "POST",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    },
+    {
+      "path": "/api/v1/books/files/2/progress",
+      "method": "POST",
+      "range": null,
+      "status": null,
+      "bytes": 0,
+      "complete": false
+    }
+  ],
+  "actualPNGFilesOpened": [
+    "native/attachments/C640DD3C-C3CE-4C88-BA59-E21F18B057B6.png",
+    "native/attachments/F4ADA8AF-6774-4859-898B-A27DE48398D1.png"
+  ],
+  "failureAX": "native/attachments/7357D24C-4039-467A-8547-F16C85E25CC1.txt",
+  "compiledInventoryPinsMatch": true,
+  "cleanup": {
+    "completedAt": "2026-10-09T15:04:11.756Z",
+    "events": [
+      "revision-aware-clear-own-test-progress",
+      "revision-aware-text-baseline-restore"
+    ],
+    "checks": {
+      "accountExact": true,
+      "audioProgressExact": true,
+      "annotationsAllBaselineRowsExact": true,
+      "bookmarksExact": true,
+      "sourceBytesExact": true,
+      "progressSemanticsExact": true,
+      "fileMetadataExact": true
+    },
+    "proxyReset": 204,
+    "observerLogout": 200,
+    "finalProgress": {
+      "bookFileId": 2,
+      "userId": 1,
+      "percentage": 50.614754,
+      "cfi": "epubcfi(/6/2[c1ref]!/4/4[p2]/1:24)",
+      "pageNumber": null,
+      "positionSeconds": null,
+      "mediaOverlayFragment": null,
+      "mediaOverlaySectionIndex": null,
+      "koboLocationSource": null,
+      "koboLocationType": null,
+      "koboLocationValue": null,
+      "koboContentSourceProgressPercent": null,
+      "koreaderProgress": null,
+      "narrationPercentage": null,
+      "narrationUpdatedAt": null,
+      "textUpdatedAt": "2026-10-09T15:04:11.680Z",
+      "updatedAt": "2026-10-09T15:04:11.680Z",
+      "lastReadAt": "2026-10-09T15:04:11.681Z",
+      "textVersion": "02c40deeccaf0937a61e944f4fd038bfd7b6232eada6d1323d026dbcc97c043b",
+      "narrationVersion": "fd1eddfa393cedbdf18f49d9d07297ea69ec72973c6dad75231304f1b5629090"
+    },
+    "localPendingDisposition": "No private state inspected or deleted. Test-created local progress journals preserved; native reconnection drain not established."
+  },
+  "leaseReleasedAt": "2026-10-09T15:04:11.756Z",
+  "preservation": "Install update only. All27baseline annotation rows/source/account/audio/bookmarks/filemetadata/progress semantics preserved. No private journals or old drafts purged.",
+  "checksSkipped": "Broad default acceptance, unit tests and lint skipped per role. No product/testcode changes by Tester. No repeat attempt or further P2 fix loop."
+}

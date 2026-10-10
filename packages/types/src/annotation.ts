@@ -96,6 +96,13 @@ export interface CreateAnnotationPayload {
 }
 
 export interface AnnotationItem {
+  clientId?: string | null;
+  kind?: NativeAnnotationKind;
+  drawing?: NativeAnnotationDrawing | null;
+  version?: number;
+  deletedAt?: string | null;
+  sourceRevision?: string | null;
+  pageFingerprint?: string | null;
   id: number;
   bookId: number;
   cfi: string | null;
@@ -116,6 +123,139 @@ export interface AnnotationItem {
   pdf?: AnnotationPdfPosition | null;
   /** When the reader starred it; null when not starred. Absent from servers older than stars. */
   starredAt?: string | null;
+}
+
+export type NativeAnnotationKind = "highlight" | "text_note" | "handwriting" | "pdf_ink";
+export interface NativeInkPoint {
+  x: number;
+  y: number;
+  pressure?: number;
+}
+export interface NativeInkStroke {
+  id: string;
+  points: NativeInkPoint[];
+  color: string;
+  width: number;
+}
+export interface NativeAnnotationDrawing {
+  format: "bookorbit-ink-v1";
+  strokes: NativeInkStroke[];
+  nativeData?: string;
+}
+export interface NativeAnnotationItem extends AnnotationItem {
+  clientId: string | null;
+  kind: NativeAnnotationKind;
+  drawing: NativeAnnotationDrawing | null;
+  version: number;
+  deletedAt: string | null;
+  sourceRevision: string | null;
+  pageFingerprint: string | null;
+}
+export interface NativeAnnotationPayload extends Partial<CreateAnnotationPayload> {
+  kind?: NativeAnnotationKind;
+  drawing?: NativeAnnotationDrawing | null;
+  sourceRevision?: string | null;
+  pageFingerprint?: string | null;
+}
+export interface NativeAnnotationOperation {
+  operationId: string;
+  clientId: string;
+  annotationId?: number;
+  bookId: number;
+  baseVersion: number;
+  action: "create" | "update" | "delete" | "restore" | "repair";
+  payload?: NativeAnnotationPayload;
+}
+export interface NativeAnnotationOperationsRequest {
+  deviceId: string;
+  operations: NativeAnnotationOperation[];
+}
+export interface NativeAnnotationOperationResult {
+  operationId: string;
+  status: "applied" | "conflict" | "recovery";
+  annotation?: NativeAnnotationItem;
+  draftId?: number;
+  recoverySnapshot?: NativeAnnotationItem;
+  recoverySnapshotUnavailableReason?: string;
+  publication?: { status: "published" | "pending" | "failed"; sourceRevision?: string; message?: string };
+}
+export interface NativeAnnotationOperationsResponse {
+  results: NativeAnnotationOperationResult[];
+}
+export interface NativeAnnotationDelta {
+  items: NativeAnnotationItem[];
+  nextCursor: string;
+  hasMore: boolean;
+}
+export interface NativeSourceInkWindowResponse {
+  items: NativeAnnotationItem[];
+  total: number;
+  window: number;
+  limit: number;
+}
+export interface NativeAnnotationAck {
+  deviceId: string;
+  bookId: number;
+  cursor: string;
+}
+export interface NativeAnnotationDraft {
+  id: number;
+  bookId: number;
+  annotationId: number | null;
+  operationId: string;
+  reason: string;
+  payload: NativeAnnotationOperation;
+  createdAt: string;
+  snapshot?: NativeAnnotationItem;
+  snapshotUnavailableReason?: string;
+}
+export interface NativeAnnotationHubQuery {
+  cursor?: number;
+  limit?: number;
+  search?: string;
+  kind?: NativeAnnotationKind;
+  status?: "active" | "trashed" | "recovery";
+  bookId?: number;
+  fileId?: number;
+  groupBy?: "book" | "month" | "kind" | "source";
+}
+export interface NativeAnnotationHubItem extends NativeAnnotationItem {
+  bookTitle: string | null;
+  author: string | null;
+  fileFormat: string | null;
+  groupKey: string;
+}
+export interface NativeAnnotationHubResponse {
+  items: NativeAnnotationHubItem[];
+  nextCursor: number | null;
+}
+export interface NativeAnnotationHubDevice {
+  deviceId: string;
+  bookId: number;
+  cursor: number;
+  updatedAt: string;
+}
+export interface NativeAnnotationHubDeviceResponse {
+  items: NativeAnnotationHubDevice[];
+  nextCursor: string | null;
+}
+export interface NativeAnnotationDraftResponse {
+  items: NativeAnnotationDraft[];
+  nextCursor: number | null;
+}
+export interface NativePdfPageSource {
+  sourceRevision: string;
+  pageFingerprint: string;
+  width: number;
+  height: number;
+  page: number;
+  canEditPdfInk: boolean;
+  matchedSourceRevision?: string | null;
+}
+export interface NativePdfPageSourceBatch {
+  sourceRevision: string;
+  pages: NativePdfPageSource[];
+  nextPage: number | null;
 }
 
 /**

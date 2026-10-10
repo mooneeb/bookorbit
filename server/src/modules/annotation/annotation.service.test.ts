@@ -39,6 +39,7 @@ function makeAnnotationRow(overrides?: Record<string, unknown>) {
     id: 10,
     userId: 1,
     bookId: 5,
+    kind: 'highlight',
     cfi: 'epubcfi(/6/4!/4/2/1:0)',
     cfiStatus: 'exact',
     cfiExtras: null,
@@ -63,6 +64,10 @@ function makeAnnotationRow(overrides?: Record<string, unknown>) {
 
 async function makeService() {
   const annotationRepo = {
+    findById: vi.fn().mockImplementation((bookId: number, annotationId: number, userId: number) => {
+      const row = makeAnnotationRow();
+      return Promise.resolve(row.bookId === bookId && row.id === annotationId && row.userId === userId ? row : null);
+    }),
     findByBookId: vi.fn(),
     findPaginated: vi.fn(),
     getStats: vi.fn(),

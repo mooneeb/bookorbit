@@ -20,6 +20,7 @@ import {
 } from './epub-media-overlay';
 import { MediaOverlayClipsQueryDto } from './dto/media-overlay-clips-query.dto';
 import { sanitizeLogValue } from '../../../common/utils/log-sanitize.utils';
+import { ifRangeMatches } from '../../../common/utils/file-delivery.utils';
 
 const CONTENT_TYPES: Record<string, string> = {
   '.xhtml': 'application/xhtml+xml',
@@ -403,6 +404,7 @@ export class EpubService {
     user: RequestUser,
     sectionIndex?: number,
     signal?: AbortSignal,
+    ifRangeHeader?: string,
   ): Promise<MediaOverlayFileResponse> {
     if (filePath.includes('..')) throw new ForbiddenException('Invalid path');
     const normalizedPath = normalizeEpubZipPath(filePath);
@@ -428,9 +430,9 @@ export class EpubService {
     if (!entry) throw new NotFoundException(`Entry not in archive: ${normalizedPath}`);
 
     const size = entry.uncompressedSize;
-    const range = this.parseRange(rangeHeader, size);
     const sourceStat = await stat(resolved.absolutePath);
     const etag = `"${sourceStat.mtimeMs}-${sourceStat.size}-${entry.crc32}-${size}"`;
+    const range = this.parseRange(ifRangeMatches(ifRangeHeader, etag) ? rangeHeader : undefined, size);
     if (range === 'unsatisfiable') {
       return {
         data: Buffer.alloc(0),

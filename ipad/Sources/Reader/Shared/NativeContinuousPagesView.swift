@@ -12,6 +12,8 @@ struct NativeContinuousPagesView: UIViewControllerRepresentable {
   let refreshPage: (UIViewController, Int) -> Void
   let onTurn: (Int) -> Void
   let onVisible: (Set<Int>) -> Void
+  var allowsNavigation = true
+  var allowsPencilNavigation = true
 
   func makeUIViewController(context: Context) -> ContinuousPagesController {
     ContinuousPagesController(configuration: self)
@@ -78,6 +80,13 @@ final class ContinuousPagesController: UIViewController,
     self.configuration = configuration
     loadViewIfNeeded()
     applying = true
+    collection.isScrollEnabled = configuration.allowsNavigation
+    let touchTypes =
+      [UITouch.TouchType.direct, .indirect, .indirectPointer]
+      + (configuration.allowsPencilNavigation ? [.pencil] : [])
+    collection.panGestureRecognizer.allowedTouchTypes = touchTypes.map {
+      NSNumber(value: $0.rawValue)
+    }
     let changedIndex = configuration.pageIndex != currentIndex
     let fraction = layout.fraction(at: collection.contentOffset, index: currentIndex)
     currentIndex = configuration.pageIndex

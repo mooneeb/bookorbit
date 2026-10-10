@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { Permission } from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
 import { AnnotationService } from './annotation.service';
 import { CreateAnnotationDto } from './dto/create-annotation.dto';
@@ -20,11 +22,13 @@ export class AnnotationController {
   }
 
   @Post()
+  @RequirePermission(Permission.AnnotationManageOwn)
   createAnnotation(@Param('bookId', ParseIntPipe) bookId: number, @Body() dto: CreateAnnotationDto, @CurrentUser() user: RequestUser) {
     return this.annotationService.createAnnotation(bookId, user, dto);
   }
 
   @Patch(':annotationId')
+  @RequirePermission(Permission.AnnotationManageOwn)
   updateAnnotation(
     @Param('bookId', ParseIntPipe) bookId: number,
     @Param('annotationId', ParseIntPipe) annotationId: number,
@@ -35,6 +39,7 @@ export class AnnotationController {
   }
 
   @Delete(':annotationId')
+  @RequirePermission(Permission.AnnotationManageOwn)
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteAnnotation(
     @Param('bookId', ParseIntPipe) bookId: number,

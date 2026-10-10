@@ -6,10 +6,21 @@ const SORT_DIR_OPTIONS = ['asc', 'desc'] as const;
 
 export class AnnotationQueryDto {
   @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  excludeSourceInk?: boolean;
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   bookFileId?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? (value.trim() === '' ? Number.NaN : Number(value)) : value))
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER - 1)
+  pdfPage?: number;
 
   @IsOptional()
   @Type(() => Number)

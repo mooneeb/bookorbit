@@ -1,8 +1,11 @@
 import Foundation
+import OSLog
 import Observation
 
 @MainActor @Observable
 final class NativeRecordedModel {
+  private static let logger = Logger(
+    subsystem: "com.mooneeb.bookorbit.private", category: "RecordedPlayback")
   enum State: String { case idle, loading, playing, paused, error }
   let reader: EPUBReaderModel
   let title: String
@@ -175,13 +178,28 @@ final class NativeRecordedModel {
       await pause()
       return
     }
-    guard await stopAndSave() else { return }
+    let started = Date()
+    Self.logger.info(
+      "[recorded.transition] [start] bookId=\(self.reader.bookID, privacy: .public) fileId=\(self.reader.file.id, privacy: .public) sectionIndex=\(section, privacy: .public) forward=\(forward, privacy: .public) step=save - recorded transition position save started"
+    )
+    let saved = await stopAndSave()
+    Self.logger.info(
+      "[recorded.transition] [end] bookId=\(self.reader.bookID, privacy: .public) fileId=\(self.reader.file.id, privacy: .public) sectionIndex=\(section, privacy: .public) durationMs=\(Int(Date().timeIntervalSince(started) * 1000), privacy: .public) step=save saved=\(saved, privacy: .public) - recorded transition position save completed"
+    )
+    guard saved else { return }
     await perform {
+      let pageStarted = Date()
+      Self.logger.info(
+        "[recorded.transition] [start] bookId=\(self.reader.bookID, privacy: .public) fileId=\(self.reader.file.id, privacy: .public) sectionIndex=\(section, privacy: .public) step=metadata - recorded transition metadata started"
+      )
       var page = try await self.page(
         section: section, cursor: section == current.sectionIndex ? cursor : 0)
       if !forward && section != current.sectionIndex && page.totalClips > 0 {
         page = try await self.page(section: section, cursor: page.totalClips - 1)
       }
+      Self.logger.info(
+        "[recorded.transition] [end] bookId=\(self.reader.bookID, privacy: .public) fileId=\(self.reader.file.id, privacy: .public) sectionIndex=\(section, privacy: .public) durationMs=\(Int(Date().timeIntervalSince(pageStarted) * 1000), privacy: .public) step=metadata clipCount=\(page.items.count, privacy: .public) - recorded transition metadata completed"
+      )
       guard let next = page.items.first else { throw NativeRecordedError.unavailable }
       try await self.activate(next, page: page, offset: 0, play: wasPlaying)
     }
@@ -304,21 +322,25 @@ final class NativeRecordedModel {
     isBusy = true
     error = nil
     defer { isBusy = false }
+    let started = Date()
     do {
       try await position.checkSession()
       try await action()
-    } catch { await fail(error) }
+    } catch {
+      let errorClass = String(reflecting: type(of: error))
+      Self.logger.error(
+        "[recorded.transition] [fail] bookId=\(self.reader.bookID, privacy: .public) fileId=\(self.reader.file.id, privacy: .public) durationMs=\(Int(Date().timeIntervalSince(started) * 1000), privacy: .public) errorClass=\(errorClass, privacy: .public) error=\"recorded playback operation failed\" - recorded playback operation failed"
+      )
+      await fail(error)
+    }
   }
 
   private func page(section: Int, cursor: Int) async throws -> EpubMediaOverlayClipsPage {
-    let page: EpubMediaOverlayClipsPage = try await reader.api.boundedJSON(
-      "epub/\(reader.bookID)/media-overlay/clips",
-      query: [
-        URLQueryItem(name: "fileId", value: String(reader.file.id)),
-        URLQueryItem(name: "sectionIndex", value: String(section)),
-        URLQueryItem(name: "cursor", value: String(cursor)),
-        URLQueryItem(name: "limit", value: "64"),
-      ], byteLimit: 512 * 1024, session: session)
+    guard cursor >= 0, let session else { throw ConnectionError.invalidResponse }
+    // Downloads persist fixed pages; navigation can begin at any clip within a page.
+    var page = try await reader.api.recordedClipsPage(
+      bookID: reader.bookID, fileID: reader.file.id, section: section,
+      cursor: cursor / 64 * 64, generation: session)
     try await position.checkSession()
     guard page.bookId == reader.bookID, page.fileId == reader.file.id, page.sectionIndex == section,
       page.items.count <= 64, page.nextCursor.map({ $0 > cursor }) ?? true,
@@ -326,6 +348,7 @@ final class NativeRecordedModel {
       page.items.allSatisfy({ Self.valid($0) && $0.sectionIndex == section }),
       Set(page.items.map(\.index)).count == page.items.count
     else { throw ConnectionError.invalidResponse }
+    page.items.removeAll { $0.sectionClipIndex < cursor }
     return page
   }
 
@@ -337,10 +360,24 @@ final class NativeRecordedModel {
     state = .loading
     operation = UUID()
     let operation = operation
+    let highlightStarted = Date()
+    Self.logger.info(
+      "[recorded.transition] [start] bookId=\(self.reader.bookID, privacy: .public) fileId=\(self.reader.file.id, privacy: .public) sectionIndex=\(clip.sectionIndex, privacy: .public) clipIndex=\(clip.index, privacy: .public) follow=\(self.follow, privacy: .public) step=highlight - recorded passage highlighting started"
+    )
     let segment = try await reader.highlightRecorded(clip, follow: follow)
+    Self.logger.info(
+      "[recorded.transition] [end] bookId=\(self.reader.bookID, privacy: .public) fileId=\(self.reader.file.id, privacy: .public) sectionIndex=\(clip.sectionIndex, privacy: .public) clipIndex=\(clip.index, privacy: .public) durationMs=\(Int(Date().timeIntervalSince(highlightStarted) * 1000), privacy: .public) step=highlight - recorded passage highlighting completed"
+    )
+    let audioStarted = Date()
+    Self.logger.info(
+      "[recorded.transition] [start] bookId=\(self.reader.bookID, privacy: .public) fileId=\(self.reader.file.id, privacy: .public) sectionIndex=\(clip.sectionIndex, privacy: .public) clipIndex=\(clip.index, privacy: .public) step=audio - recorded audio preparation started"
+    )
     try await audio.prepare(
       api: reader.api, bookID: reader.bookID, fileID: reader.file.id,
       clip: clip, session: session, offset: offset)
+    Self.logger.info(
+      "[recorded.transition] [end] bookId=\(self.reader.bookID, privacy: .public) fileId=\(self.reader.file.id, privacy: .public) sectionIndex=\(clip.sectionIndex, privacy: .public) clipIndex=\(clip.index, privacy: .public) durationMs=\(Int(Date().timeIntervalSince(audioStarted) * 1000), privacy: .public) step=audio - recorded audio preparation completed"
+    )
     try await position.checkSession()
     guard !isClosed, self.operation == operation else { throw CancellationError() }
     self.clip = clip

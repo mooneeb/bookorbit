@@ -56,6 +56,7 @@ export class EpubController {
         user,
         sectionIndex === undefined ? undefined : this.parseSectionIndex(sectionIndex),
         cancellation.signal,
+        typeof request.headers['if-range'] === 'string' ? request.headers['if-range'] : undefined,
       );
     } catch (error) {
       reply.raw.removeListener('close', cancel);

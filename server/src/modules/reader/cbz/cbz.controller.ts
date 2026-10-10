@@ -21,8 +21,9 @@ export class CbzController {
     @CurrentUser() user: RequestUser,
     @Res() reply: FastifyReply,
   ) {
-    const { stream, mimeType } = await this.cbzService.streamPage(fileId, pageIndex, user);
+    const { stream, mimeType, size } = await this.cbzService.streamPage(fileId, pageIndex, user);
     reply.header('Cache-Control', 'private, no-store');
+    reply.header('Content-Length', size);
     reply.type(mimeType);
     reply.send(stream);
   }

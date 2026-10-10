@@ -1,0 +1,1012 @@
+import CryptoKit
+import Foundation
+import XCTest
+
+final class OfflineReadingStateJourneyTests: XCTestCase {
+  private let httpSession: URLSession = {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForRequest = 15
+    configuration.timeoutIntervalForResource = 20
+    configuration.waitsForConnectivity = false
+    return URLSession(configuration: configuration)
+  }()
+
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    continueAfterFailure = false
+  }
+
+  override func tearDownWithError() throws {
+    if let testRun, testRun.failureCount > 0 {
+      let data = XCUIScreen.main.screenshot().pngRepresentation
+      attach(data, name: "IPAD-E02-A04-reading-state-failure-\(name)", type: "public.png")
+    }
+    try super.tearDownWithError()
+  }
+
+  @MainActor
+  func testIPADE02A04ExplicitOfflineSignOutFailureRetainsSelectedPDFAndSession() async throws {
+    try await fault("reset")
+    let token = try await loginAPI()
+    let book = try await bookDetails(bookID: 1, format: "pdf", token: token)
+    _ = try await api("books/files/\(book.fileID)/progress", method: "DELETE", token: token)
+    let originalPDF = try await api("books/files/\(book.fileID)/serve", token: token)
+    XCTAssertTrue(originalPDF.starts(with: Data("%PDF-".utf8)))
+    attach(originalPDF, name: "IPAD-E02-A04-signout-selected-complete-PDF", type: "com.adobe.pdf")
+    let app = launchAndSignIn()
+    openBookDetail(book, app: app)
+    downloadSelectedFile(book.fileID, app: app)
+    app.navigationBars["Book details"].buttons["Done"].tap()
+    let signOuts = app.buttons.matching(identifier: "signOut")
+    XCTAssertEqual(signOuts.count, 1)
+    let signOut = signOuts.element
+    XCTAssertTrue(signOut.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(signOut.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    let downloaded = try await traffic()
+    try await fault("offline")
+    signOut.tap()
+    let failure = app.alerts["Could not sign out"]
+    XCTAssertTrue(failure.waitForExistence(timeout: 20))
+    XCTAssertTrue(failure.staticTexts["Could not sign out"].exists)
+    let messages = failure.staticTexts.matching(
+      NSPredicate(format: "label != %@", "Could not sign out"))
+    XCTAssertEqual(messages.count, 1)
+    XCTAssertFalse(messages.element.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    capture("IPAD-E02-A04-explicit-offline-signout-reports-real-failure")
+    failure.buttons["OK"].tap()
+    XCTAssertTrue(failure.wait(for: \.exists, toEqual: false, timeout: 10))
+    XCTAssertFalse(app.textFields["serverURL"].exists)
+    XCTAssertFalse(app.textFields["username"].exists)
+    openOfflineBook(book, app: app)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 20))
+    XCTAssertTrue(
+      app.staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "Orbit fixture: passage 1")
+      ).firstMatch.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    app.buttons["pdfNextPage"].tap()
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 10))
+    assertSecondPage("PDF", app: app)
+    XCTAssertTrue(app.staticTexts["Position saved on this iPad"].waitForExistence(timeout: 15))
+    capture("IPAD-E02-A04-selected-PDF-still-readable-after-failed-signout")
+    app.terminate()
+    app.launch()
+    openOfflineBook(book, app: app)
+    XCTAssertFalse(app.textFields["serverURL"].exists)
+    XCTAssertFalse(app.textFields["username"].exists)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 20))
+    assertSecondPage("PDF", app: app)
+    XCTAssertFalse(app.alerts["Could not sign out"].exists)
+    let offlineTraffic = try await traffic()
+    let attempted = Array(offlineTraffic.dropFirst(downloaded.count))
+    XCTAssertEqual(successfulBytes(attempted), 0)
+    XCTAssertTrue(
+      attempted.contains {
+        $0["method"] as? String == "POST" && $0["path"] as? String == "/api/v1/auth/logout"
+      })
+    capture("IPAD-E02-A04-failed-signout-retains-authenticated-offline-PDF-after-restart")
+  }
+
+  @MainActor
+  func testIPADE02A04PDFPageAndBookmarkCreationDeletionSurviveOfflineRestart() async throws {
+    try await exerciseFixedPages(bookID: 1, format: "pdf", nextPage: "pdfNextPage", kind: "PDF")
+  }
+
+  @MainActor
+  func testIPADE02A04ComicPageAndBookmarkCreationDeletionSurviveOfflineRestart() async throws {
+    try await exerciseFixedPages(
+      bookID: 10, format: "cbz", nextPage: "comicNextPage", kind: "Comic")
+  }
+
+  @MainActor
+  func testIPADE02A04KnownPDFInkPublicationPreservesQueuedReadingStateAcrossRestart()
+    async throws
+  {
+    try await fault("reset")
+    let token = try await loginAPI()
+    let book = try await bookDetails(bookID: 1, format: "pdf", token: token)
+    _ = try await api("books/files/\(book.fileID)/progress", method: "DELETE", token: token)
+    let title = "IPAD-E02-A04 publication page 2 \(UUID().uuidString)"
+    let app = launchAndSignIn()
+    openBookDetail(book, app: app)
+    downloadSelectedFile(book.fileID, app: app)
+    app.buttons["sourceRecovery"].tap()
+    XCTAssertTrue(app.staticTexts["sourceRecoveryEmpty"].waitForExistence(timeout: 15))
+    app.buttons["sourceRecoveryClose"].tap()
+    let sourceData = try await api(
+      "annotations/native/files/\(book.fileID)/source?bookId=\(book.bookID)&page=1", token: token)
+    let source = try XCTUnwrap(JSONSerialization.jsonObject(with: sourceData) as? [String: Any])
+    let originalRevision = try XCTUnwrap(source["sourceRevision"] as? String)
+    let fingerprint = try XCTUnwrap(source["pageFingerprint"] as? String)
+    let before = try await api("books/files/\(book.fileID)/serve", token: token)
+    XCTAssertEqual(originalRevision, "sha256:\(checksum(before))")
+    try await fault("offline")
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 20))
+    app.buttons["pdfNextPage"].tap()
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Position saved on this iPad"].waitForExistence(timeout: 15))
+    openBookmarks(app)
+    let field = app.descendants(matching: .any)["bookmarkTitle"].firstMatch
+    XCTAssertTrue(field.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    replaceText(field, with: title)
+    app.buttons["saveBookmark"].tap()
+    XCTAssertTrue(
+      app.staticTexts["Bookmark saved on this iPad. It will sync when connected."].waitForExistence(
+        timeout: 15))
+    capture("IPAD-E02-A04-PDF-page2-bookmark-queued-before-other-client-publication")
+    app.terminate()
+    let clientID = UUID().uuidString
+    let publicationData = try await api(
+      "annotations/native/operations", method: "POST", token: token,
+      body: [
+        "deviceId": "IPAD-E02-A04-other-authenticated-client",
+        "operations": [
+          [
+            "operationId": UUID().uuidString, "clientId": clientID, "bookId": book.bookID,
+            "baseVersion": 0, "action": "create",
+            "payload": [
+              "kind": "pdf_ink", "bookFileId": book.fileID, "text": "",
+              "pdf": [
+                "page": 1, "rect": ["x": 76, "y": 196, "width": 108, "height": 8],
+                "rects": [],
+              ],
+              "drawing": [
+                "format": "bookorbit-ink-v1",
+                "strokes": [
+                  [
+                    "id": "IPAD-E02-A04-shared-publication-\(clientID)", "color": "#ff0000",
+                    "width": 8, "points": [["x": 80, "y": 200], ["x": 180, "y": 200]],
+                  ]
+                ],
+              ],
+              "sourceRevision": originalRevision, "pageFingerprint": fingerprint,
+            ],
+          ]
+        ],
+      ])
+    let response = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: publicationData) as? [String: Any])
+    let result = try XCTUnwrap((response["results"] as? [[String: Any]])?.first)
+    XCTAssertEqual(result["status"] as? String, "applied")
+    let annotation = try XCTUnwrap(result["annotation"] as? [String: Any])
+    let inkIdentity = try XCTUnwrap(annotation["clientId"] as? String)
+    XCTAssertEqual(UUID(uuidString: inkIdentity), UUID(uuidString: clientID))
+    XCTAssertEqual((annotation["pdf"] as? [String: Any])?["page"] as? Int, 1)
+    let publication = try XCTUnwrap(result["publication"] as? [String: Any])
+    XCTAssertEqual(publication["status"] as? String, "published")
+    let newRevision = try XCTUnwrap(publication["sourceRevision"] as? String)
+    let after = try await api("books/files/\(book.fileID)/serve", token: token)
+    XCTAssertNotEqual(before, after)
+    XCTAssertNotEqual(before.count, after.count)
+    XCTAssertEqual(newRevision, "sha256:\(checksum(after))")
+    let proofData = try await api(
+      "annotations/native/files/\(book.fileID)/source?bookId=\(book.bookID)&page=1&sourceRevision=\(originalRevision)",
+      token: token)
+    let proof = try XCTUnwrap(JSONSerialization.jsonObject(with: proofData) as? [String: Any])
+    XCTAssertEqual(proof["matchedSourceRevision"] as? String, originalRevision)
+    XCTAssertEqual(proof["sourceRevision"] as? String, newRevision)
+    XCTAssertEqual(proof["pageFingerprint"] as? String, fingerprint)
+    attach(
+      publicationData, name: "IPAD-E02-A04-other-client-canonical-publication", type: "public.json")
+    attach(before, name: "IPAD-E02-A04-complete-PDF-before-publication", type: "com.adobe.pdf")
+    attach(after, name: "IPAD-E02-A04-complete-PDF-after-publication", type: "com.adobe.pdf")
+    app.launch()
+    openOfflineBook(book, app: app)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 20))
+    openBookmarks(app)
+    XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+    capture("IPAD-E02-A04-PDF-queued-page-and-bookmark-retained-during-publication")
+    app.terminate()
+    try await fault("online")
+    app.launch()
+    openOfflineBook(book, app: app)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 25))
+    XCTAssertTrue(app.images["pdfInkItem\(inkIdentity)"].waitForExistence(timeout: 20))
+    XCTAssertEqual(app.images["pdfInkItem\(inkIdentity)"].label, "Ink item, page 2")
+    XCTAssertTrue(app.buttons["pdfInkDraw"].isEnabled)
+    XCTAssertFalse(app.staticTexts["pdfInkError"].exists)
+    XCTAssertFalse(app.staticTexts["readerPositionConflict"].exists)
+    openBookmarks(app)
+    let saved = try await waitForBookmarks(bookID: book.bookID, fileID: book.fileID, token: token) {
+      $0.filter { $0["title"] as? String == title }.count == 1
+    }
+    let bookmark = try XCTUnwrap(saved.first { $0["title"] as? String == title })
+    let bookmarkID = try XCTUnwrap(bookmark["id"] as? Int)
+    XCTAssertEqual(bookmark["pageNumber"] as? Int, 2)
+    XCTAssertTrue(app.buttons["openBookmark\(bookmarkID)"].waitForExistence(timeout: 10))
+    let bookmarkPanels = app.navigationBars.matching(identifier: "Bookmarks")
+    XCTAssertEqual(bookmarkPanels.count, 1)
+    let bookmarkDone = app.otherElements.containing(.button, identifier: "saveBookmark")
+      .children(matching: .button).matching(identifier: "Done")
+    XCTAssertEqual(bookmarkDone.count, 1)
+    XCTAssertTrue(bookmarkDone.element.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    XCTAssertTrue(bookmarkDone.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    bookmarkDone.element.tap()
+    XCTAssertTrue(bookmarkPanels.element.wait(for: \.exists, toEqual: false, timeout: 10))
+    XCTAssertTrue(
+      app.buttons["readerBookmarks"].wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCUIDevice.shared.press(.home)
+    app.activate()
+    _ = try await waitForProgress(fileID: book.fileID, token: token, page: 2)
+    capture("IPAD-E02-A04-PDF-known-publication-and-queued-reading-state-converged")
+    app.buttons["Close reader"].tap()
+    app.buttons["sourceRecovery"].tap()
+    XCTAssertTrue(app.staticTexts["sourceRecoveryEmpty"].waitForExistence(timeout: 15))
+    XCTAssertFalse(app.staticTexts["Source replaced"].exists)
+    XCTAssertFalse(app.staticTexts["sourceRecoveryError"].exists)
+    capture("IPAD-E02-A04-PDF-known-publication-has-no-false-source-recovery")
+    app.buttons["sourceRecoveryClose"].tap()
+    guard E02ProfileSupport.openOfflineResources(app: app) else { return }
+    XCTAssertTrue(
+      app.staticTexts["Verified ready for offline reading"].waitForExistence(timeout: 15))
+    guard E02ProfileSupport.closeOfflineResources(app: app) else { return }
+    try await fault("offline")
+    app.terminate()
+    app.launch()
+    openOfflineBook(book, app: app)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 25))
+    XCTAssertTrue(app.images["pdfInkItem\(inkIdentity)"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.buttons["pdfInkDraw"].isEnabled)
+    XCTAssertFalse(app.staticTexts["pdfInkError"].exists)
+    openBookmarks(app)
+    XCTAssertTrue(app.buttons["openBookmark\(bookmarkID)"].waitForExistence(timeout: 10))
+    capture("IPAD-E02-A04-PDF-new-complete-source-and-current-anchors-readable-offline")
+    try await fault("online")
+    let retried = try await bookmarks(bookID: book.bookID, fileID: book.fileID, token: token)
+    XCTAssertEqual(retried.filter { $0["title"] as? String == title }.count, 1)
+    XCTAssertEqual(retried.first { $0["title"] as? String == title }?["id"] as? Int, bookmarkID)
+  }
+
+  @MainActor
+  func testIPADE02A04CompleteEPUBAndRecordedReadAlongPlayAfterOfflineRestart() async throws {
+    try await fault("reset")
+    let token = try await loginAPI()
+    let book = try await bookDetails(bookID: 2, format: "epub", token: token)
+    _ = try await api("books/files/\(book.fileID)/progress", method: "DELETE", token: token)
+    let app = launchAndSignIn()
+    openBookDetail(book, app: app)
+    downloadSelectedFile(book.fileID, app: app)
+    readFile(book.fileID, app: app)
+    let first = app.webViews.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS %@", "Alpha 😀 cafe\u{301} omega.")
+    ).firstMatch
+    XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 25))
+    let conflict = app.staticTexts["readerPositionConflict"]
+    if conflict.waitForExistence(timeout: 5) {
+      let localChoice = app.buttons.matching(identifier: "readerPositionChooseLocal")
+      XCTAssertEqual(localChoice.count, 1)
+      XCTAssertTrue(localChoice.element.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+      XCTAssertTrue(localChoice.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+      localChoice.element.tap()
+    }
+    XCTAssertTrue(conflict.wait(for: \.exists, toEqual: false, timeout: 15))
+    let tools = app.buttons["epubReaderTools"]
+    XCTAssertTrue(tools.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+    XCTAssertTrue(tools.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    for (entryID, title, closeID) in [
+      ("epubRecordedReadAlong", "Recorded Read Along", "recordedCloseControls"),
+      ("epubTextToSpeech", "System speech", "nativeTTSCloseControls"),
+    ] {
+      if entryID == "epubRecordedReadAlong" { tools.tap() }
+      let entry = app.buttons.matching(identifier: entryID)
+      XCTAssertTrue(entry.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+      XCTAssertEqual(entry.count, 1)
+      XCTAssertTrue(entry.element.isEnabled)
+      entry.element.tap()
+      let heading = app.navigationBars.matching(identifier: title)
+      XCTAssertTrue(heading.element.waitForExistence(timeout: 15))
+      XCTAssertEqual(heading.count, 1)
+      capture("IPAD-E02-A04-online-resume-panel-\(title)")
+      attach(
+        Data(app.debugDescription.utf8), name: "IPAD-E02-A04-online-resume-panel-\(title)",
+        type: "public.plain-text")
+      if conflict.exists {
+        let remoteChoice = app.buttons.matching(identifier: "readerPositionChooseRemote")
+        XCTAssertEqual(remoteChoice.count, 1)
+        XCTAssertTrue(remoteChoice.element.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+        XCTAssertTrue(remoteChoice.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+        remoteChoice.element.tap()
+      }
+      XCTAssertTrue(conflict.wait(for: \.exists, toEqual: false, timeout: 15))
+      if entryID == "epubRecordedReadAlong" {
+        XCTAssertTrue(
+          app.buttons["recordedStartPassage"].wait(for: \.isEnabled, toEqual: true, timeout: 15))
+      } else {
+        XCTAssertTrue(
+          app.staticTexts["nativeTTSPendingPosition"].wait(
+            for: \.exists, toEqual: false, timeout: 15))
+      }
+      let close = app.buttons.matching(identifier: closeID)
+      XCTAssertEqual(close.count, 1)
+      XCTAssertTrue(close.element.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+      XCTAssertTrue(close.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+      close.element.tap()
+      XCTAssertTrue(heading.element.wait(for: \.exists, toEqual: false, timeout: 15))
+      XCTAssertTrue(tools.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+      XCTAssertTrue(tools.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    }
+    tools.tap()
+    let setupPosition = app.descendants(matching: .any).matching(identifier: "epubGoToPosition")
+    XCTAssertTrue(setupPosition.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    XCTAssertEqual(setupPosition.count, 1)
+    setupPosition.element.tap()
+    let setupInput = app.textFields["epubJumpInput"]
+    XCTAssertTrue(setupInput.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    replaceText(setupInput, with: "0")
+    XCTAssertEqual(setupInput.value as? String, "0")
+    app.buttons["epubJumpCommit"].tap()
+    XCTAssertTrue(setupInput.wait(for: \.exists, toEqual: false, timeout: 15))
+    XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    let onlineFirstChapterEnd = app.webViews.staticTexts.matching(
+      NSPredicate(format: "label == %@", "First chapter ends here."))
+    XCTAssertTrue(onlineFirstChapterEnd.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    XCTAssertEqual(onlineFirstChapterEnd.count, 1)
+    let onlineZeroPercent = app.staticTexts.matching(identifier: "epubReadingPosition")
+      .matching(NSPredicate(format: "label ENDSWITH %@", ", 0 percent"))
+    if E02ProfileSupport.criticalOnly(self) {
+      if !onlineZeroPercent.element.exists {
+        E02ProfileSupport.reportDeferred(
+          self, check: "A04-default-start-percentage-online", observed: app.debugDescription)
+      }
+    } else {
+      XCTAssertTrue(onlineZeroPercent.element.waitForExistence(timeout: 15))
+    }
+    let closeReader = app.buttons["epubCloseReader"]
+    XCTAssertTrue(closeReader.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+    XCTAssertTrue(closeReader.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    closeReader.tap()
+    XCTAssertTrue(closeReader.wait(for: \.exists, toEqual: false, timeout: 15))
+    let downloaded = try await traffic()
+    try await fault("offline")
+    app.terminate()
+    app.launch()
+    openOfflineBook(book, app: app)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 25))
+    XCTAssertTrue(conflict.wait(for: \.exists, toEqual: false, timeout: 15))
+    XCTAssertTrue(tools.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+    XCTAssertTrue(tools.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    app.buttons["epubReaderTools"].tap()
+    let goToPosition = app.descendants(matching: .any).matching(identifier: "epubGoToPosition")
+    XCTAssertTrue(goToPosition.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    XCTAssertEqual(goToPosition.count, 1)
+    goToPosition.element.tap()
+    let positionInput = app.textFields["epubJumpInput"]
+    XCTAssertTrue(positionInput.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    replaceText(positionInput, with: "0")
+    XCTAssertEqual(positionInput.value as? String, "0")
+    app.buttons["epubJumpCommit"].tap()
+    XCTAssertTrue(positionInput.wait(for: \.exists, toEqual: false, timeout: 15))
+    XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    let offlineFirstChapterEnd = app.webViews.staticTexts.matching(
+      NSPredicate(format: "label == %@", "First chapter ends here."))
+    XCTAssertTrue(
+      offlineFirstChapterEnd.element.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    XCTAssertEqual(offlineFirstChapterEnd.count, 1)
+    let offlineZeroPercent = app.staticTexts.matching(identifier: "epubReadingPosition")
+      .matching(NSPredicate(format: "label ENDSWITH %@", ", 0 percent"))
+    if E02ProfileSupport.criticalOnly(self) {
+      if !offlineZeroPercent.element.exists {
+        E02ProfileSupport.reportDeferred(
+          self, check: "A04-default-start-percentage-offline", observed: app.debugDescription)
+      }
+    } else {
+      XCTAssertTrue(offlineZeroPercent.element.waitForExistence(timeout: 15))
+    }
+    XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    app.buttons["epubReaderTools"].tap()
+    app.buttons["epubRecordedReadAlong"].tap()
+    let start = app.buttons["recordedStartPassage"]
+    XCTAssertTrue(start.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+    start.tap()
+    let segment = app.staticTexts["recordedSegmentText"]
+    XCTAssertTrue(segment.waitForExistence(timeout: 25))
+    XCTAssertTrue(segment.label.contains("Alpha"))
+    let playback = app.buttons["recordedToggle"]
+    XCTAssertEqual(playback.label, "Pause recording")
+    playback.tap()
+    XCTAssertTrue(playback.wait(for: \.label, toEqual: "Play recording", timeout: 15))
+    XCTAssertTrue(
+      segment.label.contains("Alpha"), "The first recorded segment must still be selected")
+    let seekSeconds = app.textFields["recordedSeekSeconds"]
+    XCTAssertTrue(seekSeconds.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    replaceText(seekSeconds, with: "0")
+    XCTAssertEqual(seekSeconds.value as? String, "0")
+    let recordedPanels = app.scrollViews.containing(.button, identifier: "recordedSeek")
+    let recordedHeadings = app.navigationBars.matching(identifier: "Recorded Read Along")
+    XCTAssertEqual(recordedPanels.count, 1)
+    XCTAssertEqual(recordedHeadings.count, 1)
+    let recordedPanel = recordedPanels.element
+    func revealRecordedControl(_ identifier: String) -> XCUIElement {
+      let controls = recordedPanel.buttons.matching(identifier: identifier)
+      XCTAssertEqual(controls.count, 1)
+      let control = controls.element
+      for _ in 0..<6 {
+        let bounds = recordedPanel.frame.intersection(app.frame)
+        let top = max(bounds.minY, recordedHeadings.element.frame.maxY)
+        let viewport = CGRect(
+          x: bounds.minX, y: top, width: bounds.width, height: bounds.maxY - top)
+        if control.exists && viewport.contains(control.frame) && control.isHittable { break }
+        if control.exists && control.frame.minY < viewport.minY {
+          recordedPanel.swipeDown()
+        } else {
+          recordedPanel.swipeUp()
+        }
+      }
+      let bounds = recordedPanel.frame.intersection(app.frame)
+      let top = max(bounds.minY, recordedHeadings.element.frame.maxY)
+      let viewport = CGRect(
+        x: bounds.minX, y: top, width: bounds.width, height: bounds.maxY - top)
+      XCTAssertTrue(viewport.contains(control.frame), "The recorded control must be fully visible")
+      XCTAssertTrue(control.wait(for: \.isHittable, toEqual: true, timeout: 10))
+      XCTAssertTrue(control.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+      return control
+    }
+    let seek = revealRecordedControl("recordedSeek")
+    XCTAssertEqual(seekSeconds.value as? String, "0")
+    capture("IPAD-E02-A04-recorded-seek-zero-control-visible")
+    seek.tap()
+    let beginning = app.staticTexts.matching(identifier: "recordedSegmentTime")
+      .matching(NSPredicate(format: "label BEGINSWITH %@", "0.0 / 6.0"))
+    XCTAssertTrue(beginning.element.waitForExistence(timeout: 15))
+    XCTAssertEqual(beginning.count, 1)
+    XCTAssertTrue(segment.label.contains("Alpha"))
+    XCTAssertEqual(playback.label, "Play recording")
+    XCTAssertFalse(app.staticTexts["recordedNarrationError"].exists)
+    capture("IPAD-E02-A04-EPUB-first-recorded-passage-at-zero-offline")
+    let visiblePlayback = revealRecordedControl("recordedToggle")
+    XCTAssertEqual(visiblePlayback.label, "Play recording")
+    visiblePlayback.tap()
+    XCTAssertTrue(playback.wait(for: \.label, toEqual: "Pause recording", timeout: 15))
+    capture("IPAD-E02-A04-EPUB-first-recorded-passage-playing-offline")
+    for text in [
+      "First chapter ends here.", "Second chapter begins here.", "Second chapter ends here.",
+    ] {
+      let literal = NSPredicate(format: "label CONTAINS %@", text)
+      XCTAssertTrue(
+        app.staticTexts.matching(identifier: "recordedSegmentText").matching(literal)
+          .element.waitForExistence(timeout: 15), text)
+      XCTAssertTrue(segment.label.contains(text))
+      XCTAssertFalse(app.staticTexts["recordedNarrationError"].exists)
+    }
+    XCTAssertTrue(
+      app.buttons["recordedToggle"].wait(for: \.label, toEqual: "Play recording", timeout: 15))
+    XCTAssertTrue(app.staticTexts["recordedSegmentTime"].label.hasPrefix("6.0 / 6.0"))
+    XCTAssertFalse(app.staticTexts["recordedNarrationError"].exists)
+    capture("IPAD-E02-A04-EPUB-all-four-recorded-passages-completed-offline")
+    app.buttons["recordedCloseControls"].tap()
+    let final = app.webViews.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS %@", "Second chapter ends here.")
+    ).firstMatch
+    XCTAssertTrue(final.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertFalse(app.staticTexts["epubReaderError"].exists)
+    capture("IPAD-E02-A04-EPUB-final-publication-passage-visible-offline")
+    let offlineTraffic = try await traffic()
+    XCTAssertEqual(successfulBytes(Array(offlineTraffic.dropFirst(downloaded.count))), 0)
+  }
+
+  @MainActor
+  func testIPADE02A04SelectedAudioPlaysCompletelyAfterRestartWithoutUnselectedPDFBytes()
+    async throws
+  {
+    try await fault("reset")
+    let token = try await loginAPI()
+    let book = try await bookDetails(bookID: 8, format: "m4a", token: token)
+    let unselected = try await bookDetails(bookID: 8, format: "pdf", token: token)
+    let app = launchAndSignIn()
+    openBookDetail(book, app: app)
+    downloadSelectedFile(book.fileID, excluding: [unselected.fileID], app: app)
+    let downloaded = try await traffic()
+    assertNoUnselectedBody(fileID: unselected.fileID, traffic: downloaded)
+    try await fault("offline")
+    app.terminate()
+    app.launch()
+    openOfflineBook(book, app: app)
+    readFile(book.fileID, app: app)
+    let play = app.buttons["audiobookPlayPause"]
+    XCTAssertTrue(play.wait(for: \.isEnabled, toEqual: true, timeout: 25))
+    XCTAssertEqual(app.staticTexts["audiobookCurrentTrack"].label, "Track 1 of 1")
+    XCTAssertEqual(app.staticTexts["audiobookPlaybackTime"].label, "0:00 / 0:01")
+    capture("IPAD-E02-A04-Audio-selected-track-ready-after-offline-restart")
+    play.tap()
+    XCTAssertTrue(play.wait(for: \.label, toEqual: "Pause", timeout: 10))
+    XCTAssertFalse(app.staticTexts["audiobookError"].exists)
+    XCTAssertTrue(play.wait(for: \.label, toEqual: "Play", timeout: 15))
+    XCTAssertTrue(app.staticTexts["audiobookPlaybackTime"].label.hasSuffix(" / 0:01"))
+    capture("IPAD-E02-A04-Audio-complete-track-played-without-transport")
+    let offlineTraffic = try await traffic()
+    assertNoUnselectedBody(fileID: unselected.fileID, traffic: offlineTraffic)
+    XCTAssertEqual(successfulBytes(Array(offlineTraffic.dropFirst(downloaded.count))), 0)
+  }
+
+  @MainActor
+  func testIPADE02A04PDFResumeCandidatesAndOfflineChoiceSurviveTwoRestarts() async throws {
+    try await fault("reset")
+    let token = try await loginAPI()
+    let book = try await bookDetails(bookID: 1, format: "pdf", token: token)
+    _ = try await api("books/files/\(book.fileID)/progress", method: "DELETE", token: token)
+    let app = launchAndSignIn()
+    openBookDetail(book, app: app)
+    downloadSelectedFile(book.fileID, app: app)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 20))
+    let baseline = try await progress(fileID: book.fileID, token: token)
+    try await fault("offline")
+    app.buttons["pdfNextPage"].tap()
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Position saved on this iPad"].waitForExistence(timeout: 15))
+    _ = try await api(
+      "books/files/\(book.fileID)/progress", method: "POST", token: token,
+      body: [
+        "pageNumber": 3, "percentage": 100, "source": "text",
+        "baseVersion": try XCTUnwrap(baseline["textVersion"] as? String),
+      ])
+    try await fault("online")
+    app.terminate()
+    app.launch()
+    openOfflineBook(book, app: app)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["readerPositionConflict"].waitForExistence(timeout: 20))
+    let local = app.buttons["readerPositionChooseLocal"]
+    let remote = app.buttons["readerPositionChooseRemote"]
+    XCTAssertTrue(local.label.contains("Page 2"))
+    XCTAssertTrue(remote.label.contains("Page 3"))
+    XCTAssertFalse(app.buttons["pdfNextPage"].isEnabled)
+    capture("IPAD-E02-A04-PDF-conflicting-page2-page3-after-restart")
+    try await fault("offline")
+    XCTAssertTrue(local.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    local.tap()
+    XCTAssertTrue(
+      app.staticTexts["Chosen position saved on this iPad."].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].exists)
+    capture("IPAD-E02-A04-PDF-resume-choice-saved-without-transport")
+    app.terminate()
+    app.launch()
+    openOfflineBook(book, app: app)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.staticTexts["readerPositionConflict"].exists)
+    XCTAssertTrue(local.label.contains("Page 2"))
+    XCTAssertTrue(remote.label.contains("Page 3"))
+    capture("IPAD-E02-A04-PDF-chosen-local-page-and-both-candidates-after-second-restart")
+    try await fault("online")
+    local.tap()
+    _ = try await waitForProgress(fileID: book.fileID, token: token, page: 2)
+    XCTAssertTrue(
+      app.staticTexts["readerPositionConflict"].wait(for: \.exists, toEqual: false, timeout: 15))
+    app.terminate()
+    app.launch()
+    openOfflineBook(book, app: app)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 20))
+    XCTAssertFalse(app.staticTexts["readerPositionConflict"].exists)
+    capture("IPAD-E02-A04-PDF-resume-choice-published-and-reopened")
+  }
+
+  @MainActor
+  private func exerciseFixedPages(bookID: Int, format: String, nextPage: String, kind: String)
+    async throws
+  {
+    try await fault("reset")
+    let token = try await loginAPI()
+    let book = try await bookDetails(bookID: bookID, format: format, token: token)
+    _ = try await api("books/files/\(book.fileID)/progress", method: "DELETE", token: token)
+    let title = "IPAD-E02-A04 \(kind) page 2 (\(profile))"
+    let app = launchAndSignIn()
+    openBookDetail(book, app: app)
+    downloadSelectedFile(book.fileID, app: app)
+    try await fault("offline")
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 1 of 3"].waitForExistence(timeout: 20))
+    let next = app.buttons[nextPage]
+    XCTAssertTrue(next.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    next.tap()
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Position saved on this iPad"].waitForExistence(timeout: 15))
+    assertSecondPage(kind, app: app)
+    next.tap()
+    XCTAssertTrue(app.staticTexts["Page 3 of 3"].waitForExistence(timeout: 10))
+    if kind == "PDF" {
+      XCTAssertTrue(
+        app.staticTexts.matching(
+          NSPredicate(format: "label CONTAINS %@", "Orbit fixture: passage 3")
+        ).firstMatch.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    } else {
+      XCTAssertTrue(app.images["comicPage3"].waitForExistence(timeout: 10))
+    }
+    capture("IPAD-E02-A04-\(kind)-last-complete-page-readable-offline")
+    app.buttons[kind == "PDF" ? "pdfPreviousPage" : "comicPreviousPage"].tap()
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Position saved on this iPad"].waitForExistence(timeout: 15))
+    openBookmarks(app)
+    let field = app.descendants(matching: .any)["bookmarkTitle"].firstMatch
+    XCTAssertTrue(field.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    replaceText(field, with: title)
+    let save = app.buttons["saveBookmark"]
+    XCTAssertTrue(save.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    save.tap()
+    XCTAssertTrue(
+      app.staticTexts["Bookmark saved on this iPad. It will sync when connected."].waitForExistence(
+        timeout: 15))
+    XCTAssertTrue(app.staticTexts[title].exists)
+    capture("IPAD-E02-A04-\(kind)-offline-page2-bookmark-created")
+    app.terminate()
+    app.launch()
+    openOfflineBook(book, app: app)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 20))
+    assertSecondPage(kind, app: app)
+    openBookmarks(app)
+    XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+    let local = app.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "openBookmark-")
+    )
+    .matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
+    XCTAssertTrue(local.exists)
+    capture("IPAD-E02-A04-\(kind)-page-and-pending-bookmark-after-restart")
+    try await fault("online")
+    app.buttons["Done"].tap()
+    XCUIDevice.shared.press(.home)
+    app.activate()
+    XCTAssertTrue(app.buttons["readerBookmarks"].waitForExistence(timeout: 20))
+    openBookmarks(app)
+    let saved = try await waitForBookmarks(bookID: book.bookID, fileID: book.fileID, token: token) {
+      $0.filter { $0["title"] as? String == title }.count == 1
+    }
+    let bookmark = try XCTUnwrap(saved.first { $0["title"] as? String == title })
+    let bookmarkID = try XCTUnwrap(bookmark["id"] as? Int)
+    XCTAssertEqual(bookmark["pageNumber"] as? Int, 2)
+    XCTAssertEqual(bookmark["fileId"] as? Int, book.fileID)
+    XCTAssertTrue(app.buttons["openBookmark\(bookmarkID)"].waitForExistence(timeout: 10))
+    let progress = try await waitForProgress(fileID: book.fileID, token: token, page: 2)
+    XCTAssertEqual((progress["textVersion"] as? String)?.count, 64)
+    capture("IPAD-E02-A04-\(kind)-reconnected-exactly-one-bookmark-and-page2")
+    app.buttons["Done"].tap()
+    openBookmarks(app)
+    let retried = try await bookmarks(bookID: book.bookID, fileID: book.fileID, token: token)
+    XCTAssertEqual(retried.filter { $0["title"] as? String == title }.count, 1)
+    XCTAssertEqual(retried.first { $0["title"] as? String == title }?["id"] as? Int, bookmarkID)
+    try await fault("offline")
+    let remove = app.buttons["removeBookmark\(bookmarkID)"]
+    XCTAssertTrue(remove.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    remove.tap()
+    app.alerts.buttons["Remove"].tap()
+    XCTAssertTrue(
+      app.staticTexts["Removal saved on this iPad. It will sync when connected."].waitForExistence(
+        timeout: 15))
+    XCTAssertFalse(app.staticTexts[title].exists)
+    capture("IPAD-E02-A04-\(kind)-offline-bookmark-delete-queued")
+    app.terminate()
+    app.launch()
+    openOfflineBook(book, app: app)
+    readFile(book.fileID, app: app)
+    XCTAssertTrue(app.staticTexts["Page 2 of 3"].waitForExistence(timeout: 20))
+    openBookmarks(app)
+    XCTAssertTrue(app.buttons["saveBookmark"].wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    XCTAssertFalse(app.staticTexts[title].exists)
+    XCTAssertFalse(app.buttons["openBookmark\(bookmarkID)"].exists)
+    capture("IPAD-E02-A04-\(kind)-deleted-bookmark-stays-hidden-after-restart")
+    try await fault("online")
+    app.buttons["Done"].tap()
+    openBookmarks(app)
+    _ = try await waitForBookmarks(bookID: book.bookID, fileID: book.fileID, token: token) {
+      !$0.contains { $0["id"] as? Int == bookmarkID || $0["title"] as? String == title }
+    }
+    XCTAssertFalse(app.buttons["openBookmark\(bookmarkID)"].exists)
+    capture("IPAD-E02-A04-\(kind)-authoritative-bookmark-deletion-reconnected")
+  }
+
+  private var profile: String {
+    ProcessInfo.processInfo.environment["IPAD_E02_PROFILE"] ?? "pro13-portrait-light"
+  }
+
+  private struct FixtureBook {
+    let bookID: Int
+    let fileID: Int
+    let title: String
+  }
+
+  @MainActor
+  private func launchAndSignIn() -> XCUIApplication {
+    XCUIDevice.shared.orientation = profile.contains("landscape") ? .landscapeLeft : .portrait
+    let app = XCUIApplication()
+    app.launchArguments = [
+      "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+      "-AppleInterfaceStyle", profile.contains("dark") ? "Dark" : "Light",
+      "-UIPreferredContentSizeCategoryName",
+      profile.contains("large") ? "UICTContentSizeCategoryXXXL" : "UICTContentSizeCategoryL",
+    ]
+    E02ProfileSupport.configure(app)
+    app.launch()
+    if !app.textFields["serverURL"].waitForExistence(timeout: 3) {
+      for _ in 0..<6 where !app.buttons["signOut"].exists {
+        if app.buttons["epubCloseReader"].exists {
+          app.buttons["epubCloseReader"].tap()
+        } else if app.buttons["Close reader"].exists {
+          app.buttons["Close reader"].tap()
+        } else if app.buttons["annotationHubDone"].exists {
+          app.buttons["annotationHubDone"].tap()
+        } else if app.buttons["sourceRecoveryClose"].exists {
+          app.buttons["sourceRecoveryClose"].tap()
+        } else if app.buttons["Done"].exists {
+          app.buttons["Done"].firstMatch.tap()
+        } else {
+          break
+        }
+      }
+      if app.buttons["signOut"].exists { app.buttons["signOut"].tap() }
+      if app.buttons["Change server"].exists { app.buttons["Change server"].tap() }
+    }
+    let server = app.textFields["serverURL"]
+    XCTAssertTrue(server.waitForExistence(timeout: 10))
+    replaceText(server, with: "http://127.0.0.1:16485")
+    app.buttons["connectServer"].tap()
+    guard E02ProfileSupport.ensureSignInForm(app: app, serverURL: "http://127.0.0.1:16485") else {
+      return app
+    }
+    let username = app.textFields["username"]
+    XCTAssertTrue(username.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    username.tap()
+    username.typeText("ipad-owner")
+    app.secureTextFields["password"].tap()
+    app.secureTextFields["password"].typeText("IpadFixture123")
+    app.buttons["signIn"].tap()
+    XCTAssertTrue(app.staticTexts["50,000 books"].waitForExistence(timeout: 25))
+    return app
+  }
+
+  @MainActor
+  private func openBookDetail(_ book: FixtureBook, app: XCUIApplication) {
+    if app.buttons["All books"].exists { app.buttons["All books"].tap() }
+    app.buttons["Table"].tap()
+    let search = app.textViews["librarySearch"]
+    XCTAssertTrue(search.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    replaceText(search, with: "\(book.title)\n")
+    let actions = app.buttons["tableOpen\(book.bookID)_title"]
+    XCTAssertTrue(actions.wait(for: \.isHittable, toEqual: true, timeout: 15))
+    actions.tap()
+    let details = app.buttons["Book details"]
+    XCTAssertTrue(details.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    details.tap()
+    XCTAssertTrue(app.navigationBars["Book details"].waitForExistence(timeout: 10))
+    let content = app.descendants(matching: .any).matching(identifier: "bookDetailContent")
+    XCTAssertTrue(content.element.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertEqual(content.count, 1)
+  }
+
+  @MainActor
+  private func downloadSelectedFile(_ id: Int, excluding: [Int] = [], app: XCUIApplication) {
+    guard E02ProfileSupport.openOfflineResources(app: app) else { return }
+    for unselected in excluding {
+      let row = app.buttons["offlineSelectFile\(unselected)"]
+      XCTAssertTrue(row.waitForExistence(timeout: 10))
+      if row.value as? String == "Selected" { row.tap() }
+      XCTAssertEqual(row.value as? String, "Not selected")
+    }
+    let file = app.buttons["offlineSelectFile\(id)"]
+    XCTAssertTrue(file.waitForExistence(timeout: 10))
+    if file.value as? String != "Selected" { file.tap() }
+    let download = app.buttons["offlineDownload"]
+    XCTAssertTrue(download.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+    download.tap()
+    XCTAssertTrue(
+      app.staticTexts["Verified ready for offline reading"].waitForExistence(timeout: 45))
+    guard E02ProfileSupport.closeOfflineResources(app: app) else { return }
+  }
+
+  @MainActor
+  private func readFile(_ id: Int, app: XCUIApplication) {
+    attach(
+      Data(app.debugDescription.utf8), name: "IPAD-E02-A04-book-details-hierarchy-file-\(id)",
+      type: "public.plain-text")
+    guard E02ProfileSupport.openBookFile(app: app, fileID: id) else { return }
+  }
+
+  @MainActor
+  private func openOfflineBook(_ book: FixtureBook, app: XCUIApplication) {
+    let offline = app.buttons["offlineLibrary"]
+    XCTAssertTrue(offline.wait(for: \.isHittable, toEqual: true, timeout: 25))
+    offline.tap()
+    let row = app.buttons["offlineBook\(book.bookID)"]
+    XCTAssertTrue(row.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    row.tap()
+  }
+
+  @MainActor
+  private func openBookmarks(_ app: XCUIApplication) {
+    let button = app.buttons["readerBookmarks"]
+    XCTAssertTrue(button.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    button.tap()
+    XCTAssertTrue(app.buttons["saveBookmark"].waitForExistence(timeout: 10))
+  }
+
+  @MainActor
+  private func assertSecondPage(_ kind: String, app: XCUIApplication) {
+    if kind == "PDF" {
+      XCTAssertTrue(
+        app.staticTexts.matching(
+          NSPredicate(format: "label CONTAINS %@", "Orbit fixture: passage 2")
+        ).firstMatch.isHittable)
+    } else {
+      XCTAssertTrue(app.images["comicPage2"].waitForExistence(timeout: 10))
+    }
+  }
+
+  @MainActor
+  private func replaceText(_ field: XCUIElement, with value: String) {
+    field.tap()
+    let old = field.value as? String ?? ""
+    if !old.isEmpty && old != field.placeholderValue {
+      field.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.95)).tap()
+      field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.utf16.count))
+    }
+    field.typeText(value)
+  }
+
+  @MainActor
+  private func bookDetails(bookID: Int, format: String, token: String) async throws -> FixtureBook {
+    let data = try await api("books/\(bookID)", token: token)
+    let detail = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let files = try XCTUnwrap(detail["files"] as? [[String: Any]])
+    let file = try XCTUnwrap(files.first { ($0["format"] as? String)?.lowercased() == format })
+    return FixtureBook(
+      bookID: bookID, fileID: try XCTUnwrap(file["id"] as? Int),
+      title: try XCTUnwrap(detail["title"] as? String))
+  }
+
+  @MainActor
+  private func loginAPI() async throws -> String {
+    let data = try await api(
+      "auth/login", method: "POST",
+      body: [
+        "username": "ipad-owner", "password": "IpadFixture123", "clientKind": "native",
+        "deviceLabel": "Offline reading UI assertions",
+      ])
+    let credentials = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let refresh = try XCTUnwrap(credentials["refreshToken"] as? String)
+    addTeardownBlock { [refresh, httpSession] in
+      var request = URLRequest(url: URL(string: "http://127.0.0.1:16482/api/v1/auth/logout")!)
+      request.httpMethod = "POST"
+      request.timeoutInterval = 15
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      request.httpBody = try JSONSerialization.data(withJSONObject: ["refreshToken": refresh])
+      let (_, response) = try await httpSession.data(for: request)
+      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+    }
+    return try XCTUnwrap(credentials["accessToken"] as? String)
+  }
+
+  @MainActor
+  private func api(
+    _ path: String, method: String = "GET", token: String? = nil, body: [String: Any]? = nil
+  ) async throws -> Data {
+    var request = URLRequest(url: URL(string: "http://127.0.0.1:16482/api/v1/\(path)")!)
+    request.httpMethod = method
+    request.timeoutInterval = 15
+    if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+    if let body {
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    }
+    let (data, response) = try await httpSession.data(for: request)
+    XCTAssertTrue((200..<300).contains((response as? HTTPURLResponse)?.statusCode ?? 0), path)
+    return data
+  }
+
+  @MainActor
+  private func fault(_ action: String) async throws {
+    var request = URLRequest(
+      url: URL(string: "http://127.0.0.1:16485/__faults/annotations/\(action)")!)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 15
+    let (_, response) = try await httpSession.data(for: request)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 204)
+  }
+
+  @MainActor
+  private func traffic() async throws -> [[String: Any]] {
+    var request = URLRequest(
+      url: URL(string: "http://127.0.0.1:16485/__faults/annotations/traffic")!)
+    request.timeoutInterval = 15
+    let (data, response) = try await httpSession.data(for: request)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+    let trace = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    XCTAssertEqual(trace["truncated"] as? Bool, false)
+    attach(data, name: "IPAD-E02-A04-real-transport-traffic", type: "public.json")
+    return try XCTUnwrap(trace["items"] as? [[String: Any]])
+  }
+
+  private func successfulBytes(_ items: [[String: Any]]) -> Int {
+    items.reduce(0) { total, item in
+      let status = item["status"] as? Int ?? 0
+      return total + ((200..<300).contains(status) ? item["bytes"] as? Int ?? 0 : 0)
+    }
+  }
+
+  private func checksum(_ data: Data) -> String {
+    SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+  }
+
+  private func assertNoUnselectedBody(fileID: Int, traffic: [[String: Any]]) {
+    let delivery = "/api/v1/books/files/\(fileID)/serve"
+    for request in traffic where request["path"] as? String == delivery {
+      let status = request["status"] as? Int ?? 0
+      if (200..<300).contains(status) {
+        XCTAssertEqual(status, 206)
+        XCTAssertEqual(request["range"] as? String, "bytes=0-0")
+        XCTAssertEqual(request["bytes"] as? Int, 1)
+      }
+    }
+  }
+
+  @MainActor
+  private func bookmarks(bookID: Int, fileID: Int, token: String) async throws -> [[String: Any]] {
+    let data = try await api(
+      "books/\(bookID)/bookmarks/page?fileId=\(fileID)&limit=40", token: token)
+    let value = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    XCTAssertTrue(
+      value["nextCursor"] is NSNull, "The bookmark journey fixture is bounded to one page")
+    return try XCTUnwrap(value["items"] as? [[String: Any]])
+  }
+
+  @MainActor
+  private func waitForBookmarks(
+    bookID: Int, fileID: Int, token: String, condition: ([[String: Any]]) -> Bool
+  ) async throws -> [[String: Any]] {
+    let deadline = Date().addingTimeInterval(20)
+    var items = try await bookmarks(bookID: bookID, fileID: fileID, token: token)
+    while !condition(items) && Date() < deadline {
+      try await Task.sleep(for: .milliseconds(250))
+      items = try await bookmarks(bookID: bookID, fileID: fileID, token: token)
+    }
+    XCTAssertTrue(condition(items), "The public bookmark state did not converge")
+    attach(
+      try JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted, .sortedKeys]),
+      name: "IPAD-E02-A04-public-bookmarks-file-\(fileID)", type: "public.json")
+    return items
+  }
+
+  @MainActor
+  private func waitForProgress(fileID: Int, token: String, page: Int) async throws -> [String: Any]
+  {
+    let deadline = Date().addingTimeInterval(20)
+    var value: [String: Any] = [:]
+    repeat {
+      let data = try await api("books/files/\(fileID)/progress", token: token)
+      value = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+      if value["pageNumber"] as? Int == page { break }
+      try await Task.sleep(for: .milliseconds(250))
+    } while Date() < deadline
+    XCTAssertEqual(value["pageNumber"] as? Int, page)
+    attach(
+      try JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]),
+      name: "IPAD-E02-A04-public-progress-file-\(fileID)", type: "public.json")
+    return value
+  }
+
+  @MainActor
+  private func progress(fileID: Int, token: String) async throws -> [String: Any] {
+    let data = try await api("books/files/\(fileID)/progress", token: token)
+    return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+  }
+
+  @MainActor
+  private func capture(_ name: String) {
+    let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+    attachment.name = "\(name)-\(profile)"
+    attachment.lifetime = .keepAlways
+    add(attachment)
+  }
+
+  private func attach(_ data: Data, name: String, type: String) {
+    let attachment = XCTAttachment(data: data, uniformTypeIdentifier: type)
+    attachment.name = name
+    attachment.lifetime = .keepAlways
+    add(attachment)
+  }
+}

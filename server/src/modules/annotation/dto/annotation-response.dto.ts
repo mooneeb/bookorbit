@@ -1,8 +1,15 @@
-import type { AnnotationPdfPosition } from '@bookorbit/types';
+import type { AnnotationPdfPosition, NativeAnnotationDrawing, NativeAnnotationKind } from '@bookorbit/types';
 
 import type { AnnotationWithCfi } from '../annotation.repository';
 
 export class AnnotationResponseDto {
+  clientId!: string | null;
+  kind!: NativeAnnotationKind;
+  drawing!: NativeAnnotationDrawing | null;
+  version!: number;
+  deletedAt!: Date | null;
+  sourceRevision!: string | null;
+  pageFingerprint!: string | null;
   id!: number;
   bookId!: number;
   cfi!: string | null;
@@ -24,6 +31,13 @@ export class AnnotationResponseDto {
 
   static from(row: AnnotationWithCfi): AnnotationResponseDto {
     const dto = new AnnotationResponseDto();
+    dto.clientId = row.clientId;
+    dto.kind = row.kind;
+    dto.drawing = row.drawing;
+    dto.version = row.version;
+    dto.deletedAt = row.deletedAt;
+    dto.sourceRevision = row.sourceRevision;
+    dto.pageFingerprint = row.pageFingerprint;
     dto.id = row.id;
     dto.bookId = row.bookId;
     dto.cfi = row.cfi;

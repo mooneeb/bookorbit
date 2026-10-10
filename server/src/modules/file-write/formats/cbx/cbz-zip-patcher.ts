@@ -1,7 +1,7 @@
 import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import * as unzipper from 'unzipper';
-import { replaceFileAtomically } from '../shared/atomic-file-replace';
+import { replaceFileAtomically } from '../../../../common/utils/atomic-file-replace';
 import { writeZipArchive, type ZipRewriteEntry } from '../shared/zip-rewrite';
 
 const ZIP_END_OF_CENTRAL_DIRECTORY_SIZE_BYTES = 22;

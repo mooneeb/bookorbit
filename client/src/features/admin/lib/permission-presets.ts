@@ -15,7 +15,7 @@ export interface PermissionGroup {
 export const PERMISSION_GROUPS: PermissionGroup[] = [
   {
     id: 'libraryBooks',
-    use: [Permission.LibraryDownload, Permission.LibraryUpload, Permission.LibraryEditMetadata],
+    use: [Permission.LibraryDownload, Permission.LibraryUpload, Permission.LibraryEditMetadata, Permission.AnnotationManageOwn],
     manage: [Permission.LibraryDeleteBooks],
   },
   {
@@ -89,6 +89,7 @@ export function isRestrictionPermission(permissionName: string): boolean {
  */
 const STANDARD_PRESET: Permission[] = [
   Permission.LibraryDownload,
+  Permission.AnnotationManageOwn,
   ...(APP_FEATURES.podcasts ? [Permission.PodcastDownload] : []),
   Permission.KoboSync,
   Permission.KoreaderSync,

@@ -46,12 +46,12 @@ describe('useAnnotations', () => {
 
   it('loads annotations when API succeeds', async () => {
     const list = [makeAnnotation(1), makeAnnotation(2)]
-    apiMock.mockResolvedValueOnce(response(true, list))
+    apiMock.mockResolvedValueOnce(response(true, { items: list, total: 2, page: 1, pageSize: 100, stats: {} }))
 
     const store = useAnnotations()
     await store.load(9)
 
-    expect(apiMock).toHaveBeenCalledWith('/api/v1/books/9/annotations')
+    expect(apiMock).toHaveBeenCalledWith('/api/v1/books/9/annotations?page=1&pageSize=100&sortBy=position&sortDir=asc')
     expect(store.loadError.value).toBeNull()
     expect(store.annotations.value).toEqual(list)
   })
