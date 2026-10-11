@@ -124,6 +124,7 @@ describe('BulkRenameService', () => {
   beforeEach(() => {
     vi.resetAllMocks();
 
+    bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([]);
     bulkRenameRepo.findLastBookId.mockResolvedValue(Number.MAX_SAFE_INTEGER);
     bulkRenameRepo.findBooksPageForLibrary.mockImplementation(async (_libraryId: number, afterBookId: number, _lastBookId: number, limit: number) => {
       const books: BulkRenameBookData[] = await bulkRenameRepo.findAllBooksForLibrary(_libraryId);

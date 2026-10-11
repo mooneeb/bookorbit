@@ -1,4 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
+import type { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 import { PublisherStrategy } from './publisher.strategy';
 
@@ -12,6 +14,27 @@ function makeStrategy(db: Record<string, unknown> = {}) {
   return new PublisherStrategy(db as never);
 }
 
+function makeRenameDb(bookIds: number[], exists = false) {
+  const dialect = new PgDialect();
+  const execute = vi.fn((statement: SQL) => {
+    const query = dialect.sqlToQuery(statement);
+    if (query.sql.includes('AS outside')) return { rows: [{ outside: false }] };
+    if (query.sql.includes('SELECT EXISTS')) return { rows: [{ exists }] };
+    if (query.sql.includes('count(*)::int AS count FROM entity_mutation_books')) return { rows: [{ count: bookIds.length }] };
+    if (query.sql.includes('AS "bookId" FROM entity_mutation_books'))
+      return {
+        rows: bookIds
+          .filter((id) => id > Number(query.params[0]))
+          .slice(0, 500)
+          .map((bookId) => ({ bookId })),
+      };
+    return { rows: [] };
+  });
+  const tx = { execute };
+  const transaction = vi.fn(async (callback: (txArg: typeof tx) => Promise<unknown>) => callback(tx));
+  return { dialect, execute, transaction };
+}
+
 function flattenSql(value: unknown): string {
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return value.map(flattenSql).join(' ');
@@ -21,22 +44,11 @@ function flattenSql(value: unknown): string {
   return [flattenSql(record.value), flattenSql(record.queryChunks)].join(' ');
 }
 
-function extractSqlParams(value: unknown): unknown[] {
-  if (typeof value === 'number' || typeof value === 'string' || value === null || typeof value === 'boolean') return [value];
-  if (!value || typeof value !== 'object') return [];
-
-  const record = value as { queryChunks?: unknown[]; value?: unknown };
-  return [...(Array.isArray(record.value) ? record.value.flatMap(extractSqlParams) : []), ...(record.queryChunks?.flatMap(extractSqlParams) ?? [])];
-}
-
 describe('PublisherStrategy', () => {
   describe('rename', () => {
     it('normalizes publisher names before updating metadata', async () => {
-      const execute = vi
-        .fn()
-        .mockResolvedValueOnce({ rows: [{ cnt: 0 }] })
-        .mockResolvedValueOnce({ rows: [{ bookId: 10 }, { bookId: 11 }] });
-      const strategy = makeStrategy({ execute });
+      const { dialect, execute, transaction } = makeRenameDb([10, 11]);
+      const strategy = makeStrategy({ transaction });
 
       const result = await strategy.rename({
         entityId: 'Orbit  Books',
@@ -48,21 +60,22 @@ describe('PublisherStrategy', () => {
       expect(result).toEqual({
         oldName: 'Orbit  Books',
         affectedBookIds: [10, 11],
+        affectedBookCount: 2,
         wasImplicitMerge: false,
         mergedEntityId: undefined,
       });
 
-      const updateParams = extractSqlParams(execute.mock.calls[1]![0]);
-      expect(updateParams).toContain('Orbit Books');
-      expect(updateParams).not.toContain('  Orbit\t\nBooks  ');
+      expect(transaction).toHaveBeenCalledTimes(1);
+      const updateQuery = execute.mock.calls
+        .map(([statement]) => dialect.sqlToQuery(statement))
+        .find((query) => query.sql.includes('UPDATE book_metadata'));
+      expect(updateQuery?.params).toContain('Orbit Books');
+      expect(updateQuery?.params).not.toContain('  Orbit\t\nBooks  ');
     });
 
     it('uses normalized identity when detecting implicit publisher merges', async () => {
-      const execute = vi
-        .fn()
-        .mockResolvedValueOnce({ rows: [{ cnt: 3 }] })
-        .mockResolvedValueOnce({ rows: [{ bookId: 20 }] });
-      const strategy = makeStrategy({ execute });
+      const { dialect, execute, transaction } = makeRenameDb([20], true);
+      const strategy = makeStrategy({ transaction });
 
       const result = await strategy.rename({
         entityId: 'Orbit  Books',
@@ -72,15 +85,17 @@ describe('PublisherStrategy', () => {
       });
 
       expect(result).toMatchObject({
+        affectedBookIds: [20],
+        affectedBookCount: 1,
         wasImplicitMerge: true,
         mergedEntityId: 'Orbit Books',
       });
 
-      const countSql = execute.mock.calls[0]![0];
-      const countSqlText = flattenSql(countSql).replace(/\s+/g, ' ');
-      expect(countSqlText).toContain('regexp_replace');
-      expect(countSqlText).toContain('chr(160)');
-      expect(extractSqlParams(countSql)).toContain('orbit books');
+      expect(transaction).toHaveBeenCalledTimes(1);
+      const existingQuery = execute.mock.calls.map(([statement]) => dialect.sqlToQuery(statement)).find((query) => query.sql.includes('AS "exists"'));
+      expect(existingQuery?.sql).toContain('regexp_replace');
+      expect(existingQuery?.sql).toContain('chr(160)');
+      expect(existingQuery?.params).toContain('orbit books');
     });
 
     it('rejects whitespace-only publisher names after normalization', async () => {
