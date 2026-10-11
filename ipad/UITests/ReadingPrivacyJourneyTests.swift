@@ -732,7 +732,7 @@ final class ReadingPrivacyJourneyTests: XCTestCase {
       "privatePersonalNote": personalNote, "privateHighlight": highlight,
     ])
     let (_, response) = try await E04FixtureHTTP.data(for: handoff)
-    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 201)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 204)
     functionalAssertionsCompleted = true
   }
 
