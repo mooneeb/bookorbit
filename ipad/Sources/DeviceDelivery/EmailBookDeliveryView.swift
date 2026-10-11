@@ -32,16 +32,23 @@ import SwiftUI
       async let allProviders = api.emailProviders()
       async let allRecipients = api.emailRecipients()
       async let pendingPreferences = api.emailPreferences()
-      let (providers, recipients, preferences) = try await (
-        allProviders, allRecipients, pendingPreferences
+      async let recentHistory = api.emailHistory(bookID: bookID)
+      let (providers, recipients, preferences, history) = try await (
+        allProviders, allRecipients, pendingPreferences, recentHistory
       )
+      let providerID =
+        providers.first(where: { $0.id == self.providerID })?.id
+        ?? providers.first(where: { $0.id == preferences.defaultProviderId })?.id
+        ?? providers.first?.id ?? 0
+      let recipientID =
+        recipients.first(where: { $0.id == self.recipientID })?.id
+        ?? recipients.first(where: { $0.id == preferences.defaultRecipientId })?.id
+        ?? recipients.first?.id ?? 0
       self.providers = providers
       self.recipients = recipients
-      if providerID == 0 { providerID = preferences.defaultProviderId ?? providers.first?.id ?? 0 }
-      if recipientID == 0 {
-        recipientID = preferences.defaultRecipientId ?? recipients.first?.id ?? 0
-      }
-      history = try await api.emailHistory(bookID: bookID)
+      self.providerID = providerID
+      self.recipientID = recipientID
+      self.history = history
       loaded = true
     } catch { self.error = emailFailureMessage(error) }
   }
@@ -132,17 +139,24 @@ struct EmailBookDeliveryView: View {
       Form {
         Section(bookTitle) {
           Picker("File to send", selection: $model.fileID) {
+            if files.isEmpty { Text("No supported book files").tag(0) }
             ForEach(files) { file in
               Text("\(file.filename ?? "Book file") (\((file.format ?? "file").uppercased()))").tag(
                 file.id)
             }
           }.accessibilityIdentifier("emailBookFile")
           Picker("Mail provider", selection: $model.providerID) {
+            Text("Select a mail provider").tag(0)
             ForEach(model.providers) { Text($0.name).tag($0.id) }
-          }.accessibilityIdentifier("emailBookProvider")
+          }
+          .disabled(model.busy || !model.loaded || model.providers.isEmpty)
+          .accessibilityIdentifier("emailBookProvider")
           Picker("Recipient", selection: $model.recipientID) {
+            Text("Select a recipient").tag(0)
             ForEach(model.recipients) { Text("\($0.name) (\($0.email))").tag($0.id) }
-          }.accessibilityIdentifier("emailBookRecipient")
+          }
+          .disabled(model.busy || !model.loaded || model.recipients.isEmpty)
+          .accessibilityIdentifier("emailBookRecipient")
           Text(
             "The selected server file is attached when the send runs. Source PDF ink is included after it has been published to the server."
           ).font(.footnote)
