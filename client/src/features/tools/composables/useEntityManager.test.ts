@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { BrowseEntityItem, DuplicateCluster, DuplicateScanStatus, DismissedPairInfo } from '@bookorbit/types'
 
 vi.mock('../api/entity-manager', () => ({
-  listFileWriteRecovery: vi.fn().mockResolvedValue([]),
-  retryFileWrites: vi.fn(),
+  listFileWriteRecovery: vi.fn<typeof entityManagerApi.listFileWriteRecovery>().mockResolvedValue([]),
+  retryFileWrites: vi.fn<typeof entityManagerApi.retryFileWrites>(),
   getDuplicateScanStatus: vi.fn<(...args: unknown[]) => unknown>(),
   refreshDuplicates: vi.fn<(...args: unknown[]) => unknown>(),
   browseEntities: vi.fn<(...args: unknown[]) => unknown>(),
