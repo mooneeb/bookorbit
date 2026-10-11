@@ -45,6 +45,225 @@ final class ReadingPrivacyJourneyTests: XCTestCase {
   }
 
   @MainActor
+  func testIPADE04A02RetainedContentRestrictionSaveConfirmation() async throws {
+    defer { reportAccessibilityResult() }
+    let context = try await retainedContentRestrictionContext()
+    let before = try await object(
+      "users/7/content-filters", token: context.token, expectedStatus: 200)
+    assertRetainedContentFilters(before)
+    attach(before, name: "P-N01-retained-content-restriction-public-before")
+    let app = launchPrivacy(username: "ipad-owner")
+    assertSelectedLevel("Detailed", app: app)
+    openRetainedContentRestrictions(app)
+    let save = app.buttons["contentRestrictionSave"]
+    XCTAssertTrue(save.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(save.isEnabled)
+    save.tap()
+    assertVisibleContentRestrictionSaveOutcome(app)
+    let after = try await object(
+      "users/7/content-filters", token: context.token, expectedStatus: 200)
+    assertRetainedContentFilters(after)
+    XCTAssertEqual(try json(after), try json(before))
+    attach(after, name: "P-N01-retained-content-restriction-public-after")
+    _ = try await retainedContentRestrictionContext(token: context.token)
+    capture("P-N01-retained-content-restriction-visible-confirmation", app: app)
+    collectAccessibilityAudit(app, screen: "retained-content-restriction-confirmation")
+    functionalAssertionsCompleted = true
+  }
+
+  @MainActor
+  func testIPADE04A02RetainedRestrictedViewerAndSharedInsightHandoff() async throws {
+    defer { reportAccessibilityResult() }
+    let context = try await retainedContentRestrictionContext()
+    let filters = try await object(
+      "users/7/content-filters", token: context.token, expectedStatus: 200)
+    assertRetainedContentFilters(filters)
+    attach(filters, name: "P-N01-retained-viewer-public-content-filters")
+    let app = launchPrivacy(username: "ipad-owner")
+    assertSelectedLevel("Detailed", app: app)
+    try await runRestrictedViewerHandoff(
+      app, subjectID: 1, personalNote: context.personalNote, highlight: context.highlight)
+  }
+
+  @MainActor
+  private func retainedContentRestrictionContext(token: String? = nil) async throws
+    -> (token: String, personalNote: String, highlight: String)
+  {
+    let ownerToken: String
+    if let token {
+      ownerToken = token
+    } else {
+      let owner = try await login("ipad-owner")
+      XCTAssertEqual((owner["user"] as? [String: Any])?["id"] as? Int, 1)
+      ownerToken = try XCTUnwrap(owner["accessToken"] as? String)
+      try registerLogout(try XCTUnwrap(owner["refreshToken"] as? String))
+    }
+    let settings = try await object(
+      "reading-insights-sharing/me", token: ownerToken, expectedStatus: 200)
+    XCTAssertEqual(settings["sharingLevel"] as? String, "detailed")
+    XCTAssertEqual(settings["consentedAt"] as? String, "2026-10-11T13:50:36.959Z")
+    let book = try await object("books/1", token: ownerToken, expectedStatus: 200)
+    let personalNote = try XCTUnwrap(book["personalNote"] as? String)
+    XCTAssertEqual(personalNote, "E04 private personal note 71AE1F30-9479-4530-A69C-8574462DFB75")
+    let annotations = try await object(
+      "books/1/annotations?page=1&pageSize=1&sortBy=createdAt&sortDir=desc&search=E04%20private%20highlight",
+      token: ownerToken, expectedStatus: 200)
+    let annotation = try XCTUnwrap((annotations["items"] as? [[String: Any]])?.first)
+    XCTAssertEqual(annotation["id"] as? Int, 241)
+    let highlight = try XCTUnwrap(annotation["text"] as? String)
+    XCTAssertEqual(highlight, "E04 private highlight AC9A337B-29F1-4B1C-B8A9-DE4711DE0C17")
+    attach(
+      ["settings": settings, "annotationId": 241, "personalNote": personalNote, "highlight": highlight],
+      name: "P-N01-retained-content-restriction-owner-private-state")
+    return (ownerToken, personalNote, highlight)
+  }
+
+  @MainActor
+  private func assertVisibleContentRestrictionSaveOutcome(_ app: XCUIApplication) {
+    let form = app.collectionViews["contentRestrictionContent"]
+    let message = form.staticTexts["contentRestrictionSaved"]
+    let save = form.buttons["contentRestrictionSave"]
+    XCTAssertTrue(message.waitForExistence(timeout: 15))
+    if !form.frame.contains(save.frame) || !form.frame.contains(message.frame) {
+      let distance = min(
+        form.frame.height * 0.25,
+        max(save.frame.height, max(save.frame.maxY, message.frame.maxY) - form.frame.maxY + 12))
+      let start = form.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.65))
+      start.press(
+        forDuration: 0.01, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -distance)),
+        withVelocity: .slow, thenHoldForDuration: 0.1)
+    }
+    XCTAssertTrue(message.isHittable)
+    XCTAssertTrue(form.frame.contains(message.frame))
+    XCTAssertEqual(message.label, "Content restrictions saved for ipad-e04-insights-viewer.")
+    XCTAssertTrue(save.isHittable)
+    XCTAssertTrue(save.isEnabled)
+    XCTAssertTrue(form.frame.contains(save.frame))
+    XCTAssertFalse(form.staticTexts["contentRestrictionError"].exists)
+    attachRestrictionNoticeCandidates(app, form: form, step: "confirmed-visible")
+  }
+
+  @MainActor
+  func testIPADE04A02RetainedContentRestrictionNoticeDiagnostic() async throws {
+    let owner = try await login("ipad-owner")
+    let token = try XCTUnwrap(owner["accessToken"] as? String)
+    try registerLogout(try XCTUnwrap(owner["refreshToken"] as? String))
+    let settings = try await object(
+      "reading-insights-sharing/me", token: token, expectedStatus: 200)
+    XCTAssertEqual(settings["sharingLevel"] as? String, "detailed")
+    let before = try await object("users/7/content-filters", token: token, expectedStatus: 200)
+    assertRetainedContentFilters(before)
+    attach(before, name: "P-N01-content-restriction-diagnostic-public-before")
+
+    let app = launchPrivacy(username: "ipad-owner")
+    assertSelectedLevel("Detailed", app: app)
+    openRetainedContentRestrictions(app)
+    let save = app.buttons["contentRestrictionSave"]
+    XCTAssertTrue(save.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    XCTAssertTrue(save.isEnabled)
+    let form = try XCTUnwrap(
+      app.collectionViews.allElementsBoundByIndex.filter { $0.frame.contains(save.frame) }
+        .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })
+    attachRestrictionNoticeCandidates(app, form: form, step: "before-save")
+    save.tap()
+    XCTAssertTrue(save.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+    attachRestrictionNoticeCandidates(app, form: form, step: "after-save")
+    let notice = app.descendants(matching: .any).matching(
+      NSPredicate(
+        format: "identifier == %@ OR identifier == %@", "contentRestrictionSaved",
+        "contentRestrictionError"))
+    if !notice.allElementsBoundByIndex.contains(where: {
+      $0.isHittable && form.frame.contains($0.frame)
+    }) {
+      let distance = min(form.frame.height * 0.25, save.frame.height * 2)
+      let start = form.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.65))
+      start.press(
+        forDuration: 0.01, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -distance)),
+        withVelocity: .slow, thenHoldForDuration: 0.1)
+      attachRestrictionNoticeCandidates(app, form: form, step: "after-bounded-reveal")
+    }
+    XCTAssertTrue(
+      notice.allElementsBoundByIndex.contains {
+        $0.isHittable && form.frame.contains($0.frame)
+      }, "One bounded reveal must establish the actual success or error notice.")
+    let after = try await object("users/7/content-filters", token: token, expectedStatus: 200)
+    XCTAssertEqual(try json(after), try json(before))
+    attach(after, name: "P-N01-content-restriction-diagnostic-public-after")
+  }
+
+  @MainActor
+  private func openRetainedContentRestrictions(_ app: XCUIApplication) {
+    let restrictions = app.buttons["readingPrivacyContentRestrictions"]
+    reveal(restrictions, in: app)
+    restrictions.tap()
+    let search = app.textFields["contentRestrictionUserSearch"]
+    XCTAssertTrue(search.waitForExistence(timeout: 10))
+    replace(search, value: "ipad-e04-insights-viewer")
+    app.buttons["contentRestrictionSearchUsers"].tap()
+    let viewer = app.buttons["contentRestrictionUser7"]
+    XCTAssertTrue(viewer.wait(for: \.isHittable, toEqual: true, timeout: 10))
+    viewer.tap()
+    let ownRequests = app.switches["contentRestrictionOwnRequests"]
+    revealContentRestrictionControl(ownRequests, app: app)
+    XCTAssertEqual(ownRequests.value as? String, "1")
+    revealContentRestrictionControl(app.buttons["contentRestrictionSave"], app: app)
+  }
+
+  @MainActor
+  private func revealContentRestrictionControl(_ element: XCUIElement, app: XCUIApplication) {
+    let form = app.collectionViews["contentRestrictionContent"]
+    XCTAssertTrue(form.waitForExistence(timeout: 10))
+    for _ in 0..<6 {
+      if element.exists && element.isHittable && form.frame.contains(element.frame) { return }
+      let distance = form.frame.height * 0.25
+      let start = form.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.65))
+      let direction = element.exists && element.frame.minY < form.frame.minY ? 1.0 : -1.0
+      start.press(
+        forDuration: 0.01,
+        thenDragTo: start.withOffset(CGVector(dx: 0, dy: direction * distance)),
+        withVelocity: .slow, thenHoldForDuration: 0.1)
+    }
+    XCTAssertTrue(element.isHittable)
+    XCTAssertTrue(form.frame.contains(element.frame))
+  }
+
+  private func assertRetainedContentFilters(_ filters: [String: Any]) {
+    XCTAssertEqual(filters["seeOwnRequestedBooks"] as? Bool, true)
+    XCTAssertTrue((filters["includeTags"] as? [[String: Any]])?.isEmpty == true)
+    XCTAssertTrue((filters["includeGenres"] as? [[String: Any]])?.isEmpty == true)
+    XCTAssertTrue((filters["excludeGenres"] as? [[String: Any]])?.isEmpty == true)
+    let excluded = filters["excludeTags"] as? [[String: Any]]
+    XCTAssertEqual(excluded?.count, 1)
+    XCTAssertEqual(excluded?.first?["id"] as? Int, 1)
+    XCTAssertEqual(excluded?.first?["name"] as? String, "E04 restricted insight")
+  }
+
+  @MainActor
+  private func attachRestrictionNoticeCandidates(
+    _ app: XCUIApplication, form: XCUIElement, step: String
+  ) {
+    let candidates = app.descendants(matching: .any).matching(
+      NSPredicate(
+        format: "identifier == %@ OR identifier == %@ OR identifier == %@",
+        "contentRestrictionSaved", "contentRestrictionError", "contentRestrictionSave")
+    ).allElementsBoundByIndex.map { element -> [String: Any] in
+      [
+        "elementType": element.elementType.rawValue, "identifier": element.identifier,
+        "label": element.label, "frame": String(describing: element.frame),
+        "hittable": element.isHittable, "enabled": element.isEnabled,
+      ]
+    }
+    attach(
+      ["step": step, "formFrame": String(describing: form.frame), "candidates": candidates],
+      name: "P-N01-content-restriction-notice-\(step)")
+    let hierarchy = XCTAttachment(string: app.debugDescription)
+    hierarchy.name = "P-N01-content-restriction-notice-hierarchy-\(step)"
+    hierarchy.lifetime = .keepAlways
+    add(hierarchy)
+    capture("P-N01-content-restriction-notice-\(step)", app: app)
+  }
+
+  @MainActor
   func testIPADE04A02RetainedSummarySessionsDiagnostic() async throws {
     defer { reportAccessibilityResult() }
     let owner = try await login("ipad-owner")
@@ -299,6 +518,7 @@ final class ReadingPrivacyJourneyTests: XCTestCase {
   ) async throws {
     defer { reportAccessibilityResult() }
     let subject = try await login("ipad-owner")
+    try registerLogout(try XCTUnwrap(subject["refreshToken"] as? String))
     let token = try XCTUnwrap(subject["accessToken"] as? String)
     let subjectID = try XCTUnwrap((subject["user"] as? [String: Any])?["id"] as? Int)
     let users = try await object(
@@ -418,7 +638,7 @@ final class ReadingPrivacyJourneyTests: XCTestCase {
     let save = app.buttons["contentRestrictionSave"]
     reveal(save, in: app)
     save.tap()
-    XCTAssertTrue(app.staticTexts["contentRestrictionSaved"].waitForExistence(timeout: 10))
+    assertVisibleContentRestrictionSaveOutcome(app)
     let filters = try await object("users/\(viewerID)/content-filters", token: token)
     XCTAssertEqual(filters["seeOwnRequestedBooks"] as? Bool, true)
     XCTAssertEqual(
@@ -428,6 +648,14 @@ final class ReadingPrivacyJourneyTests: XCTestCase {
     collectAccessibilityAudit(app, screen: "content-restrictions")
     let excludedTags = try XCTUnwrap(filters["excludeTags"] as? [[String: Any]])
     XCTAssertFalse(excludedTags.isEmpty)
+    try await runRestrictedViewerHandoff(
+      app, subjectID: subjectID, personalNote: personalNote, highlight: highlight)
+  }
+
+  @MainActor
+  private func runRestrictedViewerHandoff(
+    _ app: XCUIApplication, subjectID: Int, personalNote: String, highlight: String
+  ) async throws {
     app.terminate()
     app.launch()
     XCTAssertTrue(app.buttons["signOut"].waitForExistence(timeout: 15))
@@ -476,6 +704,7 @@ final class ReadingPrivacyJourneyTests: XCTestCase {
     collectAccessibilityAudit(app, screen: "permitted-shared-insights")
     let viewerSession = try await login("ipad-e04-insights-viewer")
     let viewerToken = try XCTUnwrap(viewerSession["accessToken"] as? String)
+    try registerLogout(try XCTUnwrap(viewerSession["refreshToken"] as? String))
     let view = try await object(
       "shared-reading-insights/\(subjectID)/view-sessions", token: viewerToken, method: "POST")
     let viewSessionID = try XCTUnwrap(view["viewSessionId"] as? String)
@@ -504,11 +733,6 @@ final class ReadingPrivacyJourneyTests: XCTestCase {
     ])
     let (_, response) = try await E04FixtureHTTP.data(for: handoff)
     XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 201)
-    for session in [subject, viewerSession] {
-      _ = try await object(
-        "auth/logout", method: "POST",
-        body: ["refreshToken": try XCTUnwrap(session["refreshToken"] as? String)])
-    }
     functionalAssertionsCompleted = true
   }
 

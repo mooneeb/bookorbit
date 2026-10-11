@@ -121,10 +121,21 @@ struct ContentRestrictionEditorView: View {
       Section {
         Toggle("Allow own fulfilled requests", isOn: $model.filters.seeOwnRequestedBooks)
           .accessibilityIdentifier("contentRestrictionOwnRequests")
-        Button("Save content restrictions") { Task { await model.save() } }
-          .accessibilityIdentifier("contentRestrictionSave")
+          .disabled(model.isBusy || !model.isLoaded)
+        saveFeedback
       }
-      .disabled(model.isBusy || !model.isLoaded)
+    }
+    .accessibilityIdentifier("contentRestrictionContent")
+    .navigationTitle(model.target.username)
+    .disabled(model.target.isSuperuser)
+    .task { await model.load() }
+    .sheet(item: $editingRule) { rule in
+      ContentRestrictionChoiceView(api: api, kind: rule.kind, selected: selection(rule))
+    }
+  }
+
+  private var saveFeedback: some View {
+    VStack(alignment: .leading, spacing: 12) {
       if model.isBusy { ProgressView("Updating content restrictions") }
       if let message = model.message {
         Text(message).accessibilityIdentifier("contentRestrictionSaved")
@@ -132,13 +143,11 @@ struct ContentRestrictionEditorView: View {
       if let error = model.error {
         Text(error).foregroundStyle(.red).accessibilityIdentifier("contentRestrictionError")
         Button("Reload restrictions") { Task { await model.load() } }
+          .disabled(model.isBusy)
       }
-    }
-    .navigationTitle(model.target.username)
-    .disabled(model.target.isSuperuser)
-    .task { await model.load() }
-    .sheet(item: $editingRule) { rule in
-      ContentRestrictionChoiceView(api: api, kind: rule.kind, selected: selection(rule))
+      Button("Save content restrictions") { Task { await model.save() } }
+        .accessibilityIdentifier("contentRestrictionSave")
+        .disabled(model.isBusy || !model.isLoaded)
     }
   }
 

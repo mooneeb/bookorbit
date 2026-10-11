@@ -8,6 +8,9 @@ final class KoboDeliveryJourneyTests: XCTestCase {
   private static let retainedUsername = "ipad-e04-kobo-b5bd0940"
   private static let retainedUserID = 94
   private static let retainedCollectionID = 16
+  private static let retainedEntitlementID = "3fd74524-4dc8-4c89-bea3-986aca39c675"
+  private static let retainedPDFRevision =
+    "sha256:7baeacd1115ba6ae7b01914937e78eb1281ccb7da9888ff857177f04b539e541"
   override func setUpWithError() throws { continueAfterFailure = false }
 
   override func tearDownWithError() throws {
@@ -83,6 +86,205 @@ final class KoboDeliveryJourneyTests: XCTestCase {
       app: app, username: Self.retainedUsername, userID: Self.retainedUserID,
       collectionID: Self.retainedCollectionID, token: token, ownerToken: ownerToken,
       bookTitle: bookTitle)
+  }
+
+  @MainActor
+  func testIPADE04A03NativeRetainedKoboHistoryAndHandoffCheckpoint() async throws {
+    let session = try await json(
+      "auth/login", method: "POST",
+      body: [
+        "username": Self.retainedUsername, "password": "IpadFixture123", "clientKind": "native",
+        "deviceLabel": "Kobo retained history checkpoint",
+      ])
+    let token = try XCTUnwrap(session["accessToken"] as? String)
+    let refreshToken = try XCTUnwrap(session["refreshToken"] as? String)
+    var logout = URLRequest(url: try XCTUnwrap(URL(string: "\(base)/auth/logout")))
+    logout.httpMethod = "POST"
+    logout.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    logout.httpBody = try JSONSerialization.data(withJSONObject: ["refreshToken": refreshToken])
+    logout.timeoutInterval = 10
+    let logoutRequest = logout
+    addTeardownBlock {
+      let (_, response) = try await E04FixtureHTTP.data(for: logoutRequest)
+      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+    }
+    let before = try await retainedHistoryFixture(token: token)
+    attach(before.canonical, name: "IPAD-E04-A03-retained-kobo-before", type: "public.json")
+    let app = launch(username: Self.retainedUsername)
+    openKoboSettings(app)
+    let historyLink = app.buttons["koboHistory"]
+    XCTAssertTrue(reveal(historyLink, in: app.collectionViews["koboSettingsContent"], app: app))
+    historyLink.tap()
+    try assertDownloadHistory(
+      app: app, history: before.history, deviceID: before.deviceID, bookTitle: before.bookTitle,
+      completedID: 1170, failedID: 1169)
+    let after = try await retainedHistoryFixture(token: token)
+    XCTAssertEqual(after.canonical, before.canonical)
+    attach(after.canonical, name: "IPAD-E04-A03-retained-kobo-after", type: "public.json")
+    try await handoff(
+      "A03",
+      data: [
+        "username": Self.retainedUsername, "userId": Self.retainedUserID,
+        "deviceId": before.deviceID, "deviceName": "IPAD-E04 Kobo native receiver",
+        "collectionName": "IPAD-E04 Kobo native selected book",
+        "collectionId": Self.retainedCollectionID, "bookId": 1, "fileId": 1,
+        "entitlementId": Self.retainedEntitlementID, "tagId": "col-16",
+        "acknowledgedCatalogPages": 1, "expectedActivity": ["book_download", "library_sync"],
+        "twoWayProgressSync": true, "syncBookOrbitAnnotationsToKobo": true,
+        "completedHistoryId": 1170, "failedHistoryId": 1169,
+        "sourceRevision": Self.retainedPDFRevision, "historyCheckpointOnly": true,
+        "retainedCatalogReceipt":
+          "run-72126-1791726492846/native-attachments/6B3D6B61-F81A-4875-9823-FC035B2884AD.json",
+        "retainedPDFReceipt":
+          "run-72126-1791726492846/native-attachments/53C3909C-154C-454F-82B5-9B733C5BD5FD.pdf",
+      ])
+  }
+
+  @MainActor
+  private func retainedHistoryFixture(token: String) async throws -> (
+    canonical: Data, deviceID: Int, bookTitle: String, history: [[String: Any]]
+  ) {
+    let user = try await json("auth/me", token: token)
+    XCTAssertEqual(user["id"] as? Int, Self.retainedUserID)
+    XCTAssertEqual(user["username"] as? String, Self.retainedUsername)
+    XCTAssertEqual(user["isSuperuser"] as? Bool, false)
+    XCTAssertTrue((user["permissions"] as? [String] ?? []).contains("kobo_sync"))
+    let collection = try await json("collections/16", token: token)
+    XCTAssertEqual(collection["id"] as? Int, Self.retainedCollectionID)
+    XCTAssertEqual(collection["userId"] as? Int, Self.retainedUserID)
+    XCTAssertEqual(collection["isOwner"] as? Bool, true)
+    XCTAssertEqual(collection["name"] as? String, "IPAD-E04 Kobo native selected book")
+    XCTAssertEqual(collection["syncToKobo"] as? Bool, true)
+    XCTAssertEqual(collection["bookCount"] as? Int, 1)
+    let devicesData = try await request("kobo/devices", token: token)
+    let devices = try XCTUnwrap(JSONSerialization.jsonObject(with: devicesData) as? [[String: Any]])
+    XCTAssertEqual(devices.count, 1)
+    let device = try XCTUnwrap(devices.first)
+    XCTAssertEqual(device["name"] as? String, "IPAD-E04 Kobo native receiver")
+    XCTAssertNil(device["token"])
+    let deviceID = try XCTUnwrap(device["id"] as? Int)
+    let settings = try await json("kobo/settings", token: token)
+    XCTAssertEqual(settings["twoWayProgressSync"] as? Bool, true)
+    XCTAssertEqual(settings["syncBookOrbitAnnotationsToKobo"] as? Bool, true)
+    XCTAssertEqual(settings["convertToKepub"] as? Bool, true)
+    let book = try await json("books/1", token: token)
+    XCTAssertEqual(book["id"] as? Int, 1)
+    XCTAssertEqual(book["libraryId"] as? Int, 1)
+    let file = try XCTUnwrap((book["files"] as? [[String: Any]])?.first { $0["id"] as? Int == 1 })
+    XCTAssertEqual(file["format"] as? String, "pdf")
+    XCTAssertEqual(file["role"] as? String, "primary")
+    let bookTitle = try XCTUnwrap(book["title"] as? String)
+    let state = try await json("books/1/kobo-state", token: token)
+    XCTAssertEqual(state["eligibleForKoboSync"] as? Bool, true)
+    XCTAssertEqual(state["syncCollections"] as? [String], ["IPAD-E04 Kobo native selected book"])
+    let snapshots = try XCTUnwrap(state["snapshots"] as? [[String: Any]])
+    XCTAssertEqual(snapshots.count, 1)
+    let snapshot = try XCTUnwrap(snapshots.first)
+    XCTAssertEqual(snapshot["deviceId"] as? Int, deviceID)
+    XCTAssertEqual(snapshot["deviceName"] as? String, "IPAD-E04 Kobo native receiver")
+    XCTAssertEqual(snapshot["inSnapshot"] as? Bool, true)
+    XCTAssertEqual(snapshot["synced"] as? Bool, true)
+    XCTAssertEqual(snapshot["pendingDelete"] as? Bool, false)
+    let source = try await json("annotations/native/files/1/source?bookId=1&page=0", token: token)
+    XCTAssertEqual(source["sourceRevision"] as? String, Self.retainedPDFRevision)
+    let history = try await downloadHistory(token: token)
+    XCTAssertTrue(history.allSatisfy {
+      $0["deviceId"] as? Int == deviceID
+        && $0["deviceName"] as? String == "IPAD-E04 Kobo native receiver"
+    })
+    XCTAssertEqual(history.filter { $0["event"] as? String == "book_download" }.count, 2)
+    XCTAssertTrue(history.contains {
+      $0["event"] as? String == "library_sync" && $0["status"] as? String == "success"
+    })
+    let canonical = try JSONSerialization.data(
+      withJSONObject: [
+        "userId": Self.retainedUserID, "collection": collection, "devices": devices,
+        "settings": settings, "file": file, "state": state, "source": source, "history": history,
+      ], options: [.prettyPrinted, .sortedKeys])
+    return (canonical, deviceID, bookTitle, history)
+  }
+
+  @MainActor
+  private func downloadHistory(token: String) async throws -> [[String: Any]] {
+    let data = try await request("kobo/history?limit=40", token: token)
+    let history = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+    XCTAssertLessThanOrEqual(history.count, 40)
+    return history
+  }
+
+  @MainActor
+  private func assertDownloadHistory(
+    app: XCUIApplication, history: [[String: Any]], deviceID: Int, bookTitle: String,
+    completedID: Int? = nil, failedID: Int? = nil
+  ) throws {
+    XCTAssertTrue(app.navigationBars["Kobo sync history"].waitForExistence(timeout: 10))
+    let completed = try XCTUnwrap(history.first {
+      $0["deviceId"] as? Int == deviceID && $0["event"] as? String == "book_download"
+        && $0["status"] as? String == "success"
+    })
+    let failed = try XCTUnwrap(history.first {
+      $0["deviceId"] as? Int == deviceID && $0["event"] as? String == "book_download"
+        && $0["status"] as? String == "failed"
+    })
+    if let completedID { XCTAssertEqual(completed["id"] as? Int, completedID) }
+    if let failedID { XCTAssertEqual(failed["id"] as? Int, failedID) }
+    let counts = try XCTUnwrap(completed["counts"] as? [String: Any])
+    XCTAssertEqual(counts["bookId"] as? Int, 1)
+    XCTAssertEqual(counts["bookTitle"] as? String, bookTitle)
+    XCTAssertEqual(counts["downloads"] as? Int, 1)
+    XCTAssertTrue(try XCTUnwrap(failed["counts"] as? [String: Any]).isEmpty)
+    XCTAssertEqual(failed["error"] as? String, "File not found on disk")
+    let form = app.collectionViews["koboHistoryContent"]
+    XCTAssertTrue(form.waitForExistence(timeout: 10))
+    for (entry, outcome) in [(completed, "Completed"), (failed, "Failed")] {
+      let id = try XCTUnwrap(entry["id"] as? Int)
+      XCTAssertEqual(entry["deviceName"] as? String, "IPAD-E04 Kobo native receiver")
+      let duration = try XCTUnwrap(entry["durationMs"] as? Int)
+      XCTAssertGreaterThanOrEqual(duration, 0)
+      var labels = [
+        "Book download", "Device, IPAD-E04 Kobo native receiver", "Outcome, \(outcome)",
+        "Duration, \(duration) ms",
+      ]
+      if outcome == "Completed" {
+        labels += ["bookId, 1", "bookTitle, \(bookTitle)", "downloads, 1"]
+      } else {
+        labels.append("File not found on disk")
+      }
+      for label in labels {
+        let predicate = NSPredicate(
+          format: "identifier == %@ AND label == %@", "koboHistoryEntry\(id)", label)
+        if outcome == "Completed", label == "Book download" {
+          XCTAssertTrue(form.staticTexts.matching(predicate).element.waitForExistence(timeout: 10))
+        }
+        for _ in 0..<8 {
+          let rows = form.staticTexts.matching(predicate)
+          let viewport = form.frame.intersection(app.frame)
+          if rows.count == 1, rows.element.isHittable,
+            viewport.contains(rows.element.frame) { break }
+          if rows.count == 1, rows.element.frame.minY < viewport.minY {
+            form.swipeDown()
+          } else {
+            form.swipeUp()
+          }
+        }
+        let rows = form.staticTexts.matching(predicate)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertTrue(rows.element.isHittable)
+        XCTAssertTrue(form.frame.intersection(app.frame).contains(rows.element.frame))
+        let cells = form.cells.containing(predicate)
+        XCTAssertEqual(cells.count, 1)
+        XCTAssertEqual(cells.element.staticTexts.matching(predicate).count, 1)
+        if label == "Outcome, \(outcome)" {
+          capture("IPAD-E04-A03-kobo-\(outcome.lowercased())-owned-row")
+          attach(
+            Data(app.debugDescription.utf8),
+            name: "IPAD-E04-A03-kobo-\(outcome.lowercased())-owned-row-hierarchy", type: "public.text")
+        }
+      }
+      capture("IPAD-E04-A03-kobo-\(outcome.lowercased())-retained-history")
+      accessibilityAudit.collect(
+        app, screen: "IPAD-E04-A03-kobo-\(outcome.lowercased())-retained-history", testCase: self)
+    }
   }
 
   @MainActor
@@ -303,10 +505,9 @@ final class KoboDeliveryJourneyTests: XCTestCase {
     let historyLink = app.buttons["koboHistory"]
     XCTAssertTrue(reveal(historyLink, in: app.collectionViews["koboSettingsContent"], app: app))
     historyLink.tap()
-    XCTAssertTrue(
-      app.staticTexts["IPAD-E04 Kobo native receiver"].firstMatch.waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["Failed"].firstMatch.exists)
-    XCTAssertTrue(app.staticTexts["Completed"].firstMatch.exists)
+    let history = try await downloadHistory(token: token)
+    let deviceID = try XCTUnwrap(history.first?["deviceId"] as? Int)
+    try assertDownloadHistory(app: app, history: history, deviceID: deviceID, bookTitle: bookTitle)
     capture("IPAD-E04-A03-kobo-failure-and-completed-retry-history")
     accessibilityAudit.collect(
       app, screen: "IPAD-E04-A03-kobo-failure-and-completed-retry-history", testCase: self)
