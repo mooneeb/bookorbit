@@ -13,8 +13,31 @@ final class OIDCSignIn: NSObject, ASWebAuthenticationPresentationContextProvidin
   func signIn(provider: OidcProviderPublic, api: BookOrbitAPI, window: UIWindow) async throws
     -> AuthUser
   {
+    let callback = try await authorization(
+      provider: provider, api: api, window: window, linking: false)
+    return try await api.completeOIDC(callback)
+  }
+
+  func link(provider: OidcProviderPublic, api: BookOrbitAPI, window: UIWindow) async throws {
+    let generation = try await api.authenticatedSessionGeneration()
+    let callback = try await authorization(
+      provider: provider, api: api, window: window, linking: true)
+    try await api.completeOIDCLink(callback, session: generation)
+  }
+
+  func cancel() {
+    session?.cancel()
+    session = nil
+  }
+
+  private func authorization(
+    provider: OidcProviderPublic, api: BookOrbitAPI, window: UIWindow, linking: Bool
+  ) async throws -> OidcCallbackRequest {
     self.window = window
-    let state = try await api.oidcState(slug: provider.slug)
+    let state =
+      linking
+      ? try await api.oidcLinkState(slug: provider.slug)
+      : try await api.oidcState(slug: provider.slug)
     let verifier = try randomValue()
     let nonce = try randomValue()
     let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URLEncoded
@@ -63,11 +86,10 @@ final class OIDCSignIn: NSObject, ASWebAuthenticationPresentationContextProvidin
     else {
       throw ConnectionError.invalidResponse
     }
-    return try await api.completeOIDC(
-      OidcCallbackRequest(
-        code: code, codeVerifier: verifier, redirectUri: Self.callback,
-        nonce: nonce, state: state.state, clientKind: "native",
-        deviceLabel: "BookOrbit private iPad"))
+    return OidcCallbackRequest(
+      code: code, codeVerifier: verifier, redirectUri: Self.callback,
+      nonce: nonce, state: state.state, clientKind: "native",
+      deviceLabel: "BookOrbit private iPad")
   }
 
   func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {

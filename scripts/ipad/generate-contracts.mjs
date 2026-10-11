@@ -24,6 +24,8 @@ const entries = [
   "annotation",
   "audiobook",
   "auth",
+  "administration",
+  "audit",
   "author",
   "book",
   "book-move",
@@ -72,6 +74,12 @@ const entries = [
   "upload",
   "language",
   "maintenance-settings",
+  "theme",
+  "locale",
+  "display-preferences",
+  "release-notes",
+  "notification",
+  "metadata-preferences",
 ].map((name) => path.join(root, `packages/types/src/${name}.ts`));
 const program = ts.createProgram(entries, {
   strict: true,
@@ -135,18 +143,46 @@ const projections = {
   CreateAnnotationPayload: ["cfi", "bookFileId", "text", "color", "style", "note", "chapterTitle"],
   AnnotationItem: ["id", "bookId", "cfi", "jumpFileId", "text", "color", "style", "note", "chapterTitle", "positionStatus"],
   AnnotationListResponse: ["items", "total", "page", "pageSize"],
-  AuthUser: ["id", "username", "name", "active", "isSuperuser", "isDefaultPassword", "permissions", "settings"],
+  AuthUser: [
+    "id",
+    "username",
+    "name",
+    "email",
+    "avatarUrl",
+    "active",
+    "isSuperuser",
+    "isDefaultPassword",
+    "authenticationMethod",
+    "permissions",
+    "settings",
+  ],
   UserDashboardSettingsResponse: ["settings"],
   UserReaderSettingsResponse: ["settings", "permissions"],
   UserSettings: [
     "dashboardConfig",
     "dashboardShelfConfig",
     "syncReaderPreferences",
+    "syncThemePreferences",
     "timezone",
     "seriesCollapsePreferences",
+    "onboarding",
+    "notificationPreferences",
     "achievementPreferences",
   ],
-  Library: ["id", "type", "accessLevel", "name", "bookCount", "folders"],
+  Library: [
+    "id",
+    "type",
+    "accessLevel",
+    "name",
+    "bookCount",
+    "folders",
+    "watch",
+    "organizationMode",
+    "autoScanCronExpression",
+    "fileNamingPattern",
+    "fileWriteEnabled",
+    "fileRenameEnabled",
+  ],
   BookCard: [
     "id",
     "title",
@@ -287,6 +323,7 @@ const integerFields = new Set([
   "bookIds",
   "userId",
   "sessionId",
+  "providerId",
   "libraryId",
   "libraryIds",
   "enabledLibraryIds",
@@ -961,7 +998,14 @@ function generateModel(name, type) {
       target = `FieldUpdate<${target.replace(/\?$/, "")}>?`;
     }
     if (property.flags & ts.SymbolFlags.Optional && !target.endsWith("?")) target += "?";
-    if (name === "Library" && field === "folders") target += "?";
+    if (
+      name === "Library" &&
+      ["folders", "watch", "organizationMode", "autoScanCronExpression", "fileNamingPattern", "fileWriteEnabled", "fileRenameEnabled"].includes(
+        field,
+      ) &&
+      !target.endsWith("?")
+    )
+      target += "?";
     coding.push({
       field,
       optional: !!(property.flags & ts.SymbolFlags.Optional),
@@ -969,10 +1013,13 @@ function generateModel(name, type) {
     });
     const nativeDefault =
       target.endsWith("?") &&
-      (name.startsWith("NativeAnnotation") ||
+      (name === "AuthUser" ||
+        name === "UserSettings" ||
+        name.startsWith("Admin") ||
+        name.startsWith("NativeAnnotation") ||
         name.startsWith("NativeInk") ||
         acquisitionModels.includes(name) ||
-        (name === "Library" && field === "folders"))
+        name === "Library")
         ? " = nil"
         : "";
     return `    var \`${field}\`: ${target}${nativeDefault}`;
@@ -1177,6 +1224,45 @@ for (const name of [
   "OidcStateResponse",
   "OidcCallbackRequest",
   "LoginOptionsResponse",
+  "MagicLinkLoginRequest",
+  "OidcUnlinkRequest",
+  "OidcLinkResult",
+  "OidcLinkedIdentity",
+  "Session",
+  "ProfileUpdateRequest",
+  "AdminMetadataProviderStatusResponse",
+  "FontUploadResult",
+  "ThemePreferences",
+  "LocalePreferences",
+  "DisplayPreferences",
+  "ReleaseNotesResponse",
+  "WhatsNewPreferences",
+  "NotificationPage",
+  "ReadingInsightsSharingSettings",
+  "ReadingInsightsAccessHistoryPage",
+  "CustomIcon",
+  "CustomIconPage",
+  "CustomIconUsage",
+  "CustomIconUploadResponse",
+  "AdminUserListItem",
+  "AdminUserListPage",
+  "AdminCreateUserRequest",
+  "AdminUpdateUserRequest",
+  "AdminSetPermissionsRequest",
+  "AdminLibraryRequest",
+  "AdminOidcProviderRequest",
+  "AdminTtsProvider",
+  "AdminTtsProviderRequest",
+  "AdminUpdateTtsProviderRequest",
+  "TtsProviderStatus",
+  "OidcProviderConfig",
+  "MagicLinkToken",
+  "MagicLinkTokenCreateResponse",
+  "AuditLogPage",
+  "MetadataFetchPreferences",
+  "LibraryMetadataPreferences",
+  "ProviderStatus",
+  "ProviderConfigurations",
   "Library",
   "BooksPage",
   "CustomMetadataFieldSummary",

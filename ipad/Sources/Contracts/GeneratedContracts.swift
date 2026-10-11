@@ -4670,20 +4670,26 @@ struct AuthUser: Codable, Sendable, Equatable, Identifiable {
     var `id`: Int
     var `username`: String
     var `name`: String
+    var `email`: String? = nil
+    var `avatarUrl`: String? = nil
     var `active`: Bool
     var `isSuperuser`: Bool
     var `isDefaultPassword`: Bool
+    var `authenticationMethod`: String? = nil
     var `permissions`: [String]
     var `settings`: UserSettings
 }
 
 struct UserSettings: Codable, Sendable, Equatable {
-    var `dashboardConfig`: DashboardConfig?
-    var `dashboardShelfConfig`: DashboardShelfConfig?
-    var `syncReaderPreferences`: Bool?
-    var `timezone`: String?
-    var `seriesCollapsePreferences`: SeriesCollapsePreferences?
-    var `achievementPreferences`: UserSettingsAchievementPreferences?
+    var `dashboardConfig`: DashboardConfig? = nil
+    var `dashboardShelfConfig`: DashboardShelfConfig? = nil
+    var `syncReaderPreferences`: Bool? = nil
+    var `syncThemePreferences`: Bool? = nil
+    var `timezone`: String? = nil
+    var `seriesCollapsePreferences`: SeriesCollapsePreferences? = nil
+    var `onboarding`: UserSettingsOnboarding? = nil
+    var `notificationPreferences`: NotificationPreferences? = nil
+    var `achievementPreferences`: UserSettingsAchievementPreferences? = nil
 }
 
 struct DashboardConfig: Codable, Sendable, Equatable {
@@ -4722,6 +4728,25 @@ struct SeriesCollapsePreferences: Codable, Sendable, Equatable {
     var `collections`: [String: Bool]
     var `smartScopes`: [String: Bool]?
     var `authorPages`: Bool?
+}
+
+struct UserSettingsOnboarding: Codable, Sendable, Equatable {
+    var `tourCompleted`: Bool?
+}
+
+struct NotificationPreferences: Codable, Sendable, Equatable {
+    var `scanning`: JSONValue?
+    var `metadata`: JSONValue?
+    var `bookDock`: JSONValue?
+    var `bookRequests`: JSONValue?
+    var `authorEnrichment`: JSONValue?
+    var `email`: JSONValue?
+    var `migration`: JSONValue?
+    var `fileWriteBack`: JSONValue?
+    var `fileRename`: JSONValue?
+    var `bulkRename`: JSONValue?
+    var `achievements`: JSONValue?
+    var `podcasts`: JSONValue?
 }
 
 struct UserSettingsAchievementPreferences: Codable, Sendable, Equatable {
@@ -4791,13 +4816,530 @@ struct OidcProviderPublic: Codable, Sendable, Equatable {
     var `scopes`: String
 }
 
+struct MagicLinkLoginRequest: Codable, Sendable, Equatable {
+    var `token`: String
+    var `clientKind`: String?
+    var `deviceLabel`: String?
+}
+
+struct OidcUnlinkRequest: Codable, Sendable, Equatable {
+    var `password`: String?
+}
+
+struct OidcLinkResult: Codable, Sendable, Equatable {
+    var `mode`: String
+    var `linked`: Bool
+}
+
+struct OidcLinkedIdentity: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `providerId`: Int
+    var `providerSlug`: String
+    var `providerName`: String
+    var `providerIconUrl`: String?
+    var `oidcSubject`: String
+    var `oidcIssuer`: String
+    var `linkedAt`: String
+}
+
+struct Session: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `clientKind`: String
+    var `deviceLabel`: String?
+    var `authenticationMethod`: String
+    var `createdAt`: String
+    var `expiresAt`: String
+}
+
+struct ProfileUpdateRequest: Codable, Sendable, Equatable {
+    var `name`: String?
+}
+
+struct AdminMetadataProviderStatusResponse: Codable, Sendable, Equatable {
+    var `statuses`: [ProviderStatus]
+}
+
+struct ProviderStatus: Codable, Sendable, Equatable {
+    var `key`: String
+    var `label`: String
+    var `configured`: Bool
+    var `enabled`: Bool
+    var `hint`: String?
+}
+
+struct FontUploadResult: Codable, Sendable, Equatable {
+    var `font`: UserFont
+    var `suggestedFamilyName`: String?
+    var `suggestedWeight`: Double
+    var `suggestedStyle`: String
+}
+
+struct UserFont: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `familyName`: String
+    var `originalFileName`: String
+    var `format`: String
+    var `weight`: Double
+    var `style`: String
+    var `weightMin`: Double?
+    var `weightMax`: Double?
+    var `instances`: [FontNamedInstance]?
+    var `fileSize`: Int
+    var `createdAt`: String
+}
+
+struct FontNamedInstance: Codable, Sendable, Equatable {
+    var `weight`: Double
+    var `style`: String
+    var `name`: String?
+}
+
+struct ThemePreferences: Codable, Sendable, Equatable {
+    var `theme`: String
+    var `accent`: String
+    var `radius`: String
+    var `background`: String
+    var `brightness`: Double
+    var `surfaceOpacity`: Double?
+}
+
+struct LocalePreferences: Codable, Sendable, Equatable {
+    var `locale`: String
+}
+
+struct DisplayPreferences: Codable, Sendable, Equatable {
+    var `portraitCoverSize`: Double
+    var `squareCoverSize`: Double
+    var `coverSizeScope`: String
+    var `gridGap`: Double
+    var `portraitGridGap`: Double
+    var `squareGridGap`: Double
+    var `viewMode`: String
+    var `cardOverlays`: [String]
+    var `showJumpRails`: Bool
+    var `smartScopeFilterExpanded`: Bool
+    var `authorCoverSize`: Double
+    var `authorCoverShape`: String
+    var `authorRowDensity`: String
+    var `authorCoverFallback`: Bool
+    var `tableZebraStriping`: Bool
+    var `tableDensity`: String
+    var `bookSpineOverlay`: String
+    var `showSpineOnComics`: Bool
+    var `bookShadowStrength`: String
+    var `bookCoverDisplayMode`: String
+    var `bookDetailCoverTint`: String
+    var `seriesCardCoverMode`: String
+    var `gridCardPrimaryLabel`: String
+    var `gridCardSecondaryLabel`: String
+    var `cardInfoMode`: String
+    var `thumbnailClickAction`: String
+}
+
+struct ReleaseNotesResponse: Codable, Sendable, Equatable {
+    var `releases`: [ReleaseNote]
+    var `hasMore`: Bool
+}
+
+struct ReleaseNote: Codable, Sendable, Equatable {
+    var `version`: String
+    var `name`: String?
+    var `date`: String?
+    var `highlights`: [ReleaseHighlight]
+    var `changelogUrl`: String
+    var `changelogBody`: String?
+}
+
+struct ReleaseHighlight: Codable, Sendable, Equatable {
+    var `icon`: String?
+    var `title`: String
+    var `body`: String
+    var `media`: [ReleaseMedia]
+}
+
+struct ReleaseMedia: Codable, Sendable, Equatable {
+    var `url`: String
+    var `type`: String
+}
+
+struct WhatsNewPreferences: Codable, Sendable, Equatable {
+    var `lastSeenVersion`: String?
+    var `popupEnabled`: Bool
+}
+
+struct NotificationPage: Codable, Sendable, Equatable {
+    var `items`: [NotificationItem]
+    var `total`: Int
+}
+
+struct NotificationItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `type`: String
+    var `title`: String
+    var `message`: String?
+    var `actionUrl`: String?
+    var `meta`: [String: JSONValue]?
+    var `read`: Bool
+    var `count`: Double
+    var `createdAt`: String
+    var `updatedAt`: String
+}
+
+struct CustomIcon: Codable, Sendable, Equatable {
+    var `slug`: String
+    var `name`: String
+    var `svgUrl`: String
+    var `fileHash`: String
+    var `fileSize`: Double
+    var `createdAt`: String
+    var `updatedAt`: String
+}
+
+struct CustomIconPage: Codable, Sendable, Equatable {
+    var `items`: [CustomIcon]
+    var `total`: Int
+    var `page`: Int
+    var `size`: Int
+}
+
+struct CustomIconUsage: Codable, Sendable, Equatable {
+    var `total`: Int
+    var `libraries`: Double
+    var `collections`: Double
+    var `smartScopes`: Double
+}
+
+struct CustomIconUploadResponse: Codable, Sendable, Equatable {
+    var `items`: [CustomIconUploadItem]
+}
+
+struct CustomIconUploadItem: Codable, Sendable, Equatable {
+    var `filename`: String
+    var `status`: String
+    var `icon`: CustomIcon?
+    var `error`: String?
+}
+
+struct AdminUserListItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `username`: String
+    var `name`: String
+    var `email`: String? = nil
+    var `active`: Bool
+    var `isSuperuser`: Bool
+    var `isDefaultPassword`: Bool
+    var `lockedUntil`: String? = nil
+    var `failedLoginAttempts`: Double
+    var `provisioningMethod`: String
+    var `avatarUrl`: String? = nil
+    var `createdAt`: String
+    var `lastAuthenticatedAt`: String? = nil
+    var `permissions`: [String]
+    var `hasContentFilters`: Bool
+    var `libraryAccessCount`: Double
+}
+
+struct AdminUserListPage: Codable, Sendable, Equatable {
+    var `users`: [AdminUserListItem]
+    var `total`: Int
+}
+
+struct AdminCreateUserRequest: Codable, Sendable, Equatable {
+    var `username`: String
+    var `name`: String
+    var `email`: String
+    var `permissionNames`: [String]? = nil
+    var `libraryIds`: [Int]? = nil
+}
+
+struct AdminUpdateUserRequest: Codable, Sendable, Equatable {
+    var `name`: String? = nil
+    var `email`: String? = nil
+    var `active`: Bool? = nil
+}
+
+struct AdminSetPermissionsRequest: Codable, Sendable, Equatable {
+    var `permissionNames`: [String]
+}
+
+struct AdminLibraryRequest: Codable, Sendable, Equatable {
+    var `name`: String
+    var `icon`: String
+    var `folders`: [String]
+    var `watch`: Bool? = nil
+    var `organizationMode`: String? = nil
+    var `autoScanCronExpression`: String? = nil
+    var `fileNamingPattern`: String? = nil
+    var `fileWriteEnabled`: Bool? = nil
+    var `fileRenameEnabled`: Bool? = nil
+}
+
+struct AdminOidcProviderRequest: Codable, Sendable, Equatable {
+    var `slug`: String
+    var `displayName`: String
+    var `issuerUri`: String
+    var `clientId`: String
+    var `clientSecret`: String? = nil
+    var `enabled`: Bool? = nil
+    var `scopes`: String? = nil
+    var `iconUrl`: String? = nil
+    var `claimMapping`: OidcClaimMapping? = nil
+    var `autoProvision`: OidcAutoProvision? = nil
+}
+
+struct OidcClaimMapping: Codable, Sendable, Equatable {
+    var `username`: String
+    var `name`: String
+    var `email`: String
+    var `groups`: String
+}
+
+struct OidcAutoProvision: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+    var `allowLocalLinking`: Bool
+    var `defaultPermissionNames`: [String]
+}
+
+struct AdminTtsProvider: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `baseUrl`: String? = nil
+    var `enabled`: Bool
+    var `defaultModel`: String? = nil
+    var `supportsVoiceDiscovery`: Bool
+}
+
+struct AdminTtsProviderRequest: Codable, Sendable, Equatable {
+    var `name`: String
+    var `baseUrl`: String
+    var `apiKey`: String? = nil
+    var `defaultModel`: String? = nil
+    var `supportsVoiceDiscovery`: Bool? = nil
+}
+
+struct AdminUpdateTtsProviderRequest: Codable, Sendable, Equatable {
+    var `name`: String? = nil
+    var `baseUrl`: String? = nil
+    var `apiKey`: String? = nil
+    var `defaultModel`: String? = nil
+    var `enabled`: Bool? = nil
+    var `supportsVoiceDiscovery`: Bool? = nil
+}
+
+struct TtsProviderStatus: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `name`: String
+    var `connected`: Bool
+    var `voiceCount`: Double
+    var `error`: String?
+}
+
+struct OidcProviderConfig: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `slug`: String
+    var `displayName`: String
+    var `enabled`: Bool
+    var `issuerUri`: String
+    var `clientId`: String
+    var `clientSecret`: String?
+    var `scopes`: String
+    var `iconUrl`: String?
+    var `claimMapping`: OidcClaimMapping
+    var `autoProvision`: OidcAutoProvision
+    var `displayOrder`: Int
+}
+
+struct MagicLinkToken: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `userId`: Int
+    var `username`: String
+    var `createdByUsername`: String?
+    var `label`: String
+    var `rawToken`: String
+    var `isActive`: Bool
+    var `expiresAt`: String?
+    var `lastUsedAt`: String?
+    var `useCount`: Double
+    var `createdAt`: String
+    var `revokedAt`: String?
+}
+
+struct MagicLinkTokenCreateResponse: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `token`: String
+    var `label`: String
+    var `expiresAt`: String?
+}
+
+struct AuditLogPage: Codable, Sendable, Equatable {
+    var `data`: [AuditLogEntry]
+    var `total`: Int
+}
+
+struct AuditLogEntry: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `userId`: Int?
+    var `actorUsername`: String
+    var `action`: String
+    var `resource`: String?
+    var `resourceId`: Double?
+    var `description`: String
+    var `ip`: String?
+    var `meta`: [String: JSONValue]?
+    var `createdAt`: String
+}
+
+struct MetadataFetchPreferences: Codable, Sendable, Equatable {
+    var `fields`: MetadataFetchPreferencesFields
+    var `options`: MetadataFetchOptions?
+}
+
+struct MetadataFetchPreferencesFields: Codable, Sendable, Equatable {
+    var `publisher`: FieldPreference
+    var `language`: FieldPreference
+    var `pageCount`: FieldPreference
+    var `isbn`: FieldPreference
+    var `genres`: FieldPreference
+    var `description`: FieldPreference
+    var `title`: FieldPreference
+    var `subtitle`: FieldPreference
+    var `authors`: FieldPreference
+    var `publishedYear`: FieldPreference
+    var `seriesName`: FieldPreference
+    var `seriesIndex`: FieldPreference
+    var `communityRating`: FieldPreference
+    var `narrators`: FieldPreference
+    var `abridged`: FieldPreference
+    var `cover`: FieldPreference
+    var `audioCover`: FieldPreference
+    var `duration`: FieldPreference
+}
+
+struct FieldPreference: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+    var `providers`: [String]
+    var `mergeStrategy`: String
+}
+
+struct MetadataFetchOptions: Codable, Sendable, Equatable {
+    var `genres`: MetadataFetchOptionsGenres
+    var `saveProviderIds`: Bool
+    var `providerIdMode`: String
+}
+
+struct MetadataFetchOptionsGenres: Codable, Sendable, Equatable {
+    var `mode`: String
+    var `blocklist`: [String]
+    var `maxCount`: Double?
+}
+
+struct LibraryMetadataPreferences: Codable, Sendable, Equatable {
+    var `libraryId`: Int
+    var `overrides`: LibraryMetadataPreferencesOverrides?
+    var `effective`: MetadataFetchPreferences
+}
+
+struct LibraryMetadataPreferencesOverrides: Codable, Sendable, Equatable {
+    var `publisher`: FieldPreference?
+    var `language`: FieldPreference?
+    var `pageCount`: FieldPreference?
+    var `isbn`: FieldPreference?
+    var `genres`: FieldPreference?
+    var `description`: FieldPreference?
+    var `title`: FieldPreference?
+    var `subtitle`: FieldPreference?
+    var `authors`: FieldPreference?
+    var `publishedYear`: FieldPreference?
+    var `seriesName`: FieldPreference?
+    var `seriesIndex`: FieldPreference?
+    var `communityRating`: FieldPreference?
+    var `narrators`: FieldPreference?
+    var `abridged`: FieldPreference?
+    var `cover`: FieldPreference?
+    var `audioCover`: FieldPreference?
+    var `duration`: FieldPreference?
+}
+
+struct ProviderConfigurations: Codable, Sendable, Equatable {
+    var `google`: GoogleProviderConfig
+    var `amazon`: AmazonProviderConfig
+    var `goodreads`: SimpleProviderConfig
+    var `hardcover`: HardcoverProviderConfig
+    var `openLibrary`: SimpleProviderConfig
+    var `itunes`: ITunesProviderConfig
+    var `audible`: AudibleProviderConfig
+    var `audnexus`: AudnexusProviderConfig
+    var `librofm`: SimpleProviderConfig
+    var `comicvine`: ComicVineProviderConfig
+    var `ranobedb`: SimpleProviderConfig
+    var `kobo`: KoboProviderConfig
+    var `lubimyczytac`: SimpleProviderConfig
+    var `aladin`: AladinProviderConfig
+}
+
+struct GoogleProviderConfig: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+    var `apiKey`: String
+}
+
+struct AmazonProviderConfig: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+    var `domain`: String
+    var `cookie`: String
+}
+
+struct SimpleProviderConfig: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+}
+
+struct HardcoverProviderConfig: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+    var `apiKey`: String
+}
+
+struct ITunesProviderConfig: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+    var `coverResolution`: String
+}
+
+struct AudibleProviderConfig: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+    var `domain`: String
+}
+
+struct AudnexusProviderConfig: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+}
+
+struct ComicVineProviderConfig: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+    var `apiKey`: String
+}
+
+struct KoboProviderConfig: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+    var `country`: String
+    var `language`: String
+}
+
+struct AladinProviderConfig: Codable, Sendable, Equatable {
+    var `enabled`: Bool
+    var `ttbKey`: String
+}
+
 struct Library: Codable, Sendable, Equatable, Identifiable {
     var `id`: Int
     var `type`: String
-    var `accessLevel`: String?
+    var `accessLevel`: String? = nil
     var `name`: String
-    var `bookCount`: Int?
+    var `bookCount`: Int? = nil
     var `folders`: [LibraryFolder]? = nil
+    var `watch`: Bool? = nil
+    var `organizationMode`: String? = nil
+    var `autoScanCronExpression`: String? = nil
+    var `fileNamingPattern`: String? = nil
+    var `fileWriteEnabled`: Bool? = nil
+    var `fileRenameEnabled`: Bool? = nil
 }
 
 struct BooksPage: Codable, Sendable, Equatable {
@@ -6285,26 +6827,6 @@ struct EpubReaderPreferencePatchBodySet: Codable, Sendable, Equatable {
     var `overrideBookFormatting`: Bool?
     var `footerDisplayMode`: Double?
     var `fixedLayoutSpread`: String?
-}
-
-struct UserFont: Codable, Sendable, Equatable, Identifiable {
-    var `id`: Int
-    var `familyName`: String
-    var `originalFileName`: String
-    var `format`: String
-    var `weight`: Double
-    var `style`: String
-    var `weightMin`: Double?
-    var `weightMax`: Double?
-    var `instances`: [FontNamedInstance]?
-    var `fileSize`: Int
-    var `createdAt`: String
-}
-
-struct FontNamedInstance: Codable, Sendable, Equatable {
-    var `weight`: Double
-    var `style`: String
-    var `name`: String?
 }
 
 struct ServerFontPreferencesResponse: Codable, Sendable, Equatable {

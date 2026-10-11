@@ -173,6 +173,14 @@ export interface LoginRequest extends AuthClientOptions {
   password: string;
 }
 
+export interface MagicLinkLoginRequest extends AuthClientOptions {
+  token: string;
+}
+
+export interface OidcUnlinkRequest {
+  password?: string;
+}
+
 export interface RefreshRequest {
   refreshToken?: string;
 }

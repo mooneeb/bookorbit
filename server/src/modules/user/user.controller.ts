@@ -3,6 +3,7 @@ import { AuditAction, AuditResource } from '@bookorbit/types';
 import {
   Body,
   BadRequestException,
+  ForbiddenException,
   Controller,
   Delete,
   Get,
@@ -211,7 +212,7 @@ export class UserController {
   })
   createSharedUser(@Body() dto: CreateSharedUserDto, @CurrentUser() requestingUser: RequestUser) {
     if (!requestingUser.isSuperuser) {
-      throw new BadRequestException('Only superusers can create shared accounts');
+      throw new ForbiddenException('Only superusers can create shared accounts');
     }
     return this.userService.createSharedUser(dto);
   }

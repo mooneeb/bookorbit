@@ -95,8 +95,8 @@ export class LibraryController {
     getResourceId: (_, res: unknown) => (res as { id?: number })?.id,
     description: (_, res: unknown) => `Created library '${(res as { name?: string })?.name ?? 'unknown'}'`,
   })
-  create(@Body() dto: CreateLibraryDto) {
-    return this.libraryService.create(dto);
+  create(@Body() dto: CreateLibraryDto, @CurrentUser() user: RequestUser) {
+    return this.libraryService.create(dto, user.id);
   }
 
   @Patch(':id')
@@ -115,6 +115,7 @@ export class LibraryController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission(Permission.ManageLibraries)
+  @RequireLibraryAccess('owner')
   @Auditable({
     action: AuditAction.LibraryDelete,
     resource: AuditResource.Library,
@@ -244,12 +245,14 @@ export class LibraryController {
 
   @Get(':libraryId/access')
   @RequirePermission(Permission.ManageLibraries)
+  @RequireLibraryAccess('owner')
   getAccess(@Param('libraryId', ParseIntPipe) libraryId: number) {
     return this.libraryService.getAccess(libraryId);
   }
 
   @Post(':libraryId/access')
   @RequirePermission(Permission.ManageLibraries)
+  @RequireLibraryAccess('owner')
   @Auditable({
     action: AuditAction.LibraryAccessGrant,
     resource: AuditResource.Library,
@@ -262,6 +265,7 @@ export class LibraryController {
 
   @Patch(':libraryId/access/:userId')
   @RequirePermission(Permission.ManageLibraries)
+  @RequireLibraryAccess('owner')
   @Auditable({
     action: AuditAction.LibraryAccessUpdate,
     resource: AuditResource.Library,
@@ -279,6 +283,7 @@ export class LibraryController {
   @Delete(':libraryId/access/:userId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission(Permission.ManageLibraries)
+  @RequireLibraryAccess('owner')
   @Auditable({
     action: AuditAction.LibraryAccessRevoke,
     resource: AuditResource.Library,

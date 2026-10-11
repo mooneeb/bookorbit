@@ -49,7 +49,10 @@ async function cleanupFixture() {
 
 async function main() {
   const fixtureBookCount =
-    process.env.IPAD_RECORDED_LAYOUT_ONLY === '1' || process.env.IPAD_PDF_HANDOFF_ONLY === '1' || process.env.IPAD_PDF_RECOVERY_ONLY === '1'
+    process.env.IPAD_E05_PROOF === '1' ||
+    process.env.IPAD_RECORDED_LAYOUT_ONLY === '1' ||
+    process.env.IPAD_PDF_HANDOFF_ONLY === '1' ||
+    process.env.IPAD_PDF_RECOVERY_ONLY === '1'
       ? 10
       : 50_000;
   console.log(
@@ -74,7 +77,7 @@ async function main() {
   const progressOnly = process.env.IPAD_PROGRESS_ONLY === '1';
   const e04ApiPort = Number(process.env.IPAD_E04_API_PORT ?? 16502);
   if (e04Proof && (!Number.isInteger(e04ApiPort) || e04ApiPort < 1024 || e04ApiPort > 65535)) throw new Error('E04 API port is invalid');
-  const apiPort = e04Proof ? e04ApiPort : progressOnly ? 16487 : 16482;
+  const apiPort = process.env.IPAD_E05_PROOF === '1' ? 16486 : e04Proof ? e04ApiPort : progressOnly ? 16487 : 16482;
   let e04Fixture: Awaited<ReturnType<typeof createE04Fixture>> | undefined;
   process.env.APP_DATA_PATH = join(folder, 'data');
   process.env.COVER_SLOTS_BACKFILL_MODE = 'skip';
@@ -90,7 +93,11 @@ async function main() {
   const coverFixtureFolder = process.env.IPAD_COVER_FIXTURE_DIR;
   if (!coverFixtureFolder && !e04Restart) throw new Error('The iPad harness requires its generated cover fixture folder');
   const oidc =
-    e04Restart || progressOnly || process.env.IPAD_ANNOTATIONS_PROOF === '1' || process.env.IPAD_E03_PROOF === '1'
+    process.env.IPAD_E05_PROOF === '1' ||
+    e04Restart ||
+    progressOnly ||
+    process.env.IPAD_ANNOTATIONS_PROOF === '1' ||
+    process.env.IPAD_E03_PROOF === '1'
       ? undefined
       : await startOidcProvider();
 

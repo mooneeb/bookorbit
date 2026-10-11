@@ -3,8 +3,10 @@ import { createHash } from 'crypto';
 import type { FastifyReply } from 'fastify';
 
 import { AuditAction, AuditResource, AuthenticationMethod } from '@bookorbit/types';
+import type { AuthClientOptions } from '@bookorbit/types';
 
 import type { RequestUser } from '../../common/types/request-user';
+import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { AUDIT_EVENT, AuditEventsService } from '../audit/audit-events.service';
 import { UserService } from '../user/user.service';
 import { AuthService } from './auth.service';
@@ -56,7 +58,7 @@ export class MagicLinkService {
     });
 
     this.logger.log(
-      `[magic_link.create] [end] tokenId=${result.id} userId=${dto.userId} createdBy=${actor.id} label="${dto.label}" - magic link created`,
+      `[magic_link.create] [end] tokenId=${result.id} userId=${dto.userId} createdBy=${actor.id} label="${sanitizeLogValue(dto.label)}" - magic link created`,
     );
 
     this.auditEvents.emit(AUDIT_EVENT, {
@@ -76,7 +78,7 @@ export class MagicLinkService {
     };
   }
 
-  async loginWithToken(rawToken: string, reply: FastifyReply, ip?: string) {
+  async loginWithToken(rawToken: string, reply: FastifyReply, ip?: string, options: AuthClientOptions = {}) {
     const tokenHash = sha256(rawToken);
     const row = await this.magicLinkRepo.findByTokenHash(tokenHash);
 
@@ -115,7 +117,7 @@ export class MagicLinkService {
     }
 
     await this.magicLinkRepo.updateUsage(row.id);
-    const result = await this.authService.issueTokensForUser(row.userId, reply, AuthenticationMethod.MagicLink);
+    const result = await this.authService.issueTokensForUser(row.userId, reply, AuthenticationMethod.MagicLink, options);
 
     this.logger.log(`[magic_link.login] [end] tokenId=${row.id} userId=${row.userId} ip=${ip ?? 'unknown'} - magic link login completed`);
 

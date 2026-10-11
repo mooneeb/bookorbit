@@ -124,7 +124,7 @@ describe('AuthController', () => {
     expect(magicLinkService.listTokens).toHaveBeenCalled();
     expect(magicLinkService.setActive).toHaveBeenCalledWith(user, 1, false);
     expect(magicLinkService.revokeToken).toHaveBeenCalledWith(user, 1);
-    expect(magicLinkService.loginWithToken).toHaveBeenCalledWith('raw-token', reply, '10.0.0.1');
+    expect(magicLinkService.loginWithToken).toHaveBeenCalledWith('raw-token', reply, '10.0.0.1', { token: 'raw-token' });
   });
 
   it('throws ForbiddenException from listMagicLinks for non-superuser', () => {

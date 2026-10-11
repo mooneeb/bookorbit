@@ -12,6 +12,7 @@ struct BookOrbitApp: App {
           ChangePasswordView(session: session)
         } else if session.user != nil, let api = session.api {
           LibraryView(session: session, api: api)
+            .id(session.identityKey)
         } else {
           ConnectionView(session: session)
         }

@@ -24,6 +24,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Auditable } from '../../common/decorators/auditable.decorator';
 import { ForbidPermission } from '../../common/decorators/forbid-permission.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { AuthService } from './auth.service';
 import { MagicLinkService } from './magic-link.service';
@@ -189,6 +190,7 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: ONE_MINUTE_MS } })
   @Post('oidc/:slug/preview-state')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission(Permission.ManageAppSettings)
   oidcGeneratePreviewState(@Param('slug') slug: string) {
     return this.oidcService.generatePreviewState(slug);
   }
@@ -236,6 +238,6 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: ONE_MINUTE_MS } })
   @HttpCode(HttpStatus.OK)
   loginWithMagicLink(@Body() dto: MagicLinkLoginDto, @Res({ passthrough: true }) reply: FastifyReply, @Req() req: FastifyRequest) {
-    return this.magicLinkService.loginWithToken(dto.token, reply, req.ip);
+    return this.magicLinkService.loginWithToken(dto.token, reply, req.ip, dto);
   }
 }
