@@ -57,7 +57,7 @@ export class BulkRenameRepository {
   async findBooksPageForLibrary(
     libraryId: number,
     afterBookId: number,
-    upToBookId: number,
+    upToBookId: number | undefined,
     limit = 250,
     bookIds?: number[],
   ): Promise<BulkRenameBookData[]> {
@@ -89,7 +89,12 @@ export class BulkRenameRepository {
       .innerJoin(libraryFolders, eq(libraryFolders.id, bookFiles.libraryFolderId))
       .innerJoin(libraries, eq(libraries.id, books.libraryId))
       .where(
-        and(eq(books.libraryId, libraryId), gt(books.id, afterBookId), lte(books.id, upToBookId), bookIds ? inArray(books.id, bookIds) : undefined),
+        and(
+          eq(books.libraryId, libraryId),
+          gt(books.id, afterBookId),
+          upToBookId === undefined ? undefined : lte(books.id, upToBookId),
+          bookIds ? inArray(books.id, bookIds) : undefined,
+        ),
       )
       .orderBy(asc(books.id))
       .limit(Math.min(Math.max(limit, 1), 250));
@@ -194,7 +199,7 @@ export class BulkRenameRepository {
 
   async findBooksForLibraryIds(libraryId: number, bookIds: number[]): Promise<BulkRenameBookData[]> {
     if (!bookIds.length) return [];
-    return this.findBooksPageForLibrary(libraryId, 0, Number.MAX_SAFE_INTEGER, 250, bookIds.slice(0, 250));
+    return this.findBooksPageForLibrary(libraryId, 0, undefined, 250, bookIds.slice(0, 250));
   }
 
   async findLibrarySettings(libraryId: number): Promise<{

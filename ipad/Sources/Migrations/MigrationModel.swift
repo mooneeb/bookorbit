@@ -314,11 +314,12 @@ final class MigrationModel {
   }
 
   private func read<T: Decodable & Sendable>(
-    _ path: String, method: String = "GET", body: Data? = nil
+    _ path: String, method: String = "GET", body: Data? = nil, query: [URLQueryItem] = []
   ) async throws -> T {
     guard let session else { throw ConnectionError.expiredSession }
     let value: T = try await api.boundedJSON(
-      path, method: method, body: body, byteLimit: 8 * 1024 * 1024, session: session)
+      path, method: method, body: body, query: query, byteLimit: 8 * 1024 * 1024,
+      session: session)
     try await checkSession()
     return value
   }
@@ -375,7 +376,12 @@ final class MigrationModel {
     defer { matchLoading = false }
     do {
       matchPage = try await read(
-        "migration/plans/\(plan.id)/matches?kind=\(previewKind)&offset=\(max(0, offset))&limit=40")
+        "migration/plans/\(plan.id)/matches",
+        query: [
+          URLQueryItem(name: "kind", value: previewKind),
+          URLQueryItem(name: "offset", value: String(max(0, offset))),
+          URLQueryItem(name: "limit", value: "40"),
+        ])
     } catch {
       matchError = error.localizedDescription
       throw error

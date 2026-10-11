@@ -1,4 +1,5 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
+import { i18n } from '@/i18n'
 
 import {
   ENTITY_CAPABILITIES,
@@ -17,6 +18,7 @@ import * as entityManagerApi from '../api/entity-manager'
 export type EntityManagerMode = 'duplicates' | 'browse'
 
 export function useEntityManager() {
+  const t = i18n.global.t
   const entityType = ref<EntityType>('author')
   const mode = ref<EntityManagerMode>('browse')
 
@@ -71,7 +73,7 @@ export function useEntityManager() {
       pendingFileUpdates.value = await entityManagerApi.listFileWriteRecovery(entityType.value)
       fileUpdateError.value = null
     } catch (err) {
-      fileUpdateError.value = err instanceof Error ? err.message : 'Failed to load file updates'
+      fileUpdateError.value = err instanceof Error ? err.message : t('tools.entityManager.fileUpdates.loadError')
     }
   }
 
@@ -81,12 +83,10 @@ export function useEntityManager() {
     retryingFileUpdates.value = true
     try {
       const result = await entityManagerApi.retryFileWrites(entityType.value, operation.operationId)
-      fileUpdateError.value = result.pendingBookCount
-        ? `${result.pendingBookCount} file updates remain. Retry to continue; check write settings for skipped files.`
-        : null
+      fileUpdateError.value = result.pendingBookCount ? t('tools.entityManager.fileUpdates.remaining', { count: result.pendingBookCount }) : null
       pendingFileUpdates.value = await entityManagerApi.listFileWriteRecovery(entityType.value)
     } catch (err) {
-      fileUpdateError.value = err instanceof Error ? err.message : 'Failed to retry file updates'
+      fileUpdateError.value = err instanceof Error ? err.message : t('tools.entityManager.fileUpdates.retryError')
     } finally {
       retryingFileUpdates.value = false
     }

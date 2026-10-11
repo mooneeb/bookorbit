@@ -50,7 +50,11 @@ extension BookOrbitAPI {
     -> MigrationDuplicateCandidatePageApi
   {
     try await boundedJSON(
-      "migration/plans/\(planID)/duplicates/\(targetBookID)/candidates?offset=\(offset)&limit=40",
+      "migration/plans/\(planID)/duplicates/\(targetBookID)/candidates",
+      query: [
+        URLQueryItem(name: "offset", value: String(offset)),
+        URLQueryItem(name: "limit", value: "40"),
+      ],
       session: session, expectedStatus: 200)
   }
 
@@ -58,7 +62,12 @@ extension BookOrbitAPI {
     -> MigrationReportPageApi
   {
     try await boundedJSON(
-      "migration/runs/\(runID)/report/details?kind=\(kind)&offset=\(offset)&limit=40",
+      "migration/runs/\(runID)/report/details",
+      query: [
+        URLQueryItem(name: "kind", value: kind),
+        URLQueryItem(name: "offset", value: String(offset)),
+        URLQueryItem(name: "limit", value: "40"),
+      ],
       session: session, expectedStatus: 200)
   }
 }

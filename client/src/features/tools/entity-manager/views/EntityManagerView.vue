@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { BrowseEntityItem, DuplicateCluster } from '@bookorbit/types'
 
 import { useEntityManager, type EntityManagerMode } from '../../composables/useEntityManager'
@@ -17,6 +18,7 @@ import SplitModal from '../components/SplitModal.vue'
 import BulkDeleteModal from '../components/BulkDeleteModal.vue'
 import BrowseMergeModal from '../components/BrowseMergeModal.vue'
 
+const { t } = useI18n()
 const em = useEntityManager()
 const { density } = useEntityRowDensity()
 
@@ -241,7 +243,7 @@ async function handleBulkDeleteConfirm(mode: 'soft' | 'hard' | 'inline', writeFi
       v-if="em.pendingFileUpdates.value.length || em.fileUpdateError.value"
       class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm"
     >
-      <span>Entity merge file updates are pending. Database changes are saved.</span>
+      <span>{{ t('tools.entityManager.fileUpdates.pending') }}</span>
       <span v-if="em.fileUpdateError.value" class="text-destructive">{{ em.fileUpdateError.value }}</span>
       <button
         v-if="em.pendingFileUpdates.value.length"
@@ -249,7 +251,7 @@ async function handleBulkDeleteConfirm(mode: 'soft' | 'hard' | 'inline', writeFi
         :disabled="em.retryingFileUpdates.value"
         @click="em.retryPendingFileUpdates"
       >
-        Retry file updates
+        {{ t('tools.entityManager.fileUpdates.retry') }}
       </button>
     </div>
     <div class="flex flex-none flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border border-border bg-card px-2.5 py-2">

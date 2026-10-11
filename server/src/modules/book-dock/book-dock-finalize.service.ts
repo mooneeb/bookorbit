@@ -77,8 +77,12 @@ import { AuthService } from '../auth/auth.service';
 import type { BookDockFinalizeIntent } from '../../db/schema';
 
 export const BOOK_DOCK_FINALIZE_CHECKPOINT = Symbol('BOOK_DOCK_FINALIZE_CHECKPOINT');
-export type BookDockFinalizeCheckpoint = (phase: 'published' | 'committed' | 'metadata', fileId: number) => Promise<void>;
+export type BookDockFinalizeCheckpoint = (phase: 'published' | 'committed' | 'cover' | 'metadata', fileId: number) => Promise<void>;
 import type { BookDockFileRow, BookDockUnitFileRow } from '../../db/schema';
+
+type DurableFinalizeIntent = BookDockFinalizeIntent & {
+  initialCovers?: Array<{ bookId: number; expectedBookUpdatedAt: string; state: 'pending' | 'completed' }>;
+};
 
 type Db = NodePgDatabase<typeof schema>;
 type LibraryRow = typeof libraries.$inferSelect;
@@ -551,7 +555,7 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     journal: NonNullable<Awaited<ReturnType<BookDockFinalizationRepository['find']>>>,
   ): Promise<BookDockFinalizeFileResult> {
     if (journal.state === 'completed' && journal.result) return journal.result;
-    const { intent } = journal;
+    const intent = journal.intent as DurableFinalizeIntent;
     try {
       const user = await this.auth!.findActingUser(journal.userId);
       if (intent.managedRequest) {
@@ -592,10 +596,17 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
           intent.bookFolderPath,
           journal.fileId,
           intent.row,
+          intent,
         );
         bookIds = written.bookIds;
         await this.checkpoint?.('committed', journal.fileId);
-        for (const bookId of written.createdBookIds) await this.applyCover(bookId, intent.row, bookId === bookIds[0]);
+      }
+      for (const cover of intent.initialCovers ?? []) {
+        if (cover.state === 'completed') continue;
+        await this.applyCover(cover.bookId, intent.row, cover.bookId === bookIds[0], cover.expectedBookUpdatedAt);
+        await this.checkpoint?.('cover', journal.fileId);
+        cover.state = 'completed';
+        await this.finalizations!.update(journal.fileId, { intent });
       }
       await this.checkpoint?.('metadata', journal.fileId);
       if (intent.row.uploadedBy) await this.uploadSessions?.recordDockFinalization(journal.fileId, intent.row.uploadedBy, bookIds[0]!);
@@ -1000,6 +1011,7 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     bookFolderPath: string | undefined,
     dockFileId?: number,
     metadataRow?: BookDockFileRow,
+    durableIntent?: DurableFinalizeIntent,
   ): Promise<UnitBookRecords> {
     if (placement.length === 0) throw new Error('Finalization placed no files');
 
@@ -1028,6 +1040,26 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
       initializeMetadata: async (bookIds, executor) => {
         if (!metadataRow) return;
         for (const bookId of bookIds) await this.applyMetadata(bookId, metadataRow, false, executor);
+        if (durableIntent) {
+          const wantsCover =
+            metadataRow.coverPath || normalizeFinalizeMetadata(metadataRow.selectedMetadata ?? metadataRow.embeddedMetadata).coverUrl;
+          const created =
+            wantsCover && bookIds.length
+              ? await executor
+                  .select({ bookId: schema.books.id, updatedAt: schema.books.updatedAt })
+                  .from(schema.books)
+                  .where(inArray(schema.books.id, bookIds))
+              : [];
+          durableIntent.initialCovers = created.map((book) => ({
+            bookId: book.bookId,
+            expectedBookUpdatedAt: book.updatedAt.toISOString(),
+            state: 'pending',
+          }));
+          await executor
+            .update(schema.bookDockFinalizations)
+            .set({ intent: durableIntent })
+            .where(eq(schema.bookDockFinalizations.fileId, dockFileId));
+        }
       },
     });
   }
@@ -1419,21 +1451,30 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
    * The staged cover was read from the unit's primary file, so it fills only that file's medium on
    * the book that owns it. The other books of a loose-file unit get their own art from reconcile.
    */
-  private async applyCover(bookId: number, row: BookDockFileRow, ownsStagedCover = true): Promise<void> {
+  private async applyCover(bookId: number, row: BookDockFileRow, ownsStagedCover = true, expectedBookUpdatedAt?: string): Promise<void> {
+    if (expectedBookUpdatedAt !== undefined && (await this.metadataService.getCoverBookVersion(bookId)) !== expectedBookUpdatedAt) return;
     const meta = normalizeFinalizeMetadata(row.selectedMetadata ?? row.embeddedMetadata);
     let selectedCoverApplied = false;
 
     const medium = row.format && isAudioFormat(row.format) ? 'audio' : 'ebook';
     const selectedCoverUrl = meta.coverUrl;
     if (selectedCoverUrl) {
-      selectedCoverApplied = await this.metadataService.downloadAndSaveCover([{ url: selectedCoverUrl }], bookId, medium, { userChosen: true });
+      selectedCoverApplied = await this.metadataService.downloadAndSaveCover([{ url: selectedCoverUrl }], bookId, medium, {
+        userChosen: true,
+        ...(expectedBookUpdatedAt === undefined ? {} : { expectedBookUpdatedAt }),
+      });
     }
 
+    if (selectedCoverUrl && !selectedCoverApplied && expectedBookUpdatedAt !== undefined) {
+      if ((await this.metadataService.getCoverBookVersion(bookId)) !== expectedBookUpdatedAt) return;
+      throw new BadRequestException('The selected cover could not be saved. Retry filing to preserve your reviewed cover.');
+    }
     if (!selectedCoverApplied && ownsStagedCover && row.coverPath) {
       try {
         const bytes = await readFile(row.coverPath);
-        await this.metadataService.saveExtractedCoverBytes(bookId, bytes, medium);
+        await this.metadataService.saveExtractedCoverBytes(bookId, bytes, medium, expectedBookUpdatedAt);
       } catch (err) {
+        if (expectedBookUpdatedAt !== undefined) throw err;
         this.logger.warn(`Failed to copy Book Dock cover to book ${bookId}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }

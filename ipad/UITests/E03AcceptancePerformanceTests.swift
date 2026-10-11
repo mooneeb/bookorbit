@@ -48,6 +48,9 @@ final class E03AcceptancePerformanceTests: XCTestCase {
       XCTAssertTrue(app.buttons[entry].wait(for: \.isHittable, toEqual: true, timeout: 15))
     } operation: {
       app.buttons[entry].tap()
+      if ready == "migrationProvider" {
+        E03ProfileSupport.prepareMigrationConfiguration(app)
+      }
       XCTAssertTrue(app.buttons[ready].wait(for: \.isEnabled, toEqual: true, timeout: 20))
       if name == "bounded-maintenance-preview" {
         XCTAssertLessThanOrEqual(app.buttons.matching(

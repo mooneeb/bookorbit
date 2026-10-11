@@ -404,7 +404,7 @@ export class MigrationReportingService {
     });
     const targetIds = raw.flatMap((value) => (typeof asRecord(value).targetBookId === 'number' ? [Number(asRecord(value).targetBookId)] : []));
     const [books, titles] = await Promise.all([
-      artifact ? this.reports.sourceBooks(artifact.id, sourceIds) : Promise.resolve(new Map()),
+      artifact ? this.sourceBooksForPage(artifact.id, sourceIds) : Promise.resolve(new Map()),
       this.repo.findBookTitlesByIds(uniqueNumbers(targetIds)),
     ]);
     let items: unknown[];
@@ -429,6 +429,16 @@ export class MigrationReportingService {
     else items = normalizeUserPreview(raw, []);
     const total = page?.total ?? 0;
     return { offset, limit, total, nextOffset: nextOffset(offset, limit, total), items };
+  }
+
+  private async sourceBooksForPage(artifactId: number, sourceBookIds: string[]) {
+    const ids = [...new Set(sourceBookIds)];
+    const books = new Map<string, { title: string | null; author: string | null; filePath: string | null }>();
+    for (let offset = 0; offset < ids.length; offset += EXPORT_LIMIT) {
+      const batch = await this.reports.sourceBooks(artifactId, ids.slice(offset, offset + EXPORT_LIMIT));
+      for (const [id, book] of batch) books.set(id, book);
+    }
+    return books;
   }
 
   private async ownedRun(runId: number, user: RequestUser) {

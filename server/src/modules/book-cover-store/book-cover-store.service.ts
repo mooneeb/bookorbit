@@ -48,6 +48,7 @@ type SaveOptions = {
   /** Writes only into an empty slot, or into an extracted slot whose origin is listed. */
   fill?: { replaceOrigins?: readonly BookCoverOrigin[] };
   skipIfUnchanged?: boolean;
+  expectedBookUpdatedAt?: string;
 };
 
 type SlotStateOptions = { backfill?: boolean };
@@ -91,8 +92,17 @@ export class BookCoverStore {
     return null;
   }
 
+  async getBookVersion(bookId: number): Promise<string | null> {
+    return (await this.repository.findContext(bookId))?.bookUpdatedAt?.toISOString() ?? null;
+  }
+
   async saveExtracted(bookId: number, medium: CoverMedium, bytes: Buffer, options: SaveOptions): Promise<boolean> {
+    return this.repository.withBookWriteLock(bookId, () => this.saveExtractedLocked(bookId, medium, bytes, options));
+  }
+
+  private async saveExtractedLocked(bookId: number, medium: CoverMedium, bytes: Buffer, options: SaveOptions): Promise<boolean> {
     const context = await this.convertedContext(bookId);
+    if (options.expectedBookUpdatedAt !== undefined && context.bookUpdatedAt?.toISOString() !== options.expectedBookUpdatedAt) return false;
     if (this.isLocked(context, medium)) return false;
     const currentSlot = this.slotFor(context, medium);
     if (options.fill && currentSlot && !this.canFill(currentSlot, options.fill.replaceOrigins ?? [])) return false;
@@ -147,6 +157,15 @@ export class BookCoverStore {
     bytes: Buffer,
     options: { origin?: BookCoverOrigin; backfill?: boolean } = {},
   ): Promise<boolean> {
+    return this.repository.withBookWriteLock(bookId, () => this.saveCustomLocked(bookId, medium, bytes, options));
+  }
+
+  private async saveCustomLocked(
+    bookId: number,
+    medium: CoverMedium,
+    bytes: Buffer,
+    options: { origin?: BookCoverOrigin; backfill?: boolean },
+  ): Promise<boolean> {
     const context = await this.convertedContext(bookId);
     if (this.isLocked(context, medium)) return false;
     let coverBytes: Buffer;
@@ -183,6 +202,10 @@ export class BookCoverStore {
   }
 
   async revert(bookId: number, medium: CoverMedium, options: { backfill?: boolean } = {}): Promise<BookCoverSource | null> {
+    return this.repository.withBookWriteLock(bookId, () => this.revertLocked(bookId, medium, options));
+  }
+
+  private async revertLocked(bookId: number, medium: CoverMedium, options: { backfill?: boolean }): Promise<BookCoverSource | null> {
     const context = await this.convertedContext(bookId);
     if (this.isLocked(context, medium)) return (this.slotFor(context, medium)?.source as BookCoverSource | undefined) ?? null;
     const dir = bookCoverSlotDirPath(this.appDataPath, bookId, medium);

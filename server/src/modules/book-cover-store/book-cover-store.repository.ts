@@ -83,6 +83,7 @@ export type BookCoverContext = {
   bookId: number;
   libraryId: number;
   coverAspectRatio: string;
+  bookUpdatedAt?: Date;
   primaryFileId: number | null;
   coverSource: BookCoverSource | null;
   coverUpdatedAt: Date | null;
@@ -144,11 +145,19 @@ export function didKoboCoverChange(
 export class BookCoverStoreRepository {
   constructor(@Inject(DB) private readonly db: Db) {}
 
+  async withBookWriteLock<T>(bookId: number, operation: () => Promise<T>): Promise<T> {
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(4105, ${bookId})`);
+      return operation();
+    });
+  }
+
   async findContext(bookId: number): Promise<BookCoverContext | null> {
     const mediaProjection = coverMediaSql(books.id);
     const [book] = await this.db
       .select({
         bookId: books.id,
+        bookUpdatedAt: books.updatedAt,
         libraryId: books.libraryId,
         coverAspectRatio: libraries.coverAspectRatio,
         primaryFileId: books.primaryFileId,
@@ -180,6 +189,7 @@ export class BookCoverStoreRepository {
 
     return {
       bookId: book.bookId,
+      bookUpdatedAt: book.bookUpdatedAt,
       libraryId: book.libraryId,
       coverAspectRatio: book.coverAspectRatio,
       primaryFileId: book.primaryFileId,

@@ -102,7 +102,18 @@
         "IPAD-E03-A05-native-merge-result",
         "IPAD-E03-A05-native-repair-preview",
         "IPAD-E03-A05-native-repair-result",
-        "IPAD-E03-A05-maintenance-reader-denied"
+        "IPAD-E03-A05-maintenance-reader-denied",
+        "IPAD-E03-A05-native-rename-preview",
+        "IPAD-E03-A05-native-rename-result",
+        "IPAD-E03-A05-native-merged-private-note-reopened",
+        "IPAD-E03-A05-native-merged-reader-progress-reopened",
+        "IPAD-E03-A05-native-merged-passage-note-reopened",
+        "IPAD-E03-A05-native-repaired-private-note-reopened",
+        "IPAD-E03-A05-native-repaired-reader-progress-reopened",
+        "IPAD-E03-A05-native-repaired-passage-note-reopened",
+        "IPAD-E03-A05-native-renamed-private-note-reopened",
+        "IPAD-E03-A05-native-renamed-reader-progress-reopened",
+        "IPAD-E03-A05-native-renamed-passage-note-reopened"
       ],
       "accessibilityAuditAuthored": true,
       "performanceMetricsAuthored": false
@@ -437,6 +448,50 @@
         {
           "surface": "web",
           "name": "IPAD-E03-A05-baseline-maintenance-web"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-rename-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-rename-result"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-merged-private-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-merged-reader-progress-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-merged-passage-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-repaired-private-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-repaired-reader-progress-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-repaired-passage-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-renamed-private-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-renamed-reader-progress-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-renamed-passage-note-reopened"
         }
       ]
     },
@@ -518,6 +573,50 @@
         {
           "surface": "web",
           "name": "IPAD-E03-A05-baseline-maintenance-admin"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-rename-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-rename-result"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-merged-private-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-merged-reader-progress-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-merged-passage-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-repaired-private-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-repaired-reader-progress-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-repaired-passage-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-renamed-private-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-renamed-reader-progress-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-renamed-passage-note-reopened"
         }
       ]
     },
@@ -587,6 +686,50 @@
         {
           "surface": "web",
           "name": "IPAD-E03-A05-baseline-maintenance-admin"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-rename-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-rename-result"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-merged-private-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-merged-reader-progress-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-merged-passage-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-repaired-private-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-repaired-reader-progress-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-repaired-passage-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-renamed-private-note-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-renamed-reader-progress-reopened"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-renamed-passage-note-reopened"
         }
       ]
     }

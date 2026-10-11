@@ -1,5 +1,5 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import type { ClusterEntity, DismissedPairInfo, EntityType, FirstClassEntityType } from '@bookorbit/types';
@@ -21,11 +21,20 @@ export class EntityManagerRepository {
       .select({ operationId: entityFileWrites.id })
       .from(entityFileWrites)
       .where(and(eq(entityFileWrites.userId, userId), eq(entityFileWrites.entityType, entityType)))
-      .orderBy(entityFileWrites.createdAt)
+      .orderBy(
+        sql`coalesce((select max(attempted_at) from ${entityFileWriteBooks} where operation_id = ${entityFileWrites.id}), ${entityFileWrites.createdAt})`,
+        entityFileWrites.createdAt,
+      )
       .limit(20);
   }
 
-  async resumeFileWrites(operationId: string, userId: number, entityType: EntityType, write: (ids: number[]) => Promise<number[]>) {
+  async resumeFileWrites(
+    operationId: string,
+    userId: number,
+    entityType: EntityType,
+    write: (ids: number[]) => Promise<number[]>,
+    attemptedBefore?: Date,
+  ) {
     return this.db.transaction(async (tx) => {
       const lock = await tx.execute<{ acquired: boolean }>(sql`SELECT pg_try_advisory_xact_lock(hashtext(${operationId})) AS acquired`);
       if (!lock.rows[0]?.acquired) throw new ConflictException('File updates are already running');
@@ -38,7 +47,12 @@ export class EntityManagerRepository {
       const rows = await tx
         .select({ bookId: entityFileWriteBooks.bookId })
         .from(entityFileWriteBooks)
-        .where(eq(entityFileWriteBooks.operationId, operationId))
+        .where(
+          and(
+            eq(entityFileWriteBooks.operationId, operationId),
+            attemptedBefore ? or(isNull(entityFileWriteBooks.attemptedAt), lt(entityFileWriteBooks.attemptedAt, attemptedBefore)) : undefined,
+          ),
+        )
         .orderBy(sql`${entityFileWriteBooks.attemptedAt} ASC NULLS FIRST`, entityFileWriteBooks.bookId)
         .limit(50);
       const completed = await write(rows.map((row) => row.bookId));

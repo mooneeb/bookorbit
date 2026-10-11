@@ -38,6 +38,18 @@ enum E03ProfileSupport {
     test.add(attachment)
   }
 
+  static func prepareMigrationConfiguration(_ app: XCUIApplication) {
+    let another = app.buttons["migrationConfigureAnother"]
+    if another.waitForExistence(timeout: 5) {
+      let list = app.collectionViews.allElementsBoundByIndex.last(where: { $0.isHittable }) ?? app
+      for _ in 0..<8 where !another.isHittable { list.swipeUp() }
+      XCTAssertTrue(another.wait(for: \.isEnabled, toEqual: true, timeout: 15))
+      XCTAssertTrue(another.isHittable)
+      another.tap()
+    }
+    XCTAssertTrue(app.buttons["migrationProvider"].wait(for: \.isHittable, toEqual: true, timeout: 15))
+  }
+
   static func audit(_ app: XCUIApplication) throws {
     assertNativeBounds(app)
     try app.performAccessibilityAudit(for: [

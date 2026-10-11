@@ -11,6 +11,7 @@ vi.mock('fs/promises', () => ({
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { access, lstat, readdir, readFile, stat, unlink } from 'fs/promises';
 import { DatabaseError } from 'pg';
+import { createHash } from 'crypto';
 
 import {
   DEFAULT_UPLOAD_PATTERN_BOOK_PER_FILE,
@@ -2574,5 +2575,145 @@ describe('Book Dock durable metadata replay', () => {
     expect(harness.book).toEqual({ title: 'New web title', authors: ['New web author'] });
     expect(harness.processor.createUnitBookRecords).toHaveBeenCalledTimes(1);
     expect(harness.metadataService.replaceAuthors).not.toHaveBeenCalled();
+  });
+});
+
+describe('Book Dock durable reviewed cover recovery', () => {
+  function coverRecoveryHarness(existingBook = false) {
+    const harness = makeService();
+    const chosenBytes = Buffer.from('reviewed chosen cover');
+    const webBytes = Buffer.from('newer web cover');
+    const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+    let coverHash = existingBook ? hash(webBytes) : null;
+    let bookVersion = new Date('2026-10-11T00:00:00Z').toISOString();
+    const journal = {
+      fileId: 1,
+      userId: 7,
+      libraryId: 2,
+      state: 'placing',
+      bookIds: [] as number[],
+      result: null,
+      intent: {
+        row: makeRow({ selectedMetadata: { title: 'Reviewed title', coverUrl: 'https://example.test/chosen.jpg' } }),
+        libraryId: 2,
+        folderId: 3,
+        root: '/library',
+        format: 'epub',
+        destPath: '/library/book.epub',
+        placement: [{ sourcePath: '/tmp/book.epub', destPath: '/library/book.epub', format: 'epub', role: 'content', sortOrder: null }],
+        publication: [],
+        initialCovers: undefined as Array<{ bookId: number; expectedBookUpdatedAt: string; state: string }> | undefined,
+      },
+    };
+    const finalizations = {
+      find: vi.fn(() => Promise.resolve(structuredClone(journal))),
+      locked: vi.fn((_namespace, _id, operation) => operation()),
+      update: vi.fn((_fileId, patch) => Promise.resolve(Object.assign(journal, structuredClone(patch)))),
+    };
+    const publication = { publish: vi.fn(), cleanup: vi.fn() };
+    const getCoverBookVersion = vi.fn(() => Promise.resolve(bookVersion));
+    Object.assign(harness.metadataService, { getCoverBookVersion });
+    harness.metadataService.downloadAndSaveCover.mockImplementation((_choices, _bookId, _medium, options) => {
+      if (options.expectedBookUpdatedAt !== bookVersion) return Promise.resolve(false);
+      coverHash = hash(chosenBytes);
+      bookVersion = new Date('2026-10-11T00:00:01Z').toISOString();
+      return Promise.resolve(true);
+    });
+    let interruption: string | null = null;
+    const configure = (service: BookDockFinalizeService) => {
+      Object.assign(service, {
+        finalizations,
+        publication,
+        processor: harness.processor,
+        metadataService: harness.metadataService,
+        metadataScoreService: { calculateAndSaveMany: vi.fn() },
+        auth: { findActingUser: vi.fn(() => Promise.resolve({ id: 7, isSuperuser: true, permissions: [] })) },
+        checkpoint: vi.fn((phase: string) => {
+          if (phase !== interruption) return Promise.resolve();
+          interruption = null;
+          throw new Error('Simulated cover interruption');
+        }),
+      });
+      vi.spyOn(service as any, 'findLibraryOrFail').mockResolvedValue({ id: 2, organizationMode: 'book_per_file', fileWriteEnabled: false });
+      vi.spyOn(service as any, 'findFolderOrFail').mockResolvedValue({ id: 3, libraryId: 2, path: '/library' });
+    };
+    configure(harness.service);
+    const executor = {
+      select: vi.fn(() => ({ from: () => ({ where: () => Promise.resolve([{ bookId: 101, updatedAt: new Date(bookVersion) }]) }) })),
+      update: vi.fn(() => ({
+        set: (patch: { intent?: typeof journal.intent }) => ({
+          where: () => {
+            if (patch.intent) journal.intent = structuredClone(patch.intent);
+            return Promise.resolve();
+          },
+        }),
+      })),
+    };
+    harness.processor.createUnitBookRecords.mockImplementation(async (_library, _folder, _files, options) => {
+      await options.initializeMetadata(existingBook ? [] : [101], executor);
+      journal.bookIds = [101];
+      journal.state = 'committed';
+      return { bookIds: [101], createdBookIds: existingBook ? [] : [101], attachedFileIds: existingBook ? [55] : [] };
+    });
+    mockStat.mockResolvedValue({ size: 100 } as never);
+    return {
+      ...harness,
+      journal,
+      publication,
+      chosenHash: hash(chosenBytes),
+      webHash: hash(webBytes),
+      coverHash: () => coverHash,
+      resume: () => harness.service.findFinalizationReceipt(1, 7, true),
+      interrupt: (phase: string) => {
+        interruption = phase;
+      },
+      restart: () => {
+        harness.service = makeService().service;
+        configure(harness.service);
+      },
+      editCover: () => {
+        coverHash = hash(webBytes);
+        bookVersion = new Date('2026-10-11T00:00:02Z').toISOString();
+      },
+    };
+  }
+
+  it('restores the reviewed chosen cover after interruption immediately after identity commit', async () => {
+    const harness = coverRecoveryHarness();
+    harness.interrupt('committed');
+    expect(await harness.resume()).toMatchObject({ success: false });
+    expect(harness.journal.intent.initialCovers).toEqual([{ bookId: 101, expectedBookUpdatedAt: '2026-10-11T00:00:00.000Z', state: 'pending' }]);
+    expect(harness.publication.cleanup).not.toHaveBeenCalled();
+    expect(harness.coverHash()).toBeNull();
+    harness.restart();
+    expect(await harness.resume()).toMatchObject({ success: true, bookId: 101 });
+    expect(harness.coverHash()).toBe(harness.chosenHash);
+    expect(harness.journal.intent.initialCovers?.[0]?.state).toBe('completed');
+    expect(harness.processor.createUnitBookRecords).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a newer web cover after interruption between cover application and checkpoint completion', async () => {
+    const harness = coverRecoveryHarness();
+    harness.interrupt('cover');
+    expect(await harness.resume()).toMatchObject({ success: false });
+    expect(harness.coverHash()).toBe(harness.chosenHash);
+    expect(harness.journal.intent.initialCovers?.[0]?.state).toBe('pending');
+    harness.editCover();
+    harness.restart();
+    expect(await harness.resume()).toMatchObject({ success: true, bookId: 101 });
+    expect(harness.coverHash()).toBe(harness.webHash);
+    expect(harness.metadataService.downloadAndSaveCover).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves an existing book cover intact while attaching a format and retrying', async () => {
+    const harness = coverRecoveryHarness(true);
+    harness.interrupt('committed');
+    expect(await harness.resume()).toMatchObject({ success: false });
+    harness.restart();
+    expect(await harness.resume()).toMatchObject({ success: true, bookId: 101 });
+    expect(harness.coverHash()).toBe(harness.webHash);
+    expect(harness.journal.intent.initialCovers).toEqual([]);
+    expect(harness.metadataService.downloadAndSaveCover).not.toHaveBeenCalled();
+    expect(harness.metadataService.saveExtractedCoverBytes).not.toHaveBeenCalled();
   });
 });

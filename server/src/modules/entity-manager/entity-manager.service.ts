@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BadRequestException, Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, PayloadTooLargeException, type OnModuleDestroy } from '@nestjs/common';
 
 import type {
   BrowseEntitiesResponse,
@@ -45,7 +45,15 @@ function logErrorFields(err: unknown): { errorClass: string; error: string } {
 }
 
 @Injectable()
-export class EntityManagerService {
+export class EntityManagerService implements OnModuleDestroy {
+  private stopping = false;
+  private recoveryWorker: Promise<void> = Promise.resolve();
+  private readonly recoveryJobs = new Set<string>();
+
+  onModuleDestroy() {
+    this.stopping = true;
+    return this.recoveryWorker;
+  }
   private readonly logger = new Logger(EntityManagerService.name);
   private readonly strategies: Map<EntityType, EntityStrategy>;
 
@@ -735,29 +743,61 @@ export class EntityManagerService {
   }
 
   async resumeFileWrites(entityType: EntityType, user: RequestUser, operationId: string) {
+    const attemptedBefore = new Date();
+    const result = await this.writeRecoveryBatch(entityType, user, operationId, attemptedBefore);
+    if (result.pendingBookCount && result.processed === 50 && !this.recoveryJobs.has(operationId)) {
+      this.recoveryJobs.add(operationId);
+      this.recoveryWorker = this.recoveryWorker.then(async () => {
+        try {
+          let batch = result;
+          while (!this.stopping && batch.pendingBookCount && batch.processed === 50) {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            if (this.stopping) break;
+            batch = await this.writeRecoveryBatch(entityType, user, operationId, attemptedBefore);
+          }
+        } catch (err) {
+          const error = logErrorFields(err);
+          this.logger.warn(
+            `[entity_manager.write_files] [fail] userId=${user.id} operationId=${operationId} durationMs=${Date.now() - attemptedBefore.getTime()} errorClass=${error.errorClass} error="${error.error}" - recovery paused for retry`,
+          );
+        } finally {
+          this.recoveryJobs.delete(operationId);
+        }
+      });
+    }
+    return result;
+  }
+
+  private async writeRecoveryBatch(entityType: EntityType, user: RequestUser, operationId: string, attemptedBefore: Date) {
     const startedAt = Date.now();
     this.logger.log(`[entity_manager.write_files] [start] userId=${user.id} operationId=${operationId} - file updates started`);
-    const result = await this.repo.resumeFileWrites(operationId, user.id, entityType, async (ids) => {
-      const libraryIds = await this.libraryService.findAccessibleLibraryIds(user);
-      const scopedIds = await this.repo.filterBookIdsByScope(ids, { libraryIds });
-      const completed: number[] = [];
-      for (let index = 0; index < scopedIds.length; index += 5) {
-        await Promise.all(
-          scopedIds.slice(index, index + 5).map(async (bookId) => {
-            try {
-              const outcome = await this.fileWriteService.writeToFile(bookId, 'auto', user.id);
-              if (outcome.status === 'success') completed.push(bookId);
-            } catch (err) {
-              const error = logErrorFields(err);
-              this.logger.warn(
-                `[entity_manager.write_files] [fail] userId=${user.id} operationId=${operationId} bookId=${bookId} durationMs=${Date.now() - startedAt} errorClass=${error.errorClass} error="${error.error}" - file update retained for retry`,
-              );
-            }
-          }),
-        );
-      }
-      return completed;
-    });
+    const result = await this.repo.resumeFileWrites(
+      operationId,
+      user.id,
+      entityType,
+      async (ids) => {
+        const libraryIds = await this.libraryService.findAccessibleLibraryIds(user);
+        const scopedIds = await this.repo.filterBookIdsByScope(ids, { libraryIds });
+        const completed: number[] = [];
+        for (let index = 0; index < scopedIds.length; index += 5) {
+          await Promise.all(
+            scopedIds.slice(index, index + 5).map(async (bookId) => {
+              try {
+                const outcome = await this.fileWriteService.writeToFile(bookId, 'auto', user.id);
+                if (outcome.status === 'success') completed.push(bookId);
+              } catch (err) {
+                const error = logErrorFields(err);
+                this.logger.warn(
+                  `[entity_manager.write_files] [fail] userId=${user.id} operationId=${operationId} bookId=${bookId} durationMs=${Date.now() - startedAt} errorClass=${error.errorClass} error="${error.error}" - file update retained for retry`,
+                );
+              }
+            }),
+          );
+        }
+        return completed;
+      },
+      attemptedBefore,
+    );
     this.logger.log(
       `[entity_manager.write_files] [end] userId=${user.id} operationId=${operationId} durationMs=${Date.now() - startedAt} completed=${result.completed} pending=${result.pendingBookCount} - file updates processed`,
     );

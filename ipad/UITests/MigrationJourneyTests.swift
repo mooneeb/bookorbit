@@ -10,10 +10,7 @@ final class MigrationJourneyTests: XCTestCase {
     let entry = app.buttons["migrationImportEntry"]
     XCTAssertTrue(entry.waitForExistence(timeout: 15))
     entry.tap()
-    XCTAssertTrue(app.buttons["migrationProvider"].waitForExistence(timeout: 15))
-    if app.buttons["migrationConfigureAnother"].exists {
-      tap("migrationConfigureAnother", app: app)
-    }
+    E03ProfileSupport.prepareMigrationConfiguration(app)
     for (provider, field) in [
       ("Booklore", "migrationHost"), ("Grimmory", "migrationHost"),
       ("Audiobookshelf", "migrationBaseURL"), ("Calibre-Web Automated", "migrationAppDatabasePath"),

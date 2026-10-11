@@ -10914,6 +10914,13 @@
     },
     "entityManager": {
       "unknown": "Unknown",
+      "fileUpdates": {
+        "pending": "Entity merge file updates are pending. Database changes are saved.",
+        "retry": "Retry file updates",
+        "remaining": "{count, plural, one {# file update remains. Retry to continue; check write settings for skipped files.} other {# file updates remain. Retry to continue; check write settings for skipped files.}}",
+        "loadError": "Failed to load file updates",
+        "retryError": "Failed to retry file updates"
+      },
       "bookCount": "{count, plural, =0 {no books} one {# book} other {# books}}",
       "sortPrefix": "· sort: {sortName}",
       "selectTargetToKeep": "Select target to keep",
