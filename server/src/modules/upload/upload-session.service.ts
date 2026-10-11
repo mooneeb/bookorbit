@@ -131,6 +131,14 @@ export class UploadSessionService implements OnApplicationBootstrap {
     }
   }
 
+  recordDockFinalization(dockFileId: number, userId: number, bookId: number) {
+    return this.repo.recordDockFinalization(dockFileId, userId, bookId);
+  }
+
+  findDockFinalization(dockFileId: number, userId: number) {
+    return this.repo.findDockFinalization(dockFileId, userId);
+  }
+
   async get(id: string, user: RequestUser): Promise<UploadSessionResponse> {
     const row = await this.owned(id, user);
     return this.toResponse(await this.reconcileSize(row));
@@ -147,6 +155,7 @@ export class UploadSessionService implements OnApplicationBootstrap {
       let row = await this.owned(id, user);
       row = await this.reconcileSize(row);
       this.assertReceiving(row);
+      await this.validateTarget(this.toResponse(row).target, row.filename, user);
       if (offset !== row.receivedBytes) {
         throw new ConflictException({
           errorCode: UploadErrorCode.OffsetMismatch,
@@ -191,6 +200,7 @@ export class UploadSessionService implements OnApplicationBootstrap {
       let row = await this.reconcileSize(await this.owned(id, user));
       if (row.status === 'completed' || row.status === 'processing') return this.toResponse(row);
       this.assertReceiving(row);
+      await this.validateTarget(this.toResponse(row).target, row.filename, user);
       if (row.receivedBytes !== row.sizeBytes) {
         throw uploadError.invalidSessionState(`Upload is incomplete: ${row.receivedBytes} of ${row.sizeBytes} bytes received`);
       }

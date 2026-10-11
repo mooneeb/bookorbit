@@ -1,7 +1,7 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { COVER_MEDIA, isAudioFormat, type BookCard, type BookCoverSlot, type CoverMedia, type CoverMedium } from '@bookorbit/types';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { access, copyFile, cp, link, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'fs/promises';
 import { basename, join } from 'path';
 import sharp from 'sharp';
@@ -32,6 +32,15 @@ import {
 
 export type CoverVariant = 'cover' | 'thumbnail';
 
+export type BookCoverAdoptionIntent = {
+  version: 1;
+  sourceBookId: number;
+  targetBookId: number;
+  sourceSlots: Array<Omit<BookCoverSlotRow, 'updatedAt' | 'dormantSince'> & { updatedAt: string; dormantSince: string | null }>;
+  sourceFingerprint: string;
+  artifacts: Array<{ medium: CoverMedium | 'legacy'; fileName: string; digest: string }>;
+};
+
 type SaveOptions = {
   origin: BookCoverOrigin;
   overwrite?: boolean;
@@ -39,6 +48,7 @@ type SaveOptions = {
   /** Writes only into an empty slot, or into an extracted slot whose origin is listed. */
   fill?: { replaceOrigins?: readonly BookCoverOrigin[] };
   skipIfUnchanged?: boolean;
+  expectedBookUpdatedAt?: string;
 };
 
 type SlotStateOptions = { backfill?: boolean };
@@ -82,8 +92,23 @@ export class BookCoverStore {
     return null;
   }
 
+  async getBookVersion(bookId: number): Promise<string | null> {
+    return (await this.repository.findContext(bookId))?.bookUpdatedAt?.toISOString() ?? null;
+  }
+
   async saveExtracted(bookId: number, medium: CoverMedium, bytes: Buffer, options: SaveOptions): Promise<boolean> {
-    const context = await this.convertedContext(bookId);
+    return this.repository.withBookWriteLock(bookId, (repository) => this.saveExtractedLocked(bookId, medium, bytes, options, repository));
+  }
+
+  private async saveExtractedLocked(
+    bookId: number,
+    medium: CoverMedium,
+    bytes: Buffer,
+    options: SaveOptions,
+    repository: BookCoverStoreRepository = this.repository,
+  ): Promise<boolean> {
+    const context = await this.convertedContext(bookId, repository);
+    if (options.expectedBookUpdatedAt !== undefined && context.bookUpdatedAt?.toISOString() !== options.expectedBookUpdatedAt) return false;
     if (this.isLocked(context, medium)) return false;
     const currentSlot = this.slotFor(context, medium);
     if (options.fill && currentSlot && !this.canFill(currentSlot, options.fill.replaceOrigins ?? [])) return false;
@@ -111,7 +136,7 @@ export class BookCoverStore {
     await this.replaceServedArtifacts(dir, COVER_EXTRACTED_FILE_PREFIX, bytes);
     if (options.overwrite === true || replaceMissingCustom) await this.deleteFilesByPrefix(dir, COVER_CUSTOM_FILE_PREFIX);
     const now = new Date();
-    await this.repository.applySlotMutation(
+    await repository.applySlotMutation(
       bookId,
       medium,
       context.media,
@@ -138,7 +163,17 @@ export class BookCoverStore {
     bytes: Buffer,
     options: { origin?: BookCoverOrigin; backfill?: boolean } = {},
   ): Promise<boolean> {
-    const context = await this.convertedContext(bookId);
+    return this.repository.withBookWriteLock(bookId, (repository) => this.saveCustomLocked(bookId, medium, bytes, options, repository));
+  }
+
+  private async saveCustomLocked(
+    bookId: number,
+    medium: CoverMedium,
+    bytes: Buffer,
+    options: { origin?: BookCoverOrigin; backfill?: boolean },
+    repository: BookCoverStoreRepository = this.repository,
+  ): Promise<boolean> {
+    const context = await this.convertedContext(bookId, repository);
     if (this.isLocked(context, medium)) return false;
     let coverBytes: Buffer;
     try {
@@ -152,7 +187,7 @@ export class BookCoverStore {
     await mkdir(dir, { recursive: true });
     await this.replaceServedArtifacts(dir, COVER_CUSTOM_FILE_PREFIX, coverBytes);
     const now = new Date();
-    await this.repository.applySlotMutation(
+    await repository.applySlotMutation(
       bookId,
       medium,
       context.media,
@@ -174,7 +209,16 @@ export class BookCoverStore {
   }
 
   async revert(bookId: number, medium: CoverMedium, options: { backfill?: boolean } = {}): Promise<BookCoverSource | null> {
-    const context = await this.convertedContext(bookId);
+    return this.repository.withBookWriteLock(bookId, (repository) => this.revertLocked(bookId, medium, options, repository));
+  }
+
+  private async revertLocked(
+    bookId: number,
+    medium: CoverMedium,
+    options: { backfill?: boolean },
+    repository: BookCoverStoreRepository = this.repository,
+  ): Promise<BookCoverSource | null> {
+    const context = await this.convertedContext(bookId, repository);
     if (this.isLocked(context, medium)) return (this.slotFor(context, medium)?.source as BookCoverSource | undefined) ?? null;
     const dir = bookCoverSlotDirPath(this.appDataPath, bookId, medium);
     const files = await this.readDirIfExists(dir);
@@ -183,7 +227,7 @@ export class BookCoverStore {
     if (!extracted) {
       await this.deleteFilesByPrefix(dir, COVER_CUSTOM_FILE_PREFIX);
       await rm(bookCoverSlotThumbnailPath(this.appDataPath, bookId, medium), { force: true });
-      await this.repository.applySlotMutation(
+      await repository.applySlotMutation(
         bookId,
         medium,
         context.media,
@@ -204,7 +248,7 @@ export class BookCoverStore {
     await this.deleteFilesByPrefix(dir, COVER_CUSTOM_FILE_PREFIX);
     await this.writeThumbnailBytesAtomically(dir, thumbnail);
     const prior = this.slotFor(context, medium);
-    await this.repository.applySlotMutation(
+    await repository.applySlotMutation(
       bookId,
       medium,
       context.media,
@@ -275,49 +319,139 @@ export class BookCoverStore {
   }
 
   /** The slots a book will hand over when it is merged into another book, read before it goes. */
-  async slotsForAdoption(bookId: number): Promise<BookCoverSlotRow[]> {
+  async slotsForAdoption(bookId: number, options: { includeDormant?: boolean } = {}): Promise<BookCoverSlotRow[]> {
     const context = await this.repository.findContext(bookId);
     if (!context) return [];
-    return (await this.ensureConverted(context)).slots.filter((slot) => slot.dormantSince === null);
+    return (await this.ensureConverted(context)).slots.filter((slot) => options.includeDormant || slot.dormantSince === null);
   }
 
-  /**
-   * Moves the slots of a book that was merged away into the book that absorbed its files, for each
-   * medium the target has no slot for. Call it after the merge and before the source's cover
-   * directory is removed.
-   */
-  async adoptSlots(sourceBookId: number, sourceSlots: readonly BookCoverSlotRow[], targetBookId: number): Promise<CoverMedium[]> {
+  async captureAdoption(sourceBookId: number, targetBookId: number): Promise<BookCoverAdoptionIntent> {
+    await this.convertedContext(targetBookId);
+    const sourceSlots = (await this.slotsForAdoption(sourceBookId, { includeDormant: true }))
+      .sort((a, b) => a.medium.localeCompare(b.medium))
+      .map((slot) => ({ ...slot, updatedAt: slot.updatedAt.toISOString(), dormantSince: slot.dormantSince?.toISOString() ?? null }));
+    const parent = join(bookCoverDirPath(this.appDataPath, targetBookId), 'merged', String(sourceBookId));
+    const staged = join(parent, `.snapshot-${randomUUID()}`);
+    const artifacts: BookCoverAdoptionIntent['artifacts'] = [];
+    await mkdir(staged, { recursive: true });
+    try {
+      for (const medium of ['legacy', 'ebook', 'audio'] as const) {
+        const sourceDir =
+          medium === 'legacy' ? bookCoverDirPath(this.appDataPath, sourceBookId) : bookCoverSlotDirPath(this.appDataPath, sourceBookId, medium);
+        const files = (await this.readDirIfExists(sourceDir))
+          .filter((name) => findPreferredBookCoverFileName([name]) || name === COVER_THUMBNAIL_FILE_NAME)
+          .sort();
+        if (files.length > 32) throw new ConflictException('Cover cache needs review before merging');
+        for (const fileName of files) {
+          const path = join(sourceDir, fileName);
+          if ((await stat(path)).size > 64 * 1024 * 1024) throw new ConflictException('Cover cache contains an oversized artifact');
+          const bytes = await readFile(path);
+          const destination = join(staged, medium);
+          await mkdir(destination, { recursive: true });
+          await writeFile(join(destination, fileName), bytes);
+          artifacts.push({ medium, fileName, digest: createHash('sha256').update(bytes).digest('hex') });
+        }
+      }
+      const sourceFingerprint = createHash('sha256').update(JSON.stringify({ sourceSlots, artifacts })).digest('hex');
+      const archive = join(parent, sourceFingerprint);
+      try {
+        await rename(staged, archive);
+      } catch (error) {
+        if (!(await this.directoryExists(archive))) throw error;
+        await rm(staged, { recursive: true, force: true });
+      }
+      return { version: 1, sourceBookId, targetBookId, sourceSlots, sourceFingerprint, artifacts };
+    } catch (error) {
+      await rm(staged, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  async finishAdoption(intent: BookCoverAdoptionIntent): Promise<void> {
+    const archive = join(bookCoverDirPath(this.appDataPath, intent.targetBookId), 'merged', String(intent.sourceBookId), intent.sourceFingerprint);
+    for (const artifact of intent.artifacts) {
+      const bytes = await readFile(join(archive, artifact.medium, artifact.fileName));
+      if (createHash('sha256').update(bytes).digest('hex') !== artifact.digest) {
+        throw new ConflictException('Preserved cover artifact changed; recover it before finishing the merge');
+      }
+    }
+    await this.adoptSlots(
+      intent.sourceBookId,
+      intent.sourceSlots.map((slot) => ({
+        ...slot,
+        updatedAt: new Date(slot.updatedAt),
+        dormantSince: slot.dormantSince ? new Date(slot.dormantSince) : null,
+      })),
+      intent.targetBookId,
+      { archive, allowLockedEmpty: true },
+    );
+  }
+
+  /** Copying preserves the recovery source when a database write fails after the cache is staged. */
+  async adoptSlots(
+    sourceBookId: number,
+    sourceSlots: readonly BookCoverSlotRow[],
+    targetBookId: number,
+    options: { archive?: string; allowLockedEmpty?: boolean } = {},
+  ): Promise<CoverMedium[]> {
     if (sourceSlots.length === 0) return [];
-    const target = await this.convertedContext(targetBookId);
+    const target = options.archive ? await this.requireContext(targetBookId) : await this.convertedContext(targetBookId);
     const adopted: CoverMedium[] = [];
     for (const slot of sourceSlots) {
       const medium = slot.medium as CoverMedium;
-      if (this.slotFor(target, medium) || this.isLocked(target, medium)) continue;
-      const sourceDir = bookCoverSlotDirPath(this.appDataPath, sourceBookId, medium);
+      if (this.slotFor(target, medium) || (!options.allowLockedEmpty && this.isLocked(target, medium))) continue;
+      const sourceDir = options.archive ? join(options.archive, medium) : bookCoverSlotDirPath(this.appDataPath, sourceBookId, medium);
       if (!findPreferredBookCoverFileName(await this.readDirIfExists(sourceDir))) continue;
       const targetDir = bookCoverSlotDirPath(this.appDataPath, targetBookId, medium);
-      await rm(targetDir, { recursive: true, force: true });
       await mkdir(bookCoverDirPath(this.appDataPath, targetBookId), { recursive: true });
-      try {
-        await rename(sourceDir, targetDir);
-      } catch {
-        await cp(sourceDir, targetDir, { recursive: true });
+      if (await this.directoryExists(targetDir)) {
+        const existingFiles = await this.readDirIfExists(targetDir);
+        const sourceFiles = await this.readDirIfExists(sourceDir);
+        for (const fileName of existingFiles) {
+          if (!sourceFiles.includes(fileName) || !(await readFile(join(targetDir, fileName))).equals(await readFile(join(sourceDir, fileName)))) {
+            throw new ConflictException('Target cover changed during merge; preserved source cover remains available');
+          }
+        }
+        for (const fileName of sourceFiles) {
+          if (!existingFiles.includes(fileName)) await copyFile(join(sourceDir, fileName), join(targetDir, fileName));
+        }
+      } else {
+        const staged = `${targetDir}.merge-${randomUUID()}`;
+        try {
+          await cp(sourceDir, staged, { recursive: true });
+          await rename(staged, targetDir);
+        } finally {
+          await rm(staged, { recursive: true, force: true });
+        }
       }
       const now = new Date();
-      await this.repository.applySlotMutation(
+      const mutation = await this.repository.applySlotMutation(
         targetBookId,
         medium,
         target.media,
         {
           kind: 'upsert',
-          row: { ...this.rowValues(slot), updatedAt: now, dormantSince: this.mediumIsActive(medium, target.media) ? null : now },
+          row: {
+            ...this.rowValues(slot),
+            updatedAt: now,
+            dormantSince: this.mediumIsActive(medium, target.media) ? null : (slot.dormantSince ?? now),
+          },
         },
-        { bumpBook: true, servedBytesChanged: true, updatedAt: now },
+        { bumpBook: true, servedBytesChanged: true, updatedAt: now, onlyIfAbsent: true },
       );
-      adopted.push(medium);
+      if (mutation.mutationApplied !== false) adopted.push(medium);
     }
     if (adopted.length > 0) this.emitChanged(target, false);
     return adopted;
+  }
+
+  private async directoryExists(path: string): Promise<boolean> {
+    try {
+      return (await stat(path)).isDirectory();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
   }
 
   async removeCoverDirectory(bookId: number): Promise<void> {
@@ -445,7 +579,7 @@ export class BookCoverStore {
   async convertLegacy(bookId: number, options: { emit?: boolean } = {}): Promise<{ converted: boolean; libraryId: number }> {
     const running = this.conversions.get(bookId);
     if (running) return running;
-    const conversion = this.convertLegacyOnce(bookId, options);
+    const conversion = this.repository.withBookWriteLock(bookId, (repository) => this.convertLegacyOnce(bookId, options, repository));
     this.conversions.set(bookId, conversion);
     try {
       return await conversion;
@@ -454,16 +588,20 @@ export class BookCoverStore {
     }
   }
 
-  private async convertLegacyOnce(bookId: number, options: { emit?: boolean }): Promise<{ converted: boolean; libraryId: number }> {
-    const context = await this.requireContext(bookId);
+  private async convertLegacyOnce(
+    bookId: number,
+    options: { emit?: boolean },
+    repository: BookCoverStoreRepository = this.repository,
+  ): Promise<{ converted: boolean; libraryId: number }> {
+    const context = await this.requireContext(bookId, repository);
     if (context.slots.length > 0) {
-      await this.repository.copyCoverLockToAudio(bookId);
+      await repository.copyCoverLockToAudio(bookId);
       return { converted: false, libraryId: context.libraryId };
     }
 
-    const restored = await this.restoreSlotRows(context);
+    const restored = await this.restoreSlotRows(context, repository);
     if (restored) {
-      await this.repository.copyCoverLockToAudio(bookId);
+      await repository.copyCoverLockToAudio(bookId);
       if (options.emit !== false) this.events.emitChanged({ bookIds: [bookId], libraryId: context.libraryId });
       return { converted: true, libraryId: context.libraryId };
     }
@@ -472,7 +610,7 @@ export class BookCoverStore {
     const files = await this.readDirIfExists(root);
     const coverFile = findPreferredBookCoverFileName(files);
     if (!coverFile) {
-      await this.repository.copyCoverLockToAudio(bookId);
+      await repository.copyCoverLockToAudio(bookId);
       return { converted: false, libraryId: context.libraryId };
     }
 
@@ -507,7 +645,7 @@ export class BookCoverStore {
 
     const dimensions = await this.measure(coverBytes);
     const { mtime } = await stat(join(root, coverFile));
-    await this.repository.importSlotWithoutStamp(bookId, medium, {
+    await repository.importSlotWithoutStamp(bookId, medium, {
       source,
       origin: 'legacy',
       width: dimensions.width,
@@ -516,7 +654,7 @@ export class BookCoverStore {
       dormantSince: null,
     });
     await Promise.all(rootArtifacts.map((file) => rm(join(root, file), { force: true })));
-    await this.repository.copyCoverLockToAudio(bookId);
+    await repository.copyCoverLockToAudio(bookId);
     if (options.emit !== false) this.events.emitChanged({ bookIds: [bookId], libraryId: context.libraryId });
     return { converted: true, libraryId: context.libraryId };
   }
@@ -546,8 +684,8 @@ export class BookCoverStore {
     return { hadSlots: true, removed };
   }
 
-  private async convertedContext(bookId: number): Promise<BookCoverContext> {
-    return this.ensureConverted(await this.requireContext(bookId));
+  private async convertedContext(bookId: number, repository: BookCoverStoreRepository = this.repository): Promise<BookCoverContext> {
+    return this.ensureConverted(await this.requireContext(bookId, repository), repository);
   }
 
   /**
@@ -555,10 +693,11 @@ export class BookCoverStore {
    * came back from a restore, is converted before anything reads or writes its slots. A write that
    * skipped this would create the first slot row and strand the root cover for good.
    */
-  private async ensureConverted(context: BookCoverContext): Promise<BookCoverContext> {
+  private async ensureConverted(context: BookCoverContext, repository: BookCoverStoreRepository = this.repository): Promise<BookCoverContext> {
     if (context.slots.length > 0 || !(await this.hasLegacyArtifacts(context.bookId))) return context;
-    await this.convertLegacy(context.bookId, { emit: false });
-    return this.requireContext(context.bookId);
+    if (repository === this.repository) await this.convertLegacy(context.bookId, { emit: false });
+    else await this.convertLegacyOnce(context.bookId, { emit: false }, repository);
+    return this.requireContext(context.bookId, repository);
   }
 
   /** A read that cannot convert serves no cover rather than failing the request. */
@@ -633,13 +772,13 @@ export class BookCoverStore {
     this.events.emitChanged({ bookIds: [context.bookId], libraryId: context.libraryId });
   }
 
-  private async requireContext(bookId: number): Promise<BookCoverContext> {
-    const context = await this.repository.findContext(bookId);
+  private async requireContext(bookId: number, repository: BookCoverStoreRepository = this.repository): Promise<BookCoverContext> {
+    const context = await repository.findContext(bookId);
     if (!context) throw new NotFoundException(`Book ${bookId} not found`);
     return context;
   }
 
-  private async restoreSlotRows(context: BookCoverContext): Promise<boolean> {
+  private async restoreSlotRows(context: BookCoverContext, repository: BookCoverStoreRepository = this.repository): Promise<boolean> {
     let restored = false;
     for (const medium of ['ebook', 'audio'] as const) {
       const dir = bookCoverSlotDirPath(this.appDataPath, context.bookId, medium);
@@ -649,7 +788,7 @@ export class BookCoverStore {
       const coverBytes = await readFile(join(dir, cover));
       const dimensions = await this.measure(coverBytes);
       const { mtime } = await stat(join(dir, cover));
-      await this.repository.importSlotWithoutStamp(context.bookId, medium, {
+      await repository.importSlotWithoutStamp(context.bookId, medium, {
         source: isCustomBookCoverFileName(cover) || context.coverSource === 'custom' ? 'custom' : 'extracted',
         origin: 'legacy',
         width: dimensions.width,

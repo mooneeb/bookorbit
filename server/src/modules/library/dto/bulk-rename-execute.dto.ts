@@ -3,6 +3,7 @@ import {
   IsArray,
   IsInt,
   IsOptional,
+  IsUUID,
   registerDecorator,
   ValidationArguments,
   ValidationOptions,
@@ -45,6 +46,8 @@ function SingleSelection(options?: ValidationOptions) {
  */
 @SingleSelection()
 export class BulkRenameExecuteDto implements BulkRenameExecuteRequest {
+  @IsUUID()
+  previewToken!: string;
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(50_000)

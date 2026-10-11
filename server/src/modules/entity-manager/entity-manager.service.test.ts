@@ -1,8 +1,12 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
-import type { EntityType } from '@bookorbit/types';
+import type { ClusterEntity, DismissedPairInfo, EntityType } from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
 import { EntityManagerService } from './entity-manager.service';
+import { DuplicateComputeService } from './duplicate-compute.service';
+import { EntityManagerRepository } from './entity-manager.repository';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 import type { EntityStrategy, RawCandidatePair } from './strategies/entity-strategy.interface';
 import { EMPTY_CONTENT_FILTER_RULES } from '@bookorbit/types';
 
@@ -17,13 +21,34 @@ function mockStrategy(overrides: Partial<EntityStrategy> & { entityType: EntityT
     findAffectedBookIds: vi.fn().mockResolvedValue([]),
     getBookCount: vi.fn().mockResolvedValue(0),
     getBookTitles: vi.fn().mockResolvedValue([]),
-    findEntityById: vi.fn().mockResolvedValue(null),
+    findEntityById: vi.fn().mockImplementation((id: number | string) => Promise.resolve({ id, name: typeof id === 'string' ? id : `Entity ${id}` })),
+    assertMutationScope: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
 
 function makeService() {
+  const candidates = new Map<EntityType, RawCandidatePair[]>();
+  const setCandidates = (entityType: EntityType, pairs: RawCandidatePair[]) => candidates.set(entityType, pairs);
   const repo = {
+    resumeFileWrites: vi.fn(async (operationId: string, _userId: number, entityType: EntityType, write: (ids: number[]) => Promise<number[]>) => {
+      const result = await vi.mocked(strategies[entityType].merge).mock.results.at(-1)!.value;
+      let ids = [...new Set(result.affectedBookIds)] as number[];
+      if (result.affectedBookBatches) {
+        for await (const batch of result.affectedBookBatches()) {
+          ids = batch.slice(0, 50);
+          break;
+        }
+      }
+      const completed = await write(ids);
+      return {
+        operationId,
+        pendingBookCount: (result.affectedBookCount ?? ids.length) - completed.length,
+        processed: ids.length,
+        completed: completed.length,
+      };
+    }),
+    filterBookIdsByScope: vi.fn().mockImplementation((ids: number[]) => Promise.resolve(ids)),
     getDismissedPairSet: vi.fn().mockResolvedValue(new Set<string>()),
     getInlineDismissedPairSet: vi.fn().mockResolvedValue(new Set<string>()),
     insertDismissedPair: vi.fn().mockResolvedValue(undefined),
@@ -34,6 +59,12 @@ function makeService() {
     deleteInlineDismissedPairsForValue: vi.fn().mockResolvedValue(undefined),
     findDismissedPairs: vi.fn().mockResolvedValue([]),
     findInlineDismissedPairs: vi.fn().mockResolvedValue([]),
+    findDismissedPairsPage: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    findClusterEntities: vi
+      .fn()
+      .mockImplementation((_type: EntityType, ids: (number | string)[]) =>
+        Promise.resolve(ids.map((id) => ({ id, name: typeof id === 'string' ? id : `Entity ${id}`, bookCount: 1, bookTitles: [] }))),
+      ),
   };
 
   const libraryService = {
@@ -41,6 +72,7 @@ function makeService() {
   };
 
   const fileWriteService = {
+    writeToFile: vi.fn().mockResolvedValue({ status: 'success' }),
     scheduleWrite: vi.fn(),
   };
   const metadataScoreService = {
@@ -48,7 +80,26 @@ function makeService() {
   };
 
   const duplicateCompute = {
-    readCandidatePairs: vi.fn().mockResolvedValue([]),
+    withCandidateBatches: vi
+      .fn()
+      .mockImplementation(
+        async (
+          type: EntityType,
+          _similarity: number,
+          scope: { libraryIds: number[] },
+          consume: (pairs: RawCandidatePair[]) => void,
+          afterRead: (replay: (consumer: (pairs: RawCandidatePair[]) => void) => Promise<void>) => Promise<unknown>,
+        ) => {
+          const pairs = scope.libraryIds.length > 0 ? (candidates.get(type) ?? []) : [];
+          const read = (consumer: (batch: RawCandidatePair[]) => void) => {
+            for (let offset = 0; offset < pairs.length; offset += 2) consumer(pairs.slice(offset, offset + 2));
+            return Promise.resolve();
+          };
+          await read(consume);
+          return afterRead(read);
+        },
+      ),
+    countScopedCandidates: vi.fn().mockResolvedValue(0),
     getStatus: vi.fn().mockResolvedValue(null),
     triggerCompute: vi.fn(),
     invalidateCandidatesForEntities: vi.fn().mockResolvedValue(undefined),
@@ -61,6 +112,16 @@ function makeService() {
   const publisherStrategy = mockStrategy({ entityType: 'publisher', isInline: true });
   const languageStrategy = mockStrategy({ entityType: 'language', isInline: true });
   const seriesStrategy = mockStrategy({ entityType: 'series', isInline: false });
+
+  const strategies = {
+    author: authorStrategy,
+    genre: genreStrategy,
+    tag: tagStrategy,
+    narrator: narratorStrategy,
+    publisher: publisherStrategy,
+    language: languageStrategy,
+    series: seriesStrategy,
+  };
 
   const service = new EntityManagerService(
     repo as any,
@@ -79,6 +140,7 @@ function makeService() {
 
   return {
     service,
+    setCandidates,
     repo,
     libraryService,
     fileWriteService,
@@ -115,287 +177,271 @@ describe('EntityManagerService', () => {
   });
 
   describe('scanDuplicates', () => {
+    it('diagnoses a nonempty 50000-member cached component through cursor replay and bounded page enrichment', async () => {
+      const { service, duplicateCompute, repo } = makeService();
+      const dialect = new PgDialect();
+      let cursor = 0;
+      let maximumParams = 0;
+      let fetches = 0;
+      let declarations = 0;
+      const execute = vi.fn((statement: SQL) => {
+        const query = dialect.sqlToQuery(statement);
+        maximumParams = Math.max(maximumParams, query.params.length);
+        if (query.sql.startsWith('DECLARE')) {
+          cursor = 0;
+          declarations++;
+        }
+        if (query.sql.startsWith('FETCH')) {
+          fetches++;
+          const count = Math.min(500, Math.max(0, 49999 - cursor));
+          const rows = Array.from({ length: count }, (_, index) => ({
+            idA: cursor + index + 1,
+            idB: cursor + index + 2,
+            nameA: '',
+            nameB: '',
+            simScore: 0.99,
+          }));
+          cursor += count;
+          return Promise.resolve({ rows });
+        }
+        if (query.sql.includes('WITH scoped AS MATERIALIZED')) {
+          const identities = [...new Set(query.params.filter((value): value is number => typeof value === 'number'))];
+          return Promise.resolve({
+            rows: identities.map((id) => ({ id, name: `EntityScaling-${String(id).padStart(5, '0')}`, bookCount: 1, bookTitles: ['Book'] })),
+          });
+        }
+        return Promise.resolve({ rows: [] });
+      });
+      const db = { execute, transaction: vi.fn((work: (tx: { execute: typeof execute }) => Promise<unknown>) => work({ execute })) };
+      const actualCompute = new DuplicateComputeService(db as never);
+      const actualRepository = new EntityManagerRepository(db as never);
+      duplicateCompute.withCandidateBatches.mockImplementation(actualCompute.withCandidateBatches.bind(actualCompute));
+      duplicateCompute.getStatus.mockResolvedValue({ isComputing: false, computedAt: new Date(), threshold: 0.1 } as never);
+      repo.findClusterEntities.mockImplementation(actualRepository.findClusterEntities.bind(actualRepository));
+
+      const scan = await service.scanDuplicates('genre', mockUser, undefined, 0.98, 1, 20);
+      const first = scan.clusters[0]!;
+      expect(scan).toMatchObject({ totalEntities: 50000, total: 1 });
+      expect(first).toMatchObject({ entityTotal: 50000, pairTotal: 49999, nextPage: 2 });
+      expect(first.entities).toHaveLength(10);
+      expect(first.pairDetails).toHaveLength(10);
+      expect(Buffer.byteLength(JSON.stringify(scan))).toBeLessThan(1024 * 1024);
+      const last = await service.getDuplicateClusterPage('genre', mockUser, first.clusterId, 5000, 10);
+      expect(last).toMatchObject({ entityTotal: 50000, pairTotal: 49999, nextPage: null });
+      expect(last.entities).toHaveLength(10);
+      expect(last.pairDetails).toHaveLength(9);
+      expect(Buffer.byteLength(JSON.stringify(last))).toBeLessThan(1024 * 1024);
+      expect(maximumParams).toBeLessThanOrEqual(30);
+      expect(declarations).toBe(4);
+      expect(fetches).toBe(404);
+      expect(duplicateCompute.triggerCompute).not.toHaveBeenCalled();
+    });
+
     it('returns empty clusters when no pairs found', async () => {
       const { service } = makeService();
-      const result = await service.scanDuplicates('author', mockUser);
-
-      expect(result.entityType).toBe('author');
-      expect(result.clusters).toEqual([]);
-      expect(result.totalEntities).toBe(0);
-      expect(result.total).toBe(0);
-      expect(result.page).toBe(1);
-      expect(result.pageSize).toBe(20);
+      await expect(service.scanDuplicates('author', mockUser)).resolves.toEqual({
+        entityType: 'author',
+        clusters: [],
+        totalEntities: 0,
+        total: 0,
+        page: 1,
+        pageSize: 20,
+      });
     });
 
     it('filters by library when libraryId provided for inline entities', async () => {
-      const { service, libraryService, strategies } = makeService();
+      const { service, libraryService, duplicateCompute } = makeService();
       libraryService.findAccessibleLibraryIds.mockResolvedValue([1, 2, 3]);
-
       await service.scanDuplicates('publisher', mockUser, 2);
-
-      expect(strategies.publisher.findCandidatePairs).toHaveBeenCalledWith([2], 0.5, EMPTY_CONTENT_FILTER_RULES);
+      expect(duplicateCompute.withCandidateBatches).toHaveBeenCalledWith(
+        'publisher',
+        0.5,
+        { libraryIds: [2], contentFilters: EMPTY_CONTENT_FILTER_RULES },
+        expect.any(Function),
+        expect.any(Function),
+      );
     });
 
     it('throws when library not accessible', async () => {
-      const { service, libraryService } = makeService();
-      libraryService.findAccessibleLibraryIds.mockResolvedValue([1, 2]);
-
+      const { service } = makeService();
       await expect(service.scanDuplicates('publisher', mockUser, 99)).rejects.toThrow(BadRequestException);
     });
 
     it('uses custom minSimilarity for inline entities', async () => {
-      const { service, strategies } = makeService();
+      const { service, duplicateCompute } = makeService();
       await service.scanDuplicates('publisher', mockUser, undefined, 0.8);
-
-      expect(strategies.publisher.findCandidatePairs).toHaveBeenCalledWith([1, 2], 0.8, EMPTY_CONTENT_FILTER_RULES);
+      expect(duplicateCompute.withCandidateBatches).toHaveBeenCalledWith(
+        'publisher',
+        0.8,
+        { libraryIds: [1, 2], contentFilters: EMPTY_CONTENT_FILTER_RULES },
+        expect.any(Function),
+        expect.any(Function),
+      );
     });
 
-    it('filters out dismissed pairs for inline entities', async () => {
-      const { service, repo, strategies } = makeService();
-
-      const pairs: RawCandidatePair[] = [
-        { idA: 'Pub A', idB: 'Pub B', nameA: 'Pub A', nameB: 'Pub B', simScore: 0.9 },
-        { idA: 'Pub C', idB: 'Pub D', nameA: 'Pub C', nameB: 'Pub D', simScore: 0.8 },
-      ];
-      (strategies.publisher.findCandidatePairs as any).mockResolvedValue(pairs);
-      repo.getInlineDismissedPairSet.mockResolvedValue(new Set(['Pub A:Pub B', 'Pub B:Pub A']));
-
-      (strategies.publisher.findEntityById as any).mockImplementation((id: string) => Promise.resolve({ id, name: id }));
-      (strategies.publisher.getBookCount as any).mockResolvedValue(2);
-      (strategies.publisher.getBookTitles as any).mockResolvedValue(['Book 1']);
-
+    it('builds clusters from overlapping inline pairs across batches', async () => {
+      const { service, setCandidates } = makeService();
+      setCandidates('publisher', [
+        { idA: 'A', idB: 'B', nameA: 'A', nameB: 'B', simScore: 0.9 },
+        { idA: 'C', idB: 'D', nameA: 'C', nameB: 'D', simScore: 0.8 },
+        { idA: 'B', idB: 'C', nameA: 'B', nameB: 'C', simScore: 0.85 },
+      ]);
       const result = await service.scanDuplicates('publisher', mockUser);
       expect(result.clusters).toHaveLength(1);
-      expect(result.clusters[0]!.entities.map((e) => e.id).sort()).toEqual(['Pub C', 'Pub D']);
-    });
-
-    it('uses inline dismissed pair set for inline entities', async () => {
-      const { service, repo } = makeService();
-      await service.scanDuplicates('publisher', mockUser);
-
-      expect(repo.getInlineDismissedPairSet).toHaveBeenCalledWith('publisher');
-      expect(repo.getDismissedPairSet).not.toHaveBeenCalled();
-    });
-
-    it('builds clusters with union-find from overlapping inline pairs', async () => {
-      const { service, strategies } = makeService();
-
-      const pairs: RawCandidatePair[] = [
-        { idA: 'Pub A', idB: 'Pub B', nameA: 'Pub A', nameB: 'Pub B', simScore: 0.9 },
-        { idA: 'Pub B', idB: 'Pub C', nameA: 'Pub B', nameB: 'Pub C', simScore: 0.85 },
-      ];
-      (strategies.publisher.findCandidatePairs as any).mockResolvedValue(pairs);
-
-      (strategies.publisher.findEntityById as any).mockImplementation((id: string) => Promise.resolve({ id, name: id }));
-      (strategies.publisher.getBookCount as any).mockResolvedValue(1);
-      (strategies.publisher.getBookTitles as any).mockResolvedValue([]);
-
-      const result = await service.scanDuplicates('publisher', mockUser);
-      expect(result.clusters).toHaveLength(1);
-      expect(result.clusters[0]!.entities).toHaveLength(3);
+      expect(result.clusters[0]!.entities.map((entity) => entity.id)).toEqual(['A', 'B', 'C', 'D']);
+      expect(result.clusters[0]!.averageSimilarity).toBe(0.85);
+      expect(result.totalEntities).toBe(4);
     });
 
     it('separates non-overlapping inline pairs into different clusters', async () => {
-      const { service, strategies } = makeService();
-
-      const pairs: RawCandidatePair[] = [
-        { idA: 'Pub A', idB: 'Pub B', nameA: 'Pub A', nameB: 'Pub B', simScore: 0.9 },
-        { idA: 'Pub C', idB: 'Pub D', nameA: 'Pub C', nameB: 'Pub D', simScore: 0.8 },
-      ];
-      (strategies.publisher.findCandidatePairs as any).mockResolvedValue(pairs);
-
-      (strategies.publisher.findEntityById as any).mockImplementation((id: string) => Promise.resolve({ id, name: id }));
-      (strategies.publisher.getBookCount as any).mockResolvedValue(1);
-      (strategies.publisher.getBookTitles as any).mockResolvedValue([]);
-
-      const result = await service.scanDuplicates('publisher', mockUser);
-      expect(result.clusters).toHaveLength(2);
+      const { service, setCandidates } = makeService();
+      setCandidates('publisher', [
+        { idA: 'A', idB: 'B', nameA: 'A', nameB: 'B', simScore: 0.9 },
+        { idA: 'C', idB: 'D', nameA: 'C', nameB: 'D', simScore: 0.8 },
+      ]);
+      expect((await service.scanDuplicates('publisher', mockUser)).clusters).toHaveLength(2);
     });
 
     it('suggests target as entity with highest book count', async () => {
-      const { service, duplicateCompute, strategies } = makeService();
-      duplicateCompute.readCandidatePairs.mockResolvedValue([{ idA: 1, idB: 2, simScore: 0.9 }]);
-
-      (strategies.author.findEntityById as any).mockImplementation((id: number) => Promise.resolve({ id, name: `Entity ${id}` }));
-      (strategies.author.getBookCount as any).mockImplementation((id: number) => Promise.resolve(id === 2 ? 10 : 3));
-      (strategies.author.getBookTitles as any).mockResolvedValue([]);
-
-      const result = await service.scanDuplicates('author', mockUser);
-      expect(result.clusters[0]!.suggestedTargetId).toBe(2);
+      const { service, setCandidates, repo } = makeService();
+      setCandidates('author', [{ idA: 1, idB: 2, nameA: '', nameB: '', simScore: 0.9 }]);
+      repo.findClusterEntities.mockResolvedValue([
+        { id: 1, name: 'First', bookCount: 3, bookTitles: [] },
+        { id: 2, name: 'Second', bookCount: 10, bookTitles: [] },
+      ]);
+      expect((await service.scanDuplicates('author', mockUser)).clusters[0]!.suggestedTargetId).toBe(2);
     });
 
     it('skips clusters where entities are not found', async () => {
-      const { service, duplicateCompute, strategies } = makeService();
-      duplicateCompute.readCandidatePairs.mockResolvedValue([{ idA: 1, idB: 2, simScore: 0.9 }]);
-      (strategies.author.findEntityById as any).mockResolvedValue(null);
-      (strategies.author.getBookCount as any).mockResolvedValue(0);
-      (strategies.author.getBookTitles as any).mockResolvedValue([]);
-
-      const result = await service.scanDuplicates('author', mockUser);
-      expect(result.clusters).toHaveLength(0);
+      const { service, setCandidates, repo } = makeService();
+      setCandidates('author', [{ idA: 1, idB: 2, nameA: '', nameB: '', simScore: 0.9 }]);
+      repo.findClusterEntities.mockResolvedValue([]);
+      expect((await service.scanDuplicates('author', mockUser)).clusters).toHaveLength(0);
     });
 
     it('sorts inline clusters by average similarity descending', async () => {
-      const { service, strategies } = makeService();
-
-      const pairs: RawCandidatePair[] = [
-        { idA: 'Pub A', idB: 'Pub B', nameA: 'Pub A', nameB: 'Pub B', simScore: 0.7 },
-        { idA: 'Pub C', idB: 'Pub D', nameA: 'Pub C', nameB: 'Pub D', simScore: 0.95 },
-      ];
-      (strategies.publisher.findCandidatePairs as any).mockResolvedValue(pairs);
-
-      (strategies.publisher.findEntityById as any).mockImplementation((id: string) => Promise.resolve({ id, name: id }));
-      (strategies.publisher.getBookCount as any).mockResolvedValue(1);
-      (strategies.publisher.getBookTitles as any).mockResolvedValue([]);
-
+      const { service, setCandidates } = makeService();
+      setCandidates('publisher', [
+        { idA: 'A', idB: 'B', nameA: 'A', nameB: 'B', simScore: 0.7 },
+        { idA: 'C', idB: 'D', nameA: 'C', nameB: 'D', simScore: 0.95 },
+      ]);
       const result = await service.scanDuplicates('publisher', mockUser);
-      expect(result.clusters[0]!.averageSimilarity).toBeGreaterThan(result.clusters[1]!.averageSimilarity);
+      expect(result.clusters.map((cluster) => cluster.averageSimilarity)).toEqual([0.95, 0.7]);
     });
 
-    it('paginates clusters and returns total, page, and pageSize', async () => {
-      const { service, strategies } = makeService();
-
-      const pairs: RawCandidatePair[] = [
-        { idA: 'Pub A', idB: 'Pub B', nameA: 'Pub A', nameB: 'Pub B', simScore: 0.9 },
-        { idA: 'Pub C', idB: 'Pub D', nameA: 'Pub C', nameB: 'Pub D', simScore: 0.8 },
-        { idA: 'Pub E', idB: 'Pub F', nameA: 'Pub E', nameB: 'Pub F', simScore: 0.7 },
-      ];
-      (strategies.publisher.findCandidatePairs as any).mockResolvedValue(pairs);
-      (strategies.publisher.findEntityById as any).mockImplementation((id: string) => Promise.resolve({ id, name: id }));
-      (strategies.publisher.getBookCount as any).mockResolvedValue(1);
-      (strategies.publisher.getBookTitles as any).mockResolvedValue([]);
-
-      const result = await service.scanDuplicates('publisher', mockUser, undefined, undefined, 1, 2);
-      expect(result.total).toBe(3);
-      expect(result.page).toBe(1);
-      expect(result.pageSize).toBe(2);
-      expect(result.clusters).toHaveLength(2);
-
-      const page2 = await service.scanDuplicates('publisher', mockUser, undefined, undefined, 2, 2);
-      expect(page2.total).toBe(3);
-      expect(page2.page).toBe(2);
-      expect(page2.clusters).toHaveLength(1);
+    it('paginates clusters and returns stable totals and distinct pages', async () => {
+      const { service, setCandidates } = makeService();
+      setCandidates('publisher', [
+        { idA: 'A', idB: 'B', nameA: 'A', nameB: 'B', simScore: 0.9 },
+        { idA: 'C', idB: 'D', nameA: 'C', nameB: 'D', simScore: 0.8 },
+        { idA: 'E', idB: 'F', nameA: 'E', nameB: 'F', simScore: 0.7 },
+      ]);
+      const first = await service.scanDuplicates('publisher', mockUser, undefined, undefined, 1, 2);
+      const second = await service.scanDuplicates('publisher', mockUser, undefined, undefined, 2, 2);
+      expect(first).toMatchObject({ total: 3, page: 1, pageSize: 2 });
+      expect(first.clusters).toHaveLength(2);
+      expect(second).toMatchObject({ total: 3, page: 2, pageSize: 2 });
+      expect(second.clusters).toHaveLength(1);
+      expect(first.clusters.map((cluster) => cluster.clusterId)).not.toContain(second.clusters[0]!.clusterId);
+      await expect(service.scanDuplicates('publisher', mockUser, undefined, undefined, 2, 2)).resolves.toEqual(second);
     });
 
     it('clamps out-of-bounds page to last valid page', async () => {
-      const { service, strategies } = makeService();
-
-      const pairs: RawCandidatePair[] = [{ idA: 'Pub A', idB: 'Pub B', nameA: 'Pub A', nameB: 'Pub B', simScore: 0.9 }];
-      (strategies.publisher.findCandidatePairs as any).mockResolvedValue(pairs);
-      (strategies.publisher.findEntityById as any).mockImplementation((id: string) => Promise.resolve({ id, name: id }));
-      (strategies.publisher.getBookCount as any).mockResolvedValue(1);
-      (strategies.publisher.getBookTitles as any).mockResolvedValue([]);
-
+      const { service, setCandidates } = makeService();
+      setCandidates('publisher', [{ idA: 'A', idB: 'B', nameA: 'A', nameB: 'B', simScore: 0.9 }]);
       const result = await service.scanDuplicates('publisher', mockUser, undefined, undefined, 99, 20);
       expect(result.page).toBe(1);
       expect(result.clusters).toHaveLength(1);
     });
 
-    it('builds non-inline clusters from stored candidate pairs', async () => {
-      const { service, repo, duplicateCompute, strategies } = makeService();
-      duplicateCompute.readCandidatePairs.mockResolvedValue([
-        { idA: 1, idB: 2, simScore: 0.92 },
-        { idA: 2, idB: 3, simScore: 0.88 },
+    it('builds non-inline clusters from stored candidate batches', async () => {
+      const { service, setCandidates } = makeService();
+      setCandidates('author', [
+        { idA: 1, idB: 2, nameA: '', nameB: '', simScore: 0.92 },
+        { idA: 2, idB: 3, nameA: '', nameB: '', simScore: 0.88 },
       ]);
-      (strategies.author.findEntityById as any).mockImplementation((id: number) => Promise.resolve({ id, name: `Author ${id}` }));
-      (strategies.author.getBookCount as any).mockResolvedValue(1);
-      (strategies.author.getBookTitles as any).mockResolvedValue([]);
-
       const result = await service.scanDuplicates('author', mockUser);
-
-      expect(duplicateCompute.readCandidatePairs).toHaveBeenCalledWith('author', 0.5, {
-        libraryIds: [1, 2],
-        contentFilters: EMPTY_CONTENT_FILTER_RULES,
-      });
-      expect(repo.getDismissedPairSet).not.toHaveBeenCalled();
-      expect(strategies.author.findCandidatePairs).not.toHaveBeenCalled();
       expect(result.clusters).toHaveLength(1);
-      expect(result.clusters[0]!.entities).toHaveLength(3);
+      expect(result.clusters[0]!.entities.map((entity) => entity.id)).toEqual([1, 2, 3]);
+      expect(result.clusters[0]!.pairDetails.map((pair) => pair.similarity)).toEqual([0.92, 0.88]);
     });
 
     it('uses only the explicitly requested accessible library for stored candidates and enrichment', async () => {
-      const { service, duplicateCompute, libraryService, strategies } = makeService();
+      const { service, setCandidates, duplicateCompute, libraryService, repo } = makeService();
       libraryService.findAccessibleLibraryIds.mockResolvedValue([4, 7]);
-      duplicateCompute.readCandidatePairs.mockResolvedValue([{ idA: 1, idB: 2, simScore: 0.9 }]);
-      (strategies.author.findEntityById as any).mockImplementation((id: number) => Promise.resolve({ id, name: `Author ${id}` }));
-
+      setCandidates('author', [{ idA: 1, idB: 2, nameA: '', nameB: '', simScore: 0.9 }]);
       await service.scanDuplicates('author', mockUser, 7);
-
       const scope = { libraryIds: [7], contentFilters: EMPTY_CONTENT_FILTER_RULES };
-      expect(duplicateCompute.readCandidatePairs).toHaveBeenCalledWith('author', 0.5, scope);
-      expect(strategies.author.getBookCount).toHaveBeenCalledWith(1, scope);
-      expect(strategies.author.getBookCount).toHaveBeenCalledWith(2, scope);
-      expect(strategies.author.getBookTitles).toHaveBeenCalledWith(1, 5, scope);
-      expect(strategies.author.getBookTitles).toHaveBeenCalledWith(2, 5, scope);
+      expect(duplicateCompute.withCandidateBatches).toHaveBeenCalledWith('author', 0.5, scope, expect.any(Function), expect.any(Function));
+      expect(repo.findClusterEntities).toHaveBeenCalledWith('author', [1, 2], scope);
     });
 
-    it('does not query candidates when the user has no accessible libraries', async () => {
-      const { service, duplicateCompute, libraryService, strategies } = makeService();
+    it('returns no candidates when the user has no accessible libraries', async () => {
+      const { service, setCandidates, duplicateCompute, libraryService } = makeService();
       libraryService.findAccessibleLibraryIds.mockResolvedValue([]);
-
+      setCandidates('author', [{ idA: 1, idB: 2, nameA: '', nameB: '', simScore: 0.9 }]);
       await expect(service.scanDuplicates('author', mockUser)).resolves.toMatchObject({ clusters: [], total: 0, totalEntities: 0 });
-
-      expect(duplicateCompute.readCandidatePairs).not.toHaveBeenCalled();
       expect(duplicateCompute.triggerCompute).not.toHaveBeenCalled();
-      expect(strategies.author.findCandidatePairs).not.toHaveBeenCalled();
     });
 
     it('triggers duplicate compute with the requested threshold when no status exists', async () => {
       const { service, duplicateCompute, strategies } = makeService();
-
       await service.scanDuplicates('author', mockUser, undefined, 0.73);
-
-      expect(duplicateCompute.getStatus).toHaveBeenCalledWith('author');
       expect(duplicateCompute.triggerCompute).toHaveBeenCalledWith('author', strategies.author, 0.73);
     });
 
     it('triggers duplicate compute when stored threshold is higher than requested', async () => {
       const { service, duplicateCompute, strategies } = makeService();
-      duplicateCompute.getStatus.mockResolvedValue({
-        entityType: 'author',
-        isComputing: false,
-        computedAt: new Date('2024-01-01T00:00:00.000Z'),
-        totalPairs: 0,
-        threshold: 0.9,
-        totalCount: 10,
-        processedCount: 10,
-        errorMessage: null,
-      });
-
+      duplicateCompute.getStatus.mockResolvedValue({ isComputing: false, computedAt: new Date('2024-01-01'), threshold: 0.9 } as never);
       await service.scanDuplicates('author', mockUser, undefined, 0.7);
-
       expect(duplicateCompute.triggerCompute).toHaveBeenCalledWith('author', strategies.author, 0.7);
     });
 
     it('does not trigger duplicate compute when stored threshold already covers the request', async () => {
       const { service, duplicateCompute } = makeService();
-      duplicateCompute.getStatus.mockResolvedValue({
-        entityType: 'author',
-        isComputing: false,
-        computedAt: new Date('2024-01-01T00:00:00.000Z'),
-        totalPairs: 0,
-        threshold: 0.6,
-        totalCount: 10,
-        processedCount: 10,
-        errorMessage: null,
-      });
-
+      duplicateCompute.getStatus.mockResolvedValue({ isComputing: false, computedAt: new Date('2024-01-01'), threshold: 0.6 } as never);
       await service.scanDuplicates('author', mockUser, undefined, 0.7);
-
       expect(duplicateCompute.triggerCompute).not.toHaveBeenCalled();
     });
 
     it('uses entity names when computing reasons for stored pairs', async () => {
-      const { service, duplicateCompute, strategies } = makeService();
-      duplicateCompute.readCandidatePairs.mockResolvedValue([{ idA: 1, idB: 2, simScore: 0.75 }]);
-      (strategies.author.findEntityById as any).mockImplementation((id: number) =>
-        Promise.resolve({ id, name: id === 1 ? 'young adult' : 'Adult Young' }),
-      );
-      (strategies.author.getBookCount as any).mockResolvedValue(1);
-      (strategies.author.getBookTitles as any).mockResolvedValue([]);
+      const { service, setCandidates, repo } = makeService();
+      setCandidates('author', [{ idA: 1, idB: 2, nameA: '', nameB: '', simScore: 0.75 }]);
+      repo.findClusterEntities.mockResolvedValue([
+        { id: 1, name: 'young adult', bookCount: 1, bookTitles: [] },
+        { id: 2, name: 'Adult Young', bookCount: 1, bookTitles: [] },
+      ]);
+      expect((await service.scanDuplicates('author', mockUser)).clusters[0]!.pairDetails[0]!.reasons).toContain('Same normalized tokens');
+    });
+  });
 
-      const result = await service.scanDuplicates('author', mockUser);
-      expect(result.clusters[0]!.pairDetails[0]!.reasons).toContain('Same normalized tokens');
+  describe('getDuplicateClusterPage', () => {
+    it('exposes remaining members and pairs without accumulating the first page', async () => {
+      const { service, setCandidates } = makeService();
+      setCandidates(
+        'publisher',
+        Array.from({ length: 11 }, (_, index) => ({
+          idA: `A${String(index).padStart(2, '0')}`,
+          idB: `A${String(index + 1).padStart(2, '0')}`,
+          nameA: '',
+          nameB: '',
+          simScore: 0.9,
+        })),
+      );
+      const cluster = (await service.scanDuplicates('publisher', mockUser)).clusters[0]!;
+      expect(cluster).toMatchObject({ entityTotal: 12, pairTotal: 11, nextPage: 2, detailsPageSize: 10 });
+      expect(cluster.entities).toHaveLength(10);
+      const second = await service.getDuplicateClusterPage('publisher', mockUser, cluster.clusterId, 2, 10);
+      expect(second).toMatchObject({ entityTotal: 12, pairTotal: 11, page: 2, pageSize: 10, nextPage: null });
+      expect(second.entities.map((entity) => entity.id)).toEqual(['A10', 'A11']);
+      expect(second.pairDetails).toEqual([
+        { idA: 'A10', idB: 'A11', nameA: 'A10', nameB: 'A11', similarity: 0.9, reasons: ['Very high name similarity'] },
+      ]);
+    });
+
+    it('rejects an invalid cluster cursor', async () => {
+      const { service } = makeService();
+      await expect(service.getDuplicateClusterPage('publisher', mockUser, 'invalid', 1, 10)).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -480,6 +526,26 @@ describe('EntityManagerService', () => {
         totalPairs: null,
         threshold: 0.7,
         progressPct: null,
+      });
+    });
+
+    it('returns the visible pair count for the current user', async () => {
+      const { service, duplicateCompute } = makeService();
+      duplicateCompute.getStatus.mockResolvedValue({
+        entityType: 'author',
+        isComputing: false,
+        computedAt: new Date('2024-01-01'),
+        totalPairs: 12,
+        threshold: 0.8,
+        totalCount: 20,
+        processedCount: 20,
+        errorMessage: null,
+      });
+      duplicateCompute.countScopedCandidates.mockResolvedValue(2);
+      expect(await service.getDuplicateScanStatus('author', mockUser)).toMatchObject({ state: 'done', totalPairs: 2 });
+      expect(duplicateCompute.countScopedCandidates).toHaveBeenCalledWith('author', {
+        libraryIds: [1, 2],
+        contentFilters: EMPTY_CONTENT_FILTER_RULES,
       });
     });
 
@@ -614,7 +680,15 @@ describe('EntityManagerService', () => {
 
       const result = await service.merge('author', mockUser, 1, [2, 3], false);
 
-      expect(strategies.author.merge).toHaveBeenCalledWith({ targetId: 1, sourceIds: [2, 3], userId: 1, libraryIds: [1, 2] });
+      expect(strategies.author.merge).toHaveBeenCalledWith(
+        expect.objectContaining({
+          targetId: 1,
+          sourceIds: [2, 3],
+          userId: 1,
+          libraryIds: [1, 2],
+          contentFilters: EMPTY_CONTENT_FILTER_RULES,
+        }),
+      );
       expect(repo.deleteDismissedPairsForEntity).toHaveBeenCalledTimes(2);
       expect(repo.deleteDismissedPairsForEntity).toHaveBeenCalledWith('author', 2);
       expect(repo.deleteDismissedPairsForEntity).toHaveBeenCalledWith('author', 3);
@@ -628,6 +702,104 @@ describe('EntityManagerService', () => {
         imagePromoted: true,
         fieldsResolved: ['sortName'],
       });
+    });
+
+    it('streams the captured books after transactional scoring with at most five file writes at once', async () => {
+      const { service, strategies, fileWriteService, metadataScoreService, repo } = makeService();
+      const executor = { execute: vi.fn() };
+      const dispose = vi.fn().mockResolvedValue(undefined);
+      let writing = 0;
+      let peakWriting = 0;
+      let written = 0;
+      fileWriteService.writeToFile.mockImplementation(async () => {
+        writing++;
+        peakWriting = Math.max(peakWriting, writing);
+        await Promise.resolve();
+        writing--;
+        written++;
+        return { status: 'success' };
+      });
+      vi.mocked(strategies.author.merge).mockImplementation(async (input) => {
+        await input.onBooksChanged!([1, 2], executor);
+        return {
+          affectedBookIds: [],
+          affectedBookCount: 1201,
+          affectedBookBatches: async function* () {
+            for (let offset = 0; offset < 1201; offset += 500)
+              yield await Promise.resolve(Array.from({ length: Math.min(500, 1201 - offset) }, (_, index) => offset + index + 1));
+          },
+          disposeAffectedBooks: dispose,
+        };
+      });
+
+      const result = await service.merge('author', mockUser, 1, [2], true);
+
+      expect(result.affectedBookCount).toBe(1201);
+      expect(metadataScoreService.calculateAndSaveMany).toHaveBeenCalledExactlyOnceWith([1, 2], executor);
+      expect(repo.filterBookIdsByScope).toHaveBeenCalledTimes(1);
+      expect(written).toBe(50);
+      expect(peakWriting).toBe(5);
+      expect(fileWriteService.scheduleWrite).not.toHaveBeenCalled();
+      expect(dispose).toHaveBeenCalledOnce();
+    });
+
+    it('writes captured books even when the edit removes a genre required by the content filter', async () => {
+      const { service, strategies, fileWriteService, repo } = makeService();
+      const dispose = vi.fn().mockResolvedValue(undefined);
+      const filteredUser = { ...mockUser, contentFilters: { ...EMPTY_CONTENT_FILTER_RULES, includeGenreIds: [8] } };
+      repo.filterBookIdsByScope.mockImplementation((ids: number[], scope: { libraryIds: number[]; contentFilters?: unknown }) =>
+        Promise.resolve(scope.libraryIds.includes(1) && !scope.contentFilters ? ids : []),
+      );
+      (strategies.genre.merge as ReturnType<typeof vi.fn>).mockResolvedValue({
+        affectedBookIds: [],
+        affectedBookCount: 1,
+        affectedBookBatches: async function* () {
+          yield await Promise.resolve([7]);
+        },
+        disposeAffectedBooks: dispose,
+      });
+      await service.merge('genre', filteredUser, 9, [8], true);
+      expect(fileWriteService.writeToFile).toHaveBeenCalledExactlyOnceWith(7, 'auto', filteredUser.id);
+      expect(dispose).toHaveBeenCalledOnce();
+    });
+
+    it('skips file writes when access to the captured library is revoked after commit', async () => {
+      const { service, strategies, fileWriteService, libraryService, repo } = makeService();
+      const dispose = vi.fn().mockResolvedValue(undefined);
+      libraryService.findAccessibleLibraryIds.mockResolvedValueOnce([1, 2]).mockResolvedValue([]);
+      repo.filterBookIdsByScope.mockImplementation((ids: number[], scope: { libraryIds: number[] }) =>
+        Promise.resolve(scope.libraryIds.includes(1) ? ids : []),
+      );
+      vi.mocked(strategies.genre.merge).mockResolvedValue({
+        affectedBookIds: [],
+        affectedBookCount: 1,
+        affectedBookBatches: async function* () {
+          yield await Promise.resolve([7]);
+        },
+        disposeAffectedBooks: dispose,
+      });
+      const result = await service.merge('genre', mockUser, 9, [8], true);
+      expect(result.affectedBookCount).toBe(1);
+      expect(fileWriteService.writeToFile).not.toHaveBeenCalled();
+      expect(repo.filterBookIdsByScope).toHaveBeenCalledWith([7], { libraryIds: [] });
+      expect(dispose).toHaveBeenCalledOnce();
+    });
+
+    it('retains pending books when a file write fails after commit', async () => {
+      const { service, strategies, fileWriteService } = makeService();
+      const dispose = vi.fn().mockResolvedValue(undefined);
+      fileWriteService.writeToFile.mockRejectedValue(new Error('Write failed'));
+      (strategies.author.merge as ReturnType<typeof vi.fn>).mockResolvedValue({
+        affectedBookIds: [],
+        affectedBookCount: 1,
+        affectedBookBatches: async function* () {
+          yield await Promise.resolve([7]);
+        },
+        disposeAffectedBooks: dispose,
+      });
+      const result = await service.merge('author', mockUser, 1, [2], true);
+      expect(result.fileWriteRecovery?.pendingBookCount).toBe(1);
+      expect(dispose).toHaveBeenCalledOnce();
     });
 
     it('propagates score persistence failures', async () => {
@@ -659,15 +831,15 @@ describe('EntityManagerService', () => {
       expect(duplicateCompute.invalidateCandidatesForEntities).not.toHaveBeenCalled();
     });
 
-    it('schedules file writes when writeFiles is true', async () => {
+    it('writes the retained receipt when writeFiles is true', async () => {
       const { service, strategies, fileWriteService } = makeService();
       (strategies.genre.merge as any).mockResolvedValue({ affectedBookIds: [10, 20, 10] });
 
       await service.merge('genre', mockUser, 1, [2], true);
 
-      expect(fileWriteService.scheduleWrite).toHaveBeenCalledTimes(2);
-      expect(fileWriteService.scheduleWrite).toHaveBeenCalledWith(10, 'auto', 1);
-      expect(fileWriteService.scheduleWrite).toHaveBeenCalledWith(20, 'auto', 1);
+      expect(fileWriteService.writeToFile).toHaveBeenCalledTimes(2);
+      expect(fileWriteService.writeToFile).toHaveBeenCalledWith(10, 'auto', 1);
+      expect(fileWriteService.writeToFile).toHaveBeenCalledWith(20, 'auto', 1);
     });
 
     it('does not schedule file writes when writeFiles is false', async () => {
@@ -691,7 +863,15 @@ describe('EntityManagerService', () => {
 
       const result = await service.rename('tag', mockUser, 1, ' NewTag ', false);
 
-      expect(strategies.tag.rename).toHaveBeenCalledWith({ entityId: 1, newName: ' NewTag ', userId: 1, libraryIds: [1, 2] });
+      expect(strategies.tag.rename).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityId: 1,
+          newName: ' NewTag ',
+          userId: 1,
+          libraryIds: [1, 2],
+          contentFilters: EMPTY_CONTENT_FILTER_RULES,
+        }),
+      );
       expect(result).toEqual({
         entityId: 1,
         oldName: 'OldTag',
@@ -722,7 +902,14 @@ describe('EntityManagerService', () => {
 
       const result = await service.deleteEntity('genre', mockUser, 5, 'hard', false);
 
-      expect(strategies.genre.deleteEntity).toHaveBeenCalledWith({ entityId: 5, mode: 'hard', libraryIds: [1, 2] });
+      expect(strategies.genre.deleteEntity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityId: 5,
+          mode: 'hard',
+          libraryIds: [1, 2],
+          contentFilters: EMPTY_CONTENT_FILTER_RULES,
+        }),
+      );
       expect(repo.deleteDismissedPairsForEntity).toHaveBeenCalledWith('genre', 5);
       expect(result).toEqual({ entityId: 5, name: 'Fantasy', affectedBookCount: 2, mode: 'hard' });
     });
@@ -734,7 +921,14 @@ describe('EntityManagerService', () => {
 
       await service.deleteEntity('genre', mockUser, 5, 'soft', false);
 
-      expect(strategies.genre.deleteEntity).toHaveBeenCalledWith({ entityId: 5, mode: 'soft', libraryIds: [1, 2] });
+      expect(strategies.genre.deleteEntity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityId: 5,
+          mode: 'soft',
+          libraryIds: [1, 2],
+          contentFilters: EMPTY_CONTENT_FILTER_RULES,
+        }),
+      );
       expect(repo.deleteDismissedPairsForEntity).not.toHaveBeenCalled();
     });
 
@@ -745,7 +939,14 @@ describe('EntityManagerService', () => {
 
       const result = await service.deleteEntity('author', mockUser, 5, 'soft', false);
 
-      expect(strategies.author.deleteEntity).toHaveBeenCalledWith({ entityId: 5, mode: 'hard', libraryIds: [1, 2] });
+      expect(strategies.author.deleteEntity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityId: 5,
+          mode: 'hard',
+          libraryIds: [1, 2],
+          contentFilters: EMPTY_CONTENT_FILTER_RULES,
+        }),
+      );
       expect(repo.deleteDismissedPairsForEntity).toHaveBeenCalledWith('author', 5);
       expect(duplicateCompute.invalidateCandidatesForEntities).toHaveBeenCalledWith('author', [5]);
       expect(result.mode).toBe('hard');
@@ -811,7 +1012,14 @@ describe('EntityManagerService', () => {
 
       const result = await service.split('author', mockUser, 5, ['Author A', 'Author B'], false);
 
-      expect(strategies.author.split).toHaveBeenCalledWith({ entityId: 5, newNames: ['Author A', 'Author B'], libraryIds: [1, 2] });
+      expect(strategies.author.split).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityId: 5,
+          newNames: ['Author A', 'Author B'],
+          libraryIds: [1, 2],
+          contentFilters: EMPTY_CONTENT_FILTER_RULES,
+        }),
+      );
       expect(repo.deleteDismissedPairsForEntity).toHaveBeenCalledWith('author', 5);
       expect(result).toEqual({
         originalId: 5,
@@ -881,46 +1089,53 @@ describe('EntityManagerService', () => {
   });
 
   describe('getDismissedPairs', () => {
-    it('returns enriched dismissed pairs for first-class entities', async () => {
-      const { service, repo, strategies } = makeService();
-      repo.findDismissedPairs.mockResolvedValue([{ id: 1, entityIdA: 10, entityIdB: 20, reason: 'test', dismissedAt: new Date('2024-01-01') }]);
-      (strategies.genre.findEntityById as any).mockImplementation((id: number) => Promise.resolve({ id, name: `Genre ${id}` }));
-
-      const result = await service.getDismissedPairs('genre', mockUser);
-
-      expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({
+    it('returns scoped named dismissed pairs for first-class entities', async () => {
+      const { service, repo } = makeService();
+      const pair: DismissedPairInfo = {
         id: 1,
         entityType: 'genre',
-        nameA: 'Genre 10',
-        nameB: 'Genre 20',
         idA: 10,
         idB: 20,
+        nameA: 'Genre 10',
+        nameB: 'Genre 20',
         reason: 'test',
         dismissedAt: '2024-01-01T00:00:00.000Z',
-      });
+      };
+      repo.findDismissedPairsPage.mockResolvedValue({ items: [pair], total: 1 });
+      await expect(service.getDismissedPairs('genre', mockUser)).resolves.toEqual([pair]);
+      expect(repo.findDismissedPairsPage).toHaveBeenCalledWith('genre', { libraryIds: [1, 2], contentFilters: EMPTY_CONTENT_FILTER_RULES }, 1, 100);
     });
 
-    it('skips pairs where entity no longer exists', async () => {
-      const { service, repo, strategies } = makeService();
-      repo.findDismissedPairs.mockResolvedValue([{ id: 1, entityIdA: 10, entityIdB: 20, reason: null, dismissedAt: new Date() }]);
-      (strategies.genre.findEntityById as any).mockResolvedValueOnce({ id: 10, name: 'A' }).mockResolvedValueOnce(null);
-
-      const result = await service.getDismissedPairs('genre', mockUser);
-      expect(result).toHaveLength(0);
+    it('preserves the total and requested page when returning a bounded dismissed page', async () => {
+      const { service, repo } = makeService();
+      const pair: DismissedPairInfo = {
+        id: 21,
+        entityType: 'genre',
+        idA: 30,
+        idB: 40,
+        nameA: 'Later A',
+        nameB: 'Later B',
+        reason: null,
+        dismissedAt: '2024-06-01T00:00:00.000Z',
+      };
+      repo.findDismissedPairsPage.mockResolvedValue({ items: [pair], total: 21 });
+      await expect(service.getDismissedPairsPage('genre', mockUser, 2, 20)).resolves.toEqual({ items: [pair], total: 21, page: 2, pageSize: 20 });
     });
 
     it('returns inline dismissed pairs directly', async () => {
       const { service, repo } = makeService();
-      repo.findInlineDismissedPairs.mockResolvedValue([
-        { id: 1, valueA: 'Pub A', valueB: 'Pub B', reason: null, dismissedAt: new Date('2024-06-01') },
-      ]);
-
-      const result = await service.getDismissedPairs('publisher', mockUser);
-
-      expect(result).toHaveLength(1);
-      expect(result[0]!.nameA).toBe('Pub A');
-      expect(result[0]!.idA).toBe('Pub A');
+      const pair: DismissedPairInfo = {
+        id: 1,
+        entityType: 'publisher',
+        idA: 'Pub A',
+        idB: 'Pub B',
+        nameA: 'Pub A',
+        nameB: 'Pub B',
+        reason: null,
+        dismissedAt: '2024-06-01T00:00:00.000Z',
+      };
+      repo.findDismissedPairsPage.mockResolvedValue({ items: [pair], total: 1 });
+      await expect(service.getDismissedPairs('publisher', mockUser)).resolves.toEqual([pair]);
     });
   });
 
@@ -966,48 +1181,19 @@ describe('EntityManagerService', () => {
   });
 
   describe('computeReasons (via scan)', () => {
-    it('adds name containment reason when one name contains the other', async () => {
-      const { service, strategies } = makeService();
-
-      const pairs: RawCandidatePair[] = [{ idA: 'A', idB: 'B', nameA: 'Science Fiction', nameB: 'Fiction', simScore: 0.72 }];
-      (strategies.publisher.findCandidatePairs as any).mockResolvedValue(pairs);
-      (strategies.publisher.findEntityById as any).mockImplementation((id: string) =>
-        Promise.resolve({ id, name: id === 'A' ? 'Science Fiction' : 'Fiction' }),
-      );
-      (strategies.publisher.getBookCount as any).mockResolvedValue(1);
-      (strategies.publisher.getBookTitles as any).mockResolvedValue([]);
-
-      const result = await service.scanDuplicates('publisher', mockUser);
-      const reasons = result.clusters[0]!.pairDetails[0]!.reasons;
-      expect(reasons).toContain('Name containment');
-    });
-
-    it('classifies very high similarity', async () => {
-      const { service, strategies } = makeService();
-
-      const pairs: RawCandidatePair[] = [{ idA: 'A', idB: 'B', nameA: 'Test', nameB: 'Tset', simScore: 0.9 }];
-      (strategies.publisher.findCandidatePairs as any).mockResolvedValue(pairs);
-      (strategies.publisher.findEntityById as any).mockImplementation((id: string) => Promise.resolve({ id, name: id === 'A' ? 'Test' : 'Tset' }));
-      (strategies.publisher.getBookCount as any).mockResolvedValue(1);
-      (strategies.publisher.getBookTitles as any).mockResolvedValue([]);
-
-      const result = await service.scanDuplicates('publisher', mockUser);
-      expect(result.clusters[0]!.pairDetails[0]!.reasons).toContain('Very high name similarity');
-    });
-
-    it('adds same normalized tokens reason when applicable', async () => {
-      const { service, strategies } = makeService();
-
-      const pairs: RawCandidatePair[] = [{ idA: 'A', idB: 'B', nameA: 'young adult', nameB: 'Adult Young', simScore: 0.75 }];
-      (strategies.publisher.findCandidatePairs as any).mockResolvedValue(pairs);
-      (strategies.publisher.findEntityById as any).mockImplementation((id: string) =>
-        Promise.resolve({ id, name: id === 'A' ? 'young adult' : 'Adult Young' }),
-      );
-      (strategies.publisher.getBookCount as any).mockResolvedValue(1);
-      (strategies.publisher.getBookTitles as any).mockResolvedValue([]);
-
-      const result = await service.scanDuplicates('publisher', mockUser);
-      expect(result.clusters[0]!.pairDetails[0]!.reasons).toContain('Same normalized tokens');
+    it.each([
+      ['Science Fiction', 'Fiction', 0.72, 'Name containment'],
+      ['Test', 'Tset', 0.9, 'Very high name similarity'],
+      ['young adult', 'Adult Young', 0.75, 'Same normalized tokens'],
+    ] as const)('explains the names %s and %s', async (nameA, nameB, simScore, reason) => {
+      const { service, setCandidates, repo } = makeService();
+      setCandidates('publisher', [{ idA: nameA, idB: nameB, nameA, nameB, simScore }]);
+      const entities: ClusterEntity[] = [
+        { id: nameA, name: nameA, bookCount: 1, bookTitles: [] },
+        { id: nameB, name: nameB, bookCount: 1, bookTitles: [] },
+      ];
+      repo.findClusterEntities.mockResolvedValue(entities);
+      expect((await service.scanDuplicates('publisher', mockUser)).clusters[0]!.pairDetails[0]!.reasons).toContain(reason);
     });
   });
 });

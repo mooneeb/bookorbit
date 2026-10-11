@@ -108,6 +108,7 @@ describe('MigrationProgressGateway', () => {
     (client.data as { user: RequestUser }).user = makeUser({ permissions: [Permission.ManageAppSettings] });
     repo.findRunById.mockResolvedValue({
       id: 12,
+      triggeredByUserId: 7,
       sourceId: 1,
       profileId: 2,
       planArtifactId: 3,
@@ -169,14 +170,28 @@ describe('MigrationProgressGateway', () => {
 
     await gateway.handleSubscribeRun(noUserClient as never, 4);
     expect(noUserClient.join).not.toHaveBeenCalled();
+    expect(noUserClient.emit).not.toHaveBeenCalled();
 
     const client = makeClient();
     (client.data as { user: RequestUser }).user = makeUser({ permissions: [Permission.ManageAppSettings] });
     repo.findRunById.mockResolvedValue(null);
 
     await gateway.handleSubscribeRun(client as never, 4);
-    expect(client.join).toHaveBeenCalledWith('run:4');
+    expect(client.join).not.toHaveBeenCalled();
     expect(client.emit).not.toHaveBeenCalled();
+  });
+
+  it('does nothing on subscribe when the authenticated user does not own the run', async () => {
+    const { gateway, repo } = makeGateway();
+    const client = makeClient();
+    (client.data as { user: RequestUser }).user = makeUser({ permissions: [Permission.ManageAppSettings] });
+    repo.findRunById.mockResolvedValue({ id: 4, triggeredByUserId: 8 });
+
+    await gateway.handleSubscribeRun(client as never, 4);
+
+    expect(client.join).not.toHaveBeenCalled();
+    expect(client.emit).not.toHaveBeenCalled();
+    expect(repo.listRunMetrics).not.toHaveBeenCalled();
   });
 
   it('emits progress updates to room-scoped subscribers', () => {

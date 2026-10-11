@@ -97,6 +97,12 @@ export class BookController {
     return this.bookService.embedAll();
   }
 
+  @Get('embed-all/status')
+  @RequirePermission(Permission.ManageAppSettings)
+  embeddingStatus() {
+    return this.bookService.embeddingStatus();
+  }
+
   @Delete()
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission(Permission.LibraryDeleteBooks)
@@ -211,11 +217,20 @@ export class BookController {
   }
 
   @Post('export')
+  @HttpCode(HttpStatus.OK)
   @RequirePermission(Permission.LibraryDownload)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk downloads')
   async exportBooks(@Body() dto: ExportBooksDto, @CurrentUser() user: RequestUser, @Res() reply: FastifyReply) {
     const scope = dto.audioOnly ? 'audio' : dto.allFormats ? 'all' : 'primary';
     await this.streamBookExport(dto.bookIds, scope, user, reply);
+  }
+
+  @Post('export/preflight')
+  @RequirePermission(Permission.LibraryDownload)
+  @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk downloads')
+  async exportBooksPreflight(@Body() dto: ExportBooksDto, @CurrentUser() user: RequestUser) {
+    const plan = await this.bookService.getExportFiles(dto.bookIds, user, dto.audioOnly ? 'audio' : dto.allFormats ? 'all' : 'primary');
+    return { bookCount: plan.bookCount, fileCount: plan.files.length, projectedBytes: plan.projectedBytes, archiveFilename: plan.archiveFilename };
   }
 
   @Get('export/download')
@@ -240,6 +255,7 @@ export class BookController {
   }
 
   @Post('metadata-export/download')
+  @HttpCode(HttpStatus.OK)
   @RequirePermission(Permission.LibraryDownload)
   @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk downloads')
   async downloadMetadataExport(@Body() dto: MetadataExportDto, @CurrentUser() user: RequestUser, @Res() reply: FastifyReply) {
@@ -813,7 +829,17 @@ export class BookController {
   })
   async bulkEditMetadata(@Body() dto: BulkEditMetadataDto, @CurrentUser() user: RequestUser) {
     const ids = await this.bookService.resolveSelectionToIds(dto, user);
-    return this.bookService.bulkEditMetadata(ids, dto.fields, user);
+    return dto.expectedVersions
+      ? this.bookService.bulkEditMetadata(ids, dto.fields, user, dto.expectedVersions)
+      : this.bookService.bulkEditMetadata(ids, dto.fields, user);
+  }
+
+  @Post('bulk-edit-metadata/preview')
+  @RequirePermission(Permission.LibraryEditMetadata)
+  @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk edits')
+  async previewBulkMetadata(@Body() dto: BulkEditMetadataDto, @CurrentUser() user: RequestUser) {
+    if (dto.query || !dto.bookIds || dto.bookIds.length > 100) throw new BadRequestException('Preview requires 1 to 100 explicitly selected books');
+    return this.bookService.previewBulkMetadata(dto.bookIds, dto.fields, user);
   }
 
   @Get(':id')

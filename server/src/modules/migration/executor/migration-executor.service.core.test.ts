@@ -1,13 +1,18 @@
+import { RunInterruptedError } from './executor-utils';
 import { MigrationExecutorService } from './migration-executor.service';
 
 function makeExecutorService() {
   const repo = {
     findRunById: vi.fn(),
+    findBatchCheckpoint: vi.fn(),
+    commitBatchCheckpoint: vi.fn(),
+    listPlanSourceBatches: vi.fn(),
+    findPlanMatchesForBooks: vi.fn(),
     findPlanArtifactById: vi.fn(),
     findSourceById: vi.fn(),
     hasStageMetrics: vi.fn().mockResolvedValue(false),
     clearStageMetrics: vi.fn().mockResolvedValue(undefined),
-    updateRunState: vi.fn().mockResolvedValue(undefined),
+    updateRunState: vi.fn().mockResolvedValue({ id: 5, state: 'running', currentStage: 'book_covers' }),
     listRunMetrics: vi.fn().mockResolvedValue([]),
   };
   const sharedOverlays = { import: vi.fn().mockResolvedValue(undefined) };
@@ -73,10 +78,15 @@ describe('MigrationExecutorService core orchestration', () => {
     await (service as never).executeStage(22, 'shared_overlays', new Set(), handler);
 
     expect(repo.clearStageMetrics).toHaveBeenCalledWith(22, 'shared_overlays');
-    expect(repo.updateRunState).toHaveBeenCalledWith(22, 'running', {
-      currentStage: 'shared_overlays',
-      errorMessage: null,
-    });
+    expect(repo.updateRunState).toHaveBeenCalledWith(
+      22,
+      'running',
+      {
+        currentStage: 'shared_overlays',
+        errorMessage: null,
+      },
+      'running',
+    );
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
@@ -86,7 +96,7 @@ describe('MigrationExecutorService core orchestration', () => {
 
     const failedStage = await (service as never).failRun(5, 'boom');
 
-    expect(failedStage).toBe('book_covers');
+    expect(failedStage).toEqual(expect.objectContaining({ currentStage: 'book_covers' }));
     expect(repo.updateRunState).toHaveBeenCalledWith(
       5,
       'failed',
@@ -94,7 +104,45 @@ describe('MigrationExecutorService core orchestration', () => {
         errorMessage: 'boom',
         endedAt: expect.any(Date),
       }),
+      'running',
     );
+  });
+
+  it('stops a stage if cancellation wins its conditional update', async () => {
+    const { service, repo } = makeExecutorService();
+    repo.updateRunState.mockResolvedValue(null);
+    const handler = vi.fn();
+
+    await expect((service as never).executeStage(22, 'user_state', new Set(), handler)).rejects.toBeInstanceOf(RunInterruptedError);
+    expect(handler).not.toHaveBeenCalled();
+    expect(repo.updateRunState).toHaveBeenCalledWith(22, 'running', expect.any(Object), 'running');
+  });
+
+  it('does not fail a run when cancellation already won', async () => {
+    const { service, repo } = makeExecutorService();
+    repo.updateRunState.mockResolvedValue(null);
+
+    await expect((service as never).failRun(5, 'late provider failure')).resolves.toBeNull();
+    expect(repo.updateRunState).toHaveBeenCalledWith(5, 'failed', expect.any(Object), 'running');
+  });
+
+  it('waitForIdle holds retries until the previous execution has settled', async () => {
+    const { service } = makeExecutorService();
+    let release!: () => void;
+    vi.spyOn(service as never, 'execute').mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    service.start(91);
+    const settled = vi.fn();
+    const idle = service.waitForIdle(91).then(settled);
+    await Promise.resolve();
+    expect(settled).not.toHaveBeenCalled();
+    release();
+    await idle;
+    expect(settled).toHaveBeenCalledTimes(1);
   });
 
   it('emitRunProgress aggregates stage metrics and emits gateway event', async () => {
@@ -175,6 +223,7 @@ describe('MigrationExecutorService core orchestration', () => {
       expect.objectContaining({
         errorMessage: 'Migration run references missing source or plan artifact',
       }),
+      'running',
     );
   });
 
@@ -190,6 +239,7 @@ describe('MigrationExecutorService core orchestration', () => {
       expect.objectContaining({
         errorMessage: 'Migration run is missing a dry-run plan artifact',
       }),
+      'running',
     );
     expect(sharedOverlays.import).not.toHaveBeenCalled();
     expect(covers.import).not.toHaveBeenCalled();
@@ -224,6 +274,7 @@ describe('MigrationExecutorService core orchestration', () => {
       expect.objectContaining({
         errorMessage: 'Plan artifact is missing cached source data. Re-run dry-run.',
       }),
+      'running',
     );
   });
 
@@ -259,6 +310,7 @@ describe('MigrationExecutorService core orchestration', () => {
         currentStage: 'completed',
         errorMessage: null,
       }),
+      'running',
     );
 
     const emittedStates = progressGateway.emitProgress.mock.calls.map((call) => call[0].state);
@@ -295,6 +347,20 @@ describe('MigrationExecutorService core orchestration', () => {
     expect(progressGateway.emitProgress).not.toHaveBeenCalled();
   });
 
+  it('does not announce completion when cancellation wins the final conditional update', async () => {
+    const { service, repo, progressGateway } = makeExecutorService();
+    repo.findRunById.mockResolvedValue({ id: 11, state: 'running', sourceId: 1, planArtifactId: 44, currentStage: 'init' });
+    repo.findPlanArtifactById.mockResolvedValue({ id: 44, plan: { matchedBooks: [], unresolvedBooks: [] }, sourceData: { books: [] } });
+    repo.findSourceById.mockResolvedValue({ id: 1, type: 'custom', connectionConfig: {} });
+    repo.updateRunState.mockImplementation((_runId, state) => Promise.resolve(state === 'completed' ? null : { id: 11, state }));
+
+    await (service as never).execute(11);
+
+    expect(repo.updateRunState).toHaveBeenCalledWith(11, 'completed', expect.any(Object), 'running');
+    expect(repo.updateRunState.mock.calls.some((call) => call[1] === 'failed')).toBe(false);
+    expect(progressGateway.emitProgress.mock.calls.some((call) => call[0].state === 'completed')).toBe(false);
+  });
+
   it('resolveSourceMediaRootPath handles non-booklore and missing media root paths', () => {
     const { service } = makeExecutorService();
 
@@ -307,5 +373,61 @@ describe('MigrationExecutorService core orchestration', () => {
         database: 'booklore',
       }),
     ).toBeNull();
+  });
+});
+
+describe('durable matched batches with bounded plan previews', () => {
+  it('resumes the same run after a committed batch and imports all 105 matches and 501 bookmarks', async () => {
+    const { service, repo, userState } = makeExecutorService();
+    const matches = Array.from({ length: 105 }, (_, i) => ({ sourceBookId: String(i), targetBookId: i + 1, strategy: 'isbn' }));
+    const data = (start: number, count: number, bookmarkCount: number) => ({
+      users: [],
+      books: matches.slice(start, start + count).map((match) => ({ sourceBookId: match.sourceBookId })),
+      userBookStatuses: [],
+      userFileProgress: [],
+      readingSessions: [],
+      annotations: [],
+      shelves: [],
+      shelfBooks: [],
+      bookmarks: Array.from({ length: bookmarkCount }, (_, index) => ({ sourceBookId: String(start + (index % count)) })),
+    });
+    const batches = [
+      { batchIndex: 0, bookOverlays: 1, sourceData: data(0, 100, 500) },
+      { batchIndex: 1, bookOverlays: 1, sourceData: data(100, 5, 1) },
+    ];
+    const checkpoints = new Map<string, { batchIndex: number; metrics: unknown[] }>();
+    repo.findBatchCheckpoint.mockImplementation((_runId, stage) => Promise.resolve(checkpoints.get(stage)));
+    repo.commitBatchCheckpoint.mockImplementation((_runId, stage, batchIndex, metrics) => {
+      checkpoints.set(stage, { batchIndex, metrics });
+      return Promise.resolve();
+    });
+    repo.listPlanSourceBatches.mockImplementation((_artifactId, cursor) =>
+      Promise.resolve(batches.filter((batch) => batch.batchIndex > cursor).slice(0, 1)),
+    );
+    repo.findPlanMatchesForBooks.mockImplementation((_artifactId, ids: string[]) =>
+      Promise.resolve(matches.filter((match) => ids.includes(match.sourceBookId))),
+    );
+    repo.findRunById.mockResolvedValue({ id: 5, state: 'running' });
+    const imported = new Set<string>();
+    let bookmarks = 0;
+    let interrupted = false;
+    userState.import.mockImplementation((_runId, planned) => {
+      if (planned.execution.matchedBooks[0].sourceBookId === '100' && !interrupted) {
+        interrupted = true;
+        return Promise.reject(new RunInterruptedError(5, 'failed'));
+      }
+      for (const match of planned.execution.matchedBooks) imported.add(match.sourceBookId);
+      bookmarks += planned.execution.sourceData.bookmarks.length;
+      return Promise.resolve();
+    });
+    const plan = { matchedBooksBatched: true, matchedBooks: matches.slice(0, 40), unresolvedBooks: [] };
+    await expect((service as never).executeDurableStages(5, 1, plan, null)).rejects.toBeInstanceOf(RunInterruptedError);
+    expect(checkpoints.get('user_state')?.batchIndex).toBe(0);
+    expect(imported.size).toBe(100);
+    await (service as never).executeDurableStages(5, 1, plan, null);
+    expect(imported.size).toBe(105);
+    expect(bookmarks).toBe(501);
+    expect(userState.import).toHaveBeenCalledTimes(3);
+    expect(repo.findPlanMatchesForBooks).toHaveBeenCalledWith(1, expect.arrayContaining(['104']));
   });
 });

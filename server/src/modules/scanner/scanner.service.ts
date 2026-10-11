@@ -47,6 +47,7 @@ import {
   type WalkResult,
 } from './lib/walk';
 import { ScannerRepository } from './scanner.repository';
+import { BookMergeScanService } from '../book-duplicates/book-merge-scan.service';
 import { assembleBookCards } from '../book/utils/assemble-book-cards';
 import { LIBRARY_METADATA_PRECEDENCE_DEFAULT } from '../library/library.constants';
 import { inspectEpubMediaOverlayFields, type EpubMediaOverlayColumnFields } from '../reader/epub/epub-media-overlay-capability';
@@ -80,7 +81,14 @@ interface FileByInoEntry {
   mtime: Date | null;
 }
 
+interface MergedScanAlias {
+  targetBook: BookEntry;
+  fileIds: Set<number>;
+}
+
 interface ScanLookupMaps {
+  mergedAliases: Map<string, MergedScanAlias>;
+  preservedPrimaryFileIds: Map<number, number>;
   bookByFolderPath: Map<string, BookEntry>;
   booksByParentDir: Map<string, BookEntry[]>;
   fileByPath: Map<string, FileByPathEntry>;
@@ -254,6 +262,7 @@ export class ScannerService implements OnApplicationBootstrap {
     @Optional() private readonly autoFetchOrchestrator?: BookMetadataFetchOrchestratorService,
     @Optional() private readonly achievementEvents?: AchievementEventsService,
     @Optional() private readonly coverReconciler?: CoverSlotReconciler,
+    @Optional() private readonly mergeScan?: BookMergeScanService,
   ) {}
 
   /**
@@ -295,6 +304,40 @@ export class ScannerService implements OnApplicationBootstrap {
       missingCount: row.missingCount,
       errorMessage: row.errorMessage,
     }));
+  }
+
+  async getScanStatus(libraryId: number): Promise<import('@bookorbit/types').ScanStatusResponse> {
+    const active = this.scanJobStore.get(libraryId);
+    if (active) {
+      return {
+        progress: {
+          jobId: active.jobId,
+          libraryId,
+          status: 'running',
+          processed: active.processed,
+          total: active.total,
+          added: active.added,
+          updated: active.updated,
+          missing: active.missing,
+        },
+      };
+    }
+    const [latest] = await this.getScanHistory(libraryId, 1);
+    return {
+      progress: latest
+        ? {
+            jobId: latest.id,
+            libraryId,
+            status: latest.status,
+            processed: latest.addedCount + latest.updatedCount,
+            total: latest.addedCount + latest.updatedCount,
+            added: latest.addedCount,
+            updated: latest.updatedCount,
+            missing: latest.missingCount,
+            ...(latest.errorMessage ? { errorMessage: latest.errorMessage } : {}),
+          }
+        : null,
+    };
   }
 
   // ── Live book emission buffer ──────────────────────────────────────────────
@@ -418,7 +461,15 @@ export class ScannerService implements OnApplicationBootstrap {
       s.add(f.id);
     }
 
-    return { bookByFolderPath, booksByParentDir, fileByPath, fileByIno, fileIdsByBookId };
+    return {
+      bookByFolderPath,
+      booksByParentDir,
+      fileByPath,
+      fileByIno,
+      fileIdsByBookId,
+      mergedAliases: new Map(),
+      preservedPrimaryFileIds: new Map(),
+    };
   }
 
   private async inspectMediaOverlayFields(absolutePath: string, format: string | null) {
@@ -683,14 +734,29 @@ export class ScannerService implements OnApplicationBootstrap {
     await this.scannerRepo.failAllRunningJobs('Server restarted during scan');
   }
 
-  async startScan(libraryId: number, triggeredBy: ScanTriggeredBy, forceFullScan = false): Promise<{ jobId: number }> {
+  async startScan(libraryId: number, triggeredBy: ScanTriggeredBy, forceFullScan = false, expectedLastJobId?: number): Promise<{ jobId: number }> {
     const event = 'scanner.start_scan';
     const startedAt = Date.now();
-    this.logger.log(`[${event}] [start] libraryId=${libraryId} triggeredBy=${triggeredBy} forceFullScan=${forceFullScan} - scan start requested`);
+    this.logger.log(
+      `[${event}] [start] libraryId=${libraryId} triggeredBy=${triggeredBy} forceFullScan=${forceFullScan} expectedLastJobId=${expectedLastJobId ?? 'none'} - scan start requested`,
+    );
     if (!this.scanJobStore.acquireStartLock(libraryId)) {
       throw new ConflictException(`A scan is already starting for library ${libraryId}`);
     }
     try {
+      if (expectedLastJobId !== undefined) {
+        const [latest] = await this.getScanHistory(libraryId, 1);
+        const latestJobId = latest?.id ?? 0;
+        if (latestJobId > expectedLastJobId) {
+          this.logger.log(
+            `[${event}] [end] libraryId=${libraryId} jobId=${latestJobId} triggeredBy=${triggeredBy} expectedLastJobId=${expectedLastJobId} durationMs=${Date.now() - startedAt} reused=true - earlier scan start reconciled`,
+          );
+          return { jobId: latestJobId };
+        }
+        if (latestJobId !== expectedLastJobId) {
+          throw new ConflictException('Scan history changed. Reload the library before starting a scan.');
+        }
+      }
       if (this.scanJobStore.isRunning(libraryId)) {
         throw new ConflictException(`A scan is already running for library ${libraryId}`);
       }
@@ -746,7 +812,7 @@ export class ScannerService implements OnApplicationBootstrap {
       });
 
       this.logger.log(
-        `[${event}] [end] libraryId=${libraryId} triggeredBy=${triggeredBy} durationMs=${Date.now() - startedAt} jobId=${job.id} - scan start accepted`,
+        `[${event}] [end] libraryId=${libraryId} jobId=${job.id} triggeredBy=${triggeredBy} durationMs=${Date.now() - startedAt} reused=false - scan start accepted`,
       );
       return { jobId: job.id };
     } catch (err) {
@@ -1061,6 +1127,7 @@ export class ScannerService implements OnApplicationBootstrap {
     }
 
     const maps = await this.loadCandidateMaps(dirPath, libraryId);
+    await this.loadMergedScanAliases(candidates, libraryId, libraryFolder.id, maps);
     const totals = { added: 0, updated: 0 };
     const allRetainedFileIds = new Set<number>();
     const seenBookIds = new Set<number>();
@@ -1101,6 +1168,64 @@ export class ScannerService implements OnApplicationBootstrap {
     this.logger.log(
       `[${event}] [end] libraryId=${libraryId} path="${sanitizeLogValue(dirPath)}" durationMs=${Date.now() - startedAt} candidateCount=${candidates.length} skippedDirCount=${skippedDirs.size} added=${totals.added} updated=${totals.updated} - targeted directory scan completed`,
     );
+  }
+
+  private async isPreservedMergeFile(known: FileByPathEntry, file: Pick<FileStat, 'absolutePath' | 'ino' | 'sizeBytes' | 'mtime'>): Promise<boolean> {
+    const unchanged = known.ino === file.ino && known.sizeBytes === file.sizeBytes && known.mtime?.getTime() === file.mtime.getTime();
+    return unchanged || (known.fileHash !== null && (await computeFileHash(file.absolutePath)) === known.fileHash);
+  }
+
+  private async loadMergedScanAliases(candidates: BookCandidate[], libraryId: number, libraryFolderId: number, maps: ScanLookupMaps): Promise<void> {
+    if (!this.mergeScan) return;
+    const candidateFiles = new Map(candidates.flatMap((candidate) => candidate.files.map((file) => [file.absolutePath, file] as const)));
+    const knownFilesById = new Map([...maps.fileByPath].map(([path, file]) => [file.id, { path, file }]));
+    for (let offset = 0; offset < candidates.length; offset += 250) {
+      const aliases = await this.mergeScan.resolveMergedScanFolders(
+        libraryId,
+        libraryFolderId,
+        candidates.slice(offset, offset + 250).flatMap((candidate) => {
+          const primaryId = maps.bookByFolderPath.get(candidate.folderPath)?.primaryFileId;
+          const primary = primaryId != null ? knownFilesById.get(primaryId) : undefined;
+          return [candidate.folderPath, dirname(candidate.folderPath), ...(primary ? [primary.path, dirname(primary.path)] : [])];
+        }),
+      );
+      const valid = await mapWithConcurrency(aliases, 8, async (alias) => {
+        const target = await stat(alias.targetBook.folderPath).catch(() => null);
+        return target ? alias : null;
+      });
+      const accepted = valid.filter((alias) => alias !== null);
+      const missingTargetIds = [...new Set(accepted.map((alias) => alias.targetBook.id))].filter((id) => !maps.fileIdsByBookId.has(id));
+      const files = await this.scannerRepo.findBookFilesByBookIds(missingTargetIds);
+      const extra = ScannerService.buildLookupMaps([], files);
+      for (const [path, file] of extra.fileByPath) {
+        maps.fileByPath.set(path, file);
+        knownFilesById.set(file.id, { path, file });
+      }
+      for (const [ino, file] of extra.fileByIno) maps.fileByIno.set(ino, file);
+      for (const [id, fileIds] of extra.fileIdsByBookId) maps.fileIdsByBookId.set(id, fileIds);
+      for (const alias of accepted) {
+        maps.mergedAliases.set(alias.sourceFolderPath, { targetBook: alias.targetBook, fileIds: new Set(alias.fileIds) });
+        const primaryFileId = alias.targetBook.primaryFileId;
+        if (primaryFileId != null && alias.fileIds.includes(primaryFileId)) {
+          const known = knownFilesById.get(primaryFileId);
+          let candidate: Pick<FileStat, 'absolutePath' | 'ino' | 'sizeBytes' | 'mtime'> | undefined = known
+            ? candidateFiles.get(known.path)
+            : undefined;
+          if (known && !candidate) {
+            const state = await stat(known.path, { bigint: true }).catch(() => null);
+            if (state?.isFile())
+              candidate = {
+                absolutePath: known.path,
+                ino: state.ino,
+                sizeBytes: Number(state.size),
+                mtime: state.mtime,
+              };
+          }
+          if (known && candidate && (await this.isPreservedMergeFile(known.file, candidate)))
+            maps.preservedPrimaryFileIds.set(alias.targetBook.id, primaryFileId);
+        }
+      }
+    }
   }
 
   private async loadCandidateMaps(folderPath: string, libraryId: number): Promise<ScanLookupMaps> {
@@ -1189,6 +1314,7 @@ export class ScannerService implements OnApplicationBootstrap {
     };
 
     const maps = await this.loadCandidateMaps(filePath, libraryId);
+    await this.loadMergedScanAliases([candidate], libraryId, libraryFolder.id, maps);
     const result = await this.processCandidate(
       candidate,
       libraryId,
@@ -1261,6 +1387,7 @@ export class ScannerService implements OnApplicationBootstrap {
     };
 
     const maps = await this.loadCandidateMaps(filePath, libraryId);
+    await this.loadMergedScanAliases([candidate], libraryId, libraryFolder.id, maps);
     const result = await this.processCandidate(
       candidate,
       libraryId,
@@ -1352,6 +1479,7 @@ export class ScannerService implements OnApplicationBootstrap {
     }
 
     const maps = await this.loadCandidateMaps(resolvedBookFolder, libraryId);
+    await this.loadMergedScanAliases([candidate], libraryId, libraryFolder.id, maps);
     const result = await this.processCandidate(
       candidate,
       libraryId,
@@ -1573,6 +1701,7 @@ export class ScannerService implements OnApplicationBootstrap {
 
       const isFirstScan = knownBooks.length === 0 && knownFiles.length === 0;
       const maps = ScannerService.buildLookupMaps(knownBooks, knownFiles);
+      await this.loadMergedScanAliases(candidates, libraryId, libraryFolderId, maps);
 
       const seenBookIds = new Set<number>();
       const allRetainedFileIds = new Set<number>();
@@ -1813,7 +1942,42 @@ export class ScannerService implements OnApplicationBootstrap {
     addedAtSource: AddedAtSource,
     isFirstScan: boolean,
     candidateFolderPaths: Set<string>,
+    preserveMergedFiles = true,
   ): Promise<ProcessCandidateResult> {
+    const alias = preserveMergedFiles
+      ? (maps.mergedAliases.get(candidate.folderPath) ?? maps.mergedAliases.get(dirname(candidate.folderPath)))
+      : undefined;
+    if (alias) {
+      const retainedFileIds = new Set<number>();
+      const remainingFiles: FileStat[] = [];
+      for (const file of candidate.files) {
+        const known = maps.fileByPath.get(file.absolutePath);
+        let preserved = known?.bookId === alias.targetBook.id && alias.fileIds.has(known.id);
+        if (preserved && known) {
+          preserved = await this.isPreservedMergeFile(known, file);
+        }
+        if (preserved && known) retainedFileIds.add(known.id);
+        else remainingFiles.push(file);
+      }
+      if (!remainingFiles.some((file) => (file.role ?? classifyFile(file.absolutePath).role) === 'content')) {
+        return { bookId: alias.targetBook.id, added: 0, updated: 0, retainedFileIds, becameVisible: false, created: false, coverBookIds: [] };
+      }
+      candidate = { ...candidate, files: remainingFiles };
+      const result = await this.processCandidate(
+        candidate,
+        libraryId,
+        libraryFolderId,
+        maps,
+        formatPriority,
+        metadataPrecedence,
+        addedAtSource,
+        isFirstScan,
+        candidateFolderPaths,
+        false,
+      );
+      for (const id of retainedFileIds) result.retainedFileIds.add(id);
+      return result;
+    }
     const { bookByFolderPath, booksByParentDir, fileByPath, fileByIno } = maps;
     const counts = { added: 0, updated: 0 };
     const fileCounts: ScanCounts = { addedCount: 0, updatedCount: 0, missingCount: 0 };
@@ -1911,7 +2075,7 @@ export class ScannerService implements OnApplicationBootstrap {
       formatPriority,
     );
 
-    await this.scannerRepo.updateBookPrimaryFile(book.id, winner?.fileId ?? null);
+    if (!maps.preservedPrimaryFileIds.has(book.id)) await this.scannerRepo.updateBookPrimaryFile(book.id, winner?.fileId ?? null);
 
     // Phase 3: Metadata extraction, source-precedence driven, triggered by new/reassigned/changed metadata sources.
     //

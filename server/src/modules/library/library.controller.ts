@@ -101,6 +101,7 @@ export class LibraryController {
 
   @Patch(':id')
   @RequirePermission(Permission.ManageLibraries)
+  @RequireLibraryAccess('editor')
   @Auditable({
     action: AuditAction.LibraryUpdate,
     resource: AuditResource.Library,
@@ -348,6 +349,7 @@ export class LibraryController {
 
     try {
       const summary = await this.bulkRenameService.execute(libraryId, user.id, {
+        previewToken: body.previewToken,
         excludeBookIds: body.excludeBookIds,
         includeBookIds: body.includeBookIds,
         onProgress: writeEvent,

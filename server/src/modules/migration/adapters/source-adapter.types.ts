@@ -117,6 +117,7 @@ export interface SourceReadingSession {
 }
 
 export interface SourceBookmark {
+  sourceItemId?: string | null;
   sourceUserId: string;
   sourceBookId: string;
   sourceFileId?: string | null;
@@ -128,6 +129,7 @@ export interface SourceBookmark {
 }
 
 export interface SourceAnnotation {
+  sourceItemId?: string | null;
   sourceUserId: string;
   sourceBookId: string;
   cfi: string;
@@ -169,6 +171,7 @@ export interface SourceExportDomains {
 }
 
 export interface SourceExportData {
+  bookOverlays?: boolean;
   users: SourceUser[];
   books: SourceBook[];
   userBookStatuses: SourceUserBookStatus[];
@@ -189,6 +192,8 @@ export interface SourceAdapter<TConnectionConfig = unknown> {
   snapshot(config: TConnectionConfig): Promise<SourceSnapshot>;
 
   exportData(config: TConnectionConfig): Promise<SourceExportData>;
+
+  exportDataBatches?(config: TConnectionConfig): AsyncIterable<SourceExportData>;
 
   fetchPathPrefixes?(config: TConnectionConfig): Promise<string[]>;
 }

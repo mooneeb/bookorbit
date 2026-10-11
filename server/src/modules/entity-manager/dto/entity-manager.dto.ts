@@ -1,5 +1,19 @@
 import { Transform } from 'class-transformer';
-import { IsIn, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 
 export class ScanDuplicatesDto {
   @IsOptional()
@@ -15,13 +29,13 @@ export class ScanDuplicatesDto {
   minSimilarity?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(1)
   @Transform(({ value }) => (value !== undefined ? Number(value) : undefined))
   page?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(1)
   @Max(100)
   @Transform(({ value }) => (value !== undefined ? Number(value) : undefined))
@@ -34,13 +48,13 @@ export class BrowseEntitiesDto {
   search?: string;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(1)
   @Transform(({ value }) => (value !== undefined ? Number(value) : undefined))
   page?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(1)
   @Max(100)
   @Transform(({ value }) => (value !== undefined ? Number(value) : undefined))
@@ -60,29 +74,40 @@ export class BrowseEntitiesDto {
 }
 
 export class MergeEntitiesDto {
-  @IsOptional()
-  @IsNumber()
+  @ValidateIf((dto: MergeEntitiesDto) => dto.targetValue === undefined || dto.targetEntityId !== undefined)
+  @IsInt()
+  @Min(1)
   targetEntityId?: number;
 
-  @IsOptional()
+  @ValidateIf((dto: MergeEntitiesDto) => dto.targetEntityId === undefined || dto.targetValue !== undefined)
   @IsString()
   targetValue?: string;
 
-  @IsOptional()
-  @IsNumber({}, { each: true })
+  @ValidateIf((dto: MergeEntitiesDto) => dto.targetValue === undefined || dto.sourceEntityIds !== undefined)
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
   sourceEntityIds?: number[];
 
-  @IsOptional()
+  @ValidateIf((dto: MergeEntitiesDto) => dto.targetEntityId === undefined || dto.sourceValues !== undefined)
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
   @IsString({ each: true })
+  @MaxLength(500, { each: true })
   sourceValues?: string[];
 
   @IsOptional()
+  @IsBoolean()
   writeFiles?: boolean;
 }
 
 export class RenameEntityDto {
   @IsOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(1)
   entityId?: number;
 
   @IsOptional()
@@ -90,15 +115,19 @@ export class RenameEntityDto {
   currentValue?: string;
 
   @IsString()
+  @MaxLength(500)
   newName!: string;
 
   @IsOptional()
+  @IsBoolean()
   writeFiles?: boolean;
 }
 
 export class DeleteEntityDto {
   @IsOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(1)
+  @Transform(({ value }) => (typeof value === 'string' ? Number(value) : value))
   entityId?: number;
 
   @IsOptional()
@@ -110,16 +139,25 @@ export class DeleteEntityDto {
   mode?: 'soft' | 'hard' | 'inline';
 
   @IsOptional()
+  @IsBoolean()
   writeFiles?: boolean;
 }
 
 export class BulkDeleteEntitiesDto {
   @IsOptional()
-  @IsNumber({}, { each: true })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
   entityIds?: number[];
 
   @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
   @IsString({ each: true })
+  @MaxLength(500, { each: true })
   values?: string[];
 
   @IsOptional()
@@ -127,27 +165,36 @@ export class BulkDeleteEntitiesDto {
   mode?: 'soft' | 'hard' | 'inline';
 
   @IsOptional()
+  @IsBoolean()
   writeFiles?: boolean;
 }
 
 export class SplitEntityDto {
-  @IsNumber()
+  @IsInt()
+  @Min(1)
   entityId!: number;
 
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(100)
   @IsString({ each: true })
+  @MaxLength(500, { each: true })
   newNames!: string[];
 
   @IsOptional()
+  @IsBoolean()
   writeFiles?: boolean;
 }
 
 export class DismissPairDto {
   @IsOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(1)
   entityIdA?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(1)
   entityIdB?: number;
 
   @IsOptional()
@@ -165,11 +212,13 @@ export class DismissPairDto {
 
 export class UndismissPairDto {
   @IsOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(1)
   entityIdA?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(1)
   entityIdB?: number;
 
   @IsOptional()

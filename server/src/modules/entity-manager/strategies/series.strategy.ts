@@ -22,7 +22,8 @@ import type {
   StrategySplitResult,
   EntityBookScope,
 } from './entity-strategy.interface';
-import { buildEntityBookScopeClauses } from './entity-book-scope';
+import { assertEntityRelationsWithinLibraries, buildEntityBookScopeClauses } from './entity-book-scope';
+import { mutateEntityBooks } from './entity-mutation-books';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -178,81 +179,97 @@ export class SeriesStrategy implements EntityStrategy {
     };
   }
 
+  assertMutationScope(ids: (number | string)[], scope: EntityBookScope): Promise<void> {
+    return assertEntityRelationsWithinLibraries(this.db, 'book_series_memberships', 'series_id', ids, scope.libraryIds, scope.contentFilters, true);
+  }
+
   async merge(input: MergeInput): Promise<StrategyMergeResult> {
     const targetId = Number(input.targetId);
     const sourceIds = numericIds(input.sourceIds).filter((id) => id !== targetId);
     if (!Number.isInteger(targetId) || targetId <= 0 || sourceIds.length === 0) return { affectedBookIds: [] };
 
+    const scope = { libraryIds: input.libraryIds ?? [], contentFilters: input.contentFilters };
     const target = await this.findEntityById(targetId);
     if (!target) throw new NotFoundException('series not found');
-
-    const affectedBookIds = await this.findAffectedBookIdsInLibraries(sourceIds, input.libraryIds);
-    if (affectedBookIds.length === 0) return { affectedBookIds };
-
-    await this.db.transaction(async (tx) => {
-      await this.mergeMemberships(sourceIds, targetId, affectedBookIds, tx as unknown as Db);
-      await this.syncPrimaryMetadataForBooks(affectedBookIds, tx as unknown as Db);
-      await this.deleteUnusedSeriesRows(sourceIds, tx as unknown as Db);
-    });
-
-    return { affectedBookIds };
+    return mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks(sourceIds, scope),
+      async (tx) => {
+        await this.mergeMemberships(sourceIds, targetId, tx);
+        await this.syncPrimaryMetadataForBooks(tx);
+        await this.deleteUnusedSeriesRows(sourceIds, tx);
+      },
+      (tx) => this.lockMutationEntities(tx, [targetId, ...sourceIds], scope),
+    );
   }
 
   async rename(input: RenameInput): Promise<StrategyRenameResult> {
     const entityId = Number(input.entityId);
     const current = await this.findEntityById(entityId);
     if (!current) throw new NotFoundException('series not found');
-
     const newName = normalizeMetadataText(input.newName);
     if (!newName) throw new BadRequestException('Name cannot be empty');
 
-    const affectedBookIds = await this.findAffectedBookIdsInLibraries([entityId], input.libraryIds);
-    if (affectedBookIds.length === 0) {
-      return {
-        oldName: current.name,
-        affectedBookIds,
-        wasImplicitMerge: false,
-      };
-    }
-
-    const target = await this.upsertSeries(newName);
-    const wasImplicitMerge = target.id !== entityId;
-
-    await this.db.transaction(async (tx) => {
-      if (wasImplicitMerge) {
-        await this.mergeMemberships([entityId], target.id, affectedBookIds, tx as unknown as Db);
-      }
-      await this.syncPrimaryMetadataForBooks(affectedBookIds, tx as unknown as Db);
-      await this.deleteUnusedSeriesRows([entityId], tx as unknown as Db);
-    });
-
-    return {
-      oldName: current.name,
-      affectedBookIds,
-      wasImplicitMerge,
-      mergedEntityId: wasImplicitMerge ? target.id : undefined,
-    };
+    const scope = { libraryIds: input.libraryIds, contentFilters: input.contentFilters };
+    let target: { id: number; name: string } | undefined;
+    let wasImplicitMerge = false;
+    const affected = await mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks([entityId], scope),
+      async (tx) => {
+        const snapshot = await tx.execute<{ exists: boolean }>(sql`SELECT EXISTS (SELECT 1 FROM entity_mutation_books) AS "exists"`);
+        if (!snapshot.rows[0]?.exists) return;
+        target = await this.upsertSeries(newName, tx);
+        await this.lockMutationEntities(tx, [target.id], scope);
+        wasImplicitMerge = target.id !== entityId;
+        if (wasImplicitMerge) await this.mergeMemberships([entityId], target.id, tx);
+        else {
+          await assertEntityRelationsWithinLibraries(tx, 'book_series_memberships', 'series_id', [entityId], input.libraryIds, input.contentFilters);
+          await tx.update(bookSeries).set({ name: newName, updatedAt: new Date() }).where(eq(bookSeries.id, entityId));
+        }
+        await this.syncPrimaryMetadataForBooks(tx);
+        await this.deleteUnusedSeriesRows([entityId], tx);
+      },
+      (tx) => this.lockMutationEntities(tx, [entityId], scope),
+    );
+    return { oldName: current.name, ...affected, wasImplicitMerge, mergedEntityId: wasImplicitMerge ? target?.id : undefined };
   }
 
   async deleteEntity(input: DeleteInput): Promise<StrategyDeleteResult> {
     const entityId = Number(input.entityId);
     const entity = await this.findEntityById(entityId);
     if (!entity) throw new NotFoundException('series not found');
+    const scope = { libraryIds: input.libraryIds, contentFilters: input.contentFilters };
+    const affected = await mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks([entityId], scope),
+      async (tx) => {
+        await tx.execute(sql`DELETE FROM book_series_memberships
+        WHERE series_id = ${entityId} AND book_id IN (SELECT book_id FROM entity_mutation_books)`);
+        await this.syncPrimaryMetadataForBooks(tx);
+        if (input.mode === 'hard') await this.deleteUnusedSeriesRows([entityId], tx);
+      },
+      (tx) => this.lockMutationEntities(tx, [entityId], scope),
+    );
+    return { name: entity.name, ...affected };
+  }
 
-    const affectedBookIds = await this.findAffectedBookIdsInLibraries([entityId], input.libraryIds);
-    if (affectedBookIds.length > 0) {
-      await this.db.transaction(async (tx) => {
-        await tx
-          .delete(bookSeriesMemberships)
-          .where(and(inArray(bookSeriesMemberships.bookId, affectedBookIds), eq(bookSeriesMemberships.seriesId, entityId)));
-        await this.syncPrimaryMetadataForBooks(affectedBookIds, tx as unknown as Db);
-        await this.deleteUnusedSeriesRows([entityId], tx as unknown as Db);
-      });
-    } else if (input.mode === 'hard') {
-      await this.deleteUnusedSeriesRows([entityId], this.db);
-    }
+  private selectMutationBooks(ids: number[], scope: EntityBookScope): SQL {
+    return sql`SELECT DISTINCT ${bookSeriesMemberships.bookId} FROM ${bookSeriesMemberships}
+      JOIN ${books} ON ${books.id} = ${bookSeriesMemberships.bookId}
+      WHERE ${inArray(bookSeriesMemberships.seriesId, ids)} AND ${and(...buildEntityBookScopeClauses(this.db, scope))}`;
+  }
 
-    return { name: entity.name, affectedBookIds };
+  private async lockMutationEntities(tx: Db, ids: number[], scope: EntityBookScope): Promise<void> {
+    const rows = await tx.select({ id: bookSeries.id }).from(bookSeries).where(inArray(bookSeries.id, ids)).orderBy(bookSeries.id).for('update');
+    if (rows.length !== new Set(ids).size) throw new NotFoundException('series not found');
+    await assertEntityRelationsWithinLibraries(tx, 'book_series_memberships', 'series_id', ids, scope.libraryIds, scope.contentFilters, true);
   }
 
   split(): Promise<StrategySplitResult> {
@@ -312,129 +329,50 @@ export class SeriesStrategy implements EntityStrategy {
     return row ?? null;
   }
 
-  private async upsertSeries(name: string): Promise<{ id: number; name: string }> {
+  private async upsertSeries(name: string, db: Db = this.db): Promise<{ id: number; name: string }> {
     const displayName = normalizeMetadataText(name);
     const normalized = normalizeMetadataTextKey(displayName);
     if (!displayName || !normalized) throw new BadRequestException('Name cannot be empty');
-    const [row] = await this.db
-      .insert(bookSeries)
-      .values({ name: displayName, normalizedName: normalized })
-      .onConflictDoUpdate({
-        target: bookSeries.normalizedName,
-        set: { name: displayName, updatedAt: new Date() },
-      })
-      .returning({ id: bookSeries.id, name: bookSeries.name });
+    await db.insert(bookSeries).values({ name: displayName, normalizedName: normalized }).onConflictDoNothing();
+    const [row] = await db
+      .select({ id: bookSeries.id, name: bookSeries.name })
+      .from(bookSeries)
+      .where(eq(bookSeries.normalizedName, normalized))
+      .limit(1);
     if (!row) throw new BadRequestException('Unable to resolve series');
     return row;
   }
 
-  private async findAffectedBookIdsInLibraries(seriesIds: number[], libraryIds: number[] | undefined): Promise<number[]> {
-    if (seriesIds.length === 0 || !libraryIds || libraryIds.length === 0) return [];
-    const rows = await this.db
-      .select({ bookId: bookSeriesMemberships.bookId })
-      .from(bookSeriesMemberships)
-      .innerJoin(books, eq(books.id, bookSeriesMemberships.bookId))
-      .where(and(inArray(bookSeriesMemberships.seriesId, seriesIds), inArray(books.libraryId, libraryIds)));
-    return [...new Set(rows.map((row) => row.bookId))];
+  private async mergeMemberships(sourceIds: number[], targetId: number, db: Db): Promise<void> {
+    const sourceIdList = sqlNumberList(numericIds(sourceIds));
+    await db.execute(sql`WITH chosen AS (
+      SELECT DISTINCT ON (bsm.book_id) bsm.book_id, bsm.series_id
+      FROM book_series_memberships bsm JOIN entity_mutation_books affected ON affected.book_id = bsm.book_id
+      WHERE bsm.series_id IN (${sourceIdList}) ORDER BY bsm.book_id, bsm.display_order, bsm.series_id
+    ) UPDATE book_series_memberships bsm SET series_id = ${targetId}, updated_at = now()
+      FROM chosen WHERE bsm.book_id = chosen.book_id AND bsm.series_id = chosen.series_id
+        AND NOT EXISTS (SELECT 1 FROM book_series_memberships existing WHERE existing.book_id = bsm.book_id AND existing.series_id = ${targetId})`);
+    await db.execute(sql`DELETE FROM book_series_memberships
+      WHERE book_id IN (SELECT book_id FROM entity_mutation_books) AND series_id IN (${sourceIdList})`);
   }
 
-  private async mergeMemberships(sourceIds: number[], targetId: number, affectedBookIds: number[], db: Db): Promise<void> {
-    const sourceSeriesIds = numericIds(sourceIds);
-    const bookIds = numericIds(affectedBookIds);
-    if (sourceSeriesIds.length === 0 || bookIds.length === 0) return;
-    const sourceIdList = sqlNumberList(sourceSeriesIds);
-    const bookIdList = sqlNumberList(bookIds);
-
-    await db.execute(sql`
-      UPDATE book_series_memberships bsm
-      SET series_id = ${targetId}, updated_at = now()
-      WHERE bsm.book_id IN (${bookIdList})
-        AND bsm.series_id IN (${sourceIdList})
-        AND NOT EXISTS (
-          SELECT 1
-          FROM book_series_memberships existing
-          WHERE existing.book_id = bsm.book_id
-            AND existing.series_id = ${targetId}
-        )
-    `);
-
-    await db.execute(sql`
-      DELETE FROM book_series_memberships
-      WHERE book_id IN (${bookIdList})
-        AND series_id IN (${sourceIdList})
-    `);
-
-    await this.renumberMemberships(bookIds, db);
-  }
-
-  private async renumberMemberships(bookIds: number[], db: Db): Promise<void> {
-    const scopedBookIds = numericIds(bookIds);
-    if (scopedBookIds.length === 0) return;
-    const bookIdList = sqlNumberList(scopedBookIds);
-
-    await db.execute(sql`
-      UPDATE book_series_memberships
-      SET display_order = display_order + 100000
-      WHERE book_id IN (${bookIdList})
-    `);
-
-    await db.execute(sql`
-      WITH ranked AS (
-        SELECT
-          book_id,
-          series_id,
-          row_number() OVER (PARTITION BY book_id ORDER BY display_order ASC, series_id ASC) - 1 AS next_display_order
-        FROM book_series_memberships
-        WHERE book_id IN (${bookIdList})
-      )
-      UPDATE book_series_memberships bsm
-      SET display_order = ranked.next_display_order,
-          updated_at = now()
-      FROM ranked
-      WHERE bsm.book_id = ranked.book_id
-        AND bsm.series_id = ranked.series_id
-    `);
-  }
-
-  private async syncPrimaryMetadataForBooks(bookIds: number[], db: Db): Promise<void> {
-    const scopedBookIds = numericIds(bookIds);
-    if (scopedBookIds.length === 0) return;
-    const bookIdList = sqlNumberList(scopedBookIds);
-
-    await this.renumberMemberships(scopedBookIds, db);
-
-    await db.execute(sql`
-      UPDATE book_metadata bm
-      SET series_id = bsm.series_id,
-          series_name = bs.name,
-          series_index = bsm.series_index,
-          updated_at = now()
-      FROM book_series_memberships bsm
-      JOIN book_series bs ON bs.id = bsm.series_id
-      WHERE bm.book_id = bsm.book_id
-        AND bsm.display_order = 0
-        AND bm.book_id IN (${bookIdList})
-    `);
-
-    await db.execute(sql`
-      UPDATE book_metadata bm
-      SET series_id = NULL,
-          series_name = NULL,
-          series_index = NULL,
-          updated_at = now()
-      WHERE bm.book_id IN (${bookIdList})
-        AND NOT EXISTS (
-          SELECT 1
-          FROM book_series_memberships bsm
-          WHERE bsm.book_id = bm.book_id
-        )
-    `);
-
-    await db.execute(sql`
-      UPDATE books
-      SET updated_at = now()
-      WHERE id IN (${bookIdList})
-    `);
+  private async syncPrimaryMetadataForBooks(db: Db): Promise<void> {
+    await db.execute(sql`UPDATE book_series_memberships SET display_order = display_order + 100000
+      WHERE book_id IN (SELECT book_id FROM entity_mutation_books)`);
+    await db.execute(sql`WITH ranked AS (
+      SELECT book_id, series_id, row_number() OVER (PARTITION BY book_id ORDER BY display_order ASC, series_id ASC) - 1 AS next_display_order
+      FROM book_series_memberships WHERE book_id IN (SELECT book_id FROM entity_mutation_books)
+    ) UPDATE book_series_memberships bsm SET display_order = ranked.next_display_order, updated_at = now()
+      FROM ranked WHERE bsm.book_id = ranked.book_id AND bsm.series_id = ranked.series_id`);
+    await db.execute(sql`UPDATE book_metadata bm SET series_id = bsm.series_id, series_name = bs.name,
+      series_index = bsm.series_index, updated_at = now()
+      FROM book_series_memberships bsm JOIN book_series bs ON bs.id = bsm.series_id
+      WHERE bm.book_id = bsm.book_id AND bsm.display_order = 0
+        AND bm.book_id IN (SELECT book_id FROM entity_mutation_books)`);
+    await db.execute(sql`UPDATE book_metadata bm SET series_id = NULL, series_name = NULL, series_index = NULL, updated_at = now()
+      WHERE bm.book_id IN (SELECT book_id FROM entity_mutation_books)
+        AND NOT EXISTS (SELECT 1 FROM book_series_memberships bsm WHERE bsm.book_id = bm.book_id)`);
+    await db.execute(sql`UPDATE books SET updated_at = now() WHERE id IN (SELECT book_id FROM entity_mutation_books)`);
   }
 
   private async deleteUnusedSeriesRows(seriesIds: number[], db: Db): Promise<void> {

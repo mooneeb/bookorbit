@@ -135,7 +135,7 @@ describe('RequestVerificationService against the configured threshold', () => {
       updateIf: vi.fn().mockImplementation((id: number, _expected: unknown, patch: Record<string, unknown>) => Promise.resolve({ id, ...patch })),
     };
     const requests = {
-      findById: vi.fn().mockResolvedValue({ request: { ...request(), id: 7, targetLibraryId: 2, targetFolderId: 3 } }),
+      findById: vi.fn().mockResolvedValue({ request: { ...request(), id: 7, userId: 7, targetLibraryId: 2, targetFolderId: 3 } }),
       update: vi.fn().mockResolvedValue(undefined),
       updateIf: vi
         .fn()
@@ -182,7 +182,7 @@ describe('RequestVerificationService against the configured threshold', () => {
 
     await ingest();
 
-    expect(finalizeService.finalizeManagedFile).toHaveBeenCalledWith(100, { libraryId: 2, folderId: 3 });
+    expect(finalizeService.finalizeManagedFile).toHaveBeenCalledWith(100, { libraryId: 2, folderId: 3 }, { requestId: 7, userId: 7 });
     expect(requests.updateIf).toHaveBeenCalledWith(
       7,
       expect.arrayContaining(['importing']),
@@ -227,7 +227,7 @@ describe('RequestVerificationService against the configured threshold', () => {
 
     await ingest();
 
-    expect(finalizeService.finalizeManagedFile).toHaveBeenCalledWith(100, { libraryId: 2, folderId: 3 });
+    expect(finalizeService.finalizeManagedFile).toHaveBeenCalledWith(100, { libraryId: 2, folderId: 3 }, { requestId: 7, userId: 7 });
     expect(requests.updateIf).toHaveBeenCalledWith(
       7,
       expect.arrayContaining(['importing']),
@@ -286,7 +286,7 @@ describe('verifyAgainstRequest comparison rows', () => {
 });
 
 describe('RequestVerificationService review surface', () => {
-  const heldRequest = { ...request(), id: 7, status: 'needs_review', bookDockFileId: 100, targetLibraryId: 2, targetFolderId: 3 };
+  const heldRequest = { ...request(), id: 7, userId: 7, status: 'needs_review', bookDockFileId: 100, targetLibraryId: 2, targetFolderId: 3 };
 
   function makeService(
     overrides: {
@@ -495,7 +495,7 @@ describe('RequestVerificationService review surface', () => {
 
     await service.fileHeldImport(7, { id: 9 } as never);
 
-    expect(finalizeService.finalizeManagedFile).toHaveBeenCalledWith(100, { libraryId: 2, folderId: 3 });
+    expect(finalizeService.finalizeManagedFile).toHaveBeenCalledWith(100, { libraryId: 2, folderId: 3 }, { requestId: 7, userId: 7 });
     expect(downloads.updateIf).toHaveBeenCalledWith(11, expect.anything(), expect.objectContaining({ status: 'imported' }));
     expect(requests.updateIf).toHaveBeenCalledWith(
       7,

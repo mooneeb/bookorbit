@@ -1,5 +1,8 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
+
 import { SeriesStrategy } from './series.strategy';
 
 function makeStrategy(db: Record<string, unknown> = {}) {
@@ -45,15 +48,35 @@ function makeWhereRowsSelectChain(rows: unknown[]) {
 }
 
 function makeUpdateTx() {
+  const dialect = new PgDialect();
+  let ids: number[] = [];
+  const setBookIds = (bookIds: number[]) => {
+    ids = bookIds;
+  };
   const where = vi.fn().mockResolvedValue(undefined);
   const set = vi.fn().mockReturnValue({ where });
   const update = vi.fn().mockReturnValue({ set });
   const deleteWhere = vi.fn().mockResolvedValue(undefined);
   const deleteFrom = vi.fn().mockReturnValue({ where: deleteWhere });
-  const execute = vi.fn().mockResolvedValue({ rows: [] });
-  const tx = { update, execute, delete: deleteFrom };
+  const execute = vi.fn((statement: SQL) => {
+    const query = dialect.sqlToQuery(statement);
+    if (query.sql.includes('AS outside')) return { rows: [{ outside: false }] };
+    if (query.sql.includes('SELECT EXISTS')) return { rows: [{ exists: ids.length > 0 }] };
+    if (query.sql.includes('count(*)::int AS count FROM entity_mutation_books')) return { rows: [{ count: ids.length }] };
+    if (query.sql.includes('AS "bookId" FROM entity_mutation_books'))
+      return { rows: ids.filter((id) => id > Number(query.params[0])).map((bookId) => ({ bookId })) };
+    return { rows: [] };
+  });
+  const select = vi.fn().mockReturnValue({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn((condition: SQL) => ({
+        orderBy: vi.fn().mockReturnValue({ for: vi.fn().mockResolvedValue(dialect.sqlToQuery(condition).params.map((id) => ({ id }))) }),
+      })),
+    }),
+  });
+  const tx = { update, execute, select, delete: deleteFrom };
   const transaction = vi.fn().mockImplementation(async (callback: (txArg: typeof tx) => Promise<unknown>) => callback(tx));
-  return { transaction, tx, update, set, where, deleteFrom, deleteWhere, execute };
+  return { transaction, tx, update, set, where, deleteFrom, deleteWhere, execute, setBookIds };
 }
 
 describe('SeriesStrategy', () => {
@@ -215,14 +238,15 @@ describe('SeriesStrategy', () => {
   });
 
   it('merges source series memberships into a target for scoped books only', async () => {
-    const { transaction, execute } = makeUpdateTx();
+    const { transaction, execute, setBookIds } = makeUpdateTx();
     const strategy = makeStrategy({ transaction });
     vi.spyOn(strategy, 'findEntityById').mockResolvedValue({ id: 1, name: 'Target' });
-    vi.spyOn(strategy as never, 'findAffectedBookIdsInLibraries').mockResolvedValue([10, 20]);
+    setBookIds([10, 20]);
     vi.spyOn(strategy as never, 'deleteUnusedSeriesRows').mockResolvedValue(undefined);
 
     await expect(strategy.merge({ targetId: 1, sourceIds: [2, 3], userId: 9, libraryIds: [5] })).resolves.toEqual({
       affectedBookIds: [10, 20],
+      affectedBookCount: 2,
     });
 
     const statements = execute.mock.calls.map((call) => flattenSql(call[0]).replace(/\s+/g, ' '));
@@ -245,49 +269,50 @@ describe('SeriesStrategy', () => {
   });
 
   it('renames a series and reports implicit merges', async () => {
-    const { transaction, execute } = makeUpdateTx();
+    const { transaction, execute, setBookIds } = makeUpdateTx();
     const strategy = makeStrategy({ transaction });
     vi.spyOn(strategy, 'findEntityById').mockResolvedValue({ id: 2, name: 'Old' });
     vi.spyOn(strategy as never, 'upsertSeries').mockResolvedValue({ id: 5, name: 'New' });
-    vi.spyOn(strategy as never, 'findAffectedBookIdsInLibraries').mockResolvedValue([10]);
+    setBookIds([10]);
     vi.spyOn(strategy as never, 'deleteUnusedSeriesRows').mockResolvedValue(undefined);
 
     const result = await strategy.rename({ entityId: 2, newName: ' New ', userId: 9, libraryIds: [1] });
 
-    expect(result).toEqual({ oldName: 'Old', affectedBookIds: [10], wasImplicitMerge: true, mergedEntityId: 5 });
+    expect(result).toEqual({ oldName: 'Old', affectedBookIds: [10], affectedBookCount: 1, wasImplicitMerge: true, mergedEntityId: 5 });
     const statements = execute.mock.calls.map((call) => flattenSql(call[0]).replace(/\s+/g, ' '));
     expect(statements.some((statement) => statement.includes('UPDATE book_series_memberships'))).toBe(true);
     expect(statements.some((statement) => statement.includes('UPDATE book_metadata bm'))).toBe(true);
   });
 
   it('renames a series without reporting a merge when the identity is unchanged', async () => {
-    const { transaction } = makeUpdateTx();
+    const { transaction, setBookIds } = makeUpdateTx();
     const strategy = makeStrategy({ transaction });
     vi.spyOn(strategy, 'findEntityById').mockResolvedValue({ id: 2, name: 'Old' });
     vi.spyOn(strategy as never, 'upsertSeries').mockResolvedValue({ id: 2, name: 'New' });
-    vi.spyOn(strategy as never, 'findAffectedBookIdsInLibraries').mockResolvedValue([10]);
+    setBookIds([10]);
     vi.spyOn(strategy as never, 'deleteUnusedSeriesRows').mockResolvedValue(undefined);
 
     await expect(strategy.rename({ entityId: 2, newName: 'New', userId: 9, libraryIds: [1] })).resolves.toEqual({
       oldName: 'Old',
       affectedBookIds: [10],
+      affectedBookCount: 1,
       wasImplicitMerge: false,
       mergedEntityId: undefined,
     });
   });
 
   it('does not create a target series row when rename affects no scoped books', async () => {
-    const transaction = vi.fn();
+    const { transaction, setBookIds } = makeUpdateTx();
     const strategy = makeStrategy({ transaction });
     vi.spyOn(strategy, 'findEntityById').mockResolvedValue({ id: 2, name: 'Old' });
     const upsertSeries = vi.spyOn(strategy as never, 'upsertSeries').mockResolvedValue({ id: 5, name: 'New' });
-    vi.spyOn(strategy as never, 'findAffectedBookIdsInLibraries').mockResolvedValue([]);
+    setBookIds([]);
 
     const result = await strategy.rename({ entityId: 2, newName: ' New ', userId: 9, libraryIds: [1] });
 
-    expect(result).toEqual({ oldName: 'Old', affectedBookIds: [], wasImplicitMerge: false });
+    expect(result).toMatchObject({ oldName: 'Old', affectedBookIds: [], affectedBookCount: 0, wasImplicitMerge: false });
     expect(upsertSeries).not.toHaveBeenCalled();
-    expect(transaction).not.toHaveBeenCalled();
+    expect(transaction).toHaveBeenCalledOnce();
   });
 
   it('rejects blank series renames', async () => {
@@ -298,33 +323,32 @@ describe('SeriesStrategy', () => {
   });
 
   it('deletes a series by removing scoped memberships and syncing primary metadata', async () => {
-    const { transaction, deleteFrom, deleteWhere, execute } = makeUpdateTx();
+    const { transaction, execute, setBookIds } = makeUpdateTx();
     const strategy = makeStrategy({ transaction });
     vi.spyOn(strategy, 'findEntityById').mockResolvedValue({ id: 2, name: 'Old' });
-    vi.spyOn(strategy as never, 'findAffectedBookIdsInLibraries').mockResolvedValue([10, 11]);
+    setBookIds([10, 11]);
     vi.spyOn(strategy as never, 'deleteUnusedSeriesRows').mockResolvedValue(undefined);
 
     const result = await strategy.deleteEntity({ entityId: 2, mode: 'hard', libraryIds: [1] });
 
-    expect(result).toEqual({ name: 'Old', affectedBookIds: [10, 11] });
-    expect(deleteFrom).toHaveBeenCalledTimes(1);
-    expect(deleteWhere).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ name: 'Old', affectedBookIds: [10, 11], affectedBookCount: 2 });
     const statements = execute.mock.calls.map((call) => flattenSql(call[0]).replace(/\s+/g, ' '));
     expect(statements.some((statement) => statement.includes('UPDATE book_metadata bm'))).toBe(true);
   });
 
   it('hard deletes an unused series row when no scoped books are affected', async () => {
-    const execute = vi.fn().mockResolvedValue(undefined);
-    const strategy = makeStrategy({ execute });
+    const { transaction, execute, setBookIds } = makeUpdateTx();
+    const strategy = makeStrategy({ transaction });
     vi.spyOn(strategy, 'findEntityById').mockResolvedValue({ id: 2, name: 'Old' });
-    vi.spyOn(strategy as never, 'findAffectedBookIdsInLibraries').mockResolvedValue([]);
+    setBookIds([]);
 
     await expect(strategy.deleteEntity({ entityId: 2, mode: 'hard', libraryIds: [1] })).resolves.toEqual({
       name: 'Old',
       affectedBookIds: [],
+      affectedBookCount: 0,
     });
 
-    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls.some(([statement]) => flattenSql(statement).includes('DELETE FROM book_series s'))).toBe(true);
   });
 
   it('throws when deleting a missing series', async () => {
@@ -410,11 +434,11 @@ describe('SeriesStrategy', () => {
   });
 
   it('upserts a series by normalized name', async () => {
-    const returning = vi.fn().mockResolvedValue([{ id: 9, name: 'Dune Chronicles' }]);
-    const onConflictDoUpdate = vi.fn().mockReturnValue({ returning });
-    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    const { select } = makeSelectChain([{ id: 9, name: 'Dune Chronicles' }]);
+    const onConflictDoNothing = vi.fn().mockResolvedValue(undefined);
+    const values = vi.fn().mockReturnValue({ onConflictDoNothing });
     const insert = vi.fn().mockReturnValue({ values });
-    const strategy = makeStrategy({ insert });
+    const strategy = makeStrategy({ insert, select });
 
     await expect(
       (strategy as unknown as { upsertSeries(name: string): Promise<{ id: number; name: string }> }).upsertSeries('  Dune   Chronicles '),
@@ -427,38 +451,15 @@ describe('SeriesStrategy', () => {
   });
 
   it('rejects a series upsert when the database returns no row', async () => {
-    const returning = vi.fn().mockResolvedValue([]);
-    const onConflictDoUpdate = vi.fn().mockReturnValue({ returning });
-    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    const { select } = makeSelectChain([]);
+    const onConflictDoNothing = vi.fn().mockResolvedValue(undefined);
+    const values = vi.fn().mockReturnValue({ onConflictDoNothing });
     const insert = vi.fn().mockReturnValue({ values });
-    const strategy = makeStrategy({ insert });
+    const strategy = makeStrategy({ insert, select });
 
     await expect(
       (strategy as unknown as { upsertSeries(name: string): Promise<{ id: number; name: string }> }).upsertSeries('Dune'),
     ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('finds affected book ids in scoped libraries', async () => {
-    const { select } = makeWhereRowsSelectChain([{ bookId: 10 }]);
-    const strategy = makeStrategy({ select });
-
-    await expect(
-      (
-        strategy as unknown as { findAffectedBookIdsInLibraries(seriesIds: number[], libraryIds?: number[]): Promise<number[]> }
-      ).findAffectedBookIdsInLibraries([1], [5]),
-    ).resolves.toEqual([10]);
-  });
-
-  it('skips scoped affected lookup without ids or libraries', async () => {
-    const select = vi.fn();
-    const strategy = makeStrategy({ select });
-    const privateStrategy = strategy as unknown as { findAffectedBookIdsInLibraries(seriesIds: number[], libraryIds?: number[]): Promise<number[]> };
-
-    await expect(privateStrategy.findAffectedBookIdsInLibraries([], [1])).resolves.toEqual([]);
-    await expect(privateStrategy.findAffectedBookIdsInLibraries([1], [])).resolves.toEqual([]);
-    await expect(privateStrategy.findAffectedBookIdsInLibraries([1], undefined)).resolves.toEqual([]);
-
-    expect(select).not.toHaveBeenCalled();
   });
 
   it('deletes only unused series rows', async () => {

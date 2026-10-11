@@ -1,5 +1,5 @@
 import { BookRepository } from './book.repository';
-import { sql } from 'drizzle-orm';
+import { SQL, sql } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { audiobookProgress, bookMetadata, books, koreaderDeviceProgress, koreaderProgressResets, readingProgress } from '../../db/schema';
 
@@ -959,7 +959,10 @@ describe('BookRepository', () => {
     expect(db.execute).toHaveBeenCalledTimes(1);
     expect(new PgDialect().sqlToQuery(db.execute.mock.calls[0]![0]).sql).toContain('delete from "books"');
     expect(db.update).toHaveBeenCalledTimes(2);
-    expect(updateBuilder.set).toHaveBeenNthCalledWith(1, { title: 'Updated' });
+    expect(updateBuilder.set).toHaveBeenNthCalledWith(1, { title: 'Updated', updatedAt: expect.any(SQL) });
+    expect(new PgDialect().sqlToQuery(updateBuilder.set.mock.calls[0]![0].updatedAt).sql).toBe(
+      `greatest(clock_timestamp(), "book_metadata"."updated_at" + interval '1 millisecond')`,
+    );
     expect(updateBuilder.set).toHaveBeenNthCalledWith(2, expect.objectContaining({ updatedAt: expect.any(Date) }));
     expect(updateWhere).toHaveBeenCalledTimes(2);
   });

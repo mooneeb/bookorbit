@@ -133,6 +133,7 @@ export interface AudiobookshelfLibraryFolderRecord {
 }
 
 export interface AudiobookshelfSourceRecords {
+  bookOverlays?: boolean;
   sourceVersion: string | null;
   users: AudiobookshelfUserRecord[];
   libraryItems: AudiobookshelfLibraryItemRecord[];

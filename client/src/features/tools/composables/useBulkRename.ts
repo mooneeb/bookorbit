@@ -73,6 +73,7 @@ export function useBulkRename() {
   const items = ref<BulkRenamePreviewItem[]>([])
   const total = ref(0)
   const pattern = ref('')
+  const previewToken = ref('')
   const totalByStatus = ref<Record<BulkRenameStatus, number>>({ ...EMPTY_COUNTS })
 
   const loading = ref(false)
@@ -114,10 +115,16 @@ export function useBulkRename() {
       // A newer request started while this one was in flight, so its results are the current ones.
       if (token !== loadToken) return
 
+      if (page > 1 && previewToken.value !== result.previewToken) {
+        items.value = []
+        await fetchPage(1)
+        return
+      }
       items.value = page === 1 ? result.items : [...items.value, ...result.items]
       total.value = result.total
       totalByStatus.value = result.totalByStatus
       pattern.value = result.pattern
+      previewToken.value = result.previewToken
     } catch (e) {
       if (token !== loadToken) return
       previewError.value = toFailure(e)
@@ -149,6 +156,7 @@ export function useBulkRename() {
     items.value = []
     total.value = 0
     pattern.value = ''
+    previewToken.value = ''
     totalByStatus.value = { ...EMPTY_COUNTS }
     executionStats.value = null
     executionError.value = null
@@ -178,7 +186,7 @@ export function useBulkRename() {
     void loadPreview()
   }
 
-  async function execute(selection: BulkRenameExecuteRequest): Promise<void> {
+  async function execute(selection: Omit<BulkRenameExecuteRequest, 'previewToken'>): Promise<void> {
     const libraryId = selectedLibraryId.value
     if (libraryId === null) return
 
@@ -192,7 +200,7 @@ export function useBulkRename() {
     const controller = abortController
 
     try {
-      const res = await bulkRenameApi.executeBulkRename(libraryId, selection, controller.signal)
+      const res = await bulkRenameApi.executeBulkRename(libraryId, { ...selection, previewToken: previewToken.value }, controller.signal)
       if (!res.ok) throw new BulkRenameStreamError({ code: 'http', status: res.status })
       if (!res.body) throw new BulkRenameStreamError({ code: 'noBody' })
 
@@ -256,6 +264,7 @@ export function useBulkRename() {
     items,
     total,
     pattern,
+    previewToken,
     totalByStatus,
     hasMore,
 

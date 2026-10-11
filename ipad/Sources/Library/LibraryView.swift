@@ -29,6 +29,11 @@ struct LibraryView: View {
   @State private var movement: BookMoveModel?
   @State private var moveNotice: String?
   @State private var moveRefresh: (bookID: Int, session: UUID)?
+  @State private var managementDestination: LibraryManagementDestination?
+  @State private var selectingBooks = false
+  @State private var selectedBookIDs: Set<Int> = []
+  @State private var showingBulkActions = false
+  @State private var bulkActionBookIDs: [Int] = []
 
   init(session: SessionModel, api: BookOrbitAPI) {
     self.session = session
@@ -62,6 +67,9 @@ struct LibraryView: View {
           .accessibilityIdentifier("openAnnotationHub")
         Button("Offline books") { showingOfflineBooks = true }
           .accessibilityIdentifier("offlineLibrary")
+        if let user = session.user {
+          LibraryManagementSidebar(user: user) { managementDestination = $0 }
+        }
         ForEach(library.libraries) { item in
           Button(item.name) {
             Task { await library.select(.library(id: item.id, name: item.name)) }
@@ -75,6 +83,7 @@ struct LibraryView: View {
           Task { await library.select(.collection(id: collection.id, name: collection.name)) }
         }
       }
+      .accessibilityIdentifier("librarySidebar")
       .buttonStyle(.plain)
       .font(.body)
       .foregroundStyle(.primary)
@@ -143,6 +152,7 @@ struct LibraryView: View {
               .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal)
               .accessibilityIdentifier("libraryDeletionResult")
           }
+          if selectingBooks { bookSelectionActions }
           if let error = library.error {
             ContentUnavailableView {
               Label("Could not load books", systemImage: "wifi.exclamationmark")
@@ -151,6 +161,19 @@ struct LibraryView: View {
             } actions: {
               Button("Try again", action: retryPage)
             }
+          } else if selectingBooks {
+            List(library.books) { book in
+              if book.collapsedSeries != nil {
+                SeriesGroupRow(
+                  api: library.api, book: book, openSeries: openSeries, openBook: openBook)
+              } else {
+                LibraryBookSelectionRow(
+                  book: book, isSelected: selectedBookIDs.contains(book.id),
+                  canSelect: selectedBookIDs.count < 100 && !library.isBusy
+                ) { toggleBookSelection(book.id) }
+              }
+            }
+            .disabled(library.isBusy)
           } else if presentation == "grid" {
             BookGrid(
               api: library.api, books: library.books, openSeries: openSeries,
@@ -236,12 +259,19 @@ struct LibraryView: View {
         }
         .navigationTitle(library.location.title)
         .toolbar {
+          if canUseBulkActions {
+            ToolbarItem(placement: .topBarLeading) {
+              Button(selectingBooks ? "Done selecting" : "Select books", action: toggleSelection)
+                .disabled(library.isBusy)
+                .accessibilityIdentifier("selectBooks")
+            }
+          }
           ToolbarItem(placement: .topBarTrailing) {
             Picker("Book presentation", selection: $presentation) {
               Label("List", systemImage: "list.bullet").tag("list")
               Label("Grid", systemImage: "square.grid.2x2").tag("grid")
               Label("Table", systemImage: "tablecells").tag("table")
-            }.pickerStyle(.segmented)
+            }.pickerStyle(.segmented).disabled(selectingBooks)
           }
         }
         .alert(
@@ -301,12 +331,15 @@ struct LibraryView: View {
       movement = nil
       moveNotice = nil
       moveRefresh = nil
+      managementDestination = nil
+      resetBookSelection()
     }
     .sheet(item: $movement) { movement in
       BookMoveView(model: movement, closed: moveClosed)
     }
     .onChange(of: library.location.storageKey) { _, location in
       tableLayout = tablePreferences.layout(at: location)
+      resetBookSelection()
     }
     .onChange(of: tableLayout) { _, layout in
       do { try tablePreferences.save(layout: layout, at: library.location.storageKey) } catch {
@@ -321,6 +354,18 @@ struct LibraryView: View {
     .sheet(isPresented: $showingDashboard) {
       if let user = session.user {
         DashboardView(api: library.api, serverURL: session.serverURL, user: user)
+      }
+    }
+    .sheet(item: $managementDestination, onDismiss: refreshAfterManagement) { destination in
+      LibraryManagementSheet(
+        destination: destination, session: session, api: library.api,
+        openDock: { managementDestination = .acquisition })
+    }
+    .sheet(isPresented: $showingBulkActions, onDismiss: { bulkActionBookIDs.removeAll() }) {
+      if let user = session.user, canUseBulkActions, !bulkActionBookIDs.isEmpty {
+        BulkActionsView(
+          api: library.api, user: user, bookIDs: bulkActionBookIDs,
+          completed: bulkActionsCompleted)
       }
     }
     .sheet(isPresented: $showingScopes) {
@@ -393,6 +438,80 @@ struct LibraryView: View {
 
   private func openBook(_ id: Int) { selectedBook = id }
 
+  private var canUseBulkActions: Bool {
+    session.user.map {
+      $0.hasPermission(.libraryEditMetadata) || $0.hasPermission(.libraryDownload)
+    } ?? false
+  }
+
+  private var bookSelectionActions: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("\(selectedBookIDs.count) of 100 books selected")
+        .font(.body).fixedSize(horizontal: false, vertical: true)
+        .accessibilityIdentifier("bookSelectionCount")
+      if library.collapseSeries {
+        Text("Turn off series grouping to select individual books in each group.")
+          .font(.subheadline).fixedSize(horizontal: false, vertical: true)
+      }
+      HStack {
+        Button("Bulk actions", action: openBulkActions)
+          .disabled(selectedBookIDs.isEmpty || library.isBusy)
+          .accessibilityIdentifier("openBulkActions")
+        Spacer()
+        Button("Clear selection") { selectedBookIDs.removeAll() }
+          .disabled(selectedBookIDs.isEmpty)
+          .accessibilityIdentifier("clearBookSelection")
+      }
+      .frame(minHeight: 44)
+    }
+    .padding(.horizontal)
+  }
+
+  private func toggleSelection() {
+    guard canUseBulkActions, !library.isBusy else { return }
+    selectingBooks.toggle()
+    if !selectingBooks { selectedBookIDs.removeAll() }
+  }
+
+  private func toggleBookSelection(_ id: Int) {
+    guard selectingBooks, canUseBulkActions, !library.isBusy,
+      library.books.contains(where: { $0.id == id && $0.collapsedSeries == nil })
+    else { return }
+    if selectedBookIDs.contains(id) {
+      selectedBookIDs.remove(id)
+    } else if selectedBookIDs.count < 100 {
+      selectedBookIDs.insert(id)
+    }
+  }
+
+  private func resetBookSelection() {
+    showingBulkActions = false
+    bulkActionBookIDs.removeAll()
+    selectingBooks = false
+    selectedBookIDs.removeAll()
+  }
+
+  private func bulkActionsCompleted() {
+    selectingBooks = false
+    selectedBookIDs.removeAll()
+    refreshAfterManagement()
+  }
+
+  private func openBulkActions() {
+    guard canUseBulkActions, !library.isBusy, !selectedBookIDs.isEmpty,
+      selectedBookIDs.count <= 100
+    else { return }
+    bulkActionBookIDs = selectedBookIDs.sorted()
+    showingBulkActions = true
+  }
+
+  private func refreshAfterManagement() {
+    Task {
+      await library.refreshAfterTableMutation()
+      await library.collections.refresh()
+    }
+  }
+
   private func promptDelete(_ bookID: Int) {
     guard let user = session.user, user.hasPermission(.libraryDeleteBooks), !library.isBusy,
       library.books.contains(where: { $0.id == bookID && $0.collapsedSeries == nil })
@@ -402,6 +521,7 @@ struct LibraryView: View {
 
   private func bookBecameUnavailable(_ bookID: Int, _ outcome: BookDeletionOutcome) {
     library.discardUnavailableBook(bookID)
+    selectedBookIDs.remove(bookID)
     if selectedBook == bookID { selectedBook = nil }
     deletionResult = outcome.message
   }

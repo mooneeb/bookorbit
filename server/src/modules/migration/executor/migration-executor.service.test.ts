@@ -512,6 +512,9 @@ describe('UserStateImporter progress and bookmark edge cases', () => {
     const importer = new UserStateImporter(repo as never, importRepo as never, new ReadingAttemptEventsService());
 
     const planned = {
+      plan: {
+        snapshot: { sourceType: 'booklore' },
+      },
       execution: {
         sourceData: {
           availableDomains: {

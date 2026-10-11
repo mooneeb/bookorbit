@@ -1,8 +1,9 @@
 import { Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
-import type { AchievementCatalogueResponse, AchievementCelebrationClaim } from '@bookorbit/types';
+import { Permission, type AchievementCatalogueResponse, type AchievementCelebrationClaim } from '@bookorbit/types';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { AchievementService } from './achievement.service';
 import { AchievementBackfillService, type BackfillResult } from './achievement-backfill.service';
@@ -32,7 +33,20 @@ export class AchievementController {
   }
 
   @Post('admin/backfill')
+  @RequirePermission(Permission.ManageAppSettings)
   async backfill(@CurrentUser() user: RequestUser): Promise<BackfillResult> {
     return this.backfillService.runBackfill(user);
+  }
+
+  @Post('admin/backfill/start')
+  @RequirePermission(Permission.ManageAppSettings)
+  startBackfill(@CurrentUser() user: RequestUser) {
+    return this.backfillService.startBackfill(user);
+  }
+
+  @Get('admin/backfill/status')
+  @RequirePermission(Permission.ManageAppSettings)
+  backfillStatus(@CurrentUser() user: RequestUser) {
+    return this.backfillService.status(user);
   }
 }

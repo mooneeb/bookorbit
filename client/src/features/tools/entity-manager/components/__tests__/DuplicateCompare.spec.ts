@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import type { ClusterEntity, DuplicateCluster } from '@bookorbit/types'
 
 import DuplicateCompare from '../DuplicateCompare.vue'
+
+vi.mock('@/features/auth/composables/usePermissions', () => ({ usePermissions: () => ({ hasPermission: () => true }) }))
 
 function makeEntity(id: number, overrides: Partial<ClusterEntity> = {}): ClusterEntity {
   return { id, name: `Entity ${id}`, bookCount: 1, bookTitles: [], ...overrides }
@@ -22,6 +24,15 @@ function makeCluster(overrides: Partial<DuplicateCluster> = {}): DuplicateCluste
 function mountCompare(overrides: Partial<InstanceType<typeof DuplicateCompare>['$props']> = {}) {
   return mount(DuplicateCompare, {
     props: { cluster: makeCluster(), operationLoading: false, ...overrides },
+    global: {
+      stubs: {
+        ConfirmDialog: {
+          props: ['open', 'confirmLabel', 'busy'],
+          emits: ['confirm', 'cancel'],
+          template: `<div v-if="open" role="dialog"><slot /><button :disabled="busy" @click="$emit('confirm')">{{ confirmLabel }}</button></div>`,
+        },
+      },
+    },
   })
 }
 
@@ -31,8 +42,10 @@ describe('DuplicateCompare', () => {
 
     await wrapper
       .findAll('button')
-      .find((button) => button.text().includes('Merge 1 into target'))!
+      .find((button) => button.text().includes('Preview selected merge'))!
       .trigger('click')
+
+    await wrapper.find('[role="dialog"] button').trigger('click')
 
     expect(wrapper.emitted('merge')?.[0]).toEqual([1, [2], false])
   })
@@ -43,15 +56,17 @@ describe('DuplicateCompare', () => {
     await wrapper.findAll('input[type="radio"]')[1]!.setValue(true)
     await wrapper
       .findAll('button')
-      .find((button) => button.text().includes('Merge 1 into target'))!
+      .find((button) => button.text().includes('Preview selected merge'))!
       .trigger('click')
+
+    await wrapper.find('[role="dialog"] button').trigger('click')
 
     expect(wrapper.emitted('merge')?.[0]).toEqual([2, [1], false])
   })
 
   it('makes the whole card the click target rather than a strip inside it', () => {
     const wrapper = mountCompare()
-    const labels = wrapper.findAll('label')
+    const labels = wrapper.findAll('label').filter((label) => label.find('input[type="radio"]').exists())
 
     expect(labels).toHaveLength(2)
     labels.forEach((label) => {
@@ -84,8 +99,10 @@ describe('DuplicateCompare', () => {
     await wrapper.find('[role="switch"]').trigger('click')
     await wrapper
       .findAll('button')
-      .find((button) => button.text().includes('Merge 1 into target'))!
+      .find((button) => button.text().includes('Preview selected merge'))!
       .trigger('click')
+
+    await wrapper.find('[role="dialog"] button').trigger('click')
 
     expect(wrapper.emitted('merge')?.[0]).toEqual([1, [2], true])
   })
@@ -148,7 +165,7 @@ describe('DuplicateCompare', () => {
 
   it('blocks merging while another operation is in flight', () => {
     const wrapper = mountCompare({ operationLoading: true })
-    const merge = wrapper.findAll('button').find((button) => button.text().includes('Merge 1 into target'))!
+    const merge = wrapper.findAll('button').find((button) => button.text().includes('Preview selected merge'))!
 
     expect(merge.attributes('disabled')).toBeDefined()
   })

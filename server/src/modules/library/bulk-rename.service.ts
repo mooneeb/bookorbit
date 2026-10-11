@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy } from '@nestjs/common';
 import { dirname } from 'path';
+import { BulkRenamePreviewStore } from './bulk-rename-preview-store';
 
 import type { BulkRenamePreviewItem, BulkRenamePreviewPage, BulkRenameProgressEvent, BulkRenameStatus } from '@bookorbit/types';
 import { NotificationType } from '@bookorbit/types';
@@ -11,18 +12,12 @@ import { FileRenameRepository } from '../file-write/file-rename.repository';
 import { FileWatcherService } from '../scanner/file-watcher.service';
 import type { BulkRenameBookData } from '../file-write/bulk-rename.repository';
 import { BulkRenameRepository } from '../file-write/bulk-rename.repository';
-import { findSiblingOccupiedTarget, isSameWork, resolveBookFileTargets, type WorkIdentity } from '../file-write/book-file-targets';
+import { bookRenameInputVersion, findSiblingOccupiedTarget, resolveBookFileTargets } from '../file-write/book-file-targets';
 
 const CACHE_TTL_MS = 60_000;
 
-interface CachedPreview {
-  items: BulkRenamePreviewItem[];
-  totalByStatus: Record<BulkRenameStatus, number>;
-  pattern: string;
-  createdAt: number;
-}
-
 interface BulkRenameStreamOptions {
+  previewToken: string;
   onProgress: (event: BulkRenameProgressEvent) => void;
   isCancelled: () => boolean;
   /** Books the reviewer skipped. Ids outside the candidate set are simply not present. */
@@ -40,9 +35,11 @@ interface BulkRenameSummary {
 }
 
 @Injectable()
-export class BulkRenameService {
+export class BulkRenameService implements OnModuleDestroy {
   private readonly logger = new Logger(BulkRenameService.name);
-  private readonly previewCache = new Map<number, CachedPreview>();
+  private readonly previewCache = new Map<number, BulkRenamePreviewStore>();
+  private readonly previewBuilds = new Map<number, Promise<BulkRenamePreviewStore>>();
+  private readonly cleanupTimer = setInterval(() => this.removeExpiredPreviews(), CACHE_TTL_MS).unref();
   private readonly runningLibraries = new Set<number>();
 
   constructor(
@@ -61,37 +58,40 @@ export class BulkRenameService {
     statusFilter?: BulkRenameStatus,
     search?: string,
   ): Promise<BulkRenamePreviewPage> {
-    const cached = this.previewCache.get(libraryId);
-    const now = Date.now();
-
-    let preview: CachedPreview;
-    if (cached && now - cached.createdAt < CACHE_TTL_MS) {
-      preview = cached;
-    } else {
-      preview = await this.computeFullPreview(libraryId);
-      this.previewCache.set(libraryId, preview);
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) {
+      throw new BadRequestException('Preview page size must be between 1 and 200.');
     }
-
-    const statusMatched = statusFilter ? preview.items.filter((item) => item.status === statusFilter) : preview.items;
-    // Searching the whole candidate set, not the requested page, is the point: a library can hold
-    // tens of thousands of books and the client only ever holds the pages it has scrolled to.
-    const filtered = this.applySearch(statusMatched, search);
-
-    const start = (page - 1) * pageSize;
-    const items = filtered.slice(start, start + pageSize);
-
-    return {
-      items,
-      total: filtered.length,
-      totalByStatus: preview.totalByStatus,
-      pattern: preview.pattern,
-    };
+    this.removeExpiredPreviews();
+    let preview = this.previewCache.get(libraryId);
+    if (!preview) {
+      let pending = this.previewBuilds.get(libraryId);
+      if (!pending) {
+        pending = this.computeFullPreview(libraryId);
+        this.previewBuilds.set(libraryId, pending);
+      }
+      try {
+        preview = await pending;
+        this.previewCache.set(libraryId, preview);
+      } finally {
+        this.previewBuilds.delete(libraryId);
+      }
+    }
+    const result = preview.getPage(page, pageSize, statusFilter, search);
+    while (this.previewCache.size > 4) this.invalidateCache(this.previewCache.keys().next().value!);
+    return result;
   }
 
-  private applySearch(items: BulkRenamePreviewItem[], search?: string): BulkRenamePreviewItem[] {
-    const query = search?.trim().toLowerCase();
-    if (!query) return items;
-    return items.filter((item) => item.title.toLowerCase().includes(query) || item.currentPath.toLowerCase().includes(query));
+  private removeExpiredPreviews(): void {
+    for (const [libraryId, preview] of this.previewCache) {
+      if (Date.now() - preview.createdAt >= CACHE_TTL_MS) this.invalidateCache(libraryId);
+    }
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    clearInterval(this.cleanupTimer);
+    const previews = new Set([...this.previewCache.values(), ...(await Promise.all(this.previewBuilds.values()))]);
+    this.previewCache.clear();
+    await Promise.all([...previews].map((preview) => preview.close()));
   }
 
   async execute(libraryId: number, userId: number, options: BulkRenameStreamOptions): Promise<BulkRenameSummary> {
@@ -102,31 +102,68 @@ export class BulkRenameService {
       throw new BadRequestException('A bulk rename is already running for this library.');
     }
 
-    const settings = await this.bulkRenameRepo.findLibrarySettings(libraryId);
-    if (!settings) throw new NotFoundException('Library not found');
-    if (!settings.fileRenameEnabled) {
-      throw new BadRequestException('File rename is not enabled for this library.');
+    this.runningLibraries.add(libraryId);
+    let settings: NonNullable<Awaited<ReturnType<BulkRenameRepository['findLibrarySettings']>>>;
+    try {
+      const found = await this.bulkRenameRepo.findLibrarySettings(libraryId);
+      if (!found) throw new NotFoundException('Library not found');
+      if (!found.fileRenameEnabled) throw new BadRequestException('File rename is not enabled for this library.');
+      settings = found;
+    } catch (error) {
+      this.runningLibraries.delete(libraryId);
+      throw error;
     }
 
-    this.runningLibraries.add(libraryId);
-
-    let bookIds: number[];
+    let preview: BulkRenamePreviewStore | undefined;
+    const included = options.includeBookIds ? new Set(options.includeBookIds) : undefined;
+    const excluded = new Set(options.excludeBookIds ?? []);
+    const isSelected = (bookId: number) => (included ? included.has(bookId) : !excluded.has(bookId));
+    let candidateCount = 0;
+    let selectedCount = 0;
     try {
+      this.removeExpiredPreviews();
+      const cached = this.previewCache.get(libraryId);
+      if (!cached || cached.token !== options.previewToken) {
+        throw new ConflictException('Rename preview expired or changed. Review the preview again.');
+      }
+      preview = cached;
       this.previewCache.delete(libraryId);
-
-      const preview = await this.computeFullPreview(libraryId);
-      const candidates = preview.items.filter((item) => item.status === 'will_rename').map((item) => item.bookId);
-      // Either selection only ever narrows the candidate set; a book the preview held back stays held back.
-      bookIds = this.narrowCandidates(candidates, options);
+      const pattern =
+        settings.fileNamingPattern ??
+        (settings.organizationMode === 'book_per_folder'
+          ? await this.appSettings.getUploadPatternBookPerFolder()
+          : await this.appSettings.getUploadPattern());
+      const sanitizeForCrossPlatform = await this.appSettings.isCrossPlatformPathSanitizationEnabled();
+      if (
+        preview.settingsVersion !== JSON.stringify([settings.fileNamingPattern, pattern ?? '', settings.organizationMode, sanitizeForCrossPlatform])
+      ) {
+        throw new ConflictException('Rename settings changed. Review the preview again.');
+      }
+      let afterBookId = 0;
+      while (true) {
+        const batch = preview.candidateBatch(afterBookId, 250);
+        if (!batch.length) break;
+        candidateCount += batch.length;
+        const selected = batch.filter((item) => isSelected(item.bookId));
+        const books = await this.bulkRenameRepo.findBooksForLibraryIds(
+          libraryId,
+          selected.map((item) => item.bookId),
+        );
+        const versions = new Map(
+          books.map((book) => [book.bookId, bookRenameInputVersion({ ...book, pattern: pattern ?? '', sanitizeForCrossPlatform })]),
+        );
+        if (selected.some((item) => versions.get(item.bookId) !== item.inputVersion)) {
+          throw new ConflictException('Books changed after the rename preview. Review the preview again.');
+        }
+        selectedCount += selected.length;
+        afterBookId = batch[batch.length - 1].bookId;
+      }
       this.logger.log(
-        `[${event}] [start] libraryId=${libraryId} userId=${userId} candidateCount=${candidates.length} excludedCount=${candidates.length - bookIds.length} - bulk rename started`,
+        `[${event}] [start] libraryId=${libraryId} userId=${userId} candidateCount=${candidateCount} excludedCount=${candidateCount - selectedCount} - bulk rename started`,
       );
-
-      // Flushes the response headers before the watcher teardown and the first rename, so the
-      // client shows the real total instead of an idle request.
-      options.onProgress({ started: true, total: bookIds.length });
+      options.onProgress({ started: true, total: selectedCount });
     } catch (err) {
-      // Nothing has moved yet, so the library is free again the moment preparation fails.
+      await preview?.close();
       this.runningLibraries.delete(libraryId);
       throw err;
     }
@@ -141,28 +178,30 @@ export class BulkRenameService {
         watcherWasPaused = this.fileWatcherService.pauseWatcher(libraryId);
       }
 
-      for (const bookId of bookIds) {
-        if (options.isCancelled()) break;
-
-        try {
-          const result = await this.fileRenameService.performRename(bookId, userId, false, true);
-
-          if (result.status === 'success') succeeded++;
-          else if (result.status === 'failed') failed++;
-          else skipped++;
-
-          options.onProgress({
-            bookId,
-            status: result.status,
-            reason: result.reason,
-          });
-        } catch (err) {
-          failed++;
-          options.onProgress({
-            bookId,
-            status: 'failed',
-            reason: getErrorMessage(err),
-          });
+      let afterBookId = 0;
+      while (!options.isCancelled()) {
+        const batch = preview.candidateBatch(afterBookId, 250);
+        if (!batch.length) break;
+        for (const item of batch) {
+          if (options.isCancelled()) break;
+          afterBookId = item.bookId;
+          if (!isSelected(item.bookId)) continue;
+          try {
+            const result = await this.fileRenameService.performRename(item.bookId, userId, false, true, {
+              libraryId,
+              currentPath: item.currentPath,
+              targetPath: item.newPath!,
+              preserveBook: true,
+              inputVersion: item.inputVersion,
+            });
+            if (result.status === 'success') succeeded++;
+            else if (result.status === 'failed') failed++;
+            else skipped++;
+            options.onProgress({ bookId: item.bookId, status: result.status, reason: result.reason });
+          } catch (err) {
+            failed++;
+            options.onProgress({ bookId: item.bookId, status: 'failed', reason: getErrorMessage(err) });
+          }
         }
       }
 
@@ -191,6 +230,8 @@ export class BulkRenameService {
       // every change was ours, and the database already records it.
       if (watcherWasPaused) this.fileWatcherService.resumeWatcher(libraryId);
       this.runningLibraries.delete(libraryId);
+      await preview.close();
+      this.invalidateCache(libraryId);
     }
   }
 
@@ -199,142 +240,82 @@ export class BulkRenameService {
   }
 
   invalidateCache(libraryId: number): void {
+    const preview = this.previewCache.get(libraryId);
     this.previewCache.delete(libraryId);
+    if (preview) void preview.close().catch(() => {});
   }
 
-  /**
-   * Narrows the candidate list from whichever side the client stated. Ids that are not candidates
-   * are ignored rather than rejected, so a stale client selection cannot rename a held-back book.
-   */
-  private narrowCandidates(candidates: number[], options: BulkRenameStreamOptions): number[] {
-    if (options.includeBookIds) {
-      const included = new Set(options.includeBookIds);
-      return candidates.filter((id) => included.has(id));
-    }
-    const excluded = new Set(options.excludeBookIds ?? []);
-    return excluded.size ? candidates.filter((id) => !excluded.has(id)) : candidates;
-  }
-
-  private async computeFullPreview(libraryId: number): Promise<CachedPreview> {
+  private async computeFullPreview(libraryId: number): Promise<BulkRenamePreviewStore> {
+    const event = 'library.bulk_rename_preview';
+    const startedAt = Date.now();
     const settings = await this.bulkRenameRepo.findLibrarySettings(libraryId);
     if (!settings) throw new NotFoundException('Library not found');
-
-    const books = await this.bulkRenameRepo.findAllBooksForLibrary(libraryId);
-
     const pattern =
       settings.fileNamingPattern ??
       (settings.organizationMode === 'book_per_folder'
         ? await this.appSettings.getUploadPatternBookPerFolder()
         : await this.appSettings.getUploadPattern());
-
     const sanitizeForCrossPlatform = await this.appSettings.isCrossPlatformPathSanitizationEnabled();
-
-    const previewItems: BulkRenamePreviewItem[] = [];
-    const newPathToBookIds = new Map<string, number[]>();
-
-    for (const book of books) {
-      const item = this.computePreviewItem(book, pattern, sanitizeForCrossPlatform);
-      previewItems.push(item);
-
-      if (item.newPath) {
-        const existing = newPathToBookIds.get(item.newPath);
-        if (existing) {
-          existing.push(book.bookId);
-        } else {
-          newPathToBookIds.set(item.newPath, [book.bookId]);
+    const preview = await BulkRenamePreviewStore.create(
+      pattern ?? '',
+      JSON.stringify([settings.fileNamingPattern, pattern ?? '', settings.organizationMode, sanitizeForCrossPlatform]),
+    );
+    const upToBookId = await this.bulkRenameRepo.findLastBookId(libraryId);
+    let afterBookId = 0;
+    let bookCount = 0;
+    this.logger.log(`[${event}] [start] libraryId=${libraryId} - bulk rename preview started`);
+    try {
+      while (true) {
+        const books = await this.bulkRenameRepo.findBooksPageForLibrary(libraryId, afterBookId, upToBookId, 250);
+        if (!books.length) break;
+        const items = books.map((book) => {
+          const item = this.computePreviewItem(book, pattern, sanitizeForCrossPlatform);
+          const targetFolder =
+            settings.organizationMode === 'book_per_folder' && item.newPath && dirname(item.newPath) !== book.bookFolderPath
+              ? dirname(item.newPath)
+              : null;
+          return { ...item, targetFolder, inputVersion: bookRenameInputVersion({ ...book, pattern: pattern ?? '', sanitizeForCrossPlatform }) };
+        });
+        const targets = books.flatMap((book) => {
+          if (!pattern) return [];
+          const item = items.find((item) => item.bookId === book.bookId)!;
+          if (!item.newPath) return [];
+          return [...resolveBookFileTargets({ ...book, pattern, sanitizeForCrossPlatform }).values()].map((path) => ({ path, bookId: book.bookId }));
+        });
+        preview.addBatch(items, targets);
+        for (let index = 0; index < targets.length; index += 250) {
+          const batch = targets.slice(index, index + 250);
+          const owners = await this.fileRenameRepo.findExistingPaths(batch.map((target) => target.path));
+          for (const target of batch) {
+            const owner = owners.get(target.path);
+            if (owner !== undefined && owner !== target.bookId) preview.markCollision(target.bookId, 'Path already taken by another book');
+          }
         }
-      }
-    }
-
-    const collisionPaths = new Set<string>();
-    for (const [path, ids] of newPathToBookIds) {
-      if (ids.length > 1) collisionPaths.add(path);
-    }
-
-    const nonCollisionNewPaths = previewItems
-      .filter((item) => item.newPath && !collisionPaths.has(item.newPath) && item.status === 'will_rename')
-      .map((item) => item.newPath!);
-
-    const existingPathOwners = await this.fileRenameRepo.findExistingPaths(nonCollisionNewPaths);
-
-    for (const item of previewItems) {
-      if (!item.newPath) continue;
-
-      if (collisionPaths.has(item.newPath)) {
-        item.status = 'collision';
-        item.reason = 'Multiple books would resolve to the same path';
-        continue;
-      }
-
-      if (item.status === 'will_rename') {
-        const owner = existingPathOwners.get(item.newPath);
-        if (owner !== undefined && owner !== item.bookId) {
-          item.status = 'collision';
-          item.reason = 'Path already taken by another book';
+        const folderItems = items.filter((item) => item.status === 'will_rename' && item.targetFolder);
+        if (folderItems.length) {
+          const owners = await this.fileRenameRepo.findFolderOwners(
+            libraryId,
+            folderItems.map((item) => item.targetFolder!),
+          );
+          for (const item of folderItems) {
+            const owner = owners.get(item.targetFolder!);
+            if (owner && owner.bookId !== item.bookId) preview.markCollision(item.bookId, 'Target folder belongs to another book');
+          }
         }
+        bookCount += books.length;
+        afterBookId = books[books.length - 1].bookId;
       }
-    }
-
-    if (settings.organizationMode === 'book_per_folder') {
-      await this.markFolderCollisions(libraryId, previewItems, books);
-    }
-
-    const totalByStatus: Record<BulkRenameStatus, number> = {
-      will_rename: 0,
-      unchanged: 0,
-      collision: 0,
-      no_pattern: 0,
-      error: 0,
-    };
-    for (const item of previewItems) {
-      totalByStatus[item.status]++;
-    }
-
-    return { items: previewItems, totalByStatus, pattern: pattern ?? '', createdAt: Date.now() };
-  }
-
-  /**
-   * A folder is a book in this mode, so the rename refuses to land in a folder held by a different
-   * work. A folder that several renamed books would share is held back as a whole unless they are
-   * all one work, because which of them gets there first depends on the reviewer's selection.
-   */
-  private async markFolderCollisions(libraryId: number, items: BulkRenamePreviewItem[], books: BulkRenameBookData[]): Promise<void> {
-    const bookById = new Map(books.map((book) => [book.bookId, book]));
-    const itemsByFolder = new Map<string, BulkRenamePreviewItem[]>();
-    for (const item of items) {
-      const book = bookById.get(item.bookId);
-      if (item.status !== 'will_rename' || !item.newPath || !book) continue;
-      const folder = dirname(item.newPath);
-      if (folder === book.bookFolderPath) continue;
-      const group = itemsByFolder.get(folder);
-      if (group) group.push(item);
-      else itemsByFolder.set(folder, [item]);
-    }
-    if (itemsByFolder.size === 0) return;
-
-    const owners = await this.fileRenameRepo.findFolderOwners(libraryId, [...itemsByFolder.keys()]);
-    const identityOf = (bookId: number): WorkIdentity => {
-      const book = bookById.get(bookId)!;
-      return { title: book.metadata.title, primaryAuthor: book.authors[0] ?? null };
-    };
-
-    for (const [folder, group] of itemsByFolder) {
-      const owner = owners.get(folder);
-      if (owner) {
-        for (const item of group) {
-          if (isSameWork(identityOf(item.bookId), owner)) continue;
-          item.status = 'collision';
-          item.reason = 'Target folder belongs to another book';
-        }
-        continue;
-      }
-
-      const first = identityOf(group[0].bookId);
-      if (group.length < 2 || group.every((item, index) => index === 0 || isSameWork(identityOf(item.bookId), first))) continue;
-      for (const item of group) {
-        item.status = 'collision';
-        item.reason = 'Multiple books would resolve to the same folder';
-      }
+      preview.markSharedTargets(settings.organizationMode === 'book_per_folder');
+      this.logger.log(
+        `[${event}] [end] libraryId=${libraryId} durationMs=${Date.now() - startedAt} bookCount=${bookCount} - bulk rename preview completed`,
+      );
+      return preview;
+    } catch (error) {
+      await preview.close();
+      this.logger.error(
+        `[${event}] [fail] libraryId=${libraryId} durationMs=${Date.now() - startedAt} errorClass=${error instanceof Error ? error.name : 'Error'} error="${sanitizeLogValue(getErrorMessage(error))}" - bulk rename preview failed`,
+      );
+      throw error;
     }
   }
 
@@ -379,7 +360,7 @@ export class BulkRenameService {
         return { ...baseItem, status: 'no_pattern', reason: 'Pattern resolved to empty' };
       }
 
-      if (targetPath === book.absolutePath) {
+      if (targetPath === book.absolutePath && files.every((file) => targets.get(file.id) === file.absolutePath)) {
         return { ...baseItem, newPath: targetPath, status: 'unchanged' };
       }
 

@@ -506,6 +506,16 @@ export class AchievementRepository {
     return (rows as unknown as { rows: Array<{ id: number }> }).rows.map((r) => r.id);
   }
 
+  async backfillUserIdsAfter(afterId: number): Promise<number[]> {
+    const rows = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.active, true), gt(users.id, afterId)))
+      .orderBy(asc(users.id))
+      .limit(50);
+    return rows.map((row) => row.id);
+  }
+
   async hasSessionLongerThan(userId: number, minSeconds: number): Promise<boolean> {
     const [row] = await this.db
       .select({ sessionId: readingSessions.sessionId })

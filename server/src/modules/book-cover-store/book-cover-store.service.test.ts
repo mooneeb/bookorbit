@@ -55,6 +55,7 @@ async function image(width: number, height: number): Promise<Buffer> {
 
 function makeStore(root: string, current: BookCoverContext) {
   const repository = {
+    withBookWriteLock: vi.fn((_bookId, operation) => operation()),
     findContext: vi.fn().mockResolvedValue(current),
     slotsFor: vi.fn().mockResolvedValue(new Map()),
     applySlotMutation: vi.fn().mockResolvedValue({ libraryId: current.libraryId, koboCoverChanged: true }),

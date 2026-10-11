@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import * as schema from './schema';
@@ -35,6 +35,12 @@ export async function refreshPrimaryAuthorSortNamesForBooks(executor: AuthorSort
     SET primary_author_sort_name = (${primaryAuthorSortKeySql})
     WHERE b.id = ANY(${intArray(ids)})
   `);
+  return Number((result as { rowCount?: number }).rowCount ?? 0);
+}
+
+export async function refreshPrimaryAuthorSortNamesForBookSelection(executor: AuthorSortKeyExecutor, bookIds: SQL): Promise<number> {
+  const result = await executor.execute(sql`UPDATE books b SET primary_author_sort_name = (${primaryAuthorSortKeySql})
+    WHERE b.id IN (${bookIds})`);
   return Number((result as { rowCount?: number }).rowCount ?? 0);
 }
 

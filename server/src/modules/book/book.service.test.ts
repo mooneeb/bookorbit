@@ -91,9 +91,8 @@ function makeUser(overrides?: Partial<RequestUser>): RequestUser {
     avatarUrl: null,
     provisioningMethod: 'local',
     permissions: [],
-    ...overrides,
-
     contentFilters: EMPTY_CONTENT_FILTER_RULES,
+    ...overrides,
   };
 }
 
@@ -157,6 +156,8 @@ function makeService(overrides: { bookMetadataLockService?: unknown; appDataPath
     deleteByIds: vi.fn(),
     deleteByIdsAndInvalidateScanState: vi.fn(),
     findAllIds: vi.fn(),
+    embeddingScope: vi.fn().mockResolvedValue({ maximumId: 0, total: 0 }),
+    embeddingIdsAfter: vi.fn().mockResolvedValue([]),
     findIdsByWhere: vi.fn(),
     findCardsCollapsed: vi.fn(),
     findJumpBuckets: vi.fn(),
@@ -164,6 +165,7 @@ function makeService(overrides: { bookMetadataLockService?: unknown; appDataPath
     findTemporalJumpBuckets: vi.fn(),
     findTemporalJumpBucketsCollapsed: vi.fn(),
     checkBookPassesContentFilters: vi.fn().mockResolvedValue(true),
+    bookIdsPassContentFilters: vi.fn().mockResolvedValue(true),
   };
   const libraryService = {
     verifyUserAccess: vi.fn().mockResolvedValue(undefined),
@@ -402,6 +404,35 @@ describe('BookService', () => {
     mockParseFb2File.mockReset();
     mockParseMobiFile.mockReset();
     mockParsePdfFile.mockReset();
+  });
+
+  describe('bulk content-filter authorization', () => {
+    it.each(['bulkReExtractCover', 'bulkRefreshMetadata', 'deleteBooks'] as const)(
+      '%s rejects content-filtered selections before loading or mutating books',
+      async (operation) => {
+        const { service, bookRepo, libraryService, metadataService } = makeService();
+        const user = makeUser({ contentFilters: { ...EMPTY_CONTENT_FILTER_RULES, excludeTagIds: [5] } });
+        const refreshSpy = vi.spyOn(service, 'refreshMetadata').mockResolvedValue({ id: 3 } as never);
+        bookRepo.findLibraryIdsByBookIds.mockResolvedValue([
+          { id: 3, libraryId: 7 },
+          { id: 4, libraryId: 7 },
+        ]);
+        bookRepo.bookIdsPassContentFilters.mockResolvedValue(false);
+
+        await expect(service[operation]([3, 3, 4], user)).rejects.toThrow('One or more selected books are unavailable');
+
+        expect(libraryService.verifyUserAccess).toHaveBeenCalledWith(user.id, 7, false);
+        expect(bookRepo.bookIdsPassContentFilters).toHaveBeenCalledExactlyOnceWith([3, 4], user.contentFilters);
+        expect(bookRepo.checkBookPassesContentFilters).not.toHaveBeenCalled();
+        expect(bookRepo.findCoverSourceFilesByBookIds).not.toHaveBeenCalled();
+        expect(bookRepo.findAllFilesByBookIds).not.toHaveBeenCalled();
+        expect(bookRepo.findDeletionAuditBooksByIds).not.toHaveBeenCalled();
+        expect(bookRepo.deleteByIdsAndInvalidateScanState).not.toHaveBeenCalled();
+        expect(metadataService.refreshCoverForBook).not.toHaveBeenCalled();
+        expect(refreshSpy).not.toHaveBeenCalled();
+        expect(mockRm).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('download naming', () => {
@@ -653,7 +684,7 @@ describe('BookService', () => {
       const { service, bookRepo } = makeService();
       bookRepo.findLibraryIdsByBookIds.mockResolvedValue([{ id: 1, libraryId: 77 }]);
 
-      await expect(service.getExportFiles([1, 2], makeUser(), 'primary')).rejects.toThrow(BadRequestException);
+      await expect(service.getExportFiles([1, 2], makeUser(), 'primary')).rejects.toThrow(NotFoundException);
     });
 
     it('throws when selected books have no exportable files', async () => {
@@ -2292,6 +2323,7 @@ describe('BookService', () => {
 
       expect(result).toEqual({ processed: 2, updated: 1 });
       expect(libraryService.verifyUserAccess).toHaveBeenCalledWith(user.id, 7, false);
+      expect(bookRepo.bookIdsPassContentFilters).toHaveBeenCalledExactlyOnceWith([1, 2], user.contentFilters);
       expect(onProgress).toHaveBeenCalledTimes(2);
       expect(onProgress).toHaveBeenNthCalledWith(1, 1);
       expect(onProgress).toHaveBeenNthCalledWith(2, 2);
@@ -2461,6 +2493,7 @@ describe('BookService', () => {
       expect(result).toEqual({ processed: 1, failed: 0 });
       expect(refreshSpy).toHaveBeenCalledTimes(1);
       expect(onProgress).toHaveBeenCalledTimes(1);
+      expect(bookRepo.bookIdsPassContentFilters).toHaveBeenCalledExactlyOnceWith([1, 2, 3], user.contentFilters);
     });
 
     it('stops bulk metadata refresh when progress callback throws', async () => {
@@ -2539,6 +2572,7 @@ describe('BookService', () => {
       const result = await service.deleteBooks([3, 4], user);
 
       expect(libraryService.verifyUserAccess).toHaveBeenCalledTimes(2);
+      expect(bookRepo.bookIdsPassContentFilters).toHaveBeenCalledExactlyOnceWith([3, 4], user.contentFilters);
       expect(bookRepo.deleteByIdsAndInvalidateScanState).toHaveBeenCalledWith([3, 4]);
       expect(mockRm).toHaveBeenCalledWith('/tmp/books/covers/3', { recursive: true, force: true });
       expect(mockRm).toHaveBeenCalledWith('/tmp/books/covers/4', { recursive: true, force: true });
@@ -2896,7 +2930,8 @@ describe('BookService', () => {
       const { service, bookRepo, embedder } = makeService();
       let resolveEmbed: (() => void) | null = null;
 
-      bookRepo.findAllIds.mockResolvedValue([11]);
+      bookRepo.embeddingScope.mockResolvedValue({ maximumId: 11, total: 1 });
+      bookRepo.embeddingIdsAfter.mockResolvedValueOnce([11]);
       embedder.embedBook.mockImplementation(
         () =>
           new Promise<void>((resolve) => {
@@ -3950,11 +3985,12 @@ describe('BookService', () => {
     });
 
     it('runEmbeddings logs per-item failures and continues', async () => {
-      const { service, embedder } = makeService();
+      const { service, bookRepo, embedder } = makeService();
       const warnSpy = vi.spyOn((service as unknown as { logger: { warn: (message: string) => void } }).logger, 'warn').mockImplementation();
+      bookRepo.embeddingIdsAfter.mockResolvedValueOnce([1, 2]);
       embedder.embedBook.mockRejectedValueOnce(new Error('embedding failed')).mockResolvedValueOnce(undefined);
 
-      await (service as any).runEmbeddings([1, 2]);
+      await (service as any).runEmbeddings(2);
 
       expect(embedder.embedBook).toHaveBeenCalledTimes(2);
       expect(warnSpy).toHaveBeenCalled();

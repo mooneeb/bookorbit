@@ -40,6 +40,7 @@ import { UpdateBookDockSettingsDto } from './dto/update-book-dock-settings.dto';
 import {
   UpdateBookDockFileDto,
   FinalizeBookDockDto,
+  FinalizeBookDockJobDto,
   BulkDiscardDto,
   BulkEditBookDockDto,
   BulkApplyFetchedDto,
@@ -48,6 +49,7 @@ import {
   PreviewNamesDto,
   SelectionSummaryDto,
 } from './dto/index';
+import { BookDockFinalizeJobsService } from './book-dock-finalize-jobs.service';
 import { AppSettingsService } from '../app-settings/app-settings.service';
 
 @Controller('book-dock')
@@ -59,6 +61,7 @@ export class BookDockController {
     private readonly finalizeService: BookDockFinalizeService,
     private readonly watcherService: BookDockWatcherService,
     private readonly appSettings: AppSettingsService,
+    private readonly finalizeJobs: BookDockFinalizeJobsService,
   ) {}
 
   @Get('files')
@@ -320,6 +323,26 @@ export class BookDockController {
       dto.needsReview,
       dto.readyToFile,
     );
+  }
+
+  @Post('finalize-jobs')
+  @RequirePermission(Permission.BookDockAccess, Permission.LibraryUpload)
+  @HttpCode(HttpStatus.ACCEPTED)
+  createFinalizeJob(@CurrentUser() user: RequestUser, @Body() dto: FinalizeBookDockJobDto) {
+    return this.finalizeJobs.create(user, dto);
+  }
+
+  @Get('finalize-jobs/:id')
+  @RequirePermission(Permission.BookDockAccess, Permission.LibraryUpload)
+  getFinalizeJob(@CurrentUser() user: RequestUser, @Param('id', ParseIntPipe) id: number) {
+    return this.finalizeJobs.status(user, id);
+  }
+
+  @Post('finalize-jobs/:id/retry')
+  @RequirePermission(Permission.BookDockAccess, Permission.LibraryUpload)
+  @HttpCode(HttpStatus.ACCEPTED)
+  retryFinalizeJob(@CurrentUser() user: RequestUser, @Param('id', ParseIntPipe) id: number) {
+    return this.finalizeJobs.retry(user, id);
   }
 
   @Post('finalize')

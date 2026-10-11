@@ -10,6 +10,7 @@ import { clusterKey } from '../utils/duplicate-cluster'
  */
 export function useDuplicateReview(clusters: Ref<DuplicateCluster[]>) {
   const activeKey = ref<string | null>(null)
+  const keepListOpen = ref(false)
 
   const activeCluster = computed(() => clusters.value.find((cluster) => clusterKey(cluster) === activeKey.value) ?? null)
 
@@ -20,6 +21,7 @@ export function useDuplicateReview(clusters: Ref<DuplicateCluster[]>) {
         activeKey.value = null
         return
       }
+      if (keepListOpen.value) return
       if (!list.some((cluster) => clusterKey(cluster) === activeKey.value)) {
         activeKey.value = clusterKey(list[0]!)
       }
@@ -28,10 +30,12 @@ export function useDuplicateReview(clusters: Ref<DuplicateCluster[]>) {
   )
 
   function selectCluster(key: string): void {
+    keepListOpen.value = false
     activeKey.value = key
   }
 
   function clearSelection(): void {
+    keepListOpen.value = true
     activeKey.value = null
   }
 

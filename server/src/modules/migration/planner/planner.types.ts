@@ -1,4 +1,4 @@
-import type { SourceExportData, SourceSnapshot } from '../adapters/source-adapter.types';
+import type { SourceBook, SourceExportData, SourceSnapshot } from '../adapters/source-adapter.types';
 
 export interface PathMapping {
   sourcePrefix: string;
@@ -72,6 +72,8 @@ export interface PlannedUserPreview {
 }
 
 export interface PlannedMigration {
+  itemIdentityVersion?: 2;
+  matchingContentHash?: string;
   generatedAt: string;
   snapshot: SourceSnapshot;
   matchingPriority: MatchStrategy[];
@@ -94,4 +96,12 @@ export interface PlannedExecutionContext {
 export interface PlannerResult {
   plan: PlannedMigration;
   execution: PlannedExecutionContext;
+  durableSummary?: { matchedBooks: number; unresolvedBooks: number; duplicateBookMatches: number; unresolvedByReason: Record<string, number> };
+}
+
+export interface MigrationPlanningStore {
+  knownSourceBookIds(sourceBookIds: string[]): Promise<Set<string>>;
+  appendCandidates(books: SourceBook[], matched: { matches: PlannedBookMatch[]; unresolved: PlannedUnresolvedBook[] }): Promise<void>;
+  appendPreviewCounts(rows: Array<{ sourceBookId: string; sourceUserId: string; counts: UserPreviewCounts }>): Promise<void>;
+  totals(): Promise<{ summary: NonNullable<PlannerResult['durableSummary']>; users: Array<{ sourceUserId: string; counts: UserPreviewCounts }> }>;
 }

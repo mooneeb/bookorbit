@@ -1,7 +1,12 @@
-import { BadRequestException, ConflictException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import type { RequestUser } from '../../common/types/request-user';
+import { BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 
 import { MigrationProfileService } from './migration-profile.service';
+
+function makeUser(id = 1): RequestUser {
+  return { id, isSuperuser: true } as RequestUser;
+}
 
 const noopEncryption = {
   encryptConfig: (c: Record<string, unknown>) => c,
@@ -101,6 +106,17 @@ function createProfileService(overrides: Partial<Record<string, unknown>> = {}) 
 }
 
 describe('MigrationProfileService', () => {
+  it("rejects mapping another user's reading data through the service boundary", async () => {
+    const { service } = createProfileService();
+
+    await expect(
+      service.createProfile({ sourceId: 1, name: 'Profile', userMappings: [{ sourceUserId: 'src-user', targetUserId: 10 }] }, {
+        id: 1,
+        isSuperuser: false,
+      } as RequestUser),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('rejects profile creation when target user mapping IDs are invalid', async () => {
     const { service } = createProfileService();
 
@@ -112,7 +128,7 @@ describe('MigrationProfileService', () => {
           userMappings: [{ sourceUserId: 'src-user', targetUserId: 999 }],
           pathMappings: [],
         },
-        1,
+        makeUser(1),
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -139,7 +155,7 @@ describe('MigrationProfileService', () => {
         ],
         pathMappings: [],
       },
-      1,
+      makeUser(1),
     );
 
     expect(createProfile).toHaveBeenCalledWith(
@@ -163,7 +179,7 @@ describe('MigrationProfileService', () => {
           userMappings: [{ sourceUserId: 'skipped-user', targetUserId: null }],
           pathMappings: [],
         },
-        1,
+        makeUser(1),
       ),
     ).rejects.toThrow('Map at least one source user to a target user');
   });
@@ -181,7 +197,7 @@ describe('MigrationProfileService', () => {
           userMappings: [{ sourceUserId: 'src-user', targetUserId: 10 }],
           pathMappings: [],
         },
-        1,
+        makeUser(1),
       ),
     ).rejects.toBeInstanceOf(ConflictException);
   });
@@ -199,7 +215,7 @@ describe('MigrationProfileService', () => {
           userMappings: [{ sourceUserId: 'src-user', targetUserId: 10 }],
           pathMappings: [],
         },
-        1,
+        makeUser(1),
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
@@ -217,7 +233,7 @@ describe('MigrationProfileService', () => {
           userMappings: [{ sourceUserId: 'src-user', targetUserId: 10 }],
           pathMappings: [],
         },
-        1,
+        makeUser(1),
       ),
     ).rejects.toBeInstanceOf(InternalServerErrorException);
   });
@@ -244,7 +260,7 @@ describe('MigrationProfileService', () => {
         name: '  My Profile  ',
         userMappings: [{ sourceUserId: 'src-user', targetUserId: 10 }],
       } as never,
-      9,
+      makeUser(9),
     );
 
     expect(createProfile).toHaveBeenCalledWith(
@@ -281,7 +297,7 @@ describe('MigrationProfileService', () => {
       books: [],
     });
 
-    const result = await service.suggestUserMappings(1);
+    const result = await service.suggestUserMappings(1, { id: 7, isSuperuser: true } as RequestUser);
 
     expect(adapterRegistry.get).toHaveBeenCalledWith('booklore');
     const [emailSuggestion, usernameSuggestion, nameSuggestion, topThreeSuggestion] = result.suggestions;
@@ -299,7 +315,7 @@ describe('MigrationProfileService', () => {
       findSourceById: vi.fn(() => Promise.resolve(null)),
     });
 
-    await expect(service.suggestUserMappings(55)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.suggestUserMappings(55, { id: 7, isSuperuser: true } as RequestUser)).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('validatePathMappings persists preflight metadata for matching profile hash', async () => {
@@ -316,15 +332,20 @@ describe('MigrationProfileService', () => {
       books: [{ sourceBookId: 'b1', filePath: '/source/book.epub' }],
     });
 
-    const result = await service.validatePathMappings(1, {
-      pathMappings: matchingPathMappings,
-      sampleLimit: 3,
-    });
+    const result = await service.validatePathMappings(
+      1,
+      {
+        pathMappings: matchingPathMappings,
+        sampleLimit: 3,
+      },
+      makeUser(),
+    );
 
     expect(pathValidator.validate).toHaveBeenCalledWith(
       expect.objectContaining({
         sourceBooks: [{ sourceBookId: 'b1', filePath: '/source/book.epub' }],
         pathMappings: matchingPathMappings,
+        actorUserId: 1,
         sampleLimit: 3,
       }),
     );
@@ -348,9 +369,13 @@ describe('MigrationProfileService', () => {
     });
     adapter.exportData.mockResolvedValue({ users: [], books: [] });
 
-    const result = await service.validatePathMappings(1, {
-      pathMappings: [{ sourcePrefix: '/source', targetPrefix: '/target' }],
-    });
+    const result = await service.validatePathMappings(
+      1,
+      {
+        pathMappings: [{ sourcePrefix: '/source', targetPrefix: '/target' }],
+      },
+      makeUser(),
+    );
 
     expect(result.persistedProfileId).toBeNull();
     expect(repo.updateProfileScope).not.toHaveBeenCalled();
@@ -362,9 +387,26 @@ describe('MigrationProfileService', () => {
     });
 
     await expect(
-      service.validatePathMappings(42, {
-        pathMappings: [{ sourcePrefix: '/source', targetPrefix: '/target' }],
-      }),
+      service.validatePathMappings(
+        42,
+        {
+          pathMappings: [{ sourcePrefix: '/source', targetPrefix: '/target' }],
+        },
+        makeUser(),
+      ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('rejects another source owner before exporting paths or looking up target files', async () => {
+    const { service, adapter, pathValidator } = createProfileService();
+
+    await expect(
+      service.validatePathMappings(1, { pathMappings: [{ sourcePrefix: '/source', targetPrefix: '/target' }] }, {
+        id: 7,
+        isSuperuser: false,
+      } as RequestUser),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(adapter.exportData).not.toHaveBeenCalled();
+    expect(pathValidator.validate).not.toHaveBeenCalled();
   });
 });

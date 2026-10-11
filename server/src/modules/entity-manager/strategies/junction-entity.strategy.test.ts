@@ -1,80 +1,11 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 
 import { TagStrategy } from './tag.strategy';
+import { getTableName, type SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 function makeStrategy(db: Record<string, unknown> = {}) {
   return new TagStrategy({ execute: vi.fn().mockResolvedValue({ rows: [] }), ...db } as never);
-}
-
-function makeSelectChain(rows: unknown[]) {
-  const offset = vi.fn().mockResolvedValue(rows);
-  const limit = vi.fn().mockReturnValue({ offset }).mockResolvedValue(rows);
-  const orderBy = vi.fn().mockReturnValue({ limit });
-  const groupBy = vi.fn().mockReturnValue({ orderBy });
-  const where = vi.fn().mockReturnValue({ groupBy, orderBy, limit });
-  const innerJoin = vi.fn();
-  innerJoin.mockReturnValue({ where, innerJoin });
-  const leftJoin = vi.fn().mockReturnValue({ where });
-  const from = vi.fn().mockReturnValue({ where, innerJoin, leftJoin });
-  const select = vi.fn().mockReturnValue({ from });
-  const selectDistinct = vi.fn().mockReturnValue({ from });
-  return { select, selectDistinct, from, innerJoin, leftJoin, where, groupBy, orderBy, limit, offset };
-}
-
-function makeTransactionMock(txOverrides: Record<string, unknown> = {}) {
-  const deleteWhere = vi.fn().mockResolvedValue(undefined);
-  const deleteFrom = vi.fn().mockReturnValue({ where: deleteWhere });
-  const updateWhere = vi.fn().mockResolvedValue(undefined);
-  const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
-  const update = vi.fn().mockReturnValue({ set: updateSet });
-
-  const insertOnConflict = vi.fn().mockResolvedValue(undefined);
-  const insertValues = vi.fn().mockReturnValue({
-    onConflictDoNothing: insertOnConflict,
-    onConflictDoUpdate: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
-  });
-  const insert = vi.fn().mockReturnValue({ values: insertValues });
-
-  const selectDistinctWhere = vi.fn().mockResolvedValue([]);
-  const selectDistinctFrom = vi.fn().mockReturnValue({ where: selectDistinctWhere });
-  const selectDistinct = vi.fn().mockReturnValue({ from: selectDistinctFrom });
-
-  const selectWhere = vi.fn().mockResolvedValue([]);
-  const selectFrom = vi.fn().mockReturnValue({ where: selectWhere, innerJoin: vi.fn().mockReturnValue({ where: selectWhere }) });
-  const select = vi.fn().mockReturnValue({ from: selectFrom });
-
-  const execute = vi.fn().mockResolvedValue(undefined);
-
-  const tx = {
-    delete: deleteFrom,
-    update,
-    insert,
-    select,
-    selectDistinct,
-    execute,
-    ...txOverrides,
-  };
-
-  const transaction = vi.fn().mockImplementation(async (cb: (txArg: typeof tx) => Promise<unknown>) => cb(tx));
-  return {
-    transaction,
-    tx,
-    deleteFrom,
-    deleteWhere,
-    update,
-    updateSet,
-    updateWhere,
-    insert,
-    insertValues,
-    insertOnConflict,
-    selectDistinct,
-    selectDistinctFrom,
-    selectDistinctWhere,
-    select,
-    selectFrom,
-    selectWhere,
-    execute,
-  };
 }
 
 describe('TagStrategy (JunctionEntityStrategy)', () => {
@@ -222,221 +153,170 @@ describe('TagStrategy (JunctionEntityStrategy)', () => {
     });
   });
 
+  function mutationFixture(
+    initial = [
+      { id: 1, name: 'Old' },
+      { id: 2, name: 'Target' },
+    ],
+    ids: number[] = [10, 20],
+    outside = false,
+  ) {
+    const dialect = new PgDialect();
+    const rows = initial.map((row) => ({ ...row }));
+    const filter = (condition: SQL) => {
+      const query = dialect.sqlToQuery(condition);
+      const last = query.params.at(-1);
+      return typeof last === 'string' ? rows.filter((row) => row.name === last) : rows.filter((row) => query.params.includes(row.id));
+    };
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn((condition: SQL) => {
+          const selected = filter(condition);
+          const promise = Promise.resolve(selected);
+          return {
+            then: promise.then.bind(promise),
+            limit: vi.fn().mockResolvedValue(selected),
+            orderBy: vi.fn().mockReturnValue({ for: vi.fn().mockResolvedValue(selected) }),
+          };
+        }),
+      }),
+    });
+    const updateSet = vi.fn((values: object) => ({
+      where: vi.fn((condition: SQL) => {
+        filter(condition).forEach((row) => Object.assign(row, values));
+      }),
+    }));
+    const update = vi.fn().mockReturnValue({ set: updateSet });
+    const deleteFrom = vi.fn((table) => ({
+      where: vi.fn((condition: SQL) => {
+        if (getTableName(table) !== 'tags') return;
+        const deleted = new Set(filter(condition));
+        for (let index = rows.length - 1; index >= 0; index--) if (deleted.has(rows[index]!)) rows.splice(index, 1);
+      }),
+    }));
+    const insertValues = vi.fn((values: { name: string }) => {
+      const row = { id: 100 + rows.length, ...values };
+      rows.push(row);
+      return { returning: vi.fn().mockResolvedValue([{ id: row.id }]) };
+    });
+    const insert = vi.fn().mockReturnValue({ values: insertValues });
+    const execute = vi.fn((statement: SQL) => {
+      const query = dialect.sqlToQuery(statement);
+      if (query.sql.includes('scoped_relation')) return { rows: outside ? [{ outside: 1 }] : [] };
+      if (query.sql.includes('AS outside')) return { rows: [{ outside: false }] };
+      if (query.sql.includes('count(*)::int AS count FROM entity_mutation_books')) return { rows: [{ count: ids.length }] };
+      if (query.sql.includes('AS "bookId" FROM entity_mutation_books'))
+        return { rows: ids.filter((id) => id > Number(query.params[0])).map((bookId) => ({ bookId })) };
+      return { rows: [] };
+    });
+    const db = { select, update, insert, delete: deleteFrom, execute };
+    const transaction = vi.fn(async (callback: (tx: typeof db) => Promise<unknown>) => {
+      const before = rows.map((row) => ({ ...row }));
+      try {
+        return await callback(db);
+      } catch (error) {
+        rows.splice(0, rows.length, ...before);
+        throw error;
+      }
+    });
+    return { strategy: makeStrategy({ ...db, transaction }), rows, transaction, deleteFrom, insertValues, execute };
+  }
+
   describe('merge', () => {
-    it('rejects merging entities that are used outside the accessible libraries', async () => {
-      const execute = vi.fn().mockResolvedValue({ rows: [{ '?column?': 1 }] });
-      const strategy = makeStrategy({ execute });
-      vi.spyOn(strategy, 'findEntityById');
-
-      await expect(strategy.merge({ targetId: 5, sourceIds: [1], userId: 1, libraryIds: [2] })).rejects.toBeInstanceOf(ForbiddenException);
-
-      expect(strategy.findEntityById).not.toHaveBeenCalled();
+    it('rejects entity relations outside the accessible scope before mutation', async () => {
+      const fixture = mutationFixture(undefined, undefined, true);
+      await expect(fixture.strategy.merge({ targetId: 2, sourceIds: [1], userId: 5, libraryIds: [7] })).rejects.toBeInstanceOf(ForbiddenException);
+      expect(fixture.transaction).not.toHaveBeenCalled();
     });
 
-    it('throws NotFoundException when target entity is not found', async () => {
-      const { select } = makeSelectChain([]);
-      const strategy = makeStrategy({ select });
-      vi.spyOn(strategy, 'findEntityById').mockResolvedValue(null);
-
-      await expect(strategy.merge({ targetId: 99, sourceIds: [1, 2], userId: 1 })).rejects.toBeInstanceOf(NotFoundException);
+    it.each([1, 2])('rejects a stale source or target id=%s', async (missingId) => {
+      const fixture = mutationFixture([{ id: 3 - missingId, name: 'Remaining' }]);
+      await expect(fixture.strategy.merge({ targetId: 2, sourceIds: [1], userId: 5, libraryIds: [7] })).rejects.toBeInstanceOf(NotFoundException);
+      expect(fixture.rows).toEqual([{ id: 3 - missingId, name: 'Remaining' }]);
     });
 
-    it('inserts junction rows for target and deletes sources inside a transaction', async () => {
-      const { transaction, tx, insert, insertValues, insertOnConflict, deleteFrom, deleteWhere } = makeTransactionMock();
-
-      const selectDistinctWhere = vi.fn().mockResolvedValue([{ bookId: 10 }, { bookId: 20 }]);
-      const selectDistinctFrom = vi.fn().mockReturnValue({ where: selectDistinctWhere });
-      tx.selectDistinct = vi.fn().mockReturnValue({ from: selectDistinctFrom });
-
-      const strategy = makeStrategy({ transaction });
-      vi.spyOn(strategy, 'findEntityById').mockResolvedValue({ id: 5, name: 'Fantasy' });
-      vi.spyOn(strategy, 'findAffectedBookIds').mockResolvedValue([10, 20]);
-
-      const result = await strategy.merge({ targetId: 5, sourceIds: [1, 2], userId: 1 });
-
-      expect(transaction).toHaveBeenCalledTimes(1);
-      expect(insert).toHaveBeenCalledTimes(1);
-      expect(insertValues).toHaveBeenCalledTimes(1);
-      expect(insertOnConflict).toHaveBeenCalledTimes(1);
-      expect(deleteFrom).toHaveBeenCalledTimes(2);
-      expect(deleteWhere).toHaveBeenCalledTimes(2);
-      expect(result).toEqual({ affectedBookIds: [10, 20] });
+    it('merges source relations and returns the exact distinct affected book count', async () => {
+      const fixture = mutationFixture();
+      const result = await fixture.strategy.merge({ targetId: 2, sourceIds: [1], userId: 5, libraryIds: [7] });
+      expect(result).toEqual({ affectedBookIds: [10, 20], affectedBookCount: 2 });
+      expect(fixture.rows).toEqual([{ id: 2, name: 'Target' }]);
+      expect(fixture.transaction).toHaveBeenCalledOnce();
     });
 
-    it('skips insert when source has no junction rows', async () => {
-      const { transaction, tx, insert, deleteFrom } = makeTransactionMock();
-
-      const selectDistinctWhere = vi.fn().mockResolvedValue([]);
-      const selectDistinctFrom = vi.fn().mockReturnValue({ where: selectDistinctWhere });
-      tx.selectDistinct = vi.fn().mockReturnValue({ from: selectDistinctFrom });
-
-      const strategy = makeStrategy({ transaction });
-      vi.spyOn(strategy, 'findEntityById').mockResolvedValue({ id: 5, name: 'Fantasy' });
-      vi.spyOn(strategy, 'findAffectedBookIds').mockResolvedValue([]);
-
-      await strategy.merge({ targetId: 5, sourceIds: [1], userId: 1 });
-
-      expect(insert).not.toHaveBeenCalled();
-      expect(deleteFrom).toHaveBeenCalledTimes(2);
+    it('merges an empty source without fabricating affected books', async () => {
+      const fixture = mutationFixture(undefined, []);
+      await expect(fixture.strategy.merge({ targetId: 2, sourceIds: [1], userId: 5, libraryIds: [7] })).resolves.toEqual({
+        affectedBookIds: [],
+        affectedBookCount: 0,
+      });
+      expect(fixture.rows).toEqual([{ id: 2, name: 'Target' }]);
     });
   });
 
   describe('rename', () => {
-    it('throws NotFoundException when entity is not found', async () => {
-      const limit = vi.fn().mockResolvedValue([]);
-      const where = vi.fn().mockReturnValue({ limit });
-      const from = vi.fn().mockReturnValue({ where });
-      const select = vi.fn().mockReturnValue({ from });
-      const strategy = makeStrategy({ select });
-
-      await expect(strategy.rename({ entityId: 99, newName: 'New', userId: 1, libraryIds: [1] })).rejects.toBeInstanceOf(NotFoundException);
+    it('rejects a missing entity and blank names', async () => {
+      const fixture = mutationFixture();
+      await expect(fixture.strategy.rename({ entityId: 99, newName: 'New', userId: 5, libraryIds: [7] })).rejects.toBeInstanceOf(NotFoundException);
+      await expect(fixture.strategy.rename({ entityId: 1, newName: '  ', userId: 5, libraryIds: [7] })).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('throws BadRequestException when new name is blank', async () => {
-      const limit = vi.fn().mockResolvedValue([{ name: 'Old' }]);
-      const where = vi.fn().mockReturnValue({ limit });
-      const from = vi.fn().mockReturnValue({ where });
-      const select = vi.fn().mockReturnValue({ from });
-      const strategy = makeStrategy({ select });
-
-      await expect(strategy.rename({ entityId: 1, newName: '  ', userId: 1, libraryIds: [1] })).rejects.toBeInstanceOf(BadRequestException);
+    it('performs an implicit merge when the trimmed target name already exists', async () => {
+      const fixture = mutationFixture();
+      const result = await fixture.strategy.rename({ entityId: 1, newName: ' Target ', userId: 5, libraryIds: [7] });
+      expect(result).toMatchObject({ oldName: 'Old', wasImplicitMerge: true, mergedEntityId: 2, affectedBookIds: [10, 20], affectedBookCount: 2 });
+      expect(fixture.rows).toEqual([{ id: 2, name: 'Target' }]);
     });
 
-    it('performs implicit merge when another entity with the same name exists', async () => {
-      const findEntityLimit = vi.fn().mockResolvedValueOnce([{ name: 'Old' }]);
-      const existingLimit = vi.fn().mockResolvedValueOnce([{ id: 7 }]);
-      const where = vi.fn().mockReturnValueOnce({ limit: findEntityLimit }).mockReturnValueOnce({ limit: existingLimit });
-      const from = vi.fn().mockReturnValue({ where });
-      const select = vi.fn().mockReturnValue({ from });
-
-      const strategy = makeStrategy({ select });
-      vi.spyOn(strategy, 'merge').mockResolvedValue({ affectedBookIds: [10, 20] });
-
-      const result = await strategy.rename({ entityId: 1, newName: 'Existing', userId: 1, libraryIds: [1] });
-
-      expect(strategy.merge).toHaveBeenCalledTimes(1);
-      expect(result.wasImplicitMerge).toBe(true);
-      expect(result.mergedEntityId).toBe(7);
-      expect(result.affectedBookIds).toEqual([10, 20]);
-    });
-
-    it('performs a simple rename when no conflicting name exists', async () => {
-      const findEntityLimit = vi.fn().mockResolvedValueOnce([{ name: 'Old' }]);
-      const existingLimit = vi.fn().mockResolvedValueOnce([]);
-      const where = vi.fn().mockReturnValueOnce({ limit: findEntityLimit }).mockReturnValueOnce({ limit: existingLimit });
-      const from = vi.fn().mockReturnValue({ where });
-      const select = vi.fn().mockReturnValue({ from });
-
-      const updateWhere = vi.fn().mockResolvedValue(undefined);
-      const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
-      const update = vi.fn().mockReturnValue({ set: updateSet });
-
-      const strategy = makeStrategy({ select, update });
-      vi.spyOn(strategy, 'findAffectedBookIds').mockResolvedValue([5]);
-
-      const result = await strategy.rename({ entityId: 1, newName: 'New', userId: 1, libraryIds: [1] });
-
-      expect(update).toHaveBeenCalledTimes(1);
-      expect(result.wasImplicitMerge).toBe(false);
-      expect(result.oldName).toBe('Old');
-      expect(result.affectedBookIds).toEqual([5]);
+    it('performs a simple trimmed rename without changing the identity', async () => {
+      const fixture = mutationFixture();
+      const result = await fixture.strategy.rename({ entityId: 1, newName: ' New ', userId: 5, libraryIds: [7] });
+      expect(result).toMatchObject({ oldName: 'Old', wasImplicitMerge: false, affectedBookIds: [10, 20], affectedBookCount: 2 });
+      expect(fixture.rows.find((row) => row.id === 1)?.name).toBe('New');
     });
   });
 
   describe('deleteEntity', () => {
-    it('throws NotFoundException when entity is not found', async () => {
-      const limit = vi.fn().mockResolvedValue([]);
-      const where = vi.fn().mockReturnValue({ limit });
-      const from = vi.fn().mockReturnValue({ where });
-      const select = vi.fn().mockReturnValue({ from });
-      const strategy = makeStrategy({ select });
-
-      await expect(strategy.deleteEntity({ entityId: 99, mode: 'hard', libraryIds: [1] })).rejects.toBeInstanceOf(NotFoundException);
+    it('rejects a missing entity', async () => {
+      const fixture = mutationFixture();
+      await expect(fixture.strategy.deleteEntity({ entityId: 99, mode: 'hard', libraryIds: [7] })).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('soft mode deletes only junction rows', async () => {
-      const limit = vi.fn().mockResolvedValue([{ name: 'Fantasy' }]);
-      const where = vi.fn().mockReturnValue({ limit });
-      const from = vi.fn().mockReturnValue({ where });
-      const select = vi.fn().mockReturnValue({ from });
-
-      const deleteWhere = vi.fn().mockResolvedValue(undefined);
-      const deleteFrom = vi.fn().mockReturnValue({ where: deleteWhere });
-
-      const strategy = makeStrategy({ select, delete: deleteFrom });
-      vi.spyOn(strategy, 'findAffectedBookIds').mockResolvedValue([10]);
-
-      const result = await strategy.deleteEntity({ entityId: 1, mode: 'soft', libraryIds: [1] });
-
-      expect(deleteFrom).toHaveBeenCalledTimes(1);
-      expect(result).toEqual({ name: 'Fantasy', affectedBookIds: [10] });
-    });
-
-    it('hard mode with hasCascade=true deletes entity table directly (no transaction)', async () => {
-      const limit = vi.fn().mockResolvedValue([{ name: 'Fantasy' }]);
-      const where = vi.fn().mockReturnValue({ limit });
-      const from = vi.fn().mockReturnValue({ where });
-      const select = vi.fn().mockReturnValue({ from });
-
-      const deleteWhere = vi.fn().mockResolvedValue(undefined);
-      const deleteFrom = vi.fn().mockReturnValue({ where: deleteWhere });
-      const transaction = vi.fn();
-
-      const strategy = makeStrategy({ select, delete: deleteFrom, transaction });
-      vi.spyOn(strategy, 'findAffectedBookIds').mockResolvedValue([10]);
-
-      const result = await strategy.deleteEntity({ entityId: 1, mode: 'hard', libraryIds: [1] });
-
-      expect(transaction).not.toHaveBeenCalled();
-      expect(deleteFrom).toHaveBeenCalledTimes(1);
-      expect(result).toEqual({ name: 'Fantasy', affectedBookIds: [10] });
+    it.each(['soft', 'hard'] as const)('removes captured relations in %s mode and retains the correct entity row', async (mode) => {
+      const fixture = mutationFixture();
+      const result = await fixture.strategy.deleteEntity({ entityId: 1, mode, libraryIds: [7] });
+      expect(result).toEqual({ name: 'Old', affectedBookIds: [10, 20], affectedBookCount: 2 });
+      expect(fixture.rows.some((row) => row.id === 1)).toBe(mode === 'soft');
+      expect(fixture.transaction).toHaveBeenCalledOnce();
     });
   });
 
   describe('split', () => {
-    it('throws NotFoundException when entity is not found', async () => {
-      const limit = vi.fn().mockResolvedValue([]);
-      const where = vi.fn().mockReturnValue({ limit });
-      const from = vi.fn().mockReturnValue({ where });
-      const select = vi.fn().mockReturnValue({ from });
-      const strategy = makeStrategy({ select });
-
-      await expect(strategy.split({ entityId: 99, newNames: ['A', 'B'] })).rejects.toBeInstanceOf(NotFoundException);
+    it('rejects a missing entity', async () => {
+      const fixture = mutationFixture();
+      await expect(fixture.strategy.split({ entityId: 99, newNames: ['A', 'B'], libraryIds: [7] })).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('inserts new entities and assigns junction rows inside a transaction', async () => {
-      const findEntityLimit = vi.fn().mockResolvedValue([{ name: 'OldTag' }]);
-      const findEntityWhere = vi.fn().mockReturnValue({ limit: findEntityLimit });
-      const findEntityFrom = vi.fn().mockReturnValue({ where: findEntityWhere });
-      const select = vi.fn().mockReturnValue({ from: findEntityFrom });
+    it('creates new entities and returns their identities with the exact affected book count', async () => {
+      const fixture = mutationFixture();
+      const result = await fixture.strategy.split({ entityId: 1, newNames: [' New A ', 'New B'], libraryIds: [7] });
+      expect(result.originalName).toBe('Old');
+      expect(result.newEntities.map((row) => row.name)).toEqual(['New A', 'New B']);
+      expect(result.affectedBookIds).toEqual([10, 20]);
+      expect(result.affectedBookCount).toBe(2);
+      expect(fixture.rows.some((row) => row.id === 1)).toBe(false);
+    });
 
-      const { transaction, tx } = makeTransactionMock();
-
-      const txSelectLimit = vi.fn().mockResolvedValue([]);
-      const txSelectWhere = vi.fn().mockReturnValue({ limit: txSelectLimit });
-      const txSelectFrom = vi.fn().mockReturnValue({ where: txSelectWhere });
-      tx.select = vi.fn().mockReturnValue({ from: txSelectFrom });
-
-      const txInsertReturning = vi.fn().mockResolvedValue([{ id: 10 }]);
-      const txInsertOnConflict = vi.fn().mockResolvedValue(undefined);
-      const txInsertValues = vi.fn().mockReturnValue({
-        returning: txInsertReturning,
-        onConflictDoNothing: txInsertOnConflict,
-      });
-      tx.insert = vi.fn().mockReturnValue({ values: txInsertValues });
-
-      const txSelectDistinctWhere = vi.fn().mockResolvedValue([{ bookId: 5 }]);
-      const txSelectDistinctFrom = vi.fn().mockReturnValue({ where: txSelectDistinctWhere });
-      tx.selectDistinct = vi.fn().mockReturnValue({ from: txSelectDistinctFrom });
-
-      const strategy = makeStrategy({ select, transaction });
-      vi.spyOn(strategy, 'findAffectedBookIds').mockResolvedValue([5]);
-
-      const result = await strategy.split({ entityId: 1, newNames: ['TagA'] });
-
-      expect(transaction).toHaveBeenCalledTimes(1);
-      expect(result.originalName).toBe('OldTag');
-      expect(result.affectedBookIds).toEqual([5]);
+    it('reuses existing names and rejects a split back to its own source', async () => {
+      const fixture = mutationFixture();
+      const result = await fixture.strategy.split({ entityId: 1, newNames: ['Target'], libraryIds: [7] });
+      expect(result.newEntities).toEqual([{ id: 2, name: 'Target' }]);
+      expect(fixture.insertValues).not.toHaveBeenCalled();
+      const invalid = mutationFixture();
+      await expect(invalid.strategy.split({ entityId: 1, newNames: ['Old'], libraryIds: [7] })).rejects.toBeInstanceOf(BadRequestException);
+      expect(invalid.rows).toEqual([
+        { id: 1, name: 'Old' },
+        { id: 2, name: 'Target' },
+      ]);
     });
   });
 

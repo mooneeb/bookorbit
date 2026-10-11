@@ -67,7 +67,11 @@ export class BookReadService {
     return this.bookRepo.updateMetadataFields(bookId, fields);
   }
 
-  replaceCommunityRatings(bookId: number, ratings: Parameters<BookRepository['replaceCommunityRatings']>[1]) {
-    return this.bookRepo.replaceCommunityRatings(bookId, ratings);
+  replaceCommunityRatings(
+    bookId: number,
+    ratings: Parameters<BookRepository['replaceCommunityRatings']>[1],
+    executor?: Parameters<BookRepository['replaceCommunityRatings']>[2],
+  ) {
+    return executor ? this.bookRepo.replaceCommunityRatings(bookId, ratings, executor) : this.bookRepo.replaceCommunityRatings(bookId, ratings);
   }
 }

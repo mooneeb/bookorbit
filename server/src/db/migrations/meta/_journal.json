@@ -799,6 +799,48 @@
       "when": 1791492539693,
       "tag": "0113_source_ink_window_index",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1791628857091,
+      "tag": "0114_durable_migration_batches",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1791629734460,
+      "tag": "0115_book_dock_finalize_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1791713255478,
+      "tag": "0116_migration_plan_match_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1791713334139,
+      "tag": "0117_migration_plan_book_matches",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1791716212944,
+      "tag": "0118_entity_file_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1791716735197,
+      "tag": "0119_migration_plan_projections",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 
 import { AuditAction, type EntityType, INLINE_ENTITY_TYPES, Permission } from '@bookorbit/types';
 import { Auditable } from '../../common/decorators/auditable.decorator';
@@ -19,6 +19,7 @@ import {
 } from './dto/entity-manager.dto';
 import { EntityManagerService } from './entity-manager.service';
 import { EntityTypePipe } from './entity-type.pipe';
+import { EntityDuplicateClusterPageDto, EntityDuplicatesPageDto } from './dto/entity-duplicates-page.dto';
 
 function isInline(entityType: string): boolean {
   return INLINE_ENTITY_TYPES.includes(entityType as any);
@@ -42,14 +43,44 @@ export class EntityManagerController {
 
   @Get(':entityType/duplicates/status')
   @RequirePermission(Permission.LibraryEditMetadata)
-  getDuplicateScanStatus(@Param('entityType', EntityTypePipe) entityType: EntityType) {
-    return this.service.getDuplicateScanStatus(entityType);
+  getDuplicateScanStatus(@Param('entityType', EntityTypePipe) entityType: EntityType, @CurrentUser() user: RequestUser) {
+    return this.service.getDuplicateScanStatus(entityType, user);
+  }
+
+  @Get(':entityType/duplicates/cluster')
+  @RequirePermission(Permission.LibraryEditMetadata)
+  getDuplicateClusterPage(
+    @Param('entityType', EntityTypePipe) entityType: EntityType,
+    @Query() dto: EntityDuplicateClusterPageDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.service.getDuplicateClusterPage(entityType, user, dto.clusterId, dto.page, dto.pageSize);
   }
 
   @Post(':entityType/duplicates/refresh')
   @RequirePermission(Permission.LibraryEditMetadata)
-  refreshDuplicates(@Param('entityType', EntityTypePipe) entityType: EntityType, @Body() dto: RefreshDuplicatesDto) {
-    return this.service.refreshDuplicates(entityType, dto.minSimilarity);
+  refreshDuplicates(
+    @Param('entityType', EntityTypePipe) entityType: EntityType,
+    @Body() dto: RefreshDuplicatesDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.service.refreshDuplicates(entityType, dto.minSimilarity, user);
+  }
+
+  @Get(':entityType/file-updates')
+  @RequirePermission(Permission.LibraryEditMetadata)
+  listFileWriteRecovery(@Param('entityType', EntityTypePipe) entityType: EntityType, @CurrentUser() user: RequestUser) {
+    return this.service.listFileWriteRecovery(entityType, user);
+  }
+
+  @Post(':entityType/file-updates/:operationId/retry')
+  @RequirePermission(Permission.LibraryEditMetadata)
+  retryFileWrites(
+    @Param('entityType', EntityTypePipe) entityType: EntityType,
+    @Param('operationId', ParseUUIDPipe) operationId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.service.resumeFileWrites(entityType, user, operationId);
   }
 
   @Post(':entityType/merge')
@@ -62,6 +93,9 @@ export class EntityManagerController {
     const inline = isInline(entityType);
     const targetId = inline ? dto.targetValue! : dto.targetEntityId!;
     const sourceIds = inline ? dto.sourceValues! : dto.sourceEntityIds!;
+    if (targetId === undefined || !Array.isArray(sourceIds)) {
+      throw new BadRequestException('Merge target and sources are required for this entity type');
+    }
     return this.service.merge(entityType, user, targetId, sourceIds, dto.writeFiles ?? false);
   }
 
@@ -148,10 +182,26 @@ export class EntityManagerController {
     return this.service.getDismissedPairs(entityType, user);
   }
 
+  @Get(':entityType/duplicates/dismissed-page')
+  @RequirePermission(Permission.LibraryEditMetadata)
+  getDismissedPairsPage(
+    @Param('entityType', EntityTypePipe) entityType: EntityType,
+    @Query() dto: EntityDuplicatesPageDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.service.getDismissedPairsPage(entityType, user, dto.page, dto.pageSize);
+  }
+
   @Get(':entityType/info/:entityId')
   @RequirePermission(Permission.LibraryEditMetadata)
   getEntityInfo(@Param('entityType', EntityTypePipe) entityType: EntityType, @Param('entityId') entityId: string, @CurrentUser() user: RequestUser) {
     const parsedId = isInline(entityType) ? entityId : Number(entityId);
     return this.service.getEntityInfo(entityType, user, parsedId);
+  }
+
+  @Get(':entityType/info')
+  @RequirePermission(Permission.LibraryEditMetadata)
+  previewEntity(@Param('entityType', EntityTypePipe) entityType: EntityType, @Query() dto: DeleteEntityDto, @CurrentUser() user: RequestUser) {
+    return this.service.getEntityInfo(entityType, user, isInline(entityType) ? dto.value! : dto.entityId!);
   }
 }

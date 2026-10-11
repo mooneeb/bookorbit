@@ -23,8 +23,18 @@ import { FIXTURE_CLIENT_ID, FIXTURE_ISSUER, startOidcProvider } from './oidc-pro
 import { createComicFixture } from './comic-fixture';
 import { createOrganizationFixture } from './organization-fixture';
 import { SourcePdfFaultsModule } from './source-pdf-faults.module';
+import { createE03Fixture } from './e03-fixture';
+import { BookDockFinalizeFaultsModule } from './book-dock-finalize-faults.module';
+import { MigrationFaultsModule } from './migration-faults.module';
+import { PluginUpdateFixtureModule } from './plugin-update-fixture.module';
 
-@Module({ imports: [SourcePdfFaultsModule, AppModule] })
+@Module({
+  imports: [
+    SourcePdfFaultsModule,
+    ...(process.env.IPAD_E03_PROOF === '1' ? [BookDockFinalizeFaultsModule, MigrationFaultsModule, PluginUpdateFixtureModule] : []),
+    AppModule,
+  ],
+})
 class IpadHarnessModule {}
 
 const started = Date.now();
@@ -56,7 +66,9 @@ async function main() {
   const apiPort = progressOnly ? 16487 : 16482;
   process.env.APP_DATA_PATH = join(folder, 'data');
   process.env.COVER_SLOTS_BACKFILL_MODE = 'skip';
+  console.log(`[ipad.fixture] [start] runId=${process.pid} stage=application - constructing isolated application`);
   const app = await NestFactory.create<NestFastifyApplication>(IpadHarnessModule, new FastifyAdapter(), { logger: false, abortOnError: false });
+  console.log(`[ipad.fixture] [end] runId=${process.pid} durationMs=${Date.now() - started} stage=application - isolated application constructed`);
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalFilters(new GlobalExceptionFilter());
@@ -65,7 +77,8 @@ async function main() {
   const db = app.get<NodePgDatabase<typeof schema>>(DB);
   const coverFixtureFolder = process.env.IPAD_COVER_FIXTURE_DIR;
   if (!coverFixtureFolder) throw new Error('The iPad harness requires its generated cover fixture folder');
-  const oidc = progressOnly || process.env.IPAD_ANNOTATIONS_PROOF === '1' ? undefined : await startOidcProvider();
+  const oidc =
+    progressOnly || process.env.IPAD_ANNOTATIONS_PROOF === '1' || process.env.IPAD_E03_PROOF === '1' ? undefined : await startOidcProvider();
 
   if (!reuseFixture) {
     const passwordHash = await hash('IpadFixture123', 4);
@@ -136,8 +149,14 @@ async function main() {
           language: index % 2 ? 'eng' : 'urd',
         })),
       );
+      if ((offset + created.length) % 10_000 === 0) {
+        console.log(
+          `[ipad.fixture] [end] runId=${process.pid} durationMs=${Date.now() - started} stage=books count=${offset + created.length} - book fixture batch boundary completed`,
+        );
+      }
     }
     if (fixtureBookCount === 50_000) await createOrganizationFixture(db);
+    console.log(`[ipad.fixture] [end] runId=${process.pid} durationMs=${Date.now() - started} stage=organization - organization fixture prepared`);
     const document = await PDFDocument.create();
     const font = await document.embedFont(StandardFonts.Helvetica);
     for (let index = 0; index < 3; index++) {
@@ -247,7 +266,9 @@ async function main() {
       })
       .returning({ id: schema.bookFiles.id });
     await db.update(schema.books).set({ primaryFileId: comic.id }).where(eq(schema.books.id, 10));
+    if (process.env.IPAD_E03_PROOF === '1') await createE03Fixture(db, folder);
   }
+  console.log(`[ipad.fixture] [start] runId=${process.pid} stage=listen - initializing HTTP listener`);
   await app.listen(apiPort, '127.0.0.1');
   if (!reuseFixture) {
     const coverStore = app.get(BookCoverStore);

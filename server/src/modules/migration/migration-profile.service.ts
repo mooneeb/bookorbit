@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 
+import type { RequestUser } from '../../common/types/request-user';
 import { CreateMigrationProfileDto } from './dto/create-migration-profile.dto';
 import { ValidatePathMappingsDto } from './dto/validate-path-mappings.dto';
 import { parseConnectionConfig } from './core/connection-config';
@@ -10,6 +11,7 @@ import { MigrationEncryptionService } from './core/migration-encryption.service'
 import { MigrationRepository } from './migration.repository';
 import { SourceAdapterRegistry } from './adapters/source-adapter.registry';
 import { PathMappingValidationService } from './planner/path-mapping-validation.service';
+import { assertMigrationOwner, assertMigrationUserMappings } from './core/migration-access';
 
 const ACTIVE_LIVE_STATES = new Set(['running']);
 
@@ -22,17 +24,18 @@ export class MigrationProfileService {
     private readonly encryption: MigrationEncryptionService,
   ) {}
 
-  listTargetUsers() {
-    return this.repo.listTargetUsersForMapping();
+  async listTargetUsers(user: RequestUser) {
+    return this.repo.listTargetUsersForMapping(user.isSuperuser ? undefined : user.id);
   }
 
-  async createProfile(dto: CreateMigrationProfileDto, userId: number) {
-    await this.assertNoGlobalActiveRun();
-
+  async createProfile(dto: CreateMigrationProfileDto, user: RequestUser) {
     const source = await this.repo.findSourceById(dto.sourceId);
     if (!source) throw new NotFoundException(`Migration source not found: ${dto.sourceId}`);
+    assertMigrationOwner(source.createdByUserId, user);
+    assertMigrationUserMappings(dto.userMappings, user);
+    await this.assertNoGlobalActiveRun();
 
-    const targetUsers = await this.repo.listTargetUsersForMapping();
+    const targetUsers = await this.listTargetUsers(user);
     const knownTargetUserIds = new Set(targetUsers.map((row) => row.id));
     const requestedTargetUserIds = [...new Set(dto.userMappings.map((row) => row.targetUserId).filter((id): id is number => id !== null))];
     if (requestedTargetUserIds.length === 0) {
@@ -49,7 +52,7 @@ export class MigrationProfileService {
       userMappings: dto.userMappings,
       pathMappings: dto.pathMappings ?? [],
       scope: dto.scope ?? {},
-      createdByUserId: userId,
+      createdByUserId: user.id,
     } as const;
 
     const profile = await this.repo.createProfile({ ...payload });
@@ -58,14 +61,15 @@ export class MigrationProfileService {
     return sanitizeProfileForApi(profile);
   }
 
-  async suggestUserMappings(sourceId: number) {
+  async suggestUserMappings(sourceId: number, user: RequestUser) {
     const source = await this.repo.findSourceById(sourceId);
     if (!source) throw new NotFoundException(`Migration source not found: ${sourceId}`);
+    assertMigrationOwner(source.createdByUserId, user);
 
     const adapter = this.adapterRegistry.get(source.type);
     const decryptedConfig = this.encryption.decryptConfig(source.connectionConfig);
     const sourceData = await adapter.exportData(parseConnectionConfig(source.type, decryptedConfig));
-    const targetUsers = await this.repo.listTargetUsersForMapping();
+    const targetUsers = await this.listTargetUsers(user);
 
     const suggestions = sourceData.users.map((sourceUser: { sourceUserId: string; username: string; email: string | null; name: string | null }) => {
       const candidates = targetUsers
@@ -102,9 +106,10 @@ export class MigrationProfileService {
     };
   }
 
-  async validatePathMappings(sourceId: number, dto: ValidatePathMappingsDto) {
+  async validatePathMappings(sourceId: number, dto: ValidatePathMappingsDto, user: RequestUser) {
     const source = await this.repo.findSourceById(sourceId);
     if (!source) throw new NotFoundException(`Migration source not found: ${sourceId}`);
+    assertMigrationOwner(source.createdByUserId, user);
 
     const adapter = this.adapterRegistry.get(source.type);
     const decryptedConfig = this.encryption.decryptConfig(source.connectionConfig);
@@ -113,12 +118,13 @@ export class MigrationProfileService {
     const validation = await this.pathValidator.validate({
       sourceBooks: sourceData.books,
       pathMappings: dto.pathMappings,
+      actorUserId: user.id,
       sampleLimit: dto.sampleLimit,
     });
 
     const validatedAt = new Date().toISOString();
     const pathMappingsHash = buildPathMappingsHash(dto.pathMappings);
-    const persistedProfileId = await this.persistPathValidation(sourceId, pathMappingsHash, validatedAt);
+    const persistedProfileId = await this.persistPathValidation(sourceId, pathMappingsHash, validatedAt, user);
 
     return {
       sourceId,
@@ -129,10 +135,12 @@ export class MigrationProfileService {
     };
   }
 
-  private async persistPathValidation(sourceId: number, pathMappingsHash: string, validatedAt: string): Promise<number | null> {
-    const profiles = await this.repo.listProfiles(sourceId);
+  private async persistPathValidation(sourceId: number, pathMappingsHash: string, validatedAt: string, user: RequestUser): Promise<number | null> {
+    const profiles = await this.repo.listProfiles(sourceId, user.isSuperuser ? undefined : user.id);
     const matchingProfile = profiles.find((profile) => buildPathMappingsHash(profile.pathMappings) === pathMappingsHash);
     if (!matchingProfile) return null;
+    assertMigrationOwner(matchingProfile.createdByUserId, user);
+    assertMigrationUserMappings(matchingProfile.userMappings, user);
 
     const scope = asRecord(matchingProfile.scope);
     const preflight = asRecord(scope.preflight);
