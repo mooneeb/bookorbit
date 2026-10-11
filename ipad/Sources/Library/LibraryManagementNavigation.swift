@@ -87,7 +87,15 @@ struct LibraryManagementSheet: View {
         }
       case .scanning: ServerScanningView(api: api, user: user, openDock: openDock)
       case .requests: RequestsView(session: session, api: api)
-      case .requestAdministration: RequestAdministrationView(session: session)
+      case .requestAdministration:
+        NavigationStack {
+          RequestAdministrationView(session: session)
+            .toolbar {
+              ToolbarItem(placement: .confirmationAction) {
+                Button("Done", action: dismiss.callAsFunction)
+              }
+            }
+        }
       case .migration: MigrationView(api: api, user: user)
       case .entities: EntityManagementView(api: api, user: user)
       case .maintenance:
