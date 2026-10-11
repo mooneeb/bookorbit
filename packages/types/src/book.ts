@@ -61,13 +61,23 @@ export type SetBookReadingStatusPayload = {
   status?: ReadStatus;
   startedAt?: string | null;
   finishedAt?: string | null;
+  baseStatusUpdatedAt?: string | null;
 };
 
 export const PERSONAL_NOTE_MAX_LENGTH = 10000;
 
 export type UpdateBookPersonalNotePayload = {
   note?: string | null;
+  baseNote?: string | null;
 };
+
+export type UpdateBookRatingPayload = {
+  rating?: number | null;
+  baseRating?: number | null;
+};
+
+export type PersonalRecordConflict =
+  { field: "note"; current: string | null } | { field: "rating"; current: number | null } | { field: "status"; current: UserBookStatus | null };
 
 export const READING_ATTEMPT_OUTCOMES = ["completed", "skimmed", "abandoned"] as const;
 export type ReadingAttemptOutcome = (typeof READING_ATTEMPT_OUTCOMES)[number];
@@ -101,7 +111,21 @@ export type ReadingAttemptPatch = {
   startedOn?: string | null;
   endedOn?: string | null;
   outcome?: ReadingAttemptOutcome | null;
+  baseUpdatedAt?: string;
 };
+
+export interface CreateReadingAttemptPayload {
+  startedOn?: string | null;
+  endedOn?: string | null;
+  outcome: ReadingAttemptOutcome;
+  clientId?: string;
+}
+
+export type ReadingAttemptConflict = { current: ReadingAttempt | null };
+
+export interface StartRereadPayload {
+  resetProgress?: boolean;
+}
 
 export type ResetBookReadingStateResponse = {
   readStatus: UserBookStatus;

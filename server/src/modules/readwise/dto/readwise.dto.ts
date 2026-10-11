@@ -9,6 +9,10 @@ export class UpsertReadwiseSettingsDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  includeExistingHighlights?: boolean;
 }
 
 export class ValidateReadwiseTokenDto {

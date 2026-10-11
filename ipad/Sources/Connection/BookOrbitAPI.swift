@@ -115,6 +115,11 @@ actor BookOrbitAPI {
     }
   }
 
+  func authenticatedUser() throws -> AuthUser {
+    guard let saved else { throw ConnectionError.expiredSession }
+    return saved.user
+  }
+
   func logout() async throws {
     guard let saved else { return }
     let body = try JSONEncoder().encode(
@@ -561,18 +566,74 @@ actor BookOrbitAPI {
     }
   }
 
-  private func boundedJSONOnline<T: Decodable & Sendable>(
+  func downloadKOReaderPlugin() async throws -> Data {
+    let generation = sessionGeneration
+    try ensureSession(generation)
+    guard try authenticatedUser().hasPermission(.koreaderSync) else {
+      throw ConnectionError.denied
+    }
+    let limit = 16 * 1024 * 1024
+    var request = URLRequest(
+      url: profile.endpoint(
+        "koreader/plugin-package",
+        query: [.init(name: "origin", value: profile.url.absoluteString)]),
+      cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 120)
+    request.setValue("application/zip", forHTTPHeaderField: "Accept")
+    request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(generation)
+    var delivery = try await networkBytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(generation)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await networkBytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    try ensureSession(generation)
+    guard let response = response as? HTTPURLResponse else {
+      throw ConnectionError.invalidResponse
+    }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    guard response.statusCode == 200, response.mimeType == "application/zip" else {
+      throw ConnectionError.invalidResponse
+    }
+    guard response.expectedContentLength <= limit else { throw ConnectionError.responseTooLarge }
+    var data = Data()
+    for try await byte in bytes {
+      try Task.checkCancellation()
+      try ensureSession(generation)
+      guard data.count < limit else { throw ConnectionError.responseTooLarge }
+      data.append(byte)
+    }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    guard data.starts(with: [0x50, 0x4b, 0x03, 0x04]),
+      response.expectedContentLength < 0 || response.expectedContentLength == data.count
+    else { throw ConnectionError.invalidResponse }
+    return data
+  }
+
+  func boundedJSONOnline<T: Decodable & Sendable>(
     _ path: String, method: String = "GET", body: Data? = nil, query: [URLQueryItem] = [],
-    byteLimit: Int = 1024 * 1024, session: UUID? = nil, expectedStatus: Int? = nil
+    byteLimit: Int = 1024 * 1024, session: UUID? = nil, expectedStatus: Int? = nil,
+    headers: [String: String] = [:], timeoutInterval: TimeInterval = 120
   ) async throws -> T {
+    guard timeoutInterval.isFinite, timeoutInterval > 0, timeoutInterval <= 120 else {
+      throw ConnectionError.invalidResponse
+    }
     let generation = session ?? sessionGeneration
     try ensureSession(generation)
     var request = URLRequest(url: profile.endpoint(path, query: query))
     request.httpMethod = method
     request.httpBody = body
     if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
-    request.timeoutInterval = 120
+    request.timeoutInterval = timeoutInterval
     request.setValue("application/json", forHTTPHeaderField: "Accept")
+    for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
     request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     try ensureSession(generation)
     var delivery = try await networkBytes(for: request)
@@ -607,8 +668,12 @@ actor BookOrbitAPI {
     }
     try Task.checkCancellation()
     try ensureSession(generation)
-    if method == "GET" { try await reconcileOfflineMetadata(path: path, data: data) }
-    if method == "GET", let resourceStore, await resourceStore.contains(path: path, query: query) {
+    if method == "GET", headers.isEmpty {
+      try await reconcileOfflineMetadata(path: path, data: data)
+    }
+    if method == "GET", headers.isEmpty, let resourceStore,
+      await resourceStore.contains(path: path, query: query)
+    {
       _ = try await resourceStore.writeData(data, path: path, query: query)
     }
     do { return try JSONDecoder().decode(T.self, from: data) } catch {

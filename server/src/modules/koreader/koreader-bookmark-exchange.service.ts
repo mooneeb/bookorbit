@@ -82,7 +82,7 @@ export class KoreaderBookmarkExchangeService {
     );
 
     try {
-      const matches = await this.resolveBooks(user.id, dto.books);
+      const matches = await this.resolveBooks(user, dto.books);
       const results: BookmarkExchangeBookResult[] = [];
       const unmatched: string[] = [];
       let pushedTotal = 0;
@@ -114,7 +114,7 @@ export class KoreaderBookmarkExchangeService {
   async exchangeAck(user: RequestUser, dto: BookmarkExchangeAckDto): Promise<BookmarkExchangeAckResponse> {
     const startedAtMs = Date.now();
     try {
-      const matches = await this.resolveBooks(user.id, dto.books);
+      const matches = await this.resolveBooks(user, dto.books);
       const results: { hash: string; acked: number }[] = [];
       const unmatched: string[] = [];
 
@@ -139,10 +139,10 @@ export class KoreaderBookmarkExchangeService {
     }
   }
 
-  private async resolveBooks(userId: number, books: { hash: string }[]) {
-    const accessibleLibraryIds = await this.koreaderRepo.getAccessibleLibraryIds(userId);
+  private async resolveBooks(user: RequestUser, books: { hash: string }[]) {
+    const accessibleLibraryIds = await this.koreaderRepo.getAccessibleLibraryIds(user.id);
     const hashes = [...new Set(books.map((book) => book.hash.toLowerCase()))];
-    return this.koreaderRepo.resolveBookFilesByHashes(hashes, accessibleLibraryIds, userId);
+    return this.koreaderRepo.resolveBookFilesByHashes(hashes, accessibleLibraryIds, user.id, user.isSuperuser ? undefined : user.contentFilters);
   }
 
   private logFailure(event: string, userId: number, deviceId: string, startedAtMs: number, error: unknown): void {

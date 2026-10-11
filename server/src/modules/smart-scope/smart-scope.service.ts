@@ -14,7 +14,7 @@ import type {
   SmartScopePageQuery,
   SmartScopesPage,
 } from '@bookorbit/types';
-import { APP_FEATURES, PODCAST_PLAYLIST_MAX_SAVED } from '@bookorbit/types';
+import { APP_FEATURES, PODCAST_PLAYLIST_MAX_SAVED, Permission } from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
 import { mapWithConcurrency } from '../../common/utils/batch.utils';
 import { normalizeIconValue } from '../../common/utils/icon-value.utils';
@@ -222,9 +222,16 @@ export class SmartScopeService {
     return this.smartScopeRepo.findKoboSyncScopesForUser(userId);
   }
 
+  private assertKoboSyncPermission(user: RequestUser): void {
+    if (!user.isSuperuser && !user.permissions.includes(Permission.KoboSync)) {
+      throw new ForbiddenException('Kobo sync permission is required');
+    }
+  }
+
   async setKoboSync(id: number, user: RequestUser, enabled: boolean) {
     const smartScope = await this.getSmartScopeOrThrow(id);
     this.assertReadAccess(smartScope, user);
+    this.assertKoboSyncPermission(user);
     if (this.isPodcastScope(smartScope)) {
       throw new BadRequestException('Podcast scopes cannot sync to Kobo');
     }
@@ -259,6 +266,7 @@ export class SmartScopeService {
       throw new BadRequestException('Icon is required');
     }
     const syncToKobo = mediaType === 'books' ? (dto.syncToKobo ?? false) : false;
+    if (syncToKobo) this.assertKoboSyncPermission(user);
     const [smartScope] = await this.smartScopeRepo.insert({
       userId: user.id,
       mediaType,
@@ -309,6 +317,9 @@ export class SmartScopeService {
   async update(id: number, dto: UpdateSmartScopeDto, user: RequestUser) {
     const smartScope = await this.getSmartScopeOrThrow(id);
     this.assertWriteAccess(smartScope, user, 'modify');
+    if (dto.syncToKobo !== undefined && dto.syncToKobo !== smartScope.syncToKobo) {
+      this.assertKoboSyncPermission(user);
+    }
 
     const hasFilterField = Object.prototype.hasOwnProperty.call(dto, 'filter');
     const filter = hasFilterField ? this.validateFilterFor(smartScope.mediaType, dto.filter) : undefined;

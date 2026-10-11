@@ -20,6 +20,7 @@ const mockRepo = {
   findBooksWithSyncErrors: vi.fn(),
   findSettings: vi.fn(),
   setBookSyncOverride: vi.fn(),
+  saveSyncStatus: vi.fn(),
 };
 
 const mockClient = {
@@ -44,6 +45,10 @@ const mockLibraryService = {
   findAccessibleLibraryIds: vi.fn(),
 };
 
+const mockUserService = {
+  findByIdWithPermissions: vi.fn().mockResolvedValue({ id: 1, active: true, isSuperuser: true, contentFilters: {} }),
+};
+
 function makeService() {
   return new StorygraphSyncService(
     mockRepo as any,
@@ -51,6 +56,7 @@ function makeService() {
     mockMatchService as any,
     mockSettingsService as any,
     mockLibraryService as any,
+    mockUserService as any,
   );
 }
 
@@ -69,7 +75,8 @@ const readingBook = {
 
 describe('StorygraphSyncService', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    mockUserService.findByIdWithPermissions.mockResolvedValue({ id: 1, active: true, isSuperuser: true, contentFilters: {} });
     mockRepo.findBookState.mockResolvedValue(undefined);
     mockRepo.findBookStatesByBookIds.mockResolvedValue([]);
     mockRepo.findSyncableBooks.mockResolvedValue([]);
@@ -82,6 +89,10 @@ describe('StorygraphSyncService', () => {
     mockRepo.upsertBookState.mockResolvedValue({});
     mockRepo.resetSyncProgress.mockResolvedValue(undefined);
     mockRepo.updateLastSyncedAt.mockResolvedValue(undefined);
+    mockRepo.saveSyncStatus.mockImplementation((userId, status) => {
+      mockRepo.findSettings.mockResolvedValue({ lastSyncStatus: status });
+      return Promise.resolve();
+    });
     mockRepo.clearBookMatch.mockResolvedValue(undefined);
     mockRepo.setBookSyncOverride.mockResolvedValue({});
     mockRepo.findSettings.mockResolvedValue({});
@@ -97,8 +108,27 @@ describe('StorygraphSyncService', () => {
     });
     mockLibraryService.findAccessibleLibraryIds.mockResolvedValue([1]);
     mockClient.extractCsrfToken.mockReturnValue('csrf-token');
-    mockClient.get.mockResolvedValue({ status: 200, html: '<html></html>', redirectedToSignIn: false });
-    mockClient.post.mockResolvedValue({ status: 302, html: '', redirectedToSignIn: false });
+    let status = 'to-read';
+    let progress: string | null = null;
+    mockClient.get.mockImplementation(async () => {
+      for (const [index, call] of mockClient.post.mock.calls.entries()) {
+        const response = await mockClient.post.mock.results[index]?.value;
+        if (!response || response.status >= 400) continue;
+        const path = call[2];
+        if (path.startsWith('/update-status')) status = new URL(path, 'https://app.thestorygraph.com').searchParams.get('status')!;
+        if (path === '/update-progress') progress = call[3]['read_status[progress_number]'];
+      }
+      return {
+        status: 200,
+        html: `<button class="read-status-label">${status}</button><input name="read_status[progress_number]" value="${progress ?? ''}">`,
+        redirectedToSignIn: false,
+      };
+    });
+    mockClient.post.mockImplementation((_user, _cookies, path, form) => {
+      if (path.startsWith('/update-status')) status = new URL(path, 'https://app.thestorygraph.com').searchParams.get('status')!;
+      if (path === '/update-progress') progress = form['read_status[progress_number]'];
+      return Promise.resolve({ status: 302, html: '', redirectedToSignIn: false });
+    });
   });
 
   describe('syncBook', () => {
@@ -188,7 +218,7 @@ describe('StorygraphSyncService', () => {
       mockRepo.findBookState.mockResolvedValue(null);
       await expect(makeService().syncBook(1, 1)).resolves.toBe('skipped');
       expect(mockRepo.upsertBookState).toHaveBeenCalledWith(
-        expect.objectContaining({ syncError: 'no_match', lastSyncedAt: expect.any(Date), lastSyncedStatus: 'reading' }),
+        expect.objectContaining({ syncError: 'no_match', lastSyncedAt: null, lastSyncedStatus: 'reading' }),
       );
       warnSpy.mockRestore();
     });
@@ -245,11 +275,13 @@ describe('StorygraphSyncService', () => {
         lastSyncedProgress: 10,
       });
       mockMatchService.matchBook.mockResolvedValue({ storygraphBookId: 'abc-123', matchMethod: 'isbn' });
-      mockClient.get.mockResolvedValue({
-        status: 200,
-        html: `<button class="read-status-label">${currentStatus}</button><input name="read_status[book_num_of_pages]" value="288">`,
-        redirectedToSignIn: false,
-      });
+      mockClient.get.mockImplementation(() =>
+        Promise.resolve({
+          status: 200,
+          html: `<button class="read-status-label">${currentStatus}</button><input name="read_status[book_num_of_pages]" value="288"><input name="read_status[progress_number]" value="${mockClient.post.mock.calls.find((call) => call[2] === '/update-progress')?.[3]['read_status[progress_number]'] ?? ''}">`,
+          redirectedToSignIn: false,
+        }),
+      );
 
       await expect(makeService().syncBook(1, 1)).resolves.toBe('synced');
 
@@ -422,9 +454,7 @@ describe('StorygraphSyncService', () => {
       mockRepo.findSyncableBooksBatch.mockResolvedValue([]);
       const svc = makeService();
       await svc.syncAll(1);
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(mockRepo.updateLastSyncedAt).toHaveBeenCalledWith(1, expect.any(Date));
+      await vi.waitFor(() => expect(mockRepo.updateLastSyncedAt).toHaveBeenCalledWith(1, expect.any(Date)));
     });
 
     it('streams a distinct progress snapshot for every processed book, including skipped ones', async () => {
@@ -550,8 +580,8 @@ describe('StorygraphSyncService', () => {
   });
 
   describe('cancelSync', () => {
-    it('does nothing if no active run', () => {
-      makeService().cancelSync(1);
+    it('does nothing if no active run', async () => {
+      await makeService().cancelSync(1);
       expect(mockRepo.updateLastSyncedAt).not.toHaveBeenCalled();
     });
 
@@ -561,8 +591,8 @@ describe('StorygraphSyncService', () => {
       mockRepo.findSyncableBooksBatch.mockResolvedValue([]);
       const svc = makeService();
       await svc.syncAll(1);
-      svc.cancelSync(1);
-      expect(svc.getSyncStatus(1)).toBeNull();
+      await svc.cancelSync(1);
+      await expect(svc.getSyncStatus(1)).resolves.toMatchObject({ status: 'cancelled' });
     });
   });
 

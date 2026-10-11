@@ -139,6 +139,14 @@ struct ComicReaderView: View {
       .navigationTitle(title)
       .navigationBarTitleDisplayMode(.inline)
     }
+    .readingActivity(
+      api: api, fileID: fileID, type: "read",
+      progress: model.pageCount > 0
+        ? Double(model.pageIndex + 1) / Double(model.pageCount) * 100 : nil,
+      active: model.pageCount > 0 && displayedPageError == nil && !model.isClosing
+        && !model.isPositionResetting && !model.position.conflict.isBlocked && !isOpeningNext
+        && !isNavigating && !isEditingPreferences && !isBrowsingBookmarks
+        && positionReset == nil && !confirmsDiscard)
     .task { await model.load() }
     .onChange(of: scenePhase) { _, phase in
       if phase == .active { Task { await model.refreshPosition() } }

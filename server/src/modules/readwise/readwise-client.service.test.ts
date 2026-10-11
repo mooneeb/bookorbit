@@ -15,7 +15,7 @@ function makeFetchResponse(status: number): Response {
   return {
     status,
     ok: status >= 200 && status < 300,
-    json: vi.fn().mockResolvedValue({}),
+    json: vi.fn().mockResolvedValue([{ id: 101, num_highlights: 1, modified_highlights: [1001] }]),
   } as unknown as Response;
 }
 
@@ -109,7 +109,7 @@ describe('ReadwiseClientService', () => {
       fetchMock.mockResolvedValueOnce(makeFetchResponse(429)).mockResolvedValueOnce(makeFetchResponse(200));
       const p = service.createHighlights(1, 'tok', [makeHighlight()]);
       await vi.runAllTimersAsync();
-      await expect(p).resolves.toBeUndefined();
+      await expect(p).resolves.toEqual([101]);
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 

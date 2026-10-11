@@ -6,19 +6,21 @@ import type {
   StorygraphBookSyncState,
   StorygraphEdition,
   StorygraphLinkedBook,
+  StorygraphLinkedBooksPage,
   StorygraphLinkResult,
   StorygraphSettings,
   StorygraphSyncPendingSummary,
   UpdateStorygraphBookSyncPayload,
 } from '@bookorbit/types';
 
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as cheerio from 'cheerio';
-import { distinctUntilChanged, filter, map, merge, Observable, of, Subject } from 'rxjs';
+import { distinctUntilChanged, filter, from, map, merge, Observable, Subject } from 'rxjs';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import type { RequestUser } from '../../common/types/request-user';
 import { LibraryService } from '../library/library.service';
+import { UserService } from '../user/user.service';
 import { StorygraphBookMatchService } from './storygraph-book-match.service';
 import { StorygraphClientService, type StorygraphCookies } from './storygraph-client.service';
 import { type BookSyncData, type StorygraphBookAccessScope, StorygraphRepository } from './storygraph.repository';
@@ -57,7 +59,7 @@ export class StorygraphSyncService {
   private readonly syncStatusEvents = new Subject<{ userId: number; status: StorygraphActiveSyncStatus | null }>();
   private readonly activeSyncs = new Map<number, StorygraphActiveSyncStatus>();
   private readonly syncRunStartedAt = new Map<number, number>();
-  private syncRunCounter = 0;
+  private syncRunCounter = Date.now();
 
   constructor(
     private readonly repo: StorygraphRepository,
@@ -65,13 +67,14 @@ export class StorygraphSyncService {
     private readonly matchService: StorygraphBookMatchService,
     private readonly settingsService: StorygraphSettingsService,
     private readonly libraryService: LibraryService,
+    private readonly userService: UserService,
   ) {}
 
   async syncBook(userId: number, bookId: number): Promise<StorygraphSyncBookResult> {
     const cookies = await this.settingsService.getCookiesForUser(userId);
     if (!cookies) return 'skipped';
 
-    const book = await this.repo.findBookSyncData(userId, bookId);
+    const book = await this.repo.findBookSyncData(userId, bookId, await this.resolveAccessScope(userId));
     if (!book) return 'skipped';
 
     const [settings, state] = await Promise.all([this.settingsService.getSettings(userId), this.repo.findBookState(userId, book.bookId)]);
@@ -199,6 +202,27 @@ export class StorygraphSyncService {
     });
   }
 
+  async linkedBooksPage(user: RequestUser, afterBookId?: number): Promise<StorygraphLinkedBooksPage> {
+    const rows = await this.repo.currentReadingBooksPage(user.id, await this.resolveAccessScope(user), afterBookId);
+    const books = rows.slice(0, 40);
+    const states = await this.repo.findBookStatesByBookIds(
+      user.id,
+      books.map((book) => book.bookId),
+    );
+    const byBook = new Map(states.map((state) => [state.bookId, state]));
+    return {
+      items: books.map((book) => ({
+        bookId: book.bookId,
+        title: book.title,
+        authorName: book.authorName,
+        storygraphBookId: byBook.get(book.bookId)?.storygraphBookId ?? null,
+        matchMethod: byBook.get(book.bookId)?.matchMethod ?? null,
+        matchError: byBook.get(book.bookId)?.matchError ?? null,
+      })),
+      nextCursor: rows.length > 40 ? books.at(-1)!.bookId : null,
+    };
+  }
+
   async syncAll(userOrId: RequestUser | number): Promise<number> {
     const userId = this.resolveUserId(userOrId);
     const existing = this.activeSyncs.get(userId);
@@ -242,16 +266,19 @@ export class StorygraphSyncService {
     };
     this.activeSyncs.set(userId, status);
     this.syncRunStartedAt.set(userId, startedAt);
+    await this.repo.saveSyncStatus(userId, status);
 
     this.logger.log(`[storygraph.sync_all] [start] userId=${userId} runId=${runId} totalBooks=${totalBooks} - sync all started`);
     this.emitSyncStatus(userId, status);
 
-    this.runSyncAll(userId, cookies, accessScope, runId, totalBooks).catch((err) => {
+    this.runSyncAll(userId, cookies, runId, totalBooks).catch(async (err) => {
       const error = sanitizeLogValue(err instanceof Error ? err.message : String(err));
       this.logger.error(
         `[storygraph.sync_all] [fail] userId=${userId} runId=${runId} durationMs=${Date.now() - startedAt} errorClass=${err?.constructor?.name ?? 'Error'} error="${error}" - sync all crashed`,
       );
       this.cancelRequests.delete(userId);
+      const current = this.activeSyncs.get(userId);
+      if (current) await this.repo.saveSyncStatus(userId, { ...current, status: 'failed' });
       this.activeSyncs.delete(userId);
       this.syncRunStartedAt.delete(userId);
       this.emitSyncStatus(userId, null);
@@ -260,27 +287,35 @@ export class StorygraphSyncService {
     return runId;
   }
 
-  cancelSync(userId: number): void {
+  async cancelSync(userId: number): Promise<void> {
     const run = this.activeSyncs.get(userId);
     if (!run) return;
     this.cancelRequests.add(userId);
-    this.activeSyncs.delete(userId);
-    this.emitSyncStatus(userId, { ...run, status: 'cancelled' });
-    this.emitSyncStatus(userId, null);
+    const cancelled = { ...run, status: 'cancelled' as const };
+    this.activeSyncs.set(userId, cancelled);
+    await this.repo.saveSyncStatus(userId, cancelled);
+    this.emitSyncStatus(userId, cancelled);
     const targetRunDurationMs = Date.now() - (this.syncRunStartedAt.get(userId) ?? Date.now());
-    this.syncRunStartedAt.delete(userId);
     this.logger.log(
       `[storygraph.sync_all_cancel] [end] userId=${userId} runId=${run.runId} durationMs=0 targetRunDurationMs=${targetRunDurationMs} status=requested - sync cancel requested`,
     );
   }
 
-  getSyncStatus(userId: number): StorygraphActiveSyncStatus | null {
-    return this.activeSyncs.get(userId) ?? null;
+  async getSyncStatus(userId: number): Promise<StorygraphActiveSyncStatus | null> {
+    const active = this.activeSyncs.get(userId);
+    if (active) return active;
+    const saved = (await this.repo.findSettings(userId))?.lastSyncStatus ?? null;
+    if (saved?.status === 'running') {
+      const interrupted = { ...saved, status: 'failed' as const };
+      await this.repo.saveSyncStatus(userId, interrupted);
+      return interrupted;
+    }
+    return saved;
   }
 
   streamSyncStatus(userId: number): Observable<StorygraphActiveSyncStatus | null> {
     return merge(
-      of(this.getSyncStatus(userId)),
+      from(this.getSyncStatus(userId)),
       this.syncStatusEvents.pipe(
         filter((event) => event.userId === userId),
         map((event) => event.status),
@@ -317,13 +352,7 @@ export class StorygraphSyncService {
     return { totalBooks, pendingBooks };
   }
 
-  private async runSyncAll(
-    userId: number,
-    cookies: StorygraphCookies,
-    accessScope: StorygraphBookAccessScope | undefined,
-    runId: number,
-    totalBooks: number,
-  ): Promise<void> {
+  private async runSyncAll(userId: number, cookies: StorygraphCookies, runId: number, totalBooks: number): Promise<void> {
     const startedAt = this.syncRunStartedAt.get(userId) ?? Date.now();
     let synced = 0;
     let failed = 0;
@@ -338,6 +367,7 @@ export class StorygraphSyncService {
         break;
       }
 
+      const accessScope = await this.resolveAccessScope(userId);
       const books = await this.repo.findSyncableBooksBatch(userId, accessScope, settings, SYNC_ALL_BATCH_SIZE, afterBookId);
       if (books.length === 0) break;
 
@@ -351,8 +381,11 @@ export class StorygraphSyncService {
         afterBookId = book.bookId;
 
         if (this.cancelRequests.has(userId)) {
+          const current = this.activeSyncs.get(userId);
+          if (current) await this.repo.saveSyncStatus(userId, { ...current, status: 'cancelled' });
           this.cancelRequests.delete(userId);
           this.syncRunStartedAt.delete(userId);
+          this.activeSyncs.delete(userId);
           this.logger.log(
             `[storygraph.sync_all] [end] userId=${userId} runId=${runId} durationMs=${Date.now() - startedAt} status=cancelled - cancelled mid-run`,
           );
@@ -385,10 +418,14 @@ export class StorygraphSyncService {
 
         this.emitProgress(userId, { synced, skipped, failed });
       }
+      const current = this.activeSyncs.get(userId);
+      if (current) await this.repo.saveSyncStatus(userId, current);
     }
 
     // Handle cancel requested after the last book was processed (loop exited without hitting the top check)
     if (this.cancelRequests.has(userId)) {
+      const current = this.activeSyncs.get(userId);
+      if (current) await this.repo.saveSyncStatus(userId, { ...current, status: 'cancelled' });
       this.cancelRequests.delete(userId);
       this.logger.log(
         `[storygraph.sync_all] [end] userId=${userId} runId=${runId} durationMs=${Date.now() - startedAt} status=cancelled - cancelled after last book`,
@@ -406,7 +443,9 @@ export class StorygraphSyncService {
 
     const current = this.activeSyncs.get(userId);
     if (current) {
-      this.emitSyncStatus(userId, { ...current, status: 'completed' });
+      const completed = { ...current, status: 'completed' as const };
+      await this.repo.saveSyncStatus(userId, completed);
+      this.emitSyncStatus(userId, completed);
     }
     this.activeSyncs.delete(userId);
     this.syncRunStartedAt.delete(userId);
@@ -511,12 +550,13 @@ export class StorygraphSyncService {
 
   private async fetchBookPage(userId: number, cookies: StorygraphCookies, storygraphBookId: string): Promise<{ html: string; csrf: string }> {
     const response = await this.client.get(userId, cookies, `/books/${storygraphBookId}`);
-    if (response.redirectedToSignIn) {
-      throw new Error('storygraph_session_expired');
+    if (response.redirectedToSignIn || response.status === 401 || response.status === 403) {
+      throw new BadRequestException('storygraph_session_expired');
     }
+    if (response.status !== 200) throw new BadRequestException(`storygraph_book_fetch_failed:${response.status}`);
     const csrf = this.client.extractCsrfToken(response.html);
     if (!csrf) {
-      throw new Error('missing_csrf_token');
+      throw new BadRequestException('missing_csrf_token');
     }
     return { html: response.html, csrf };
   }
@@ -528,7 +568,13 @@ export class StorygraphSyncService {
 
     const response = await this.client.post(userId, cookies, `/update-status.js?book_id=${storygraphBookId}&status=${status}`, {}, csrf);
 
-    if (isSuccessStatus(response.status) && !response.redirectedToSignIn) return;
+    if (isSuccessStatus(response.status) && !response.redirectedToSignIn) {
+      await this.confirmStatus(userId, cookies, storygraphBookId, status);
+      return;
+    }
+    if (response.redirectedToSignIn || response.status === 401 || response.status === 403) {
+      throw new BadRequestException('storygraph_session_expired');
+    }
 
     if (status === STORYGRAPH_STATUS.CURRENTLY_READING) {
       const retry = await this.client.post(
@@ -538,11 +584,19 @@ export class StorygraphSyncService {
         {},
         csrf,
       );
-      if (isSuccessStatus(retry.status) && !retry.redirectedToSignIn) return;
-      throw new Error(`status_update_failed:${retry.status}`);
+      if (isSuccessStatus(retry.status) && !retry.redirectedToSignIn) {
+        await this.confirmStatus(userId, cookies, storygraphBookId, status);
+        return;
+      }
+      throw new BadRequestException(`status_update_failed:${retry.status}`);
     }
 
-    throw new Error(`status_update_failed:${response.status}`);
+    throw new BadRequestException(`status_update_failed:${response.status}`);
+  }
+
+  private async confirmStatus(userId: number, cookies: StorygraphCookies, storygraphBookId: string, status: string): Promise<void> {
+    const { html } = await this.fetchBookPage(userId, cookies, storygraphBookId);
+    if (!this.statusesMatch(this.extractCurrentStatus(html), status)) throw new BadRequestException('storygraph_status_not_confirmed');
   }
 
   private extractCurrentStatus(html: string): string | null {
@@ -561,6 +615,7 @@ export class StorygraphSyncService {
 
   private async updateProgress(userId: number, cookies: StorygraphCookies, storygraphBookId: string, progress: number): Promise<void> {
     const { html, csrf } = await this.fetchBookPage(userId, cookies, storygraphBookId);
+    if (this.extractProgress(html) === Math.round(progress)) return;
     const bookNumOfPages = this.extractBookNumOfPages(html);
 
     const response = await this.client.post(
@@ -577,11 +632,27 @@ export class StorygraphSyncService {
       csrf,
     );
 
-    if (isSuccessStatus(response.status) && !response.redirectedToSignIn) return;
-    if (response.redirectedToSignIn) {
-      throw new Error('storygraph_session_expired');
+    if (isSuccessStatus(response.status) && !response.redirectedToSignIn) {
+      const confirmation = await this.fetchBookPage(userId, cookies, storygraphBookId);
+      if (this.extractProgress(confirmation.html) !== Math.round(progress)) {
+        throw new BadRequestException('storygraph_progress_not_confirmed');
+      }
+      return;
     }
-    throw new Error(`progress_update_failed:${response.status}`);
+    if (response.redirectedToSignIn) {
+      throw new BadRequestException('storygraph_session_expired');
+    }
+    throw new BadRequestException(`progress_update_failed:${response.status}`);
+  }
+
+  private extractProgress(html: string): number | null {
+    const $ = cheerio.load(html);
+    const value = $('input[name="read_status[progress_number]"]').attr('value');
+    const type =
+      $('select[name="read_status[progress_type]"] option:selected').attr('value') ?? $('input[name="read_status[progress_type]"]').attr('value');
+    if (type && type !== 'percentage') return null;
+    const number = value == null || value.trim() === '' ? NaN : Number(value);
+    return Number.isFinite(number) && number >= 0 && number <= 100 ? Math.round(number) : null;
   }
 
   private extractBookNumOfPages(html: string): string {
@@ -653,7 +724,7 @@ export class StorygraphSyncService {
 
   private buildAttemptSnapshot(book: BookSyncData) {
     return {
-      lastSyncedAt: new Date(),
+      lastSyncedAt: null,
       lastSyncedStatus: book.status,
       lastSyncedProgress: book.progress,
     };
@@ -682,11 +753,12 @@ export class StorygraphSyncService {
   }
 
   private async resolveAccessScope(userOrId: RequestUser | number): Promise<StorygraphBookAccessScope | undefined> {
-    if (typeof userOrId === 'number') return undefined;
+    const user = typeof userOrId === 'number' ? await this.userService.findByIdWithPermissions(userOrId) : userOrId;
+    if (!user || !user.active) return { accessibleLibraryIds: [] };
 
     return {
-      accessibleLibraryIds: await this.libraryService.findAccessibleLibraryIds(userOrId),
-      contentFilters: userOrId.isSuperuser ? undefined : userOrId.contentFilters,
+      accessibleLibraryIds: await this.libraryService.findAccessibleLibraryIds(user),
+      contentFilters: user.isSuperuser ? undefined : user.contentFilters,
     };
   }
 }

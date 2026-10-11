@@ -22,6 +22,7 @@ import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { BookService } from '../book/book.service';
 import { FileLockService } from '../file-write/file-lock.service';
 import { FileWriteRepository } from '../file-write/file-write.repository';
+import { KoboSourcePublicationService } from '../kobo/services/kobo-source-publication.service';
 import { replaceFileAtomically } from '../../common/utils/atomic-file-replace';
 import {
   applySourcePdfInk,
@@ -91,6 +92,7 @@ export class SourcePdfPublicationService {
     private readonly fileWriteRepository: FileWriteRepository,
     private readonly repository: SourcePdfPublicationRepository,
     private readonly selfWriteRegistry: SelfWriteRegistry,
+    private readonly koboSourcePublication: KoboSourcePublicationService,
     @Optional() @Inject(SOURCE_PDF_PUBLICATION_BOUNDARY) private readonly boundary?: SourcePdfPublicationBoundary,
   ) {}
 
@@ -371,6 +373,7 @@ export class SourcePdfPublicationService {
       sizeBytes: Number(state.size),
       ino: state.ino,
     });
+    await this.koboSourcePublication.invalidatePublishedSource(bookId, fileId);
   }
 
   private journalPath(path: string, fileId: number): string {

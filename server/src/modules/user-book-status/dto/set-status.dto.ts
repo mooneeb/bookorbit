@@ -1,4 +1,4 @@
-import { IsIn, IsString, Matches, ValidateIf } from 'class-validator';
+import { IsIn, IsISO8601, IsString, Matches, ValidateIf } from 'class-validator';
 import type { ReadStatus, SetBookReadingStatusPayload } from '@bookorbit/types';
 import { READ_STATUSES } from '../user-book-status.constants';
 
@@ -16,4 +16,8 @@ export class SetStatusDto implements SetBookReadingStatusPayload {
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$|^\d{4}-\d{2}-\d{2}T.+$/)
   finishedAt?: string | null;
+
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsISO8601({ strict: true })
+  baseStatusUpdatedAt?: string | null;
 }

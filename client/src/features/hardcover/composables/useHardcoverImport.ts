@@ -7,6 +7,8 @@ const result = ref<HardcoverImportApplyResult | null>(null)
 const previewing = ref(false)
 const applying = ref(false)
 const error = ref<string | null>(null)
+const afterId = ref(0)
+const nextCursor = ref<number | null>(null)
 
 const hasPreview = computed(() => preview.value !== null)
 const canApply = computed(
@@ -14,12 +16,14 @@ const canApply = computed(
 )
 
 export function useHardcoverImport() {
-  async function loadPreview(): Promise<void> {
+  async function loadPreview(cursor = 0): Promise<void> {
     previewing.value = true
     error.value = null
     result.value = null
     try {
-      preview.value = await previewHardcoverImport()
+      preview.value = await previewHardcoverImport(cursor === 0 ? undefined : cursor)
+      afterId.value = cursor
+      nextCursor.value = preview.value.nextCursor ?? null
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to preview Hardcover import'
     } finally {
@@ -34,6 +38,7 @@ export function useHardcoverImport() {
       result.value = await applyHardcoverImport({
         ...(hardcoverUserBookIds ? { hardcoverUserBookIds } : {}),
         importProgress,
+        ...(afterId.value > 0 ? { afterId: afterId.value } : {}),
       })
       preview.value = null
       return result.value
@@ -45,7 +50,13 @@ export function useHardcoverImport() {
     }
   }
 
+  async function loadNextPage(): Promise<void> {
+    if (nextCursor.value != null) await loadPreview(nextCursor.value)
+  }
+
   function clearImport(): void {
+    afterId.value = 0
+    nextCursor.value = null
     preview.value = null
     result.value = null
     error.value = null
@@ -57,9 +68,11 @@ export function useHardcoverImport() {
     previewing,
     applying,
     error,
+    nextCursor,
     hasPreview,
     canApply,
     loadPreview,
+    loadNextPage,
     applyPreview,
     clearImport,
   }

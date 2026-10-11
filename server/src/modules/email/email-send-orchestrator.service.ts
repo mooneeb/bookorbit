@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { basename, join } from 'path';
 
-import { NotificationType } from '@bookorbit/types';
+import { NotificationType, type EmailSendAcceptedResponse } from '@bookorbit/types';
 import type { BookFile } from '../../db/schema';
 import type { RequestUser } from '../../common/types/request-user';
 import { NotificationService } from '../notification/notification.service';
@@ -40,6 +40,7 @@ const EMAIL_SEND_EVENT = 'email.send';
 const EMAIL_RESEND_EVENT = 'email.resend';
 const EMAIL_QUICK_SEND_EVENT = 'email.quick-send';
 const EMAIL_DISPATCH_EVENT = 'email.dispatch';
+const MAX_RESPONSE_LOG_IDS = 100;
 
 @Injectable()
 export class EmailSendOrchestrator {
@@ -61,7 +62,7 @@ export class EmailSendOrchestrator {
     @Optional() private readonly audiolessEpubService?: AudiolessEpubService,
   ) {}
 
-  async send(dto: SendBookDto, user: RequestUser): Promise<{ queued: number }> {
+  async send(dto: SendBookDto, user: RequestUser): Promise<EmailSendAcceptedResponse> {
     const startedAt = Date.now();
     const requestedRecipientCount = (dto.recipientIds?.length ?? 0) + (dto.groupIds?.length ?? 0);
     this.logger.log(
@@ -78,16 +79,18 @@ export class EmailSendOrchestrator {
 
       const resolved = await this.providerResolver.resolve(user, dto.providerId);
 
+      const logIds: number[] = [];
       let queued = 0;
       for (const task of tasks) {
         for (const bookId of bookIds) {
-          await this.enqueueOne({ ...task, bookId, userId: user.id }, resolved, dto.fileId ?? null, user);
+          const logId = await this.enqueueOne({ ...task, bookId, userId: user.id }, resolved, dto.fileId ?? null, user);
+          if (logIds.length < MAX_RESPONSE_LOG_IDS) logIds.push(logId);
           queued++;
         }
       }
 
       this.logger.log(`[${EMAIL_SEND_EVENT}] [end] userId=${user.id} durationMs=${Date.now() - startedAt} queued=${queued} - send enqueue completed`);
-      return { queued };
+      return { queued, logIds };
     } catch (error) {
       this.logger.error(
         `[${EMAIL_SEND_EVENT}] [fail] userId=${user.id} durationMs=${Date.now() - startedAt} errorClass=${this.getErrorClass(error)} error="${this.getErrorMessage(error)}" - send enqueue failed`,
@@ -96,7 +99,7 @@ export class EmailSendOrchestrator {
     }
   }
 
-  async resend(logEntryId: number, user: RequestUser): Promise<{ queued: number }> {
+  async resend(logEntryId: number, user: RequestUser): Promise<EmailSendAcceptedResponse> {
     const startedAt = Date.now();
     this.logger.log(`[${EMAIL_RESEND_EVENT}] [start] userId=${user.id} logEntryId=${logEntryId} - resend enqueue started`);
 
@@ -142,7 +145,7 @@ export class EmailSendOrchestrator {
       this.logger.log(
         `[${EMAIL_RESEND_EVENT}] [end] userId=${user.id} logEntryId=${logEntryId} durationMs=${Date.now() - startedAt} queued=1 - resend enqueue completed`,
       );
-      return { queued: 1 };
+      return { queued: 1, logIds: [newLog.id] };
     } catch (error) {
       this.logger.error(
         `[${EMAIL_RESEND_EVENT}] [fail] userId=${user.id} logEntryId=${logEntryId} durationMs=${Date.now() - startedAt} errorClass=${this.getErrorClass(error)} error="${this.getErrorMessage(error)}" - resend enqueue failed`,
@@ -151,7 +154,7 @@ export class EmailSendOrchestrator {
     }
   }
 
-  async quickSend(bookId: number, user: RequestUser): Promise<{ queued: number }> {
+  async quickSend(bookId: number, user: RequestUser): Promise<EmailSendAcceptedResponse> {
     const startedAt = Date.now();
     this.logger.log(`[${EMAIL_QUICK_SEND_EVENT}] [start] userId=${user.id} bookId=${bookId} - quick send enqueue started`);
 
@@ -165,7 +168,7 @@ export class EmailSendOrchestrator {
       const recipient = await this.recipientService.getOwnedById(prefs.defaultRecipientId, user);
       const resolved = await this.providerResolver.resolve(user, null);
 
-      await this.enqueueOne(
+      const logId = await this.enqueueOne(
         {
           bookId,
           userId: user.id,
@@ -184,7 +187,7 @@ export class EmailSendOrchestrator {
       this.logger.log(
         `[${EMAIL_QUICK_SEND_EVENT}] [end] userId=${user.id} bookId=${bookId} durationMs=${Date.now() - startedAt} queued=1 - quick send enqueue completed`,
       );
-      return { queued: 1 };
+      return { queued: 1, logIds: [logId] };
     } catch (error) {
       this.logger.error(
         `[${EMAIL_QUICK_SEND_EVENT}] [fail] userId=${user.id} bookId=${bookId} durationMs=${Date.now() - startedAt} errorClass=${this.getErrorClass(error)} error="${this.getErrorMessage(error)}" - quick send enqueue failed`,
@@ -242,6 +245,7 @@ export class EmailSendOrchestrator {
     });
 
     setImmediate(() => void this.dispatchSend(logEntry.id, resolved.config, task, file, effectiveSubject, rendered.bodyText, 0));
+    return logEntry.id;
   }
 
   private async dispatchSend(
@@ -253,8 +257,9 @@ export class EmailSendOrchestrator {
     bodyText: string,
     attemptCount: number,
   ) {
-    const attachment = await this.prepareAttachment(file, task);
+    let attachment = { path: file.absolutePath, cleanup: () => Promise.resolve() };
     try {
+      attachment = await this.prepareAttachment(file, task);
       const transporter = this.transportService.buildTransporter(smtpConfig);
       const effectiveSubject = task.deviceType === 'kindle' ? KINDLE_CONVERT_SUBJECT : subject;
       const from = this.buildFromHeader(smtpConfig.fromName, smtpConfig.fromAddress);
@@ -364,9 +369,6 @@ export class EmailSendOrchestrator {
 
   private getErrorMessage(error: unknown): string {
     const raw = error instanceof Error ? error.message : String(error);
-    return raw
-      .replace(/[\r\n"]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    return sanitizeLogValue(raw.slice(0, 500));
   }
 }

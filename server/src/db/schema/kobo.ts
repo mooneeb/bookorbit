@@ -114,6 +114,18 @@ export const koboLibrarySnapshots = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     deviceId: integer('device_id').notNull(),
+    pendingPage: jsonb('pending_page').$type<{
+      token: string;
+      rows: Array<{
+        bookId: number;
+        pendingDelete: boolean;
+        isNew: boolean;
+        fileHash: string | null;
+        deliveryHash: string | null;
+        metadataHash: string | null;
+      }>;
+      legacyRemovalBookIds: number[];
+    }>(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .defaultNow()

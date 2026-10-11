@@ -52,6 +52,7 @@ import { UpdateBookAddedAtDto } from './dto/update-book-added-at.dto';
 import { CoverReadQueryDto } from './dto/cover-read-query.dto';
 import { CoverMediumQueryDto } from '../cover/dto/cover-medium-query.dto';
 import { UpdatePersonalNoteDto } from './dto/update-personal-note.dto';
+import { UpdateRatingDto } from './dto/update-rating.dto';
 import { SearchBooksDto } from './dto/search-books.dto';
 import { UpdateBookFileDto } from './dto/update-book-file.dto';
 import { SetStatusDto } from '../user-book-status/dto/set-status.dto';
@@ -602,6 +603,11 @@ export class BookController {
   @Patch(':id/personal-note')
   updatePersonalNote(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePersonalNoteDto, @CurrentUser() user: RequestUser) {
     return this.bookService.updatePersonalNote(id, dto, user);
+  }
+
+  @Patch(':id/rating')
+  updateRating(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRatingDto, @CurrentUser() user: RequestUser) {
+    return this.bookService.updateRating(id, dto, user);
   }
 
   @Patch(':id/metadata')

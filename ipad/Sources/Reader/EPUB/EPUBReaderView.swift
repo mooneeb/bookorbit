@@ -88,6 +88,26 @@ struct EPUBReaderView: View {
 
   var body: some View {
     readerLifecycle
+      .readingActivity(
+        api: model.api, fileID: model.file.id, type: "read",
+        progress: model.visibleLocation?.percentage,
+        active: model.isReady && model.error == nil && !model.position.conflict.isBlocked
+          && !speech.isActive && !recorded.isActive && !showingContents && !showingSearch
+          && !showingSettings && !showingBookmarks && !showingPosition && !showingHelp
+          && !showingSpeech && !showingRecorded && annotations.presentation == nil
+          && selectionTools.presentation == nil && positionReset == nil && !bridge.isPresented
+          && !confirmsDiscard
+      )
+      .readingActivity(
+        api: model.api, fileID: model.file.id, type: "tts",
+        progress: model.location?.percentage, active: speech.isPlaying,
+        playback: { speech.readingActivityEvidence }
+      )
+      .readingActivity(
+        api: model.api, fileID: model.file.id, type: "listen",
+        progress: recorded.segment?.percentage ?? model.location?.percentage,
+        active: recorded.isPlaying, playback: { recorded.readingActivityEvidence }
+      )
       .popover(item: $annotations.presentation) { _ in
         PassageAnnotationView(model: annotations).frame(minWidth: 320, idealWidth: 720)
       }
@@ -193,8 +213,9 @@ struct EPUBReaderView: View {
         guard scenePhase == .active else { return }
         while !Task.isCancelled {
           if let repository = annotations.repository {
-            do { try await repository.refreshPrivatePassages(bookID: model.bookID) }
-            catch is CancellationError { return } catch {}
+            do {
+              try await repository.refreshPrivatePassages(bookID: model.bookID)
+            } catch is CancellationError { return } catch {}
           }
           do { try await Task.sleep(for: .seconds(3)) } catch { return }
         }

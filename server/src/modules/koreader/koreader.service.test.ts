@@ -381,6 +381,32 @@ describe('KoreaderService', () => {
   });
 
   describe('saveProgress', () => {
+    it('normalizes fractional Unix seconds for device progress, shared activity, and the response', async () => {
+      const bookFile = { id: 44, bookId: 55, libraryId: 3, format: 'pdf' };
+      mockRepo.resolveBookFileByHash.mockResolvedValue(bookFile);
+
+      const result = await service.saveProgress(syncUser(12), {
+        document: 'fractional-clock',
+        percentage: 0.5,
+        progress: '2',
+        timestamp: 1791709993.25,
+      });
+
+      expect(result).toEqual({ document: 'fractional-clock', timestamp: 1791709993 });
+      expect(mockRepo.upsertDeviceProgress).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 12, bookFileId: 44, syncTimestamp: 1791709993, percentage: 0.5, progress: '2' }),
+      );
+      expect(mockRepo.upsertReadingProgress).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 12, bookFileId: 44, percentage: 50, pageNumber: 2 }),
+      );
+      expect(mockBookService.autoUpdateReadStatusForProgress).toHaveBeenCalledWith(
+        12,
+        bookFile,
+        50,
+        expect.objectContaining({ occurredAt: new Date(1791709993 * 1000) }),
+      );
+    });
+
     it('resolves the book file, parses progress, extracts chapters, and updates synced progress', async () => {
       mockRepo.resolveBookFileByHash.mockResolvedValue({ id: 44, bookId: 55, libraryId: 3, format: 'epub' });
       mockChapterService.parseChapterIndexFromProgress.mockReturnValue(6);
@@ -395,7 +421,7 @@ describe('KoreaderService', () => {
         timestamp: 1700000000,
       });
 
-      expect(mockRepo.resolveBookFileByHash).toHaveBeenCalledWith('abcdef1234567890fedcba', [1, 2], 12);
+      expect(mockRepo.resolveBookFileByHash).toHaveBeenCalledWith('abcdef1234567890fedcba', [1, 2], 12, undefined);
       expect(mockChapterService.parseChapterIndexFromProgress).toHaveBeenCalledWith('/body/DocFragment[7]');
       expect(mockChapterExtractor.extractAndStoreChapters).toHaveBeenCalledWith(44);
       expect(mockRepo.upsertDeviceProgress).toHaveBeenCalledWith({
@@ -467,7 +493,7 @@ describe('KoreaderService', () => {
         }),
       ).rejects.toThrow(NotFoundException);
 
-      expect(mockRepo.resolveBookFileByHash).toHaveBeenCalledWith('no-access-document', [], 12);
+      expect(mockRepo.resolveBookFileByHash).toHaveBeenCalledWith('no-access-document', [], 12, undefined);
     });
 
     it('uses the default device and generated device id when the payload leaves them empty', async () => {
@@ -580,6 +606,28 @@ describe('KoreaderService', () => {
     function bookFile(id: number, bookId = id * 10, format: string | null = 'epub') {
       return { id, bookId, libraryId: 1, format };
     }
+
+    it('uses whole seconds for fractional sweep clocks and repeated entries in the same second', async () => {
+      const result = await service.applyBulkProgress(
+        7,
+        [
+          { bookFile: bookFile(10), percentage: 0.5, timestamp: 1791709993.75 },
+          { bookFile: bookFile(10), percentage: 0.6, timestamp: 1791709993.25 },
+        ],
+        device,
+      );
+
+      expect(result).toEqual({ shared: 2, stale: 0, held: 0 });
+      expect(mockRepo.upsertDeviceProgressMany.mock.calls[0]![0]).toEqual([
+        expect.objectContaining({ bookFileId: 10, percentage: 0.6, syncTimestamp: 1791709993 }),
+      ]);
+      expect(mockBookService.autoUpdateReadStatusForProgress).toHaveBeenLastCalledWith(
+        7,
+        bookFile(10),
+        60,
+        expect.objectContaining({ occurredAt: new Date(1791709993 * 1000) }),
+      );
+    });
 
     it('reads state once, writes one device statement, and applies shared progress per entry', async () => {
       const result = await service.applyBulkProgress(

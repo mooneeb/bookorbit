@@ -96,6 +96,16 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.mooneeb.bookorbit.readerproof.uitests
         GENERATE_INFOPLIST_FILE: YES
 schemes:
+  BookOrbitReadingSharing:
+    build:
+      targets:
+        BookOrbit: all
+    test:
+      gatherCoverageData: true
+      targets: [BookOrbitUITests]
+      testPlans:
+        - path: ReadingSharingAcceptance.xctestplan
+          defaultPlan: true
   BookOrbitAnnotations:
     build:
       targets:

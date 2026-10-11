@@ -8,6 +8,7 @@ import {
   type HardcoverImportPreviewOutcome,
   type HardcoverImportPreviewRow,
   type HardcoverImportSummary,
+  type PreviewHardcoverImportPayload,
 } from '@bookorbit/types';
 import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
 
@@ -21,6 +22,7 @@ import { HardcoverClientService } from './hardcover-client.service';
 import { parseHardcoverBookId } from './hardcover-id.utils';
 import { HardcoverImportFuzzyIndex } from './hardcover-import-fuzzy-index';
 import { type HardcoverImportLocalBook, HardcoverRepository } from './hardcover.repository';
+import { HardcoverImportRepository } from './hardcover-import.repository';
 import { HardcoverSettingsService } from './hardcover-settings.service';
 
 const IMPORT_PAGE_SIZE = 100;
@@ -38,9 +40,9 @@ const HARDCOVER_STATUS_LABELS: Record<number, string> = {
 };
 
 const IMPORT_USER_BOOKS_QUERY = `
-query PullReadStatus($limit: Int!, $offset: Int!) {
+query PullReadStatus($limit: Int!, $afterId: Int!) {
   me {
-    user_books(limit: $limit, offset: $offset, order_by: { updated_at: desc }) {
+    user_books(limit: $limit, where: { id: { _gt: $afterId } }, order_by: { id: asc }) {
       id
       book_id
       edition_id
@@ -119,6 +121,8 @@ interface LocalIndexes {
   byHardcoverSlug: Map<string, HardcoverImportLocalBook[]>;
   byIsbn: Map<string, HardcoverImportLocalBook[]>;
   fuzzy: HardcoverImportFuzzyIndex;
+  exactTruncated: boolean;
+  fuzzyTruncated: boolean;
 }
 
 interface MatchResult {
@@ -143,14 +147,15 @@ export class HardcoverImportService {
     private readonly libraryService: LibraryService,
     private readonly userBookStatusService: UserBookStatusService,
     @Optional() private readonly readingAttempts?: ReadingAttemptService,
+    @Optional() private readonly importRepo?: HardcoverImportRepository,
   ) {}
 
-  async previewImport(user: RequestUser): Promise<HardcoverImportPreview> {
+  async previewImport(user: RequestUser, payload: PreviewHardcoverImportPayload = {}): Promise<HardcoverImportPreview> {
     const startedAt = Date.now();
     this.logger.log(`[hardcover.import_status] [start] userId=${user.id} mode=preview - import preview started`);
 
     try {
-      const preview = await this.buildPreview(user);
+      const preview = await this.buildPreview(user, payload.afterId ?? 0);
       this.logger.log(
         `[hardcover.import_status] [end] userId=${user.id} mode=preview durationMs=${Date.now() - startedAt} totalHardcoverBooks=${preview.summary.totalHardcoverBooks} willUpdate=${preview.summary.willUpdate} needsReview=${preview.summary.needsReview} conflicts=${preview.summary.conflicts} unmatched=${preview.summary.unmatched} skipped=${preview.summary.skipped} - import preview completed`,
       );
@@ -166,11 +171,12 @@ export class HardcoverImportService {
     this.logger.log(`[hardcover.import_status] [start] userId=${user.id} mode=apply - import apply started`);
 
     try {
-      const preview = await this.buildPreview(user);
+      const preview = await this.buildPreview(user, payload.afterId ?? 0);
       const selectedIds = payload.hardcoverUserBookIds ? new Set(payload.hardcoverUserBookIds) : null;
       const importProgress = payload.importProgress === true;
       let applied = 0;
       let progressApplied = 0;
+      let progressFailed = 0;
       let failed = 0;
 
       const applyRows = async () => {
@@ -216,12 +222,13 @@ export class HardcoverImportService {
               syncError: null,
               lastSyncedAt: new Date(),
               lastSyncedStatus: row.importedStatus,
-              lastSyncedProgress: progressImported ? row.importedProgressPercent : null,
+              lastSyncedProgress: progressImported === true ? row.importedProgressPercent : null,
               lastSyncedStartedAt: row.importedStartedAt,
               lastSyncedFinishedAt: row.importedFinishedAt,
             });
 
-            if (progressImported) {
+            if (progressImported === 'failed') progressFailed++;
+            if (progressImported === true) {
               progressApplied++;
             }
 
@@ -243,7 +250,11 @@ export class HardcoverImportService {
         ...preview.summary,
         applied,
         progressApplied,
+        progressFailed,
         failed,
+        nextCursor: preview.nextCursor,
+        truncated: preview.truncated,
+        limit: IMPORT_PAGE_SIZE,
       };
 
       this.logger.log(
@@ -257,57 +268,56 @@ export class HardcoverImportService {
     }
   }
 
-  private async buildPreview(user: RequestUser): Promise<HardcoverImportPreview> {
+  private async buildPreview(user: RequestUser, afterId = 0): Promise<HardcoverImportPreview> {
     const token = await this.settingsService.getTokenForUser(user.id);
-    if (!token) {
-      throw new BadRequestException('Hardcover sync is not available right now');
-    }
-
-    const [hardcoverBooks, accessibleLibraryIds] = await Promise.all([
-      this.fetchAllUserBooks(user.id, token),
+    if (!token) throw new BadRequestException('Hardcover sync is not available right now');
+    const [page, accessibleLibraryIds] = await Promise.all([
+      this.fetchUserBookPage(user.id, token, afterId),
       this.libraryService.findAccessibleLibraryIds(user),
     ]);
-    const localBooks = await this.repo.findImportCandidateBooks(user.id, accessibleLibraryIds, user.isSuperuser ? undefined : user.contentFilters);
+    if (!this.importRepo) throw new BadRequestException('Hardcover import is not available right now');
+    const candidates = await this.importRepo.findCandidates(
+      user.id,
+      accessibleLibraryIds,
+      user.isSuperuser ? undefined : user.contentFilters,
+      page.books.map((book) => ({
+        hardcoverId: book.book_id,
+        slug: book.book?.slug ?? null,
+        isbns: [book.edition?.isbn_13, book.edition?.isbn_10].map(normalizeIsbn).filter((isbn): isbn is string => Boolean(isbn)),
+        title: book.book?.title ?? null,
+        authors: extractHardcoverAuthors(book.book?.cached_contributors),
+      })),
+    );
     const states = await this.repo.findBookStatesByBookIds(
       user.id,
-      localBooks.map((book) => book.bookId),
+      candidates.books.map((book) => book.bookId),
     );
-    const indexes = this.buildIndexes(localBooks, states);
-
+    const indexes = this.buildIndexes(candidates.books, states);
+    indexes.exactTruncated = candidates.exactTruncated;
+    indexes.fuzzyTruncated = candidates.fuzzyTruncated;
     const rows: HardcoverImportPreviewRow[] = [];
-    for (const book of hardcoverBooks) rows.push(await this.buildPreviewRow(book, indexes));
-    return {
-      summary: summarize(rows),
-      rows,
-    };
+    for (const book of page.books) rows.push(await this.buildPreviewRow(book, indexes));
+    return { summary: summarize(rows), rows, nextCursor: page.nextCursor, truncated: page.nextCursor != null, limit: IMPORT_PAGE_SIZE };
   }
 
-  private async fetchAllUserBooks(userId: number, token: string): Promise<HardcoverUserBook[]> {
-    const rows: HardcoverUserBook[] = [];
-    let offset = 0;
-
-    while (true) {
-      let data: HardcoverImportGraphQLResult;
-      try {
-        data = await this.client.query<HardcoverImportGraphQLResult>(userId, token, IMPORT_USER_BOOKS_QUERY, {
-          limit: IMPORT_PAGE_SIZE,
-          offset,
-        });
-      } catch (err) {
-        const error = sanitizeLogValue(err instanceof Error ? err.message : String(err));
-        this.logger.warn(
-          `[hardcover.import_status] [fail] userId=${userId} errorClass=HardcoverApiError error="${error}" - Hardcover library fetch failed`,
-        );
-        throw new BadRequestException('Failed to fetch Hardcover library');
-      }
-
-      const page = data.me?.[0]?.user_books ?? [];
-      rows.push(...page);
-      if (page.length < IMPORT_PAGE_SIZE) break;
-      offset += IMPORT_PAGE_SIZE;
+  private async fetchUserBookPage(userId: number, token: string, afterId: number) {
+    try {
+      const data = await this.client.query<HardcoverImportGraphQLResult>(userId, token, IMPORT_USER_BOOKS_QUERY, {
+        limit: IMPORT_PAGE_SIZE + 1,
+        afterId,
+      });
+      const page = data.me?.[0]?.user_books;
+      if (!Array.isArray(page)) throw new BadRequestException('Hardcover returned an invalid import response');
+      if (
+        page.length > IMPORT_PAGE_SIZE + 1 ||
+        page.some((row, index) => !Number.isInteger(row.id) || row.id <= afterId || (index > 0 && row.id <= page[index - 1]!.id))
+      )
+        throw new BadRequestException('Hardcover returned an invalid import page');
+      const books = page.slice(0, IMPORT_PAGE_SIZE);
+      return { books, nextCursor: page.length > IMPORT_PAGE_SIZE ? books.at(-1)!.id : null };
+    } catch {
+      throw new BadRequestException('Failed to fetch Hardcover library. Refresh the preview before retrying.');
     }
-
-    return rows;
   }
 
   private buildIndexes(books: HardcoverImportLocalBook[], states: Array<Awaited<ReturnType<HardcoverRepository['findBookState']>>>): LocalIndexes {
@@ -316,6 +326,8 @@ export class HardcoverImportService {
       byHardcoverSlug: new Map(),
       byIsbn: new Map(),
       fuzzy: new HardcoverImportFuzzyIndex(books),
+      exactTruncated: false,
+      fuzzyTruncated: false,
     };
     const booksById = new Map(books.map((book) => [book.bookId, book]));
 
@@ -347,7 +359,7 @@ export class HardcoverImportService {
   private async buildPreviewRow(hardcoverBook: HardcoverUserBook, indexes: LocalIndexes): Promise<HardcoverImportPreviewRow> {
     const statusMapping = IMPORTABLE_STATUS_MAP[hardcoverBook.status_id] ?? null;
     const hardcoverAuthors = extractHardcoverAuthors(hardcoverBook.book?.cached_contributors);
-    const latestRead = hardcoverBook.user_book_reads?.find(hasReadSignal) ?? null;
+    const latestRead = hardcoverBook.user_book_reads?.slice(0, 10).find(hasReadSignal) ?? null;
     const importedStartedAt = latestRead?.started_at ?? hardcoverBook.first_started_reading_date ?? null;
     const importedFinishedAt = statusMapping?.status === 'read' ? (latestRead?.finished_at ?? hardcoverBook.last_read_date ?? null) : null;
     const base = {
@@ -363,11 +375,14 @@ export class HardcoverImportService {
       importedStartedAt,
       importedFinishedAt,
       importedProgressPercent: deriveImportedProgressPercent(hardcoverBook, latestRead, statusMapping?.status ?? null),
-      hardcoverReads: (hardcoverBook.user_book_reads ?? []).filter(hasReadSignal).map((read) => ({
-        id: read.id,
-        startedAt: read.started_at,
-        finishedAt: read.finished_at,
-      })),
+      hardcoverReads: (hardcoverBook.user_book_reads ?? [])
+        .slice(0, 10)
+        .filter(hasReadSignal)
+        .map((read) => ({
+          id: read.id,
+          startedAt: read.started_at,
+          finishedAt: read.finished_at,
+        })),
     };
 
     if (!statusMapping) {
@@ -436,6 +451,8 @@ export class HardcoverImportService {
     hardcoverAuthors: string[],
     indexes: LocalIndexes,
   ): Promise<MatchResult | MatchFailure> {
+    if (indexes.exactTruncated)
+      return { outcome: 'skipped', reason: 'Too many identifier candidates. Set an explicit Hardcover mapping before importing.' };
     const byHardcoverId = uniqueCandidate(indexes.byHardcoverId.get(hardcoverBook.book_id));
     if (byHardcoverId === 'ambiguous') return { outcome: 'skipped', reason: 'Multiple BookOrbit books match this Hardcover ID' };
     if (byHardcoverId) return { book: byHardcoverId, method: 'hardcover_id', confidence: 100 };
@@ -456,10 +473,12 @@ export class HardcoverImportService {
       if (byIsbn) return { book: byIsbn, method: 'isbn', confidence: 100 };
     }
 
+    if (indexes.fuzzyTruncated)
+      return { outcome: 'skipped', reason: 'Too many title and author candidates. Set an explicit Hardcover mapping before importing.' };
     const titleMatch = await indexes.fuzzy.findMatch(hardcoverBook.book?.title ?? null, hardcoverAuthors);
     if (titleMatch) return { ...titleMatch, method: 'title_author' };
 
-    return { outcome: 'unmatched', reason: 'No matching BookOrbit book found' };
+    return { outcome: 'unmatched', reason: 'No matching BookOrbit book found among identifier, title and author candidates' };
   }
 
   private async applyProgressIfRequested(
@@ -467,7 +486,7 @@ export class HardcoverImportService {
     row: HardcoverImportPreviewRow,
     importProgress: boolean,
     startedAt: number,
-  ): Promise<boolean> {
+  ): Promise<boolean | 'failed'> {
     if (!importProgress || !canApplyProgress(row)) return false;
 
     try {
@@ -478,7 +497,7 @@ export class HardcoverImportService {
       this.logger.warn(
         `[hardcover.import_progress] [fail] userId=${userId} bookId=${row.localBookId} hardcoverBookId=${row.hardcoverBookId} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${error}" - import progress failed`,
       );
-      return false;
+      return 'failed';
     }
   }
 

@@ -16,6 +16,7 @@ struct LibraryView: View {
   @State private var showingScopes = false
   @State private var showingAnnotations = false
   @State private var showingOfflineBooks = false
+  @State private var featureDestination: NativeFeatureDestination?
   @State private var showingQuery = false
   @State private var showingSavedViews = false
   @State private var showingTableLayout = false
@@ -68,6 +69,15 @@ struct LibraryView: View {
         Button("Offline books") { showingOfflineBooks = true }
           .accessibilityIdentifier("offlineLibrary")
         if let user = session.user {
+          Section("Reading and sharing") {
+            ForEach(NativeFeatureDestination.allCases.filter { $0.isPermitted(for: user) }) {
+              destination in
+              LibraryActionButton(
+                title: destination.title, identifier: destination.identifier
+              ) { featureDestination = destination }
+              .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+          }
           LibraryManagementSidebar(user: user) { managementDestination = $0 }
         }
         ForEach(library.libraries) { item in
@@ -324,6 +334,7 @@ struct LibraryView: View {
         }, closed: deletionClosed)
     }
     .onChange(of: session.user?.id) {
+      featureDestination = nil
       deletion?.detach()
       deletion = nil
       deletionResult = nil
@@ -354,6 +365,11 @@ struct LibraryView: View {
     .sheet(isPresented: $showingDashboard) {
       if let user = session.user {
         DashboardView(api: library.api, serverURL: session.serverURL, user: user)
+      }
+    }
+    .sheet(item: $featureDestination) { destination in
+      if let user = session.user {
+        NativeFeatureDestinationView(destination: destination, api: library.api, user: user)
       }
     }
     .sheet(item: $managementDestination, onDismiss: refreshAfterManagement) { destination in

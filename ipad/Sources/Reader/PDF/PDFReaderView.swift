@@ -61,6 +61,13 @@ struct PDFReaderView: View {
       .navigationTitle("PDF reader")
       .navigationBarTitleDisplayMode(.inline)
     }
+    .readingActivity(
+      api: api, fileID: fileID, type: "read", progress: readingActivityProgress,
+      active: model.document != nil && !model.isClosing && !model.requiresPassword
+        && !model.position.conflict.isBlocked && !isNavigating && !isSearching
+        && !isBrowsingContents && !isBrowsingThumbnails && !isEditingPreferences
+        && !isBrowsingBookmarks && positionReset == nil && passages.presentation == nil
+        && !confirmsDiscard)
     .task {
       await model.load(bookID: bookID)
       if let page = annotation?.pdf?.page ?? annotation?.pageno.map({ $0 - 1 }),
@@ -174,6 +181,11 @@ struct PDFReaderView: View {
         "Your latest page turn has not been saved. The next session will resume at the last saved position."
       )
     }
+  }
+
+  private var readingActivityProgress: Double? {
+    guard let document = model.document, document.pageCount > 0 else { return nil }
+    return Double(model.pageIndex + 1) / Double(document.pageCount) * 100
   }
 
   private var readerBody: some View {

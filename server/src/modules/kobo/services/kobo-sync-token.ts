@@ -7,6 +7,7 @@ const MAX_KOBO_SYNC_TOKEN_LENGTH = 4096;
 
 export type KoboSyncTokenParts = {
   snapshotId?: number;
+  pageToken?: string;
   koboSyncToken?: string;
 };
 
@@ -18,9 +19,10 @@ export function isUsableKoboSyncToken(koboSyncToken: string): boolean {
   return koboSyncToken.length > 0 && koboSyncToken.length <= MAX_KOBO_SYNC_TOKEN_LENGTH;
 }
 
-export function encodeSyncToken(snapshotId: number, koboSyncToken?: string): string {
+export function encodeSyncToken(snapshotId: number, koboSyncToken?: string, pageToken?: string): string {
   const usableKoboToken = koboSyncToken && isUsableKoboSyncToken(koboSyncToken) ? koboSyncToken : undefined;
   const payload: KoboSyncTokenParts = usableKoboToken ? { snapshotId, koboSyncToken: usableKoboToken } : { snapshotId };
+  if (pageToken) payload.pageToken = pageToken;
   return TOKEN_PREFIX + Buffer.from(JSON.stringify(payload)).toString('base64');
 }
 
@@ -40,11 +42,12 @@ export function decodeSyncToken(raw: string | undefined): KoboSyncTokenParts {
   try {
     const decoded: unknown = JSON.parse(Buffer.from(value.slice(TOKEN_PREFIX.length), 'base64').toString('utf8'));
     if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) return {};
-    const { snapshotId, koboSyncToken } = decoded as Record<string, unknown>;
+    const { snapshotId, koboSyncToken, pageToken } = decoded as Record<string, unknown>;
     const usableKoboToken = typeof koboSyncToken === 'string' && isUsableKoboSyncToken(koboSyncToken) ? koboSyncToken : undefined;
     return {
       snapshotId: typeof snapshotId === 'number' && Number.isFinite(snapshotId) ? snapshotId : undefined,
       koboSyncToken: usableKoboToken,
+      ...(typeof pageToken === 'string' && /^[0-9a-f-]{36}$/i.test(pageToken) ? { pageToken } : {}),
     };
   } catch {
     return {};
@@ -58,7 +61,7 @@ export function decodeSyncToken(raw: string | undefined): KoboSyncTokenParts {
  */
 export function withKoboSyncToken(compositeToken: string, koboSyncToken: string | undefined): string {
   if (!koboSyncToken) return compositeToken;
-  const { snapshotId } = decodeSyncToken(compositeToken);
+  const { snapshotId, pageToken } = decodeSyncToken(compositeToken);
   if (snapshotId === undefined) return compositeToken;
-  return encodeSyncToken(snapshotId, koboSyncToken);
+  return encodeSyncToken(snapshotId, koboSyncToken, pageToken);
 }

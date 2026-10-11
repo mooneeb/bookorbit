@@ -26,4 +26,14 @@ export class ReadwiseController {
   validateToken(@CurrentUser() user: RequestUser, @Body() dto: ValidateReadwiseTokenDto) {
     return this.settingsService.validateToken(user.id, dto.token);
   }
+
+  @Get('sync/status')
+  getSyncStatus(@CurrentUser() user: RequestUser) {
+    return this.settingsService.getSyncStatus(user.id);
+  }
+
+  @Post('sync')
+  requestSync(@CurrentUser() user: RequestUser) {
+    return this.settingsService.requestSync(user.id);
+  }
 }

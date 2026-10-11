@@ -11,13 +11,15 @@ const require = createRequire(new URL("../../server/package.json", import.meta.u
 const sharp = require("sharp");
 const annotationBaselineRoot = join(root, "ipad/VisualBaselines/E02");
 
-export async function compareAnnotationVisual({ actualPath, outputDir, testId, state, surface, profile, metadata = {} }) {
-  assert.match(testId, /^IPAD-E02-A0[1-7]$/);
-  return compareReviewedVisual({ actualPath, outputDir, testId, state, surface, profile, metadata, baselineRoot: annotationBaselineRoot });
+export async function compareAnnotationVisual({ actualPath, outputDir, testId, state, surface, profile, metadata = {}, ticket = "E02" }) {
+  assert.ok(["E02", "E04"].includes(ticket));
+  assert.match(testId, ticket === "E04" ? /^IPAD-E04-A0[1-5]$/ : /^IPAD-E02-A0[1-7]$/);
+  const baselineRoot = ticket === "E02" ? annotationBaselineRoot : join(root, `ipad/VisualBaselines/${ticket}`);
+  return compareReviewedVisual({ actualPath, outputDir, testId, state, surface, profile, metadata, baselineRoot });
 }
 
 export async function compareReviewedVisual({ actualPath, outputDir, testId, state, surface, profile, metadata = {}, baselineRoot }) {
-  assert.match(testId, /^IPAD-E0[23]-[A-Z0-9-]+$/);
+  assert.match(testId, /^IPAD-E0[234]-[A-Z0-9-]+$/);
   assert.match(state, /^[a-zA-Z0-9_-]+$/);
   assert.ok(["native", "web"].includes(surface));
   const config = annotationProfile(profile);

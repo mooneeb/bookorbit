@@ -2,7 +2,13 @@ import { ConflictException, Injectable, Logger, NotFoundException } from '@nestj
 import { hash as bcryptHash } from 'bcryptjs';
 import { createHash } from 'crypto';
 
-import { DEFAULT_KOREADER_DEVICE_PATTERN, type KoreaderBookSyncInfo, type KoreaderDeviceInfo, type KoreaderSyncStatus } from '@bookorbit/types';
+import {
+  DEFAULT_KOREADER_DEVICE_PATTERN,
+  type KoreaderBookSyncInfo,
+  type KoreaderDeviceInfo,
+  type KoreaderSyncStatus,
+  type ContentFilterRules,
+} from '@bookorbit/types';
 import { StatsCache } from '../../common/cache/stats-cache';
 import type { RequestUser } from '../../common/types/request-user';
 import { mapWithConcurrency } from '../../common/utils/batch.utils';
@@ -168,7 +174,12 @@ export class KoreaderService {
     this.logger.debug(`[${SYNC_EVENT}] [start] userId=${userId} document=${data.document.slice(0, 16)} device=${device} - save progress started`);
 
     const accessibleLibraryIds = await this.repo.getAccessibleLibraryIds(userId);
-    const bookFile = await this.repo.resolveBookFileByHash(data.document, accessibleLibraryIds, userId);
+    const bookFile = await this.repo.resolveBookFileByHash(
+      data.document,
+      accessibleLibraryIds,
+      userId,
+      user.isSuperuser ? undefined : user.contentFilters,
+    );
 
     if (!bookFile) {
       this.logger.debug(
@@ -188,7 +199,7 @@ export class KoreaderService {
       `[${SYNC_EVENT}] [end] userId=${userId} bookFileId=${bookFile.id} device=${device} durationMs=${Date.now() - startedAt} percentage=${data.percentage} - save progress completed`,
     );
 
-    return { document: data.document, timestamp: data.timestamp ?? Math.floor(Date.now() / 1000) };
+    return { document: data.document, timestamp: normalizeSyncTimestamp(data.timestamp) ?? Math.floor(Date.now() / 1000) };
   }
 
   async applyProgressForResolvedFile(
@@ -197,6 +208,7 @@ export class KoreaderService {
     data: { percentage: number; progress?: string; device: string; deviceId: string; timestamp?: number },
     options?: { skipSharedProgress?: boolean; timeZone?: string },
   ): Promise<KoreaderProgressApplyResult> {
+    const timestamp = normalizeSyncTimestamp(data.timestamp);
     const chapterIndex = this.chapterService.parseChapterIndexFromProgress(data.progress ?? null);
 
     const previousDeviceProgress = await this.repo.getLatestDeviceProgress(bookFile.id, userId);
@@ -215,7 +227,7 @@ export class KoreaderService {
       percentage: data.percentage,
       progress: data.progress ?? null,
       chapterIndex,
-      syncTimestamp: data.timestamp ?? null,
+      syncTimestamp: timestamp ?? null,
     });
 
     // A retired device that syncs again is back in service. Clearing the marker keeps it
@@ -226,7 +238,7 @@ export class KoreaderService {
 
     if (!(await this.resolveResetHold(userId, bookFile, data))) return result;
 
-    await this.applySharedProgress(userId, bookFile, data, result.previousPercentage, options?.timeZone);
+    await this.applySharedProgress(userId, bookFile, { ...data, timestamp }, result.previousPercentage, options?.timeZone);
     result.shared = true;
     return result;
   }
@@ -317,7 +329,8 @@ export class KoreaderService {
       fileStates.set(bookFileId, { otherDevicesNewest, ownDeviceNewest, latestPercentage: rows[0]?.percentage ?? null });
     }
 
-    const plans = entries.map((entry) => {
+    const plans = entries.map((rawEntry) => {
+      const entry = { ...rawEntry, timestamp: normalizeSyncTimestamp(rawEntry.timestamp) };
       const state = fileStates.get(entry.bookFile.id)!;
       const newestKnown = Math.max(state.otherDevicesNewest, state.ownDeviceNewest);
       const stale = entry.timestamp ? entry.timestamp < newestKnown : false;
@@ -458,9 +471,9 @@ export class KoreaderService {
     }
   }
 
-  async getProgress(userId: number, documentHash: string) {
+  async getProgress(userId: number, documentHash: string, contentFilters?: ContentFilterRules) {
     const accessibleLibraryIds = await this.repo.getAccessibleLibraryIds(userId);
-    const bookFile = await this.repo.resolveBookFileByHash(documentHash, accessibleLibraryIds, userId);
+    const bookFile = await this.repo.resolveBookFileByHash(documentHash, accessibleLibraryIds, userId, contentFilters);
 
     if (!bookFile) return null;
 
@@ -849,6 +862,11 @@ export function isResetStartPosition(format: string | null | undefined, percenta
     }
   }
   return percentage <= RESET_CONVERGED_PERCENTAGE_FALLBACK;
+}
+
+function normalizeSyncTimestamp(timestamp?: number): number | undefined {
+  // Device clocks may include fractions, but stored and returned sync clocks use whole Unix seconds.
+  return timestamp == null ? undefined : Math.floor(timestamp);
 }
 
 function toBookorbitPercentage(koreaderPct: number): number {

@@ -3,6 +3,7 @@ import { and, type SQL } from 'drizzle-orm';
 
 import {
   APP_FEATURES,
+  Permission,
   type BookQuery,
   type CollectionPageQuery,
   type BooksPage,
@@ -187,6 +188,7 @@ export class CollectionService {
   }
 
   async create(dto: CreateCollectionDto, user: RequestUser) {
+    if (dto.syncToKobo === true) this.assertKoboSyncPermission(user);
     const icon = normalizeIconValue(dto.icon);
     if (!icon) {
       throw new BadRequestException('Icon is required');
@@ -221,6 +223,7 @@ export class CollectionService {
 
   async update(id: number, dto: UpdateCollectionDto, user: RequestUser) {
     const existing = await this.getWritableCollectionOrThrow(id, user);
+    if (dto.syncToKobo !== undefined && dto.syncToKobo !== existing.syncToKobo) this.assertKoboSyncPermission(user);
     if (dto.syncToKobo === true && existing.mediaType !== 'books') {
       throw new BadRequestException('Podcast collections cannot sync to Kobo');
     }
@@ -247,6 +250,12 @@ export class CollectionService {
     const [updated] = await this.collectionRepo.findById(id);
     if (!updated) throw new NotFoundException(COLLECTION_NOT_FOUND_MESSAGE);
     return this.hydrateForViewer(updated, user);
+  }
+
+  private assertKoboSyncPermission(user: RequestUser): void {
+    if (!user.isSuperuser && !user.permissions.includes(Permission.KoboSync)) {
+      throw new ForbiddenException('Kobo sync permission is required to change subscriptions');
+    }
   }
 
   async remove(id: number, user: RequestUser) {

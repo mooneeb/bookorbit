@@ -62,3 +62,15 @@ describe('kobo sync token', () => {
     expect(withKoboSyncToken('PX.!!!', 'kobo-cursor')).toBe('PX.!!!');
   });
 });
+
+describe('Kobo page acknowledgment cursor compatibility', () => {
+  it('preserves the page acknowledgment nonce while carrying the upstream cursor', () => {
+    const nonce = 'cb76fc42-c3ad-4b36-b8ee-5bbca061237e';
+    const token = encodeSyncToken(7, undefined, nonce);
+    expect(decodeSyncToken(withKoboSyncToken(token, 'upstream'))).toEqual({ snapshotId: 7, pageToken: nonce, koboSyncToken: 'upstream' });
+  });
+  it('rejects unbounded or malformed page tokens without discarding legacy fields', () => {
+    const token = `PX.${Buffer.from(JSON.stringify({ snapshotId: 7, pageToken: 'x'.repeat(10000), koboSyncToken: 'upstream' })).toString('base64')}`;
+    expect(decodeSyncToken(token)).toEqual({ snapshotId: 7, koboSyncToken: 'upstream' });
+  });
+});

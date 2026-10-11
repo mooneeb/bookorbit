@@ -51,6 +51,12 @@ function resetEnv(): void {
   delete process.env.OIDC_JWKS_CACHE_TTL_SECS;
   delete process.env.OIDC_CLOCK_TOLERANCE_SECS;
   delete process.env.OIDC_TOKEN_EXCHANGE_TIMEOUT_MS;
+  for (const provider of ['HARDCOVER', 'READWISE', 'STORYGRAPH']) {
+    delete process.env[`IPAD_TEST_${provider}_TIMEOUT_MS`];
+  }
+  delete process.env.IPAD_TEST_HARDCOVER_GRAPHQL_URL;
+  delete process.env.IPAD_TEST_READWISE_BASE_URL;
+  delete process.env.IPAD_TEST_STORYGRAPH_BASE_URL;
 }
 
 describe('config', () => {
@@ -77,6 +83,12 @@ describe('config', () => {
       swaggerEnabled: false,
       koboCloudscraperPython: undefined,
       koreaderPluginSourcePath: undefined,
+      hardcoverGraphqlUrl: 'https://api.hardcover.app/v1/graphql',
+      hardcoverRequestTimeoutMs: 15_000,
+      readwiseBaseUrl: 'https://readwise.io/api/v2',
+      readwiseRequestTimeoutMs: 15_000,
+      storygraphBaseUrl: 'https://app.thestorygraph.com',
+      storygraphRequestTimeoutMs: 30_000,
     });
   });
 
@@ -107,6 +119,12 @@ describe('config', () => {
       swaggerEnabled: true,
       koboCloudscraperPython: '/opt/bookorbit-python/bin/python',
       koreaderPluginSourcePath: '/opt/koreader/bookorbit.koplugin',
+      hardcoverGraphqlUrl: 'https://api.hardcover.app/v1/graphql',
+      hardcoverRequestTimeoutMs: 15_000,
+      readwiseBaseUrl: 'https://readwise.io/api/v2',
+      readwiseRequestTimeoutMs: 15_000,
+      storygraphBaseUrl: 'https://app.thestorygraph.com',
+      storygraphRequestTimeoutMs: 30_000,
     });
   });
 
@@ -123,6 +141,70 @@ describe('config', () => {
   it('falls back to false when OIDC_ALLOW_LOCAL_ISSUERS is invalid', () => {
     process.env.OIDC_ALLOW_LOCAL_ISSUERS = 'maybe';
     expect(appConfig().oidcAllowLocalIssuers).toBe(false);
+  });
+
+  it('uses controlled loopback provider endpoints and bounded timeouts only in test', () => {
+    process.env.NODE_ENV = 'test';
+    process.env.IPAD_TEST_HARDCOVER_GRAPHQL_URL = ' http://127.0.0.1:16490/hardcover/v1/graphql ';
+    process.env.IPAD_TEST_READWISE_BASE_URL = 'http://localhost:16490/readwise/api/v2/';
+    process.env.IPAD_TEST_STORYGRAPH_BASE_URL = 'http://[::1]:16490/storygraph';
+    process.env.IPAD_TEST_HARDCOVER_TIMEOUT_MS = '250';
+    process.env.IPAD_TEST_READWISE_TIMEOUT_MS = '500';
+    process.env.IPAD_TEST_STORYGRAPH_TIMEOUT_MS = '750';
+
+    expect(appConfig()).toMatchObject({
+      hardcoverGraphqlUrl: 'http://127.0.0.1:16490/hardcover/v1/graphql',
+      hardcoverRequestTimeoutMs: 250,
+      readwiseBaseUrl: 'http://localhost:16490/readwise/api/v2',
+      readwiseRequestTimeoutMs: 500,
+      storygraphBaseUrl: 'http://[::1]:16490/storygraph',
+      storygraphRequestTimeoutMs: 750,
+    });
+
+    for (const nodeEnv of ['production', 'development']) {
+      process.env.NODE_ENV = nodeEnv;
+      expect(appConfig()).toMatchObject({
+        hardcoverGraphqlUrl: 'https://api.hardcover.app/v1/graphql',
+        hardcoverRequestTimeoutMs: 15_000,
+        readwiseBaseUrl: 'https://readwise.io/api/v2',
+        readwiseRequestTimeoutMs: 15_000,
+        storygraphBaseUrl: 'https://app.thestorygraph.com',
+        storygraphRequestTimeoutMs: 30_000,
+      });
+    }
+  });
+
+  it.each([
+    'https://api.attacker.test/graphql',
+    'http://localhost.attacker.test/graphql',
+    'file:///etc/passwd',
+    'http://secret:password@localhost:16490/graphql',
+    'http://127.0.0.1:16490/graphql?token=secret',
+    'http://127.0.0.1:16490/graphql#fragment',
+    'not-a-url',
+  ])('ignores unsafe test provider URL %s', (value) => {
+    process.env.NODE_ENV = 'test';
+    process.env.IPAD_TEST_HARDCOVER_GRAPHQL_URL = value;
+    process.env.IPAD_TEST_READWISE_BASE_URL = value;
+    process.env.IPAD_TEST_STORYGRAPH_BASE_URL = value;
+
+    expect(appConfig()).toMatchObject({
+      hardcoverGraphqlUrl: 'https://api.hardcover.app/v1/graphql',
+      readwiseBaseUrl: 'https://readwise.io/api/v2',
+      storygraphBaseUrl: 'https://app.thestorygraph.com',
+    });
+  });
+
+  it.each(['0', '-1', '1.5', '30001', 'Infinity', 'invalid'])('ignores invalid provider timeout %s', (value) => {
+    process.env.NODE_ENV = 'test';
+    process.env.IPAD_TEST_HARDCOVER_TIMEOUT_MS = value;
+    process.env.IPAD_TEST_READWISE_TIMEOUT_MS = value;
+    process.env.IPAD_TEST_STORYGRAPH_TIMEOUT_MS = value;
+    expect(appConfig()).toMatchObject({
+      hardcoverRequestTimeoutMs: 15_000,
+      readwiseRequestTimeoutMs: 15_000,
+      storygraphRequestTimeoutMs: 30_000,
+    });
   });
 
   it('uses defaults for database, auth, email, and migration config', () => {

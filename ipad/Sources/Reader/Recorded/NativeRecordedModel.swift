@@ -47,6 +47,7 @@ final class NativeRecordedModel {
   }
   var isActive: Bool { state == .playing || state == .paused || state == .loading }
   var isPlaying: Bool { state == .playing }
+  var readingActivityEvidence: NativeReadingPlaybackEvidence { audio.readingActivityEvidence }
   var canControl: Bool {
     !isPositionResetting && !isBusy && !position.isSaving && !isClosed && position.hasLoaded
       && !position.conflict.isBlocked

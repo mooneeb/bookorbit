@@ -131,6 +131,7 @@ import { UpsertAudioProgressDto } from './dto/upsert-audio-progress.dto';
 import { UpdateBookMetadataDto } from './dto/update-book-metadata.dto';
 import { UpdateBookAddedAtDto } from './dto/update-book-added-at.dto';
 import { UpdatePersonalNoteDto } from './dto/update-personal-note.dto';
+import { UpdateRatingDto } from './dto/update-rating.dto';
 import type { UpdateBookMetadataAndLocksDto } from './dto/update-book-metadata-and-locks.dto';
 import { buildBookDetailSupplementalFields } from './utils/build-book-detail-supplemental-fields';
 import type { SetStatusDto } from '../user-book-status/dto/set-status.dto';
@@ -2501,9 +2502,18 @@ export class BookService {
       ...(finishedKey ? { endedOn: finishedKey } : {}),
     };
     const updated =
-      Object.keys(dateKeys).length > 0
-        ? await this.userBookStatusService.updateManual(user.id, bookId, patch, dateKeys)
-        : await this.userBookStatusService.updateManual(user.id, bookId, patch);
+      dto.baseStatusUpdatedAt !== undefined
+        ? await this.userBookStatusService.updateManual(
+            user.id,
+            bookId,
+            patch,
+            Object.keys(dateKeys).length > 0 ? dateKeys : undefined,
+            timeZone,
+            dto.baseStatusUpdatedAt,
+          )
+        : Object.keys(dateKeys).length > 0
+          ? await this.userBookStatusService.updateManual(user.id, bookId, patch, dateKeys)
+          : await this.userBookStatusService.updateManual(user.id, bookId, patch);
     return this.toDateOnlyReadStatus(updated, timeZone);
   }
 
@@ -3740,7 +3750,24 @@ export class BookService {
 
   async updatePersonalNote(id: number, dto: UpdatePersonalNoteDto, user: RequestUser): Promise<BookDetailDto> {
     await this.verifyBookAccess(id, user);
-    await this.userBookNoteService.setNote(user.id, id, dto.note ?? null);
+    if (dto.baseNote === undefined) await this.userBookNoteService.setNote(user.id, id, dto.note ?? null);
+    else await this.userBookNoteService.setNoteConditionally(user.id, id, dto.note ?? null, dto.baseNote);
+    return this.getDetail(id, user);
+  }
+
+  async updateRating(id: number, dto: UpdateRatingDto, user: RequestUser): Promise<BookDetailDto> {
+    await this.verifyBookAccess(id, user);
+    const rating = dto.rating ?? null;
+    if (dto.baseRating === undefined) await this.bookRepo.bulkSetRating([id], rating, user.id);
+    else if (!(await this.bookRepo.setRatingConditionally(id, rating, user.id, dto.baseRating))) {
+      throw new ConflictException({
+        message: 'The rating changed while this edit was offline',
+        errorCode: 'PERSONAL_RECORD_CONFLICT',
+        field: 'rating',
+        current: await this.bookRepo.findRatingByBookAndUser(id, user.id),
+      });
+    }
+    this.achievementEvents?.emit(ACHIEVEMENT_EVENT_BOOK_RATING_CHANGED, { userId: user.id, bookIds: [id], rating });
     return this.getDetail(id, user);
   }
 

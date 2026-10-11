@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Permission } from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
 import { PERMISSION_KEY } from '../../common/decorators/require-permission.decorator';
 import { ReadingAttemptController } from './reading-attempt.controller';
@@ -48,20 +49,21 @@ describe('ReadingAttemptController', () => {
     expect(attempts.delete).toHaveBeenCalledWith(7, 10, 4);
   });
 
-  // Every route here is scoped by user.id, so none takes a permission. Gating only start-reread and
-  // delete left the controller contradicting itself: an attempt could be created and edited without
-  // library_edit_metadata, but neither started nor removed.
-  it('requires no permission on any route, since all of them touch only the caller data', () => {
+  it('allows personal history reads and edits without a shared metadata permission', () => {
     const routes = [
       ReadingAttemptController.prototype.list,
       ReadingAttemptController.prototype.create,
+      ReadingAttemptController.prototype.getOne,
       ReadingAttemptController.prototype.startReread,
       ReadingAttemptController.prototype.update,
-      ReadingAttemptController.prototype.delete,
     ];
 
     for (const route of routes) {
       expect(Reflect.getMetadata(PERMISSION_KEY, route)).toBeUndefined();
     }
+  });
+
+  it('requires own annotation management permission for destructive history deletion', () => {
+    expect(Reflect.getMetadata(PERMISSION_KEY, ReadingAttemptController.prototype.delete)).toBe(Permission.AnnotationManageOwn);
   });
 });

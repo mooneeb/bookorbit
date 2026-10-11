@@ -1,4 +1,5 @@
 import type { ReadStream } from 'fs';
+import { createHash } from 'crypto';
 import { mkdtemp, open, rm, stat } from 'fs/promises';
 import type { FileHandle } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -129,13 +130,17 @@ export class KoboDownloadService {
     try {
       handle = await open(absolutePath, 'r');
       const [{ size }, hash] = await Promise.all([handle.stat(), computeFileHashFromHandle(handle)]);
+      if (format === 'pdf') {
+        const digest = createHash('sha256');
+        for await (const chunk of handle.createReadStream({ start: 0, autoClose: false })) digest.update(chunk as Buffer);
+        const sourceRevision = `sha256:${digest.digest('hex')}`;
+        reply.header('ETag', `"${sourceRevision}"`);
+        reply.header('X-BookOrbit-Source-Revision', sourceRevision);
+      }
+      reply.header('Cache-Control', 'private, no-store');
       // Persist the identity of the bytes being sent, including cache hits and fallback EPUBs.
       // File history preserves ambiguity and never replaces a user's explicit hash link.
-      await this.hashRegistration.record(fileId, hash).catch((error: unknown) => {
-        this.logger.warn(
-          `[kobo.download_hash_registration] [fail] fileId=${fileId} durationMs=${Date.now() - startedAt} errorClass=${error instanceof Error ? error.name : 'UnknownError'} error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - identity registration failed`,
-        );
-      });
+      await this.hashRegistration.record(fileId, hash);
       reply.header('Content-Length', size);
       reply.header('Content-Disposition', `attachment; filename="book-${fileId}.${format}"`);
       reply.type(MIME[format] ?? 'application/octet-stream');

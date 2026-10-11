@@ -93,5 +93,5 @@ export * from "./podcast";
 export * from "./reader-themes";
 export * from "./file-delivery";
 export * from "./catalog";
-
+export * from "./email";
 export * from "./book-bulk";

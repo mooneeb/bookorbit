@@ -31,6 +31,11 @@ export class ReadingAttemptRepository {
     return this.db.transaction(callback);
   }
 
+  async lockBook(tx: Tx, userId: number, bookId: number): Promise<void> {
+    // A status or active attempt may not exist yet, so row locks alone cannot serialize first writes.
+    await tx.execute(sql`select pg_advisory_xact_lock(${userId}::integer, ${bookId}::integer)`);
+  }
+
   findLegacyBackfillCandidates(limit: number) {
     return this.db
       .select({
@@ -165,10 +170,15 @@ export class ReadingAttemptRepository {
     return active;
   }
 
+  async createIdentified(tx: Tx, values: typeof readingAttempts.$inferInsert) {
+    const [row] = await tx.insert(readingAttempts).values(values).onConflictDoNothing().returning();
+    return row ?? null;
+  }
+
   async update(tx: Tx, userId: number, bookId: number, attemptId: number, patch: AttemptMutation) {
     const [row] = await tx
       .update(readingAttempts)
-      .set({ ...patch, updatedAt: new Date() })
+      .set({ ...patch, updatedAt: sql`greatest(${new Date()}::timestamptz, ${readingAttempts.updatedAt} + interval '1 millisecond')` })
       .where(
         and(
           eq(readingAttempts.id, attemptId),
@@ -181,15 +191,17 @@ export class ReadingAttemptRepository {
     return row ?? null;
   }
 
-  async project(tx: Tx, userId: number, bookId: number, projection: AttemptProjection): Promise<void> {
+  async project(tx: Tx, userId: number, bookId: number, projection: AttemptProjection) {
     const now = new Date();
-    await tx
+    const [row] = await tx
       .insert(userBookStatus)
       .values({ userId, bookId, ...projection, updatedAt: now })
       .onConflictDoUpdate({
         target: [userBookStatus.userId, userBookStatus.bookId],
-        set: { ...projection, updatedAt: now },
-      });
+        set: { ...projection, updatedAt: sql`greatest(${now}::timestamptz, ${userBookStatus.updatedAt} + interval '1 millisecond')` },
+      })
+      .returning();
+    return row!;
   }
 
   async findStatus(tx: Tx, userId: number, bookId: number) {
@@ -250,6 +262,37 @@ export class ReadingAttemptRepository {
     return row ?? null;
   }
 
+  async findDetail(userId: number, bookId: number, attemptId: number, tx?: Tx) {
+    const [row] = await (tx ?? this.db)
+      .select({
+        id: readingAttempts.id,
+        bookId: readingAttempts.bookId,
+        startedOn: readingAttempts.startedOn,
+        endedOn: readingAttempts.endedOn,
+        outcome: readingAttempts.outcome,
+        origin: readingAttempts.origin,
+        externalProvider: readingAttempts.externalProvider,
+        externalId: readingAttempts.externalId,
+        totalSessions: sql<number>`count(${readingSessions.id})::int`,
+        totalSeconds: sql<number>`coalesce(sum(${readingSessions.durationSeconds}), 0)::int`,
+        createdAt: readingAttempts.createdAt,
+        updatedAt: readingAttempts.updatedAt,
+      })
+      .from(readingAttempts)
+      .leftJoin(readingSessions, and(eq(readingSessions.attemptId, readingAttempts.id), eq(readingSessions.userId, userId)))
+      .where(
+        and(
+          eq(readingAttempts.id, attemptId),
+          eq(readingAttempts.userId, userId),
+          eq(readingAttempts.bookId, bookId),
+          isNull(readingAttempts.deletedAt),
+        ),
+      )
+      .groupBy(readingAttempts.id)
+      .limit(1);
+    return row ?? null;
+  }
+
   async findByExternal(tx: Tx, userId: number, provider: string, externalId: string) {
     const [row] = await tx
       .select()
@@ -260,8 +303,8 @@ export class ReadingAttemptRepository {
     return row ?? null;
   }
 
-  async softDelete(userId: number, bookId: number, attemptId: number): Promise<boolean> {
-    const rows = await this.db
+  async softDelete(userId: number, bookId: number, attemptId: number, tx?: Tx): Promise<boolean> {
+    const rows = await (tx ?? this.db)
       .update(readingAttempts)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(

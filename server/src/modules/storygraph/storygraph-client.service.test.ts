@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { StorygraphClientService } from './storygraph-client.service';
 import { StorygraphQueueService } from './storygraph-queue.service';
 import { StorygraphRepository } from './storygraph.repository';
+import { appConfig } from '../../config/config';
 
 vi.mock('./storygraph-queue.service');
 vi.mock('./storygraph.repository');
@@ -35,7 +36,11 @@ describe('StorygraphClientService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new StorygraphClientService(mockQueueService as unknown as StorygraphQueueService, mockRepo as unknown as StorygraphRepository);
+    service = new StorygraphClientService(
+      mockQueueService as unknown as StorygraphQueueService,
+      mockRepo as unknown as StorygraphRepository,
+      appConfig(),
+    );
     fetchSpy = vi.spyOn(global, 'fetch');
     vi.useFakeTimers();
   });

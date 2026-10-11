@@ -1,25 +1,8 @@
 import { ref } from 'vue'
 import { api } from '@/lib/api'
 
-export interface EmailProvider {
-  id: number
-  userId: number | null
-  name: string
-  host: string
-  port: number
-  username: string | null
-  fromName: string | null
-  fromAddress: string | null
-  auth: boolean
-  ssl: boolean
-  startTls: boolean
-  tlsRejectUnauthorized: boolean
-  isDefault: boolean
-  isShared: boolean
-  isSystemProvider: boolean
-  hasPassword: boolean
-  createdAt: string
-}
+import type { EmailProvider } from '@bookorbit/types'
+export type { EmailProvider } from '@bookorbit/types'
 
 export interface EmailProviderForm {
   name: string

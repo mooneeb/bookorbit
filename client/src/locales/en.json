@@ -8634,7 +8634,9 @@
     },
     "import": {
       "title": "Pull read status",
-      "description": "Preview Hardcover matches before filling blank BookOrbit statuses.",
+      "description": "Review up to 100 Hardcover records per page before filling blank BookOrbit statuses. Imports status, dates and up to ten latest reading attempts. Ratings, personal notes, highlights and audiobook progress are excluded.",
+      "pageLimit": "Showing {count} records on this page. Counts describe this page only.",
+      "nextPage": "Review next 100 records",
       "clear": "Clear",
       "preview": "Preview",
       "importProgress": "Import progress",

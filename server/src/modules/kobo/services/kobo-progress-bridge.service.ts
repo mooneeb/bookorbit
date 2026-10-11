@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 
 import { sanitizeLogValue } from '../../../common/utils/log-sanitize.utils';
+import { mapWithConcurrency } from '../../../common/utils/batch.utils';
 import { KoboSpanConverterService } from '../../position-converter/kobo-span-converter.service';
-import { KoboKepubContextService } from './kobo-kepub-context.service';
+import { KoboKepubContextService, type KepubContextResult } from './kobo-kepub-context.service';
+import type { KoboSettings } from './kobo-settings.service';
 
 const EVENT = 'kobo.progress_bridge';
 
@@ -57,19 +59,57 @@ export class KoboProgressBridgeService {
       const kepub = await this.kepubContextService.resolveForBook(userId, bookId);
       if (!kepub.ok) return this.logDegraded('cfi_to_bookmark', userId, bookId, kepub.reason);
 
-      const outcome = await this.koboSpanConverter.cfiPointToKoboBookmark({ bookFileId: kepub.file.id, ctx: kepub.ctx, cfi });
-      if (outcome.status === 'failed' || !outcome.spanId || !outcome.chapterFilename) {
-        return this.logDegraded('cfi_to_bookmark', userId, bookId, outcome.reason ?? 'incomplete_outcome');
-      }
-      return {
-        source: outcome.chapterFilename,
-        value: outcome.spanId,
-        contentSourceProgressPercent: outcome.contentSourceProgressPercent ?? null,
-      };
+      return await this.convertCfi(userId, bookId, cfi, kepub);
     } catch (error) {
       this.logWarn('cfi_to_bookmark', userId, bookId, error);
       return null;
     }
+  }
+
+  async cfiToKoboBookmarks(
+    userId: number,
+    positions: { bookId: number; cfi: string }[],
+    settings: KoboSettings,
+  ): Promise<Map<number, KoboBookmarkPoint>> {
+    if (positions.length > 100) throw new BadRequestException('Kobo position batches require at most 100 books');
+    if (positions.length === 0) return new Map();
+    const files = await this.kepubContextService.resolveReaderFiles(positions.map((position) => position.bookId)).catch((error: unknown) => {
+      this.logWarn('cfi_to_bookmark_batch', userId, positions[0].bookId, error);
+      return null;
+    });
+    if (!files) return new Map();
+    const converted = await mapWithConcurrency(positions, 2, async ({ bookId, cfi }) => {
+      try {
+        const file = files.get(bookId);
+        if (!file) return [bookId, this.logDegraded('cfi_to_bookmark', userId, bookId, 'no_reader_file')] as const;
+        const kepub = await this.kepubContextService.resolveForReaderFile(file, settings);
+        if (!kepub.ok) return [bookId, this.logDegraded('cfi_to_bookmark', userId, bookId, kepub.reason)] as const;
+        return [bookId, await this.convertCfi(userId, bookId, cfi, kepub)] as const;
+      } catch (error) {
+        this.logWarn('cfi_to_bookmark', userId, bookId, error);
+        return [bookId, null] as const;
+      }
+    });
+    const bookmarks = new Map<number, KoboBookmarkPoint>();
+    for (const [bookId, point] of converted) if (point) bookmarks.set(bookId, point);
+    return bookmarks;
+  }
+
+  private async convertCfi(
+    userId: number,
+    bookId: number,
+    cfi: string,
+    kepub: Extract<KepubContextResult, { ok: true }>,
+  ): Promise<KoboBookmarkPoint | null> {
+    const outcome = await this.koboSpanConverter.cfiPointToKoboBookmark({ bookFileId: kepub.file.id, ctx: kepub.ctx, cfi });
+    if (outcome.status === 'failed' || !outcome.spanId || !outcome.chapterFilename) {
+      return this.logDegraded('cfi_to_bookmark', userId, bookId, outcome.reason ?? 'incomplete_outcome');
+    }
+    return {
+      source: outcome.chapterFilename,
+      value: outcome.spanId,
+      contentSourceProgressPercent: outcome.contentSourceProgressPercent ?? null,
+    };
   }
 
   /**

@@ -299,7 +299,7 @@ describe('KoreaderStatsService', () => {
 
     const result = await service.uploadPageStats(makeUser(), dto);
 
-    expect(koreaderRepo.resolveBookFilesByHashes).toHaveBeenCalledWith([HASH_A], [1], 7);
+    expect(koreaderRepo.resolveBookFilesByHashes).toHaveBeenCalledWith([HASH_A], [1], 7, undefined);
     expect(result.results[0]!.hash).toBe(HASH_A);
   });
 });

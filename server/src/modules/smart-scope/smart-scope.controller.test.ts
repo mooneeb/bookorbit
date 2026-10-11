@@ -2,8 +2,9 @@ import { BadRequestException } from '@nestjs/common';
 
 import type { BookQuery } from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
+import { PERMISSION_KEY } from '../../common/decorators/require-permission.decorator';
 import { SmartScopeController } from './smart-scope.controller';
-import { EMPTY_CONTENT_FILTER_RULES } from '@bookorbit/types';
+import { EMPTY_CONTENT_FILTER_RULES, Permission } from '@bookorbit/types';
 
 function makeUser(overrides: Partial<RequestUser> = {}): RequestUser {
   return {
@@ -26,6 +27,10 @@ function makeUser(overrides: Partial<RequestUser> = {}): RequestUser {
 }
 
 describe('SmartScopeController', () => {
+  it('requires Kobo permission at the dedicated subscription route', () => {
+    expect(Reflect.getMetadata(PERMISSION_KEY, SmartScopeController.prototype.setKoboSync)).toBe(Permission.KoboSync);
+  });
+
   async function expectBadRequest(fn: () => unknown | Promise<unknown>) {
     await expect(Promise.resolve().then(fn)).rejects.toBeInstanceOf(BadRequestException);
   }

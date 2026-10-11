@@ -73,6 +73,11 @@ final class NativeTTSModel {
 
   var isActive: Bool { state == .playing || state == .paused || state == .loading }
   var isPlaying: Bool { state == .playing }
+  var readingActivityEvidence: NativeReadingPlaybackEvidence {
+    if preferences.useServer { return server.readingActivityEvidence }
+    return NativeReadingPlaybackEvidence(
+      isPlaying: isPlaying && synthesizer.isSpeaking && !synthesizer.isPaused)
+  }
   var canStart: Bool {
     hasLoaded && !isClosed && !isPositionResetting && !isClosing && !isReaderNavigating
       && !isStopping

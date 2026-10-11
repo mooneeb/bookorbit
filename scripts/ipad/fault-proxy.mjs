@@ -1,7 +1,15 @@
 import { createServer, request } from "node:http";
 import { pipeline } from "node:stream/promises";
+import { createPersonalWriteHold } from "./personal-write-hold.mjs";
 
-export async function startFaultProxy({ captureProgressCAS = false, port = 16485, currentDocuments } = {}) {
+export async function startFaultProxy({
+  captureProgressCAS = false,
+  port = 16485,
+  upstreamPort = 16482,
+  currentDocuments,
+  personalWriteHoldTimeoutMs,
+} = {}) {
+  const personalWriteHold = createPersonalWriteHold({ timeoutMs: personalWriteHoldTimeoutMs });
   let annotationOffline = false;
   let annotationWriteArmed = false;
   let annotationTransferPath;
@@ -30,6 +38,14 @@ export async function startFaultProxy({ captureProgressCAS = false, port = 16485
       outgoing.once("close", finish);
     });
   }
+  let readingStatisticsUnavailable = false;
+  let achievementsUnavailable = false;
+  let readingAttemptReceiptArmed = false;
+  let readingAttemptReceiptMethod = "POST";
+  let readingAttemptReceiptsDropped = 0;
+  let readingAttemptUpstreamStatus;
+  let privacySharingPatchArmed = false;
+  let privacySharingPatchesFailed = 0;
   let organizationUnavailable = false;
   let armed = false;
   let release;
@@ -54,6 +70,59 @@ export async function startFaultProxy({ captureProgressCAS = false, port = 16485
   const server = createServer(async (incoming, outgoing) => {
     const path = new URL(incoming.url, "http://localhost:16485").pathname;
     if (path.startsWith("/__faults/")) {
+      if (await personalWriteHold.control(incoming, outgoing, path)) return;
+      if (incoming.method === "GET" && path === "/__faults/privacy-sharing/state") {
+        return outgoing
+          .writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+          .end(JSON.stringify({ armed: privacySharingPatchArmed, failed: privacySharingPatchesFailed }));
+      }
+      if (incoming.method === "POST" && path === "/__faults/privacy-sharing/fail-next-patch") {
+        if (privacySharingPatchArmed) return outgoing.writeHead(409).end();
+        privacySharingPatchArmed = true;
+        return outgoing.writeHead(204).end();
+      }
+      if (incoming.method === "POST" && path === "/__faults/privacy-sharing/reset") {
+        privacySharingPatchArmed = false;
+        privacySharingPatchesFailed = 0;
+        return outgoing.writeHead(204).end();
+      }
+      if (path === "/__faults/reading-attempt/receipt" && incoming.method === "GET") {
+        return outgoing.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(
+          JSON.stringify({
+            armed: readingAttemptReceiptArmed,
+            dropped: readingAttemptReceiptsDropped,
+            upstreamStatus: readingAttemptUpstreamStatus ?? null,
+          }),
+        );
+      }
+      if (incoming.method === "POST" && path === "/__faults/reading-attempt/drop-next-receipt") {
+        if (readingAttemptReceiptArmed) return outgoing.writeHead(409).end();
+        let bytes = "";
+        for await (const chunk of incoming) {
+          bytes += chunk;
+          if (bytes.length > 256) return outgoing.writeHead(400).end();
+        }
+        try {
+          readingAttemptReceiptMethod = bytes ? JSON.parse(bytes).method : "POST";
+        } catch {
+          return outgoing.writeHead(400).end();
+        }
+        if (!["POST", "PATCH"].includes(readingAttemptReceiptMethod)) return outgoing.writeHead(400).end();
+        readingAttemptReceiptArmed = true;
+        return outgoing.writeHead(204).end();
+      }
+      if (incoming.method === "POST" && path === "/__faults/reading-attempt/reset") {
+        readingAttemptReceiptArmed = false;
+        readingAttemptReceiptMethod = "POST";
+        readingAttemptReceiptsDropped = 0;
+        readingAttemptUpstreamStatus = undefined;
+        return outgoing.writeHead(204).end();
+      }
+      if (incoming.method === "POST" && /^\/__faults\/(reading-statistics|achievements)\/(fail|recover)$/.test(path)) {
+        if (path.includes("/reading-statistics/")) readingStatisticsUnavailable = path.endsWith("/fail");
+        else achievementsUnavailable = path.endsWith("/fail");
+        return outgoing.writeHead(204).end();
+      }
       if (path.startsWith("/__faults/annotations/")) {
         const action = path.slice("/__faults/annotations/".length);
         if (action === "public-files-directory" && incoming.method === "GET" && currentDocuments) {
@@ -360,6 +429,23 @@ export async function startFaultProxy({ captureProgressCAS = false, port = 16485
       });
       if (outgoing.destroyed) return;
     }
+    if (privacySharingPatchArmed && incoming.method === "PATCH" && path === "/api/v1/reading-insights-sharing/me") {
+      privacySharingPatchArmed = false;
+      privacySharingPatchesFailed++;
+      incoming.resume();
+      return outgoing
+        .writeHead(503, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+        .end(JSON.stringify({ message: "Reading insights sharing temporarily unavailable" }));
+    }
+    if (
+      incoming.method === "GET" &&
+      ((readingStatisticsUnavailable && path === "/api/v1/user-statistics/activity-overview") ||
+        (achievementsUnavailable && path === "/api/v1/achievements"))
+    ) {
+      return outgoing
+        .writeHead(503, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ message: "Reading activity temporarily unavailable" }));
+    }
     if (organizationUnavailable && incoming.method === "GET" && /^\/api\/v1\/(authors|series)(\/|$)/.test(path)) {
       return outgoing
         .writeHead(503, { "Content-Type": "application/json" })
@@ -377,14 +463,38 @@ export async function startFaultProxy({ captureProgressCAS = false, port = 16485
       coverArmed = false;
       coverPending = true;
     }
+    const personalWrite = await personalWriteHold.beforeForward(incoming, outgoing, path);
+    if (personalWrite?.forward === false || outgoing.destroyed) return;
     const upstream = request({
       hostname: "localhost",
-      port: 16482,
+      port: upstreamPort,
       path: incoming.url,
       method: incoming.method,
-      headers: { ...incoming.headers, host: "localhost:16482" },
+      headers: { ...incoming.headers, host: `localhost:${upstreamPort}` },
     });
+    const dropReadingAttemptReceipt =
+      readingAttemptReceiptArmed &&
+      incoming.method === readingAttemptReceiptMethod &&
+      (readingAttemptReceiptMethod === "POST"
+        ? /^\/api\/v1\/books\/[1-9][0-9]*\/reading-attempts$/.test(path)
+        : /^\/api\/v1\/books\/[1-9][0-9]*\/reading-attempts\/[1-9][0-9]*$/.test(path));
+    if (dropReadingAttemptReceipt) readingAttemptReceiptArmed = false;
     upstream.once("response", async (response) => {
+      personalWrite?.recordStatus(response.statusCode);
+      if (dropReadingAttemptReceipt && response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+        try {
+          let size = 0;
+          for await (const chunk of response) {
+            size += chunk.length;
+            if (size > 64 * 1024) throw new Error("Reading attempt receipt exceeded its bounded size");
+          }
+          readingAttemptUpstreamStatus = response.statusCode;
+          readingAttemptReceiptsDropped++;
+        } finally {
+          outgoing.destroy();
+        }
+        return;
+      }
       if (captureProgress && (incoming.method === "GET" || response.statusCode === 409)) {
         captureJSON(response, "progressResponse", ["textVersion", "narrationVersion", "percentage"]);
       }
@@ -516,7 +626,8 @@ export async function startFaultProxy({ captureProgressCAS = false, port = 16485
     server.once("error", reject);
     server.listen(port, "127.0.0.1", resolve);
   });
-  return async () => {
+  const stop = async () => {
+    personalWriteHold.close();
     annotationRelease?.();
     annotationObserver?.writeHead(503).end();
     armed = false;
@@ -531,4 +642,6 @@ export async function startFaultProxy({ captureProgressCAS = false, port = 16485
     server.closeAllConnections();
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   };
+  stop.port = server.address().port;
+  return stop;
 }

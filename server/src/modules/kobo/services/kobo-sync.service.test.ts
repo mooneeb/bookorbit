@@ -3,6 +3,22 @@ import { sql } from 'drizzle-orm';
 import * as schema from '../../../db/schema';
 import { KoboSyncService } from './kobo-sync.service';
 
+vi.mock('./kobo-sync-page', () => ({
+  acknowledgeKoboPage: vi.fn().mockResolvedValue([]),
+  stageKoboPage: vi.fn().mockResolvedValue('11111111-1111-4111-8111-111111111111'),
+}));
+
+async function* asBatches<T>(rows: T[]): AsyncGenerator<T[]> {
+  for (let offset = 0; offset < rows.length; offset += 5000) yield Promise.resolve(rows.slice(offset, offset + 5000));
+}
+
+async function collectTagEntries(service: KoboSyncService, userId: number, cache = new Map()): Promise<any[]> {
+  let json = '';
+  const result = { entitlements: [], hasMore: false, syncToken: 'PX.test', tags: (service as any).buildTagItems(userId, cache) };
+  for await (const chunk of service.serializeSyncResponse(result)) json += chunk;
+  return JSON.parse(json);
+}
+
 // Recursively counts bound query params (drizzle-orm's `Param` chunks) in a built SQL tree,
 // so tests can assert a clause isn't binding one parameter per matched book id.
 function countSqlParams(node: unknown, seen = new Set<unknown>()): number {
@@ -154,6 +170,7 @@ describe('KoboSyncService', () => {
   };
   const readingStateService = {
     getRawState: vi.fn(),
+    getRawStates: vi.fn(),
   };
   const contentFilterRepository = {
     findByUserId: vi.fn(),
@@ -205,7 +222,11 @@ describe('KoboSyncService', () => {
     bookAccessService.getAccessibleLibraryIds.mockResolvedValue(null);
     smartScopeService.findKoboSyncScopes.mockResolvedValue([]);
     readingStateService.getRawState.mockResolvedValue(null);
-    contentFilterRepository.findByUserId.mockResolvedValue([]);
+    readingStateService.getRawStates.mockImplementation(
+      async (userId: number, bookIds: number[]) =>
+        new Map(await Promise.all(bookIds.map(async (bookId) => [bookId, await readingStateService.getRawState(userId, bookId)]))),
+    );
+    contentFilterRepository.findByUserId.mockResolvedValue({ includeTagIds: [], includeGenreIds: [], excludeTagIds: [], excludeGenreIds: [] });
     metadataExtractionService.detectFixedLayout.mockResolvedValue(null);
     bookIdentityService.ensureForBooks.mockImplementation((_userId: number, bookIds: number[], needsLegacyNumericRemoval: boolean) =>
       makeIdentityMap(bookIds, needsLegacyNumericRemoval),
@@ -221,12 +242,12 @@ describe('KoboSyncService', () => {
     const db = makeDb();
     const service = makeService(db);
     const eligible = [{ bookId: 1, fileHash: 'h1', deliveryHash: 'd1', metadataHash: 'm1', needsLegacyNumericRemoval: false }];
-    vi.spyOn(service as any, 'fetchEligibleSnapshotRows').mockResolvedValue(eligible);
+    vi.spyOn(service as any, 'prepareEligibleSnapshotRows').mockResolvedValue(() => asBatches(eligible));
     vi.spyOn(service as any, 'findDeviceSnapshot').mockResolvedValue(undefined);
     vi.spyOn(service as any, 'hasDeviceSnapshot')
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true);
-    vi.spyOn(service as any, 'getLegacyNumericRemovalBookIds').mockResolvedValue(new Set());
+    vi.spyOn(service as any, 'initializeLegacyBookIdentities').mockResolvedValue(undefined);
     vi.spyOn(service as any, 'retireLegacySnapshotIfComplete').mockResolvedValue(undefined);
     const createSpy = vi.spyOn(service as any, 'createSnapshot').mockImplementation((_userId: number, deviceId: number) => ({
       snapshot: { id: deviceId === 101 ? 11 : 22, userId: 5, deviceId },
@@ -245,12 +266,12 @@ describe('KoboSyncService', () => {
     });
     await service.getDelta(5, 202, 'device-b-token', 'https://reader.example.com');
 
-    expect(createSpy).toHaveBeenNthCalledWith(1, 5, 101, eligible, new Set());
-    expect(createSpy).toHaveBeenNthCalledWith(2, 5, 202, eligible, new Set());
-    expect((service as any).fetchEligibleSnapshotRows).toHaveBeenNthCalledWith(1, 5, false, expect.any(Map), true);
-    expect((service as any).fetchEligibleSnapshotRows).toHaveBeenNthCalledWith(2, 5, true, expect.any(Map), true);
-    expect(pageSpy).toHaveBeenNthCalledWith(1, 5, 11, 'device-a-token', 'https://reader.example.com', expect.any(Map), expect.any(Function));
-    expect(pageSpy).toHaveBeenNthCalledWith(2, 5, 22, 'device-b-token', 'https://reader.example.com', expect.any(Map), expect.any(Function));
+    expect(createSpy).toHaveBeenNthCalledWith(1, 5, 101, expect.anything(), undefined);
+    expect(createSpy).toHaveBeenNthCalledWith(2, 5, 202, expect.anything(), undefined);
+    expect((service as any).prepareEligibleSnapshotRows).toHaveBeenNthCalledWith(1, 5, false, expect.any(Map));
+    expect((service as any).prepareEligibleSnapshotRows).toHaveBeenNthCalledWith(2, 5, true, expect.any(Map));
+    expect(pageSpy).toHaveBeenNthCalledWith(1, 5, 11, 'device-a-token', 'https://reader.example.com', expect.any(Map));
+    expect(pageSpy).toHaveBeenNthCalledWith(2, 5, 22, 'device-b-token', 'https://reader.example.com', expect.any(Map));
   });
 
   it('reconciles only the caller device snapshot when it already exists', async () => {
@@ -258,15 +279,14 @@ describe('KoboSyncService', () => {
     const service = makeService(db);
     const eligible = [{ bookId: 1, fileHash: 'h1', deliveryHash: 'd1', metadataHash: 'm1', needsLegacyNumericRemoval: false }];
     vi.spyOn(service as any, 'findDeviceSnapshot').mockResolvedValue({ id: 9, userId: 5, deviceId: 101 });
-    vi.spyOn(service as any, 'fetchEligibleSnapshotRows').mockResolvedValue(eligible);
+    vi.spyOn(service as any, 'prepareEligibleSnapshotRows').mockResolvedValue(() => asBatches(eligible));
     const reconcileSpy = vi.spyOn(service as any, 'reconcileSnapshot').mockResolvedValue(undefined);
     const pageSpy = vi.spyOn(service as any, 'getPageFromSnapshot').mockResolvedValue({ entitlements: [], hasMore: false, syncToken: 'PX.token' });
 
     await service.getDelta(5, 101, 'device-a-token', 'https://reader.example.com');
 
-    expect(reconcileSpy).toHaveBeenCalledWith(9, eligible);
-    expect(pageSpy).toHaveBeenCalledWith(5, 9, 'device-a-token', 'https://reader.example.com', expect.any(Map), expect.any(Function));
-    await expect(pageSpy.mock.calls[0]![5]()).resolves.toEqual(new Set([1]));
+    expect(reconcileSpy).toHaveBeenCalledWith(9, expect.anything());
+    expect(pageSpy).toHaveBeenCalledWith(5, 9, 'device-a-token', 'https://reader.example.com', expect.any(Map));
   });
 
   it('serves the next page without reconciling while the device still has pending rows', async () => {
@@ -281,22 +301,16 @@ describe('KoboSyncService', () => {
 
     expect(reconcileSpy).not.toHaveBeenCalled();
     expect(eligibleSpy).not.toHaveBeenCalled();
-    expect(pageSpy).toHaveBeenCalledWith(5, 9, 'device-a-token', 'https://reader.example.com', expect.any(Map), expect.any(Function));
+    expect(pageSpy).toHaveBeenCalledWith(5, 9, 'device-a-token', 'https://reader.example.com', expect.any(Map));
   });
 
-  it('still resolves eligible ids for tag delivery when a pending page drains before it is served', async () => {
-    const db = makeDb({ select: [[{ bookId: 4 }]] });
-    const service = makeService(db);
-    vi.spyOn(service as any, 'findDeviceSnapshot').mockResolvedValue({ id: 9, userId: 5, deviceId: 101 });
-    const eligibleSpy = vi
-      .spyOn(service as any, 'fetchEligibleSnapshotRows')
-      .mockResolvedValue([{ bookId: 7, fileHash: 'h', deliveryHash: 'd', metadataHash: 'm', needsLegacyNumericRemoval: false }]);
-    const pageSpy = vi.spyOn(service as any, 'getPageFromSnapshot').mockResolvedValue({ entitlements: [], hasMore: false, syncToken: 'PX.token' });
-
-    await service.getDelta(5, 101, 'device-a-token', 'https://reader.example.com');
-
-    await expect(pageSpy.mock.calls[0]![5]()).resolves.toEqual(new Set([7]));
-    expect(eligibleSpy).toHaveBeenCalledWith(5, true, expect.any(Map));
+  it('defers tag eligibility until its stream is consumed after the pending queue drains', async () => {
+    const service = makeService(makeDb({ select: [[]] }));
+    const tagSpy = vi.spyOn(service as any, 'buildTagItems');
+    const result = await (service as any).getPageFromSnapshot(5, 9, 'device-token', 'https://reader.example.com', new Map());
+    expect(result.entitlements).toEqual([]);
+    expect(result.tags).toBeDefined();
+    expect(tagSpy).toHaveBeenCalledWith(5, expect.any(Map));
   });
 
   it('getBookMetadata returns empty array when book is not eligible', async () => {
@@ -360,58 +374,34 @@ describe('KoboSyncService', () => {
     expect(db.update).toHaveBeenCalled();
   });
 
-  it('createSnapshot seeds a device snapshot and uses a set-based query for removal tombstones', async () => {
+  it('seeds eligible rows in bounded batches and merges legacy tombstones in SQL', async () => {
     const db = makeDb({ insert: [[{ id: 55 }], []] });
     const service = makeService(db);
-
     const result = await (service as any).createSnapshot(
       7,
       99,
-      [
+      asBatches([
         { bookId: 1, fileHash: 'h1', deliveryHash: 'd1', metadataHash: 'm1', needsLegacyNumericRemoval: true },
         { bookId: 2, fileHash: null, deliveryHash: 'd2', metadataHash: 'm2', needsLegacyNumericRemoval: false },
-      ],
-      new Set([2]),
+      ]),
+      88,
     );
-
     expect(result).toEqual({ snapshot: { id: 55 }, created: true });
-    expect(db.__transactionChains).toHaveLength(3);
-    expect(db.__transactionChains[0].values).toHaveBeenCalledWith({ userId: 7, deviceId: 99 });
-    expect(db.__transactionChains[1].values).toHaveBeenCalledWith([
-      expect.objectContaining({ snapshotId: 55, bookId: 1, pendingDelete: false, isNew: true, needsLegacyNumericRemoval: true }),
-      expect.objectContaining({ snapshotId: 55, bookId: 2, pendingDelete: false, isNew: true, needsLegacyNumericRemoval: true }),
-    ]);
-    expect(db.__transactionChains[2].values).toHaveBeenCalledWith([
-      expect.objectContaining({ snapshotId: 55, bookId: 2, pendingDelete: true, isNew: false, needsLegacyNumericRemoval: true }),
-    ]);
-    expect(db.__transactionChains[2].onConflictDoUpdate).toHaveBeenCalledWith({
-      target: [schema.koboSnapshotBooks.snapshotId, schema.koboSnapshotBooks.bookId],
-      set: { needsLegacyNumericRemoval: true },
-    });
-    expect(db.__transactionExecutes[0]).toHaveBeenCalledTimes(1);
-  });
-
-  it('creates a legacy numeric tombstone for an ineligible book even when its identity was already completed', async () => {
-    const db = makeDb({ insert: [[{ id: 55 }], []] });
-    const service = makeService(db);
-
-    await (service as any).createSnapshot(7, 99, [], new Set([42]));
-
     expect(db.__transactionChains).toHaveLength(2);
     expect(db.__transactionChains[1].values).toHaveBeenCalledWith([
-      expect.objectContaining({
-        snapshotId: 55,
-        bookId: 42,
-        synced: false,
-        pendingDelete: true,
-        isNew: false,
-        needsLegacyNumericRemoval: true,
-      }),
+      expect.objectContaining({ snapshotId: 55, bookId: 1, pendingDelete: false, needsLegacyNumericRemoval: true }),
+      expect.objectContaining({ snapshotId: 55, bookId: 2, pendingDelete: false, needsLegacyNumericRemoval: false }),
     ]);
-    expect(db.__transactionChains[1].onConflictDoUpdate).toHaveBeenCalledWith({
-      target: [schema.koboSnapshotBooks.snapshotId, schema.koboSnapshotBooks.bookId],
-      set: { needsLegacyNumericRemoval: true },
-    });
+    expect(db.__transactionExecutes[0]).toHaveBeenCalledTimes(2);
+  });
+
+  it('merges a preserved legacy snapshot without materializing its book IDs', async () => {
+    const db = makeDb({ insert: [[{ id: 55 }]] });
+    const service = makeService(db);
+    await (service as any).createSnapshot(7, 99, asBatches([]), 88);
+    expect(db.__transactionChains).toHaveLength(1);
+    expect(db.__transactionExecutes[0]).toHaveBeenCalledTimes(2);
+    expect(db.select).not.toHaveBeenCalled();
   });
 
   it('batches initial snapshot seed rows for large libraries', async () => {
@@ -425,7 +415,7 @@ describe('KoboSyncService', () => {
       needsLegacyNumericRemoval: false,
     }));
 
-    await (service as any).createSnapshot(7, 99, eligible, new Set());
+    await (service as any).createSnapshot(7, 99, asBatches(eligible));
 
     expect(db.__transactionChains).toHaveLength(3);
     expect(db.__transactionChains[1].values).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ snapshotId: 55, bookId: 1 })]));
@@ -437,7 +427,7 @@ describe('KoboSyncService', () => {
     const service = makeService(db);
     vi.spyOn(service as any, 'findDeviceSnapshot').mockResolvedValue({ id: 55, userId: 7, deviceId: 99 });
 
-    await expect((service as any).createSnapshot(7, 99, [], new Set())).resolves.toEqual({
+    await expect((service as any).createSnapshot(7, 99, asBatches([]))).resolves.toEqual({
       snapshot: { id: 55, userId: 7, deviceId: 99 },
       created: false,
     });
@@ -455,20 +445,23 @@ describe('KoboSyncService', () => {
       ]),
     );
 
-    await expect((service as any).getLegacyNumericRemovalBookIds(7, 99)).resolves.toEqual(new Set([1, 2]));
+    await expect((service as any).initializeLegacyBookIdentities(7, 99)).resolves.toEqual({
+      id: 88,
+      legacyDeviceCutoffAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
     expect(bookIdentityService.ensureForBooks).toHaveBeenCalledWith(7, [1, 2], true);
   });
 
   it('batches legacy identity initialization for large pre-upgrade snapshots', async () => {
     const legacyBooks = Array.from({ length: 5001 }, (_, index) => ({ bookId: index + 1 }));
     const db = makeDb({
-      select: [[{ id: 88, legacyDeviceCutoffAt: new Date('2026-01-01T00:00:00.000Z') }], legacyBooks],
+      select: [[{ id: 88, legacyDeviceCutoffAt: new Date('2026-01-01T00:00:00.000Z') }], legacyBooks.slice(0, 5000), legacyBooks.slice(5000)],
     });
     const service = makeService(db);
 
-    const ids = await (service as any).getLegacyNumericRemovalBookIds(7, 99);
+    const ids = await (service as any).initializeLegacyBookIdentities(7, 99);
 
-    expect(ids).toHaveLength(5001);
+    expect(ids.id).toBe(88);
     expect(bookIdentityService.ensureForBooks).toHaveBeenCalledTimes(2);
     expect(bookIdentityService.ensureForBooks).toHaveBeenNthCalledWith(
       1,
@@ -504,12 +497,13 @@ describe('KoboSyncService', () => {
   it('getPageFromSnapshot returns tags on final page when no pending rows', async () => {
     const db = makeDb({ select: [[]] });
     const service = makeService(db);
-    vi.spyOn(service as any, 'buildTagItems').mockResolvedValue([{ ChangedTag: {} }]);
+    vi.spyOn(service as any, 'buildTagItems').mockReturnValue(asBatches([]));
 
     const result = await (service as any).getPageFromSnapshot(7, 1, 'tok', 'https://base', new Map(), () => Promise.resolve(new Set([1])));
 
     expect(result).toEqual({
-      entitlements: [{ ChangedTag: {} }],
+      entitlements: [],
+      tags: expect.anything(),
       hasMore: false,
       syncToken: expect.stringMatching(/^PX\./),
     });
@@ -535,13 +529,13 @@ describe('KoboSyncService', () => {
 
     const result = await (service as any).getPageFromSnapshot(7, 22, 'tok', 'https://base', new Map(), () => Promise.resolve(new Set([1, 2, 3])));
 
-    expect(result.hasMore).toBe(false);
+    expect(result.hasMore).toBe(true);
     expect(result.entitlements).toHaveLength(3);
     expect(result.entitlements[0]).toHaveProperty('ChangedEntitlement');
     expect(result.entitlements[1]).toHaveProperty('NewEntitlement');
     expect(result.entitlements[2]).toHaveProperty('ChangedProductMetadata');
-    expect(db.delete).toHaveBeenCalled();
-    expect(db.update).toHaveBeenCalled();
+    expect(db.delete).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
   });
 
   it('getPageFromSnapshot includes changed reading state for changed books with stored Kobo state', async () => {
@@ -581,7 +575,7 @@ describe('KoboSyncService', () => {
         ReadingState: { EntitlementId: 'entitlement-3', CurrentBookmark: { ProgressPercent: 61 } },
       }),
     });
-    expect(bookIdentityService.markLegacyNumericRemovalComplete).toHaveBeenCalledWith(7, [3]);
+    expect(bookIdentityService.markLegacyNumericRemovalComplete).not.toHaveBeenCalled();
   });
 
   it('sends both numeric and UUID removals when an undelivered legacy book becomes ineligible', async () => {
@@ -598,17 +592,18 @@ describe('KoboSyncService', () => {
     );
 
     expect(removedIds).toEqual(['3', 'entitlement-3']);
-    expect(bookIdentityService.markLegacyNumericRemovalComplete).toHaveBeenCalledWith(7, [3]);
+    expect(bookIdentityService.markLegacyNumericRemovalComplete).not.toHaveBeenCalled();
   });
 
   it('buildTagItems includes only currently-eligible books per collection', async () => {
     const db = makeDb({
       select: [
         [
-          { collectionId: 1, bookId: 10 },
-          { collectionId: 1, bookId: 11 },
-          { collectionId: 2, bookId: 22 },
+          { id: 1, name: 'Favorites' },
+          { id: 2, name: 'Comics' },
         ],
+        [{ bookId: 10, entitlementId: 'entitlement-10' }],
+        [{ bookId: 22, entitlementId: 'entitlement-22' }],
       ],
     });
     db.query.collections.findMany.mockResolvedValue([
@@ -617,7 +612,7 @@ describe('KoboSyncService', () => {
     ]);
     const service = makeService(db);
 
-    const tags = await (service as any).buildTagItems(3, new Set([10, 22]), new Map());
+    const tags = await collectTagEntries(service, 3, new Map());
 
     expect(tags).toHaveLength(2);
     expect(tags[0]).toEqual(
@@ -634,7 +629,7 @@ describe('KoboSyncService', () => {
 
   it('buildTagItems includes a tag per synced smart scope with matching, eligible books', async () => {
     const db = makeDb({
-      select: [[{ id: 10 }, { id: 30 }]],
+      select: [[], [{ bookId: 10, entitlementId: 'entitlement-10' }]],
     });
     db.query.collections.findMany.mockResolvedValue([]);
     const filter = { type: 'group', join: 'AND', rules: [] };
@@ -643,7 +638,7 @@ describe('KoboSyncService', () => {
     queryBuilder.buildWhere.mockReturnValue('WHERE_CLAUSE');
     const service = makeService(db);
 
-    const tags = await (service as any).buildTagItems(9, new Set([10, 22]), new Map());
+    const tags = await collectTagEntries(service, 9, new Map());
 
     expect(queryBuilder.buildWhere).toHaveBeenCalledWith(filter, { accessibleLibraryIds: [1, 2], userId: 9, timeZone: 'UTC' });
     expect(tags).toHaveLength(1);
@@ -668,7 +663,7 @@ describe('KoboSyncService', () => {
     bookAccessService.getAccessibleLibraryIds.mockResolvedValue([1]);
     const service = makeService(db);
 
-    const tags = await (service as any).buildTagItems(9, new Set([10]), new Map());
+    const tags = await collectTagEntries(service, 9, new Map());
 
     expect(queryBuilder.buildWhere).not.toHaveBeenCalled();
     expect(tags).toEqual([
@@ -695,12 +690,12 @@ describe('KoboSyncService', () => {
 
     expect(queryBuilder.buildWhere).toHaveBeenCalledWith(filterA, { accessibleLibraryIds: [1], userId: 9, timeZone: 'America/New_York' });
     expect(queryBuilder.buildWhere).toHaveBeenCalledWith(filterB, { accessibleLibraryIds: [1], userId: 9, timeZone: 'America/New_York' });
-    expect(matches.get(1)).toEqual({ name: 'Scope A', bookIds: [10], where: 'WHERE_CLAUSE' });
-    expect(matches.get(2)).toEqual({ name: 'Scope B', bookIds: [20, 21], where: 'WHERE_CLAUSE' });
+    expect(matches.get(1)).toEqual({ name: 'Scope A', where: 'WHERE_CLAUSE' });
+    expect(matches.get(2)).toEqual({ name: 'Scope B', where: 'WHERE_CLAUSE' });
   });
 
   it('syncs a scope owned by another user when the smart scope service resolves it for this user', async () => {
-    const db = makeDb({ select: [[{ id: 30 }]] });
+    const db = makeDb({ select: [[], [{ bookId: 30, entitlementId: 'entitlement-30' }]] });
     db.query.collections.findMany.mockResolvedValue([]);
     const filter = { type: 'group', join: 'AND', rules: [] };
     // A shared scope: owned by user 1, opted into by user 9. Ownership and opt-in are the
@@ -712,7 +707,7 @@ describe('KoboSyncService', () => {
     queryBuilder.buildWhere.mockReturnValue('WHERE_CLAUSE');
     const service = makeService(db);
 
-    const tags = await (service as any).buildTagItems(9, new Set([30]), new Map());
+    const tags = await collectTagEntries(service, 9, new Map());
 
     expect(smartScopeService.findKoboSyncScopes).toHaveBeenCalledWith(9);
     expect(tags).toEqual([
@@ -737,8 +732,11 @@ describe('KoboSyncService', () => {
 
     const matches = await (service as any).getSyncedSmartScopeMatches(9, [1], 'UTC');
 
-    expect(matches.get(1)?.bookIds).toEqual([10]);
+    expect(matches.get(1)?.where).toBeDefined();
+    expect(db.select).not.toHaveBeenCalled();
+    for await (const batch of (service as any).iterateTagItems(9, matches.get(1)?.where)) expect(batch).toHaveLength(1);
     expect(db.__chains[0].leftJoin).toHaveBeenCalledWith(schema.bookMetadata, expect.anything());
+    expect(db.__chains[0].limit).toHaveBeenCalledWith(5000);
   });
 
   it('reuses a shared smartScopeMatchCache instead of re-querying smart scopes for each caller', async () => {
@@ -756,7 +754,7 @@ describe('KoboSyncService', () => {
     const cache = new Map();
 
     await (service as any).buildEligibleBooksWhereClause(9, cache);
-    await (service as any).buildTagItems(9, new Set([10]), cache);
+    await collectTagEntries(service, 9, cache);
 
     expect(smartScopeService.findKoboSyncScopes).toHaveBeenCalledTimes(1);
   });
@@ -836,7 +834,7 @@ describe('KoboSyncService', () => {
       const db = makeReconcileDb(txExecute);
       const service = makeService(db);
 
-      await (service as any).reconcileSnapshot(42, []);
+      await (service as any).reconcileSnapshot(42, asBatches([]));
 
       // CREATE TEMP + 8 maintenance queries (no batch insert when list is empty)
       expect(txExecute).toHaveBeenCalledTimes(9);
@@ -847,10 +845,13 @@ describe('KoboSyncService', () => {
       const db = makeReconcileDb(txExecute);
       const service = makeService(db);
 
-      await (service as any).reconcileSnapshot(10, [
-        { bookId: 1, fileHash: 'h1', deliveryHash: 'd1', metadataHash: 'm1' },
-        { bookId: 2, fileHash: null, deliveryHash: 'd2', metadataHash: 'm2' },
-      ]);
+      await (service as any).reconcileSnapshot(
+        10,
+        asBatches([
+          { bookId: 1, fileHash: 'h1', deliveryHash: 'd1', metadataHash: 'm1' },
+          { bookId: 2, fileHash: null, deliveryHash: 'd2', metadataHash: 'm2' },
+        ]),
+      );
 
       // CREATE TEMP + 1 batch INSERT + 8 maintenance queries
       expect(txExecute).toHaveBeenCalledTimes(10);
@@ -866,7 +867,7 @@ describe('KoboSyncService', () => {
       const db = makeReconcileDb(txExecute);
       const service = makeService(db);
 
-      await (service as any).reconcileSnapshot(5, [{ bookId: 7, fileHash: 'abc', deliveryHash: 'delivery', metadataHash: 'xyz' }]);
+      await (service as any).reconcileSnapshot(5, asBatches([{ bookId: 7, fileHash: 'abc', deliveryHash: 'delivery', metadataHash: 'xyz' }]));
 
       const batchInsert = captured[1];
       const params = extractSqlParams(batchInsert);
@@ -881,7 +882,7 @@ describe('KoboSyncService', () => {
       const db = makeReconcileDb(txExecute);
       const service = makeService(db);
 
-      await (service as any).reconcileSnapshot(5, [{ bookId: 3, fileHash: null, deliveryHash: 'delivery', metadataHash: 'mhash' }]);
+      await (service as any).reconcileSnapshot(5, asBatches([{ bookId: 3, fileHash: null, deliveryHash: 'delivery', metadataHash: 'mhash' }]));
 
       const batchInsert = captured[1];
       const params = extractSqlParams(batchInsert);
@@ -901,7 +902,7 @@ describe('KoboSyncService', () => {
         deliveryHash: `d${i}`,
         metadataHash: `m${i}`,
       }));
-      await (service as any).reconcileSnapshot(99, eligible);
+      await (service as any).reconcileSnapshot(99, asBatches(eligible));
 
       // CREATE TEMP + 2 batch INSERTs + 8 maintenance queries
       expect(txExecute).toHaveBeenCalledTimes(11);
@@ -913,7 +914,7 @@ describe('KoboSyncService', () => {
       const service = makeService(db);
 
       const snapshotId = 77;
-      await (service as any).reconcileSnapshot(snapshotId, [{ bookId: 1, fileHash: 'f', deliveryHash: 'd', metadataHash: 'm' }]);
+      await (service as any).reconcileSnapshot(snapshotId, asBatches([{ bookId: 1, fileHash: 'f', deliveryHash: 'd', metadataHash: 'm' }]));
 
       // Statements at index 2-9 are the 8 maintenance queries
       const maintenanceStmts = captured.slice(2, 10);
@@ -934,7 +935,7 @@ describe('KoboSyncService', () => {
         deliveryHash: `d${i}`,
         metadataHash: `m${i}`,
       }));
-      await (service as any).reconcileSnapshot(1, eligible);
+      await (service as any).reconcileSnapshot(1, asBatches(eligible));
 
       // batch 1: indices 1-5000 => bookIds 1-5000
       const batch1Params = extractSqlParams(captured[1]);
@@ -954,7 +955,7 @@ describe('KoboSyncService', () => {
       const db = makeReconcileDb(txExecute);
       const service = makeService(db);
 
-      await (service as any).reconcileSnapshot(5, [{ bookId: 7, fileHash: 'abc', deliveryHash: 'delivery', metadataHash: 'xyz' }]);
+      await (service as any).reconcileSnapshot(5, asBatches([{ bookId: 7, fileHash: 'abc', deliveryHash: 'delivery', metadataHash: 'xyz' }]));
 
       const resetStmt = captured.find((stmt) => {
         const sql = extractSqlStrings(stmt).join(' ');
@@ -972,7 +973,7 @@ describe('KoboSyncService', () => {
       const db = makeReconcileDb(txExecute);
       const service = makeService(db);
 
-      await (service as any).reconcileSnapshot(5, []);
+      await (service as any).reconcileSnapshot(5, asBatches([]));
 
       const markPendingStmt = captured.find((stmt) => {
         const sql = extractSqlStrings(stmt).join(' ');
@@ -992,7 +993,7 @@ describe('KoboSyncService', () => {
       const db = makeReconcileDb(txExecute);
       const service = makeService(db);
 
-      await (service as any).reconcileSnapshot(5, [{ bookId: 7, fileHash: 'abc', deliveryHash: 'delivery', metadataHash: 'xyz' }]);
+      await (service as any).reconcileSnapshot(5, asBatches([{ bookId: 7, fileHash: 'abc', deliveryHash: 'delivery', metadataHash: 'xyz' }]));
 
       const deliveryStmt = captured.find((stmt) => {
         const sql = extractSqlStrings(stmt).join(' ');

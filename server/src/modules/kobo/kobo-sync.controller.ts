@@ -18,6 +18,8 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { Readable } from 'node:stream';
+import { finished } from 'node:stream/promises';
 
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -27,7 +29,7 @@ import { KoboDevice } from './decorators/kobo-device.decorator';
 import type { KoboDeviceContext } from './guards/kobo-token.guard';
 import { KoboTokenGuard } from './guards/kobo-token.guard';
 import { KoboSettingsService } from './services/kobo-settings.service';
-import { KoboSyncService } from './services/kobo-sync.service';
+import { KoboSyncService, type KoboSyncResult } from './services/kobo-sync.service';
 import { KoboReadingStateService } from './services/kobo-reading-state.service';
 import type { KoboProxyResponse } from './services/kobo-proxy.service';
 import { KoboProxyService } from './services/kobo-proxy.service';
@@ -145,9 +147,15 @@ export class KoboSyncController {
     const startedAt = Date.now();
     this.logger.debug(`[kobo.library_sync] [start] userId=${user.id} deviceId=${device.deviceId} - library sync started`);
     const baseUrl = buildBaseUrl(req);
-    let result: { entitlements: unknown[]; hasMore: boolean; syncToken: string };
+    let result: KoboSyncResult;
     try {
-      result = await this.syncService.getDelta(user.id, device.deviceId, device.deviceToken, baseUrl);
+      result = await this.syncService.getDelta(
+        user.id,
+        device.deviceId,
+        device.deviceToken,
+        baseUrl,
+        readHeaderValue(req.headers[KOBO_SYNC_TOKEN_HEADER]),
+      );
     } catch (error: unknown) {
       const errorClass = error instanceof Error ? error.name : 'UnknownError';
       const errorMessage = sanitizeLogValue(error instanceof Error ? error.message : 'unknown error');
@@ -192,6 +200,25 @@ export class KoboSyncController {
     }
     const combinedHasMore = hasMore || (store?.hasMore === true && storeCursorAdvanced);
 
+    reply.header('x-kobo-sync', combinedHasMore ? 'continue' : '');
+    reply.header('x-kobo-synctoken', withKoboSyncToken(syncToken, store?.syncToken ?? incomingKoboSyncToken));
+    if (result.tags) {
+      const responseFinished = finished(reply.raw, { cleanup: true });
+      reply.type('application/json').send(Readable.from(this.syncService.serializeSyncResponse(result, store?.entitlements)));
+      try {
+        await responseFinished;
+      } catch (error: unknown) {
+        this.logger.error(
+          `[kobo.library_sync] [fail] userId=${user.id} deviceId=${device.deviceId} durationMs=${Date.now() - startedAt} errorClass=${error instanceof Error ? error.name : 'UnknownError'} error="${sanitizeLogValue(error instanceof Error ? error.message : 'unknown error')}" - library stream failed`,
+        );
+        await this.historyService.recordFailure(
+          { userId: user.id, deviceId: device.deviceId, event: 'library_sync', durationMs: Date.now() - startedAt },
+          error,
+        );
+        return;
+      }
+    }
+
     this.logger.debug(
       `[kobo.library_sync] [end] userId=${user.id} deviceId=${device.deviceId} durationMs=${Date.now() - startedAt} entitlementCount=${entitlements.length} storeEntitlementCount=${store?.entitlements.length ?? 0} hasMore=${combinedHasMore} - library sync completed`,
     );
@@ -206,9 +233,7 @@ export class KoboSyncController {
         ...(store ? { storeEntitlements: store.entitlements.length } : {}),
       },
     });
-    reply.header('x-kobo-sync', combinedHasMore ? 'continue' : '');
-    reply.header('x-kobo-synctoken', withKoboSyncToken(syncToken, store?.syncToken ?? incomingKoboSyncToken));
-    reply.send(merged);
+    if (!result.tags) reply.send(merged);
   }
 
   /**

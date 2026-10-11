@@ -10,7 +10,7 @@ vi.mock('@bookorbit/types', async (importOriginal) => {
 
 import type { RequestUser } from '../../common/types/request-user';
 import { CollectionService } from './collection.service';
-import { EMPTY_CONTENT_FILTER_RULES } from '@bookorbit/types';
+import { EMPTY_CONTENT_FILTER_RULES, Permission } from '@bookorbit/types';
 
 function makeUser(overrides?: Partial<RequestUser>): RequestUser {
   return {
@@ -263,7 +263,11 @@ describe('CollectionService', () => {
         },
       ]);
 
-      const result = await service.update(existing.id, { name: 'Updated Favorites', icon: 'FolderHeart', syncToKobo: true }, makeUser());
+      const result = await service.update(
+        existing.id,
+        { name: 'Updated Favorites', icon: 'FolderHeart', syncToKobo: true },
+        makeUser({ permissions: [Permission.KoboSync] }),
+      );
 
       expect(collectionRepo.update).toHaveBeenCalledWith(existing.id, existing.userId, {
         name: 'Updated Favorites',
@@ -839,7 +843,10 @@ describe('CollectionService', () => {
       collectionRepo.insert.mockResolvedValue([podcastCollection()]);
       collectionRepo.findById.mockResolvedValue([podcastCollection()]);
 
-      await service.create({ name: 'Sci-fi', icon: 'Podcast', mediaType: 'podcasts', syncToKobo: true }, makeUser());
+      await service.create(
+        { name: 'Sci-fi', icon: 'Podcast', mediaType: 'podcasts', syncToKobo: true },
+        makeUser({ permissions: [Permission.KoboSync] }),
+      );
 
       expect(collectionRepo.insert).toHaveBeenCalledWith(expect.objectContaining({ mediaType: 'podcasts', syncToKobo: false }));
     });

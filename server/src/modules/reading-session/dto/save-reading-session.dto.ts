@@ -2,6 +2,12 @@ import { IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLeng
 import { CLIENT_READING_SESSION_SOURCES, type ClientReadingSessionSource } from '@bookorbit/types';
 
 export class SaveReadingSessionDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2_147_483_647)
+  attemptId?: number | null;
+
   @IsString()
   @MinLength(1)
   @MaxLength(64)
@@ -17,11 +23,14 @@ export class SaveReadingSessionDto {
   // Server validates it does not exceed the wall-clock span of the session.
   @IsInt()
   @Min(0)
+  @Max(86400)
   durationSeconds!: number;
 
   // Nullable: can be negative if the user navigated backward.
   @IsOptional()
   @IsNumber()
+  @Min(-100)
+  @Max(100)
   progressDelta?: number | null;
 
   @IsOptional()

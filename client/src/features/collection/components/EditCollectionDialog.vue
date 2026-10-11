@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { Permission } from '@bookorbit/types'
+import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { X } from '@lucide/vue'
@@ -15,6 +17,8 @@ const emit = defineEmits<{ close: []; deleted: [id: number, name: string] }>()
 const router = useRouter()
 const { updateCollection, deleteCollection } = useCollections()
 const { t } = useI18n()
+const { hasPermission } = usePermissions()
+const canSyncToKobo = computed(() => hasPermission(Permission.KoboSync))
 
 const name = ref('')
 const icon = ref('')
@@ -53,7 +57,13 @@ async function submit() {
   saving.value = true
   error.value = null
   try {
-    await updateCollection(props.collection.id, trimmedName.value, trimmedIcon.value, syncToKobo.value, isPublic.value)
+    await updateCollection(
+      props.collection.id,
+      trimmedName.value,
+      trimmedIcon.value,
+      canSyncToKobo.value ? syncToKobo.value : undefined,
+      isPublic.value,
+    )
     emit('close')
   } catch {
     error.value = t('collection.editDialog.updateFailed')
@@ -99,16 +109,19 @@ async function confirmDelete() {
     deleting.value = false
   }
 }
+function close() {
+  emit('close')
+}
 </script>
 
 <template>
   <Teleport to="body">
     <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-scrim" @click="emit('close')" />
+      <div class="absolute inset-0 bg-scrim" @click="close" />
       <div class="relative z-10 w-full max-w-md mx-4 bg-card border border-border rounded-lg shadow-2xl p-6">
         <div class="flex items-center justify-between mb-5">
           <h2 class="text-base font-semibold text-foreground">{{ t('collection.editDialog.title') }}</h2>
-          <button @click="emit('close')" class="text-muted-foreground hover:text-foreground transition-colors">
+          <button @click="close" class="text-muted-foreground hover:text-foreground transition-colors">
             <X :size="18" />
           </button>
         </div>
@@ -137,7 +150,7 @@ async function confirmDelete() {
             <ToggleSwitch v-model="isPublic" :aria-label="t('collection.visibleToAll')" />
           </div>
 
-          <div class="flex items-center justify-between py-1">
+          <div v-if="canSyncToKobo" class="flex items-center justify-between py-1">
             <div>
               <p class="text-sm font-medium text-foreground">{{ t('collection.editDialog.syncToKobo') }}</p>
               <p class="text-xs text-muted-foreground mt-0.5">{{ t('collection.editDialog.syncToKoboHint') }}</p>

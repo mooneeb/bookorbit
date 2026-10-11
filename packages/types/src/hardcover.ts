@@ -32,6 +32,10 @@ export interface HardcoverTokenValidationResult {
   hardcoverUsername?: string;
 }
 
+export interface ValidateHardcoverTokenPayload {
+  token?: string;
+}
+
 export type HardcoverSyncRunStatus = "running" | "completed" | "failed" | "cancelled";
 
 export interface HardcoverSyncPendingSummary {
@@ -63,6 +67,19 @@ export interface HardcoverActiveSyncStatus {
   syncedBooks: number;
   totalBooks: number;
   status: HardcoverSyncRunStatus;
+}
+
+export interface HardcoverStartSyncResult {
+  runId: number;
+}
+
+export interface HardcoverSyncOutcome extends HardcoverActiveSyncStatus {
+  processedBooks: number;
+  failedBooks: number;
+  skippedBooks: number;
+  startedAt: string;
+  finishedAt: string | null;
+  error: string | null;
 }
 
 export type HardcoverPrivacySetting = 1 | 2 | 3;
@@ -120,12 +137,19 @@ export interface HardcoverImportSummary {
   progressSkipped: number;
 }
 
+export interface PreviewHardcoverImportPayload {
+  afterId?: number;
+}
+
 export interface HardcoverImportPreview {
   summary: HardcoverImportSummary;
   rows: HardcoverImportPreviewRow[];
+  nextCursor?: number | null;
+  truncated?: boolean;
+  limit?: number;
 }
 
-export interface ApplyHardcoverImportPayload {
+export interface ApplyHardcoverImportPayload extends PreviewHardcoverImportPayload {
   hardcoverUserBookIds?: number[];
   importProgress?: boolean;
 }
@@ -133,7 +157,11 @@ export interface ApplyHardcoverImportPayload {
 export interface HardcoverImportApplyResult extends HardcoverImportSummary {
   applied: number;
   progressApplied: number;
+  progressFailed?: number;
   failed: number;
+  nextCursor?: number | null;
+  truncated?: boolean;
+  limit?: number;
 }
 
 export interface HardcoverEdition {

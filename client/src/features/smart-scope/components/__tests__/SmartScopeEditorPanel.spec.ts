@@ -4,8 +4,13 @@ import type { SmartScope } from '@bookorbit/types'
 import SmartScopeEditorPanel from '../SmartScopeEditorPanel.vue'
 
 const mockState = vi.hoisted(() => ({
+  canSyncToKobo: true,
   updateSmartScope: vi.fn<(id: number, payload: Record<string, unknown>) => Promise<unknown>>(),
   api: vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(),
+}))
+
+vi.mock('@/features/auth/composables/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: () => mockState.canSyncToKobo }),
 }))
 
 vi.mock('@/features/smart-scope/composables/useSmartScopes', () => ({
@@ -75,8 +80,17 @@ function savedPayload(): Record<string, unknown> {
 describe('SmartScopeEditorPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockState.canSyncToKobo = true
     mockState.updateSmartScope.mockResolvedValue(makeSmartScope())
     mockState.api.mockResolvedValue({ ok: true, json: async () => ({ total: 0 }) } as Response)
+  })
+
+  it('hides Kobo control and omits its flag on ordinary save without permission', async () => {
+    mockState.canSyncToKobo = false
+    const wrapper = await openPanel(makeSmartScope({ syncToKobo: true }))
+    expect(wrapper.find(KOBO_SWITCH).exists()).toBe(false)
+    await save(wrapper)
+    expect(savedPayload()).not.toHaveProperty('syncToKobo')
   })
 
   it('seeds the sharing toggle from the scope when the panel opens', async () => {

@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { Inject, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
-import { SQL, and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { SQL, and, asc, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import type { GroupRule } from '@bookorbit/types';
@@ -19,8 +19,10 @@ import { KoboBookIdentityService } from './kobo-book-identity.service';
 import { normalizeKoboLanguage, selectKoboIsbn } from './kobo-metadata.utils';
 import { KoboReadingStateService } from './kobo-reading-state.service';
 import { encodeSyncToken } from './kobo-sync-token';
+import { acknowledgeKoboPage, stageKoboPage } from './kobo-sync-page';
 
 type Db = NodePgDatabase<typeof schema>;
+type KoboCatalogExecutor = Pick<Db, 'select' | 'insert' | 'update'>;
 
 // A device pauses between sync rounds, so wall-clock time for a long delta tracks the number of
 // round trips rather than the work inside each one: at five books a page, re-announcing a few
@@ -42,18 +44,6 @@ type EligibleSnapshotRow = {
   deliveryHash: string;
   metadataHash: string;
   needsLegacyNumericRemoval?: boolean;
-};
-
-type SnapshotSeedRow = {
-  bookId: number;
-  synced: false;
-  pendingDelete: boolean;
-  isNew: boolean;
-  removedByDevice: false;
-  needsLegacyNumericRemoval: boolean;
-  fileHash: string | null;
-  deliveryHash: string | null;
-  metadataHash: string | null;
 };
 
 type Snapshot = typeof schema.koboLibrarySnapshots.$inferSelect;
@@ -83,13 +73,23 @@ type KoboDeliveryInfo = {
 };
 
 type UserSettingsWithTimeZone = { timezone?: unknown };
-type SmartScopeMatch = { name: string; bookIds: number[]; where: SQL | undefined };
+type SmartScopeMatch = { name: string; where: SQL | undefined };
 // Scoped to a single getDelta/getBookMetadata call so results are shared across the
 // fetchEligibleSnapshotRows/fetchEligibleBooksByIds/buildTagItems calls it makes, without
 // caching across requests (this service is a singleton).
 type SmartScopeMatchCache = Map<number, Promise<Map<number, SmartScopeMatch>>>;
 
-type EligibleIdsResolver = () => Promise<Set<number>>;
+type EligibleSnapshotBatches = AsyncIterable<EligibleSnapshotRow[]>;
+type EligibleSnapshotBatchFactory = (executor: KoboCatalogExecutor) => EligibleSnapshotBatches;
+type KoboTagItem = { RevisionId: string; Type: 'ProductRevisionTagItem' };
+type KoboSyncTag = { id: string; name: string; items: AsyncIterable<KoboTagItem[]> };
+
+export type KoboSyncResult = {
+  entitlements: unknown[];
+  hasMore: boolean;
+  syncToken: string;
+  tags?: AsyncIterable<KoboSyncTag>;
+};
 
 export interface KoboBookEntry {
   bookId: number;
@@ -140,30 +140,25 @@ export class KoboSyncService {
     private readonly metadataExtractionService: MetadataExtractionService,
   ) {}
 
-  async getDelta(
-    userId: number,
-    deviceId: number,
-    deviceToken: string,
-    baseUrl: string,
-  ): Promise<{ entitlements: unknown[]; hasMore: boolean; syncToken: string }> {
+  async getDelta(userId: number, deviceId: number, deviceToken: string, baseUrl: string, incomingToken?: string): Promise<KoboSyncResult> {
     let snapshot = await this.findDeviceSnapshot(userId, deviceId);
+    const acknowledgedLegacyIds = await acknowledgeKoboPage(this.db, userId, deviceId, incomingToken);
+    if (snapshot && acknowledgedLegacyIds.length > 0) await this.completeLegacyNumericRemovals(userId, snapshot.id, acknowledgedLegacyIds);
     const smartScopeMatchCache: SmartScopeMatchCache = new Map();
 
     // Reconciling costs a pass over the whole library, so a device still working through its
     // pending rows skips it: those rows already say what it is owed, and whatever changed while
     // it paged is picked up by the reconcile that opens its next sync.
     if (snapshot && (await this.hasPendingSnapshotBooks(snapshot.id))) {
-      return this.getPageFromSnapshot(userId, snapshot.id, deviceToken, baseUrl, smartScopeMatchCache, () =>
-        this.fetchEligibleBookIds(userId, true, smartScopeMatchCache),
-      );
+      return this.getPageFromSnapshot(userId, snapshot.id, deviceToken, baseUrl, smartScopeMatchCache);
     }
 
     const hadDeviceSnapshot = snapshot ? true : await this.hasDeviceSnapshot(userId);
-    const legacyNumericRemovalBookIds = snapshot ? new Set<number>() : await this.getLegacyNumericRemovalBookIds(userId, deviceId);
-    const eligibleSnapshotRows = await this.fetchEligibleSnapshotRows(userId, hadDeviceSnapshot, smartScopeMatchCache, true);
+    const legacySnapshot = snapshot ? undefined : await this.initializeLegacyBookIdentities(userId, deviceId);
+    const eligibleSnapshotRows = await this.prepareEligibleSnapshotRows(userId, hadDeviceSnapshot, smartScopeMatchCache);
 
     if (!snapshot) {
-      const created = await this.createSnapshot(userId, deviceId, eligibleSnapshotRows, legacyNumericRemovalBookIds);
+      const created = await this.createSnapshot(userId, deviceId, eligibleSnapshotRows, legacySnapshot?.id);
       snapshot = created.snapshot;
       if (!created.created) {
         await this.reconcileSnapshot(snapshot.id, eligibleSnapshotRows);
@@ -174,8 +169,7 @@ export class KoboSyncService {
       await this.reconcileSnapshot(snapshot.id, eligibleSnapshotRows);
     }
 
-    const eligibleIds = new Set(eligibleSnapshotRows.map((row) => row.bookId));
-    return this.getPageFromSnapshot(userId, snapshot.id, deviceToken, baseUrl, smartScopeMatchCache, () => Promise.resolve(eligibleIds));
+    return this.getPageFromSnapshot(userId, snapshot.id, deviceToken, baseUrl, smartScopeMatchCache);
   }
 
   async getBookMetadata(userId: number, bookId: number, deviceToken: string, baseUrl: string): Promise<unknown[]> {
@@ -221,15 +215,6 @@ export class KoboSyncService {
     return Boolean(row);
   }
 
-  private async fetchEligibleBookIds(
-    userId: number,
-    needsLegacyNumericRemovalForNewMappings: boolean,
-    smartScopeMatchCache: SmartScopeMatchCache,
-  ): Promise<Set<number>> {
-    const rows = await this.fetchEligibleSnapshotRows(userId, needsLegacyNumericRemovalForNewMappings, smartScopeMatchCache);
-    return new Set(rows.map((row) => row.bookId));
-  }
-
   private async hasDeviceSnapshot(userId: number): Promise<boolean> {
     const snapshot = await this.db.query.koboLibrarySnapshots.findFirst({
       where: eq(schema.koboLibrarySnapshots.userId, userId),
@@ -238,23 +223,29 @@ export class KoboSyncService {
     return Boolean(snapshot);
   }
 
-  private async getLegacyNumericRemovalBookIds(userId: number, deviceId: number): Promise<Set<number>> {
+  private async initializeLegacyBookIdentities(userId: number, deviceId: number): Promise<LegacySnapshot | undefined> {
     const legacySnapshot = await this.findLegacySnapshotForDevice(userId, deviceId);
-    if (!legacySnapshot) return new Set();
+    if (!legacySnapshot) return undefined;
 
-    const legacyBooks = await this.db
-      .select({ bookId: schema.koboLegacySnapshotBooks.bookId })
-      .from(schema.koboLegacySnapshotBooks)
-      .where(eq(schema.koboLegacySnapshotBooks.snapshotId, legacySnapshot.id));
-    for (let index = 0; index < legacyBooks.length; index += SNAPSHOT_CREATE_BATCH_SIZE) {
+    let afterBookId = 0;
+    for (;;) {
+      const legacyBooks = await this.db
+        .select({ bookId: schema.koboLegacySnapshotBooks.bookId })
+        .from(schema.koboLegacySnapshotBooks)
+        .where(and(eq(schema.koboLegacySnapshotBooks.snapshotId, legacySnapshot.id), gt(schema.koboLegacySnapshotBooks.bookId, afterBookId)))
+        .orderBy(asc(schema.koboLegacySnapshotBooks.bookId))
+        .limit(SNAPSHOT_CREATE_BATCH_SIZE);
+      if (legacyBooks.length === 0) break;
       await this.bookIdentityService.ensureForBooks(
         userId,
-        legacyBooks.slice(index, index + SNAPSHOT_CREATE_BATCH_SIZE).map((book) => book.bookId),
+        legacyBooks.map((book) => book.bookId),
         true,
       );
+      afterBookId = legacyBooks[legacyBooks.length - 1]!.bookId;
+      if (legacyBooks.length < SNAPSHOT_CREATE_BATCH_SIZE) break;
     }
 
-    return new Set(legacyBooks.map((book) => book.bookId));
+    return legacySnapshot;
   }
 
   private async findLegacySnapshotForDevice(userId: number, deviceId: number): Promise<LegacySnapshot | undefined> {
@@ -312,23 +303,9 @@ export class KoboSyncService {
   private async createSnapshot(
     userId: number,
     deviceId: number,
-    eligibleBooks: EligibleSnapshotRow[],
-    legacyNumericRemovalBookIds: ReadonlySet<number>,
+    eligibleBooks: EligibleSnapshotBatches | EligibleSnapshotBatchFactory,
+    legacySnapshotId?: number,
   ): Promise<{ snapshot: Snapshot; created: boolean }> {
-    const seedRows: SnapshotSeedRow[] = [
-      ...eligibleBooks.map<SnapshotSeedRow>((book) => ({
-        bookId: book.bookId,
-        synced: false,
-        pendingDelete: false,
-        isNew: true,
-        removedByDevice: false,
-        needsLegacyNumericRemoval: legacyNumericRemovalBookIds.has(book.bookId) || (book.needsLegacyNumericRemoval ?? false),
-        fileHash: book.fileHash,
-        deliveryHash: book.deliveryHash,
-        metadataHash: book.metadataHash,
-      })),
-    ];
-
     const created = await this.db.transaction(async (tx) => {
       const [snapshot] = await tx
         .insert(schema.koboLibrarySnapshots)
@@ -337,37 +314,39 @@ export class KoboSyncService {
         .returning();
       if (!snapshot) return null;
 
-      for (let index = 0; index < seedRows.length; index += SNAPSHOT_CREATE_BATCH_SIZE) {
-        const chunk = seedRows.slice(index, index + SNAPSHOT_CREATE_BATCH_SIZE);
-        await tx
-          .insert(schema.koboSnapshotBooks)
-          .values(chunk.map((row) => ({ ...row, snapshotId: snapshot.id })))
-          .onConflictDoNothing();
-      }
-
-      const legacyBookIds = [...legacyNumericRemovalBookIds];
-      for (let index = 0; index < legacyBookIds.length; index += SNAPSHOT_CREATE_BATCH_SIZE) {
-        const chunk = legacyBookIds.slice(index, index + SNAPSHOT_CREATE_BATCH_SIZE);
+      for await (const chunk of typeof eligibleBooks === 'function' ? eligibleBooks(tx) : eligibleBooks) {
         await tx
           .insert(schema.koboSnapshotBooks)
           .values(
-            chunk.map((bookId) => ({
+            chunk.map((book) => ({
               snapshotId: snapshot.id,
-              bookId,
+              bookId: book.bookId,
               synced: false,
-              pendingDelete: true,
-              isNew: false,
+              pendingDelete: false,
+              isNew: true,
               removedByDevice: false,
-              needsLegacyNumericRemoval: true,
-              fileHash: null,
-              deliveryHash: null,
-              metadataHash: null,
+              needsLegacyNumericRemoval: book.needsLegacyNumericRemoval ?? false,
+              fileHash: book.fileHash,
+              deliveryHash: book.deliveryHash,
+              metadataHash: book.metadataHash,
             })),
           )
-          .onConflictDoUpdate({
-            target: [schema.koboSnapshotBooks.snapshotId, schema.koboSnapshotBooks.bookId],
-            set: { needsLegacyNumericRemoval: true },
-          });
+          .onConflictDoNothing();
+      }
+
+      if (legacySnapshotId !== undefined) {
+        await tx.execute(sql`
+          INSERT INTO ${schema.koboSnapshotBooks}
+            (snapshot_id, book_id, synced, pending_delete, is_new, removed_by_device, needs_legacy_numeric_removal, file_hash, delivery_hash, metadata_hash)
+          SELECT ${snapshot.id}, legacy.book_id, false, true, false, false, true, NULL, NULL, NULL
+          FROM ${schema.koboLegacySnapshotBooks} AS legacy
+          INNER JOIN ${schema.koboLegacyLibrarySnapshots} AS legacy_snapshot
+            ON legacy_snapshot.id = legacy.snapshot_id
+          WHERE legacy.snapshot_id = ${legacySnapshotId}
+            AND legacy_snapshot.user_id = ${userId}
+          ON CONFLICT (snapshot_id, book_id)
+          DO UPDATE SET needs_legacy_numeric_removal = true
+        `);
       }
 
       await tx.execute(sql`
@@ -393,7 +372,7 @@ export class KoboSyncService {
     return { snapshot, created: false };
   }
 
-  private async reconcileSnapshot(snapshotId: number, eligibleBooks: EligibleSnapshotRow[]) {
+  private async reconcileSnapshot(snapshotId: number, eligibleBooks: EligibleSnapshotBatches | EligibleSnapshotBatchFactory) {
     await this.db.transaction(async (tx) => {
       await tx.execute(sql`
         CREATE TEMP TABLE kobo_eligible_books_tmp (
@@ -405,8 +384,7 @@ export class KoboSyncService {
         ) ON COMMIT DROP
       `);
 
-      for (let index = 0; index < eligibleBooks.length; index += SNAPSHOT_RECONCILE_BATCH_SIZE) {
-        const chunk = eligibleBooks.slice(index, index + SNAPSHOT_RECONCILE_BATCH_SIZE);
+      for await (const chunk of typeof eligibleBooks === 'function' ? eligibleBooks(tx) : eligibleBooks) {
         const valueRows = sql.join(
           chunk.map((b) => sql`(${b.bookId}, ${b.fileHash}, ${b.deliveryHash}, ${b.metadataHash}, ${b.needsLegacyNumericRemoval ?? false})`),
           sql`, `,
@@ -534,9 +512,8 @@ export class KoboSyncService {
   }
 
   /**
-   * Serves the next page of a snapshot. Eligibility is resolved lazily because only the final page
-   * needs the full set, and reaching for it on every page is what makes a long delta O(library) per
-   * request.
+   * Pending book pages only query their own IDs. Tags resolve eligibility in SQL after the
+   * device drains its catalog, without constructing a second library-wide set of IDs.
    */
   private async getPageFromSnapshot(
     userId: number,
@@ -544,8 +521,7 @@ export class KoboSyncService {
     deviceToken: string,
     baseUrl: string,
     smartScopeMatchCache: SmartScopeMatchCache,
-    resolveEligibleIds: EligibleIdsResolver,
-  ): Promise<{ entitlements: unknown[]; hasMore: boolean; syncToken: string }> {
+  ): Promise<KoboSyncResult> {
     const syncToken = encodeSyncToken(snapshotId);
 
     const pending = await this.db
@@ -555,19 +531,11 @@ export class KoboSyncService {
       .orderBy(asc(schema.koboSnapshotBooks.bookId))
       .limit(SYNC_PAGE_SIZE + 1);
 
-    const hasMore = pending.length > SYNC_PAGE_SIZE;
     const page = pending.slice(0, SYNC_PAGE_SIZE);
 
     if (page.length === 0) {
-      const tagItems = await this.buildTagItems(userId, await resolveEligibleIds(), smartScopeMatchCache);
-      return { entitlements: tagItems, hasMore: false, syncToken };
+      return { entitlements: [], tags: this.buildTagItems(userId, smartScopeMatchCache), hasMore: false, syncToken };
     }
-
-    const pageIds = page.map((r) => r.bookId);
-    await this.db
-      .update(schema.koboSnapshotBooks)
-      .set({ synced: true })
-      .where(and(eq(schema.koboSnapshotBooks.snapshotId, snapshotId), inArray(schema.koboSnapshotBooks.bookId, pageIds)));
 
     const entitlements: unknown[] = [];
     const identitiesById = await this.bookIdentityService.findByBookIds(
@@ -581,6 +549,7 @@ export class KoboSyncService {
       false,
       smartScopeMatchCache,
     );
+    const readingStatesById = await this.readingStateService.getRawStates(userId, [...booksById.keys()]);
 
     for (const row of page) {
       if (row.pendingDelete) {
@@ -594,16 +563,13 @@ export class KoboSyncService {
         } else {
           entitlements.push(this.buildRemovedEntitlement(row.bookId));
         }
-        await this.db
-          .delete(schema.koboSnapshotBooks)
-          .where(and(eq(schema.koboSnapshotBooks.snapshotId, snapshotId), eq(schema.koboSnapshotBooks.bookId, row.bookId)));
         continue;
       }
 
       const book = booksById.get(row.bookId) ?? null;
       if (!book) continue;
 
-      const readingState = await this.readingStateService.getRawState(userId, row.bookId);
+      const readingState = readingStatesById.get(row.bookId) ?? null;
       const defaultReadingState = readingState ?? this.buildDefaultReadingState(book.koboEntitlementId);
 
       if (row.isNew || row.needsLegacyNumericRemoval) {
@@ -635,9 +601,9 @@ export class KoboSyncService {
       }
     }
 
-    await this.completeLegacyNumericRemovals(userId, snapshotId, legacyRemovalCompletedBookIds);
-
-    return { entitlements, hasMore, syncToken };
+    const pageToken = await stageKoboPage(this.db, userId, snapshotId, page, legacyRemovalCompletedBookIds);
+    if (pageToken === null) return this.getPageFromSnapshot(userId, snapshotId, deviceToken, baseUrl, smartScopeMatchCache);
+    return { entitlements, hasMore: true, syncToken: encodeSyncToken(snapshotId, undefined, pageToken) };
   }
 
   private async completeLegacyNumericRemovals(userId: number, snapshotId: number, bookIds: number[]): Promise<void> {
@@ -675,64 +641,100 @@ export class KoboSyncService {
     await this.bookIdentityService.markLegacyNumericRemovalComplete(userId, completedBookIds);
   }
 
-  private async buildTagItems(userId: number, eligibleIds: Set<number>, smartScopeMatchCache: SmartScopeMatchCache): Promise<unknown[]> {
-    // Book collections only. A Kobo tag is a set of book entitlements, so a podcast collection
-    // would emit an empty tag; the schema also refuses the sync flag on one.
-    const collections = await this.db.query.collections.findMany({
-      where: and(eq(schema.collections.userId, userId), eq(schema.collections.syncToKobo, true), eq(schema.collections.mediaType, 'books')),
-    });
+  async *serializeSyncResponse(result: KoboSyncResult, storeEntitlements: unknown[] = []): AsyncGenerator<string> {
+    yield '[';
+    let hasEntry = false;
+    for (const entry of result.entitlements) {
+      yield `${hasEntry ? ',' : ''}${JSON.stringify(entry)}`;
+      hasEntry = true;
+    }
+    if (result.tags) {
+      const now = new Date().toISOString();
+      for await (const tag of result.tags) {
+        const header = JSON.stringify({ Id: tag.id, Name: tag.name, Created: now, LastModified: now, Type: 'UserTag' });
+        yield `${hasEntry ? ',' : ''}{"ChangedTag":{"Tag":${header.slice(0, -1)},"Items":[`;
+        let hasItem = false;
+        for await (const batch of tag.items) {
+          if (batch.length === 0) continue;
+          yield `${hasItem ? ',' : ''}${JSON.stringify(batch).slice(1, -1)}`;
+          hasItem = true;
+        }
+        yield ']}}}';
+        hasEntry = true;
+      }
+    }
+    for (const entry of storeEntitlements) {
+      yield `${hasEntry ? ',' : ''}${JSON.stringify(entry)}`;
+      hasEntry = true;
+    }
+    yield ']';
+  }
 
-    const collectionIds = collections.map((c) => c.id);
-
-    const collectionBooks =
-      collectionIds.length === 0
-        ? []
-        : await this.db
-            .select({ collectionId: schema.collectionBooks.collectionId, bookId: schema.collectionBooks.bookId })
-            .from(schema.collectionBooks)
-            .where(inArray(schema.collectionBooks.collectionId, collectionIds));
-
-    const booksByCollection = new Map<number, number[]>();
-    for (const row of collectionBooks) {
-      const list = booksByCollection.get(row.collectionId) ?? [];
-      list.push(row.bookId);
-      booksByCollection.set(row.collectionId, list);
+  private async *buildTagItems(userId: number, smartScopeMatchCache: SmartScopeMatchCache): AsyncGenerator<KoboSyncTag> {
+    const whereClause = await this.buildEligibleBooksWhereClause(userId, smartScopeMatchCache);
+    let afterCollectionId = 0;
+    for (;;) {
+      const collections = await this.db
+        .select({ id: schema.collections.id, name: schema.collections.name })
+        .from(schema.collections)
+        .where(
+          and(
+            eq(schema.collections.userId, userId),
+            eq(schema.collections.syncToKobo, true),
+            eq(schema.collections.mediaType, 'books'),
+            gt(schema.collections.id, afterCollectionId),
+          ),
+        )
+        .orderBy(asc(schema.collections.id))
+        .limit(SYNC_PAGE_SIZE);
+      if (collections.length === 0) break;
+      for (const collection of collections) {
+        const membership = sql`EXISTS (
+          SELECT 1 FROM ${schema.collectionBooks}
+          WHERE ${schema.collectionBooks.collectionId} = ${collection.id}
+            AND ${schema.collectionBooks.bookId} = ${schema.books.id}
+        )`;
+        yield { id: `col-${collection.id}`, name: collection.name, items: this.iterateTagItems(userId, and(whereClause, membership)) };
+      }
+      afterCollectionId = collections[collections.length - 1]!.id;
+      if (collections.length < SYNC_PAGE_SIZE) break;
     }
 
     const [accessibleLibraryIds, timeZone] = await Promise.all([
       this.bookAccessService.getAccessibleLibraryIds(userId),
       this.getUserTimeZone(userId),
     ]);
-    const smartScopeMatches = await this.getSyncedSmartScopeMatchesCached(userId, accessibleLibraryIds, timeZone, smartScopeMatchCache);
+    const scopes = await this.getSyncedSmartScopeMatchesCached(userId, accessibleLibraryIds, timeZone, smartScopeMatchCache);
+    for (const [scopeId, scope] of scopes) {
+      yield {
+        id: `ss-${scopeId}`,
+        name: scope.name,
+        items: this.iterateTagItems(userId, scope.where ? and(whereClause, scope.where) : sql`false`),
+      };
+    }
+  }
 
-    if (collections.length === 0 && smartScopeMatches.size === 0) return [];
-
-    const now = new Date().toISOString();
-    const allEligibleBookIds = [...eligibleIds];
-    const identitiesById = await this.bookIdentityService.ensureForBooks(userId, allEligibleBookIds, false);
-
-    const buildTag = (id: string, name: string, bookIds: number[]) => ({
-      ChangedTag: {
-        Tag: {
-          Id: id,
-          Name: name,
-          Created: now,
-          LastModified: now,
-          Type: 'UserTag',
-          Items: bookIds
-            .filter((bookId) => eligibleIds.has(bookId))
-            .flatMap((bookId) => {
-              const identity = identitiesById.get(bookId);
-              return identity ? [{ RevisionId: identity.entitlementId, Type: 'ProductRevisionTagItem' }] : [];
-            }),
-        },
-      },
-    });
-
-    const collectionTags = collections.map((col) => buildTag(`col-${col.id}`, col.name, booksByCollection.get(col.id) ?? []));
-    const smartScopeTags = [...smartScopeMatches.entries()].map(([scopeId, match]) => buildTag(`ss-${scopeId}`, match.name, match.bookIds));
-
-    return [...collectionTags, ...smartScopeTags];
+  private async *iterateTagItems(userId: number, where: SQL | undefined): AsyncGenerator<KoboTagItem[]> {
+    if (!where) return;
+    let afterBookId = 0;
+    for (;;) {
+      const rows = await this.db
+        .select({ bookId: schema.books.id, entitlementId: schema.koboBookEntitlements.entitlementId })
+        .from(schema.books)
+        .innerJoin(schema.bookFiles, eq(schema.bookFiles.id, schema.books.primaryFileId))
+        .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.books.id))
+        .innerJoin(
+          schema.koboBookEntitlements,
+          and(eq(schema.koboBookEntitlements.bookId, schema.books.id), eq(schema.koboBookEntitlements.userId, userId)),
+        )
+        .where(and(where, gt(schema.books.id, afterBookId)))
+        .orderBy(asc(schema.books.id))
+        .limit(SNAPSHOT_RECONCILE_BATCH_SIZE);
+      if (rows.length === 0) break;
+      yield rows.map((row) => ({ RevisionId: row.entitlementId, Type: 'ProductRevisionTagItem' }));
+      afterBookId = rows[rows.length - 1]!.bookId;
+      if (rows.length < SNAPSHOT_RECONCILE_BATCH_SIZE) break;
+    }
   }
 
   // Memoizes getSyncedSmartScopeMatches for the lifetime of a single request (see SmartScopeMatchCache);
@@ -762,33 +764,20 @@ export class KoboSyncService {
 
     const libraryIds = accessibleLibraryIds ?? (await this.db.select({ id: schema.libraries.id }).from(schema.libraries)).map((row) => row.id);
 
-    const matches = await Promise.all(
-      scopes.map(async (scope): Promise<[number, SmartScopeMatch]> => {
-        // A scope without a filter matches zero books everywhere else in the app
-        // (SmartScopeService.findAll/prepareBooksQuery), so mirror that here rather
-        // than syncing the whole library for an unconfigured scope.
-        // Kobo holds books. The scope query already excludes podcast scopes, whose rules are not a
-        // GroupRule; this second check keeps that guarantee local to where the filter is read.
-        if (!scope.filter || scope.mediaType !== 'books') {
-          return [scope.id, { name: scope.name, bookIds: [], where: undefined }];
-        }
-        const where = this.queryBuilder.buildWhere(scope.filter as GroupRule, { accessibleLibraryIds: libraryIds, userId, timeZone });
-        const bookIds = await this.fetchSmartScopeBookIds(where);
-        return [scope.id, { name: scope.name, bookIds, where }];
-      }),
-    );
+    const matches = scopes.map((scope): [number, SmartScopeMatch] => {
+      // A scope without a filter matches zero books everywhere else in the app
+      // (SmartScopeService.findAll/prepareBooksQuery), so mirror that here rather
+      // than syncing the whole library for an unconfigured scope.
+      // Kobo holds books. The scope query already excludes podcast scopes, whose rules are not a
+      // GroupRule; this second check keeps that guarantee local to where the filter is read.
+      if (!scope.filter || scope.mediaType !== 'books') {
+        return [scope.id, { name: scope.name, where: undefined }];
+      }
+      const where = this.queryBuilder.buildWhere(scope.filter as GroupRule, { accessibleLibraryIds: libraryIds, userId, timeZone });
+      return [scope.id, { name: scope.name, where }];
+    });
 
     return new Map<number, SmartScopeMatch>(matches);
-  }
-
-  private async fetchSmartScopeBookIds(where: SQL | undefined): Promise<number[]> {
-    if (!where) return [];
-    const rows = await this.db
-      .select({ id: schema.books.id })
-      .from(schema.books)
-      .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.books.id))
-      .where(where);
-    return rows.map((row) => row.id);
   }
 
   private buildRemovedEntitlement(bookId: number | string) {
@@ -980,10 +969,12 @@ export class KoboSyncService {
    * A file that cannot be read stays null so it is retried later: persisting a read failure as
    * `false` would permanently mark a comic reflowable.
    */
-  private async backfillFixedLayout(rows: readonly FixedLayoutCandidate[]): Promise<Map<number, boolean>> {
-    const pending = rows
-      .filter((row) => row.isFixedLayout === null && (row.fileFormat === 'epub' || row.fileFormat === 'kepub'))
-      .slice(0, FIXED_LAYOUT_BACKFILL_LIMIT);
+  private async backfillFixedLayout(
+    rows: readonly FixedLayoutCandidate[],
+    limit = FIXED_LAYOUT_BACKFILL_LIMIT,
+    executor: KoboCatalogExecutor = this.db,
+  ): Promise<Map<number, boolean>> {
+    const pending = rows.filter((row) => row.isFixedLayout === null && (row.fileFormat === 'epub' || row.fileFormat === 'kepub')).slice(0, limit);
     const resolved = new Map<number, boolean>();
     if (pending.length === 0) return resolved;
 
@@ -1011,7 +1002,7 @@ export class KoboSyncService {
         // Still-null guard: keeps the write idempotent, avoids clobbering a value a concurrent
         // scan just wrote, and keeps book_files.updatedAt (the KOReader library token and OPDS
         // entry timestamps) from being bumped by a sync that changed nothing.
-        await this.db
+        await executor
           .update(schema.bookFiles)
           .set({ isFixedLayout: value })
           .where(and(inArray(schema.bookFiles.id, fileIds), isNull(schema.bookFiles.isFixedLayout)));
@@ -1082,7 +1073,7 @@ export class KoboSyncService {
 
     return and(
       eq(schema.books.status, 'present'),
-      inArray(schema.bookFiles.format, ['epub', 'kepub']),
+      inArray(schema.bookFiles.format, ['epub', 'kepub', 'pdf']),
       libraryAccessFilter,
       membershipFilter,
       ...contentFilterClauses,
@@ -1102,12 +1093,17 @@ export class KoboSyncService {
     needsLegacyNumericRemovalForNewMappings: boolean,
     smartScopeMatchCache: SmartScopeMatchCache,
     backfillFixedLayout = false,
+    afterBookId = 0,
+    fixedLayoutBackfillBudget = { remaining: FIXED_LAYOUT_BACKFILL_LIMIT },
+    executor: KoboCatalogExecutor = this.db,
+    preparedWhere?: SQL,
+    preparedSettings?: KoboDeliverySettings,
   ): Promise<EligibleSnapshotRow[]> {
-    const whereClause = await this.buildEligibleBooksWhereClause(userId, smartScopeMatchCache);
+    const whereClause = preparedWhere ?? (await this.buildEligibleBooksWhereClause(userId, smartScopeMatchCache));
     if (!whereClause) return [];
-    const deliverySettings = await this.getDeliverySettings(userId);
+    const deliverySettings = preparedSettings ?? (await this.getDeliverySettings(userId));
 
-    const rows = await this.db
+    const rows = await executor
       .select({
         bookId: schema.books.id,
         title: schema.bookMetadata.title,
@@ -1132,7 +1128,7 @@ export class KoboSyncService {
       .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.books.id))
       .leftJoin(schema.bookAuthors, eq(schema.bookAuthors.bookId, schema.books.id))
       .leftJoin(schema.authors, eq(schema.authors.id, schema.bookAuthors.authorId))
-      .where(whereClause)
+      .where(and(whereClause, gt(schema.books.id, afterBookId)))
       .groupBy(
         schema.books.id,
         schema.bookMetadata.title,
@@ -1149,15 +1145,24 @@ export class KoboSyncService {
         schema.bookFiles.id,
         schema.bookFiles.absolutePath,
         schema.bookFiles.isFixedLayout,
-      );
+      )
+      .orderBy(asc(schema.books.id))
+      .limit(SNAPSHOT_RECONCILE_BATCH_SIZE);
 
     const identitiesById = await this.bookIdentityService.ensureForBooks(
       userId,
       rows.map((row) => row.bookId),
       needsLegacyNumericRemovalForNewMappings,
+      executor,
     );
 
-    const fixedLayoutByFileId = backfillFixedLayout ? await this.backfillFixedLayout(rows) : new Map<number, boolean>();
+    const fixedLayoutByFileId = backfillFixedLayout
+      ? await this.backfillFixedLayout(rows, fixedLayoutBackfillBudget.remaining, executor)
+      : new Map<number, boolean>();
+    if (backfillFixedLayout) {
+      const candidateCount = rows.filter((row) => row.isFixedLayout === null && (row.fileFormat === 'epub' || row.fileFormat === 'kepub')).length;
+      fixedLayoutBackfillBudget.remaining -= Math.min(fixedLayoutBackfillBudget.remaining, candidateCount);
+    }
 
     return rows.map((row) => {
       const isFixedLayout = row.isFixedLayout ?? fixedLayoutByFileId.get(row.fileId) ?? null;
@@ -1184,6 +1189,61 @@ export class KoboSyncService {
         needsLegacyNumericRemoval: identity?.needsLegacyNumericRemoval ?? false,
       };
     });
+  }
+
+  private async *iterateEligibleSnapshotRows(
+    userId: number,
+    needsLegacyNumericRemovalForNewMappings: boolean,
+    smartScopeMatchCache: SmartScopeMatchCache,
+    executor: KoboCatalogExecutor = this.db,
+    preparedWhere?: SQL,
+    preparedSettings?: KoboDeliverySettings,
+  ): AsyncGenerator<EligibleSnapshotRow[]> {
+    let afterBookId = 0;
+    const fixedLayoutBackfillBudget = { remaining: FIXED_LAYOUT_BACKFILL_LIMIT };
+    const startedAt = Date.now();
+    let bookCount = 0;
+    let batchCount = 0;
+    this.logger.debug(`[kobo.snapshot_catalog] [start] userId=${userId} batchSize=${SNAPSHOT_RECONCILE_BATCH_SIZE} - catalog scan started`);
+    try {
+      for (;;) {
+        const batch = await this.fetchEligibleSnapshotRows(
+          userId,
+          needsLegacyNumericRemovalForNewMappings,
+          smartScopeMatchCache,
+          fixedLayoutBackfillBudget.remaining > 0,
+          afterBookId,
+          fixedLayoutBackfillBudget,
+          executor,
+          preparedWhere,
+          preparedSettings,
+        );
+        if (batch.length === 0) break;
+        batchCount++;
+        bookCount += batch.length;
+        yield batch;
+        afterBookId = batch[batch.length - 1]!.bookId;
+        if (batch.length < SNAPSHOT_RECONCILE_BATCH_SIZE) break;
+      }
+      this.logger.debug(
+        `[kobo.snapshot_catalog] [end] userId=${userId} durationMs=${Date.now() - startedAt} books=${bookCount} batches=${batchCount} batchSize=${SNAPSHOT_RECONCILE_BATCH_SIZE} - catalog scan completed`,
+      );
+    } catch (error: unknown) {
+      this.logger.error(
+        `[kobo.snapshot_catalog] [fail] userId=${userId} durationMs=${Date.now() - startedAt} errorClass=${error instanceof Error ? error.name : 'UnknownError'} error="${sanitizeLogValue(error instanceof Error ? error.message : 'unknown error')}" - catalog scan failed`,
+      );
+      throw error;
+    }
+  }
+
+  private async prepareEligibleSnapshotRows(
+    userId: number,
+    needsLegacyNumericRemovalForNewMappings: boolean,
+    smartScopeMatchCache: SmartScopeMatchCache,
+  ): Promise<EligibleSnapshotBatchFactory> {
+    const [where, settings] = await Promise.all([this.buildEligibleBooksWhereClause(userId, smartScopeMatchCache), this.getDeliverySettings(userId)]);
+    return (executor) =>
+      this.iterateEligibleSnapshotRows(userId, needsLegacyNumericRemovalForNewMappings, smartScopeMatchCache, executor, where, settings);
   }
 
   private async fetchEligibleBooksByIds(
