@@ -1079,7 +1079,7 @@ async function cleanup() {
   await responseProxy?.close();
   await stopFaultProxy?.();
   await externalReceivers?.close();
-  const stopped = await Promise.allSettled([...children].map(stop));
+  const stopped = await Promise.allSettled([...children].map((child) => stop(child)));
   if (e03Proof) await stopRecoveredRuntime();
   await restartMonitor;
   if (!existingServer) {
