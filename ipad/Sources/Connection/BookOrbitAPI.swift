@@ -81,7 +81,7 @@ actor BookOrbitAPI {
     return try accept(response)
   }
 
-  private func accept(_ response: NativeAuthResponse) throws -> AuthUser {
+  func accept(_ response: NativeAuthResponse) throws -> AuthUser {
     let session = SavedSession(
       credentials: NativeCredentials(
         accessToken: response.accessToken, accessTokenExpiresAt: response.accessTokenExpiresAt,
@@ -119,13 +119,9 @@ actor BookOrbitAPI {
     guard let saved else { return }
     let body = try JSONEncoder().encode(
       RefreshRequest(refreshToken: saved.credentials.refreshToken))
-    do {
-      let (_, response) = try await raw("auth/logout", method: "POST", body: body)
-      try validate(response)
-    } catch let error as URLError where error.code != .cancelled {
-      // A server outage must not prevent removing this device's credentials.
-    }
     try invalidateSession()
+    let (_, response) = try await raw("auth/logout", method: "POST", body: body)
+    try validate(response)
   }
 
   func changePassword(current: String, new: String) async throws {
@@ -137,7 +133,7 @@ actor BookOrbitAPI {
     try invalidateSession()
   }
 
-  private func invalidateSession() throws {
+  func invalidateSession() throws {
     try store.remove()
     sessionGeneration = UUID()
     refreshTask?.task.cancel()
@@ -145,6 +141,11 @@ actor BookOrbitAPI {
     saved = nil
     resourceStore = nil
     isOffline = false
+  }
+
+  func currentSessionID() throws -> Int {
+    guard let saved else { throw ConnectionError.expiredSession }
+    return saved.credentials.sessionId
   }
 
   func offlineStore() throws -> OfflineResourceStore {
@@ -165,10 +166,12 @@ actor BookOrbitAPI {
     _ path: String, method: String = "GET", body: Data? = nil,
     query: [URLQueryItem] = [], authenticated: Bool = true
   ) async throws -> T {
+    let generation = authenticated ? try authenticatedSessionGeneration() : nil
     do {
       return try await sendOnline(
         path, method: method, body: body, query: query, authenticated: authenticated)
     } catch {
+      if let generation { try ensureSession(generation) }
       if method == "GET", authenticated, error is URLError,
         let data = try await offlineStore().read(path: path, query: query, limit: 8 * 1024 * 1024)
       {
@@ -182,11 +185,13 @@ actor BookOrbitAPI {
     _ path: String, method: String = "GET", body: Data? = nil, query: [URLQueryItem] = [],
     byteLimit: Int = 1024 * 1024, session: UUID? = nil, expectedStatus: Int? = nil
   ) async throws -> T {
+    let generation = try session ?? authenticatedSessionGeneration()
     do {
       return try await boundedJSONOnline(
         path, method: method, body: body, query: query,
         byteLimit: byteLimit, session: session, expectedStatus: expectedStatus)
     } catch {
+      try ensureSession(generation)
       if method == "GET", error is URLError,
         let data = try await offlineStore().read(path: path, query: query, limit: byteLimit)
       {
@@ -537,13 +542,18 @@ actor BookOrbitAPI {
     query: [URLQueryItem] = [],
     authenticated: Bool = true
   ) async throws -> T {
+    let generation = authenticated ? try authenticatedSessionGeneration() : nil
     let token = authenticated ? try await accessToken() : nil
+    if let generation { try ensureSession(generation) }
     var (data, response) = try await raw(
       path, method: method, body: body, query: query, token: token)
+    if let generation { try ensureSession(generation) }
     if response.statusCode == 401 && authenticated {
       let credentials = try await refresh()
+      if let generation { try ensureSession(generation) }
       (data, response) = try await raw(
         path, method: method, body: body, query: query, token: credentials.accessToken)
+      if let generation { try ensureSession(generation) }
       if response.statusCode == 401 { throw ConnectionError.expiredSession }
     }
     if method == "GET", [403, 404].contains(response.statusCode) {
@@ -561,7 +571,7 @@ actor BookOrbitAPI {
     }
   }
 
-  private func boundedJSONOnline<T: Decodable & Sendable>(
+  func boundedJSONOnline<T: Decodable & Sendable>(
     _ path: String, method: String = "GET", body: Data? = nil, query: [URLQueryItem] = [],
     byteLimit: Int = 1024 * 1024, session: UUID? = nil, expectedStatus: Int? = nil
   ) async throws -> T {
@@ -1623,7 +1633,7 @@ actor BookOrbitAPI {
     }
   }
 
-  private func authenticatedImage(
+  func authenticatedImage(
     path: String, query: [URLQueryItem],
     cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy,
     namespace: String? = nil
@@ -2105,17 +2115,19 @@ actor BookOrbitAPI {
   }
   func boundedMultipart<T: Decodable & Sendable>(
     _ path: String, filename: String, data: Data, fieldName: String = "file",
-    headers: [String: String] = [:], byteLimit: Int = 512 * 1024, session: UUID? = nil
+    headers: [String: String] = [:], byteLimit: Int = 512 * 1024, session: UUID? = nil,
+    mimeType: String = "application/octet-stream"
   ) async throws -> T {
     guard data.count <= 4 * 1024 * 1024, byteLimit > 0, byteLimit <= 1024 * 1024,
       !filename.contains("\r"), !filename.contains("\n"), !filename.contains("\""),
+      mimeType.range(of: #"^[A-Za-z0-9.+-]+/[A-Za-z0-9.+-]+$"#, options: .regularExpression) != nil,
       !fieldName.contains("\r"), !fieldName.contains("\n"), !fieldName.contains("\"")
     else { throw ConnectionError.invalidResponse }
     let generation = try session ?? authenticatedSessionGeneration()
     try ensureSession(generation)
     let boundary = "BookOrbit-\(UUID().uuidString)"
     var body = Data(
-      "--\(boundary)\r\nContent-Disposition: form-data; name=\"\(fieldName)\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+      "--\(boundary)\r\nContent-Disposition: form-data; name=\"\(fieldName)\"; filename=\"\(filename)\"\r\nContent-Type: \(mimeType)\r\n\r\n"
         .utf8)
     body.append(data)
     body.append(Data("\r\n--\(boundary)--\r\n".utf8))

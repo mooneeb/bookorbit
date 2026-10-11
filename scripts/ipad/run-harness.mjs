@@ -17,6 +17,9 @@ import { e03Suites } from "./e03-runner.mjs";
 import { startRequestAdminFixture } from "./e03-request-admin-fixture.mjs";
 import { seedDuplicateMergeFixture } from "./e03-duplicate-merge-fixture.mjs";
 import { startE03ResponseProxy } from "./e03-response-proxy.mjs";
+import { e05Suites } from "./e05-runner.mjs";
+import { configureE05Fixture } from "./e05-fixture.mjs";
+import { compareE05Captures } from "./e05-visual.mjs";
 
 const startedAt = Date.now();
 const execute = promisify(execFile);
@@ -32,16 +35,34 @@ const { Client } = require("pg");
 const databaseName = `bookorbit_ipad_${process.pid}_e2e`;
 const databaseURL = `postgres://bookorbit:bookorbit@localhost:5432/${databaseName}`;
 const runID = `run-${process.pid}-${Date.now()}`;
-const artifactsRoot = `${root}/test-results/ipad/${runID}`;
+const artifactsRoot = join(root, "test-results/ipad", runID);
 let commandNumber = 0;
 const packageManager = process.env.IPAD_PNPM_EXECUTABLE ?? "pnpm";
 const e03Proof = process.argv.includes("--e03");
+const e05Proof = process.argv.includes("--e05");
+const e05Case = process.argv.find((argument) => argument.startsWith("--e05-case="))?.slice(11);
+if (e05Case && !e05Proof) throw new Error("--e05-case requires --e05");
+if (e05Proof) e05Suites(e05Case, { inventoryOnly: process.argv.includes("--list-e05") });
+if (process.argv.includes("--list-e05")) {
+  console.log(
+    JSON.stringify({ suites: e05Suites(e05Case, { inventoryOnly: true }), native: "E05AcceptanceJourneyTests", inventoryComplete: false }, null, 2),
+  );
+  process.exit(0);
+}
+const apiPort = e05Proof ? 16486 : 16482;
+const webPort = e05Proof ? 16588 : 16484;
 const skipBuild = process.argv.includes("--skip-build");
-if (skipBuild && (!e03Proof || !process.argv.includes("--serve"))) throw new Error("Compiled output reuse requires retained E03 fixture mode");
+if (skipBuild && (!(e03Proof || e05Proof) || !process.argv.includes("--serve")))
+  throw new Error("Compiled output reuse requires retained fixture mode");
 const reuseNativeBuild = process.argv.includes("--reuse-native-build");
-if (reuseNativeBuild && (!e03Proof || !process.argv.includes("--ui"))) throw new Error("Joined native build reuse requires E03 UI mode");
+if (reuseNativeBuild && (!(e03Proof || e05Proof) || !process.argv.includes("--ui")))
+  throw new Error("Joined native build reuse requires E03 or E05 UI mode");
 const e03Case = process.argv.find((argument) => argument.startsWith("--e03-case="))?.slice(11);
-const browserConfig = e03Proof ? "scripts/ipad/e03-web.config.mjs" : "scripts/ipad/playwright.config.mjs";
+const browserConfig = e05Proof
+  ? "scripts/ipad/e05-web.config.mjs"
+  : e03Proof
+    ? "scripts/ipad/e03-web.config.mjs"
+    : "scripts/ipad/playwright.config.mjs";
 if (e03Case && !e03Proof) throw new Error("--e03-case requires --e03");
 if (e03Proof) await e03Suites(e03Case);
 if (process.argv.includes("--list-e03")) {
@@ -50,6 +71,7 @@ if (process.argv.includes("--list-e03")) {
 }
 const annotationsProof = process.argv.includes("--annotations");
 if (e03Proof && annotationsProof) throw new Error("E03 acquisition and E02 annotation journeys run separately");
+if (e05Proof && (e03Proof || annotationsProof)) throw new Error("E05 account operations run in their own isolated fixture");
 const annotationVisualProfile = annotationProfile(process.argv.find((argument) => argument.startsWith("--profile="))?.slice(10));
 const nativeVisualProfile = annotationProfile(annotationVisualProfile.nativeProfile ?? annotationVisualProfile.name);
 const nativeOnly = process.argv.includes("--native-only");
@@ -232,6 +254,7 @@ let nativeTests =
           ? [pdfRecoveryNative]
           : process.env.IPAD_TEST_ONLY?.split(",")) ??
   (annotationsProof ? ["BookOrbitUITests/AnnotationJourneyTests", "BookOrbitUITests/AnnotationHubJourneyTests"] : []);
+if (e05Proof && !process.env.IPAD_TEST_ONLY) nativeTests = ["BookOrbitUITests/E05AcceptanceJourneyTests"];
 if (nativeTests.some((name) => !new RegExp(`^${nativeTestBundle}/[A-Za-z_]\\w*(?:/[A-Za-z_]\\w*)?$`).test(name))) {
   throw new Error(`IPAD_TEST_ONLY must contain comma-separated ${nativeTestBundle} classes or methods`);
 }
@@ -240,15 +263,24 @@ const env = {
   DATABASE_URL: databaseURL,
   E2E_DATABASE_URL: databaseURL,
   NODE_ENV: "test",
-  APP_URL: "http://localhost:16484",
+  APP_URL: `http://localhost:${webPort}`,
   IPAD_TEST_RUN: runID,
   IPAD_TEST_ARTIFACTS: artifactsRoot,
   IPAD_E03_PROOF: e03Proof ? "1" : "0",
+  IPAD_E05_PROOF: e05Proof ? "1" : "0",
+  IPAD_E05_CASE: e05Case ?? "",
+  IPAD_E05_PROFILE: annotationVisualProfile.name,
+  IPAD_E05_EXPECT_NATIVE: e05Proof && process.argv.includes("--ui") && process.argv.includes("--web") && (!e05Case || e05Case === "A01") ? "1" : "0",
+  IPAD_E05_SERVER_URL: `http://localhost:${apiPort}`,
+  TEST_RUNNER_IPAD_E05_SERVER_URL: `http://localhost:${apiPort}`,
+  TEST_RUNNER_IPAD_E05_PROFILE: annotationVisualProfile.name,
+  IPAD_BASE_URL: `http://localhost:${apiPort}/api/v1`,
+  IPAD_WEB_URL: `http://localhost:${webPort}`,
   IPAD_E03_CASE: e03Case ?? "",
   IPAD_E03_PROFILE: annotationVisualProfile.name,
   IPAD_E03_API_URL: "http://localhost:16482/api/v1",
   IPAD_E03_BASE_URL: "http://localhost:16482/api/v1",
-  IPAD_API_BASE: "http://localhost:16482/api/v1",
+  IPAD_API_BASE: `http://localhost:${apiPort}/api/v1`,
   IPAD_FIXTURE_PASSWORD: "IpadFixture123",
   IPAD_E03_FIXTURE_FILE: `${artifactsRoot}/e03-fixture.json`,
   IPAD_E03_UPLOAD_RECEIPT_FILE: `${artifactsRoot}/e03-upload-receipt.json`,
@@ -705,15 +737,15 @@ async function configureE03Fixtures() {
 }
 async function startWeb() {
   if (web) return;
-  web = launch(packageManager, ["--filter", "client", "exec", "vite", "preview", "--host", "127.0.0.1", "--port", "16484", "--strictPort"], {
-    env: { ...env, BOOKORBIT_API_TARGET: "http://localhost:16482" },
+  web = launch(packageManager, ["--filter", "client", "exec", "vite", "preview", "--host", "127.0.0.1", "--port", String(webPort), "--strictPort"], {
+    env: { ...env, BOOKORBIT_API_TARGET: `http://localhost:${apiPort}` },
     stdio: "inherit",
   });
   const deadline = Date.now() + 30_000;
   while (true) {
     if (web.exitCode !== null) throw new Error("iPad web server exited before becoming ready");
     try {
-      if ((await fetch("http://localhost:16484", { signal: AbortSignal.timeout(1000) })).ok) break;
+      if ((await fetch(`http://localhost:${webPort}`, { signal: AbortSignal.timeout(1000) })).ok) break;
     } catch {}
     if (Date.now() >= deadline) throw new Error("iPad web server did not become ready");
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -857,7 +889,7 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
     currentNativeDeviceID = selectedDevice.udid;
     if (selectedDevice.state === "Shutdown") await nativeCommand("xcrun", ["simctl", "boot", selectedDevice.udid]);
     await nativeCommand("xcrun", ["simctl", "bootstatus", selectedDevice.udid, "-b"]);
-    if (annotationsProof || e03Proof) {
+    if (annotationsProof || e03Proof || e05Proof) {
       const size = nativeVisualProfile.nativeDevice.includes("11") ? "11-inch" : "13-inch";
       if (!selectedDevice.deviceTypeIdentifier?.includes(size)) throw new Error(`Native profile requires an actual ${size} iPad simulator`);
       const contentSize =
@@ -932,6 +964,13 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
       ]);
     }
     await nativeCommand("xcodegen", ["generate", "--spec", "ipad/project.yml"]);
+    if (e05Proof && !process.env.IPAD_TEST_ONLY) {
+      const source = await readFile(`${root}/ipad/UITests/E05AcceptanceJourneyTests.swift`, "utf8");
+      nativeTests = [...source.matchAll(/func (testIPADE05(A0[1-6])[A-Za-z_0-9]*)\(/g)]
+        .filter((match) => !e05Case || match[2] === e05Case)
+        .map((match) => `BookOrbitUITests/E05AcceptanceJourneyTests/${match[1]}`);
+      if (!nativeTests.length) throw new Error(`No implemented E05 ${e05Case ?? "all"} native journey exists`);
+    }
     if (e03Proof && !process.env.IPAD_TEST_ONLY) {
       nativeTests = [];
       for (const file of await readdir(`${root}/ipad/UITests`)) {
@@ -1040,7 +1079,7 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
           `${artifacts}/profile-attachments`,
         ]);
       }
-      if (isolatedNative || e03Proof) {
+      if (isolatedNative || e03Proof || e05Proof) {
         if (!reuseNativeBuild) await nativeCommand("xcodebuild", ["build-for-testing", ...commonArguments], { env: nativeEnvironment });
         else if (!(await lstat(join(root, "ipad/DerivedData/Build/Products/Debug-iphonesimulator/BookOrbit.app/BookOrbit"))).isFile())
           throw new Error("Joined native app build is absent");
@@ -1068,7 +1107,7 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
       await nativeCommand(
         "xcodebuild",
         [
-          annotationsProof || e03Proof ? "test-without-building" : "test",
+          annotationsProof || e03Proof || e05Proof ? "test-without-building" : "test",
           ...commonArguments,
           "-resultBundlePath",
           `${artifacts}/native.xcresult`,
@@ -1135,6 +1174,7 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
           `[ipad.ui] [end] runId=${runID} durationMs=${Date.now() - startedAt} tests=${summary.totalTestCount} - native tests passed; evidence exported`,
         );
         if (e03Proof) await compareNativeE03Visuals(artifacts, nativeVisualProfile.name);
+        if (e05Proof) await compareE05Captures(artifacts, nativeVisualProfile.name, "native");
       } catch (error) {
         nativeFailure ??= error;
       }
@@ -1190,7 +1230,7 @@ try {
   await mkdir(artifactsRoot, { recursive: true });
   await writeFile(
     `${artifactsRoot}/environment.json`,
-    `${JSON.stringify({ runID, mode: e03Proof ? "e03" : annotationsProof ? "e02" : "e01", node: process.version, nativeScheme, profile: annotationVisualProfile, destination: process.env.IPAD_TEST_DESTINATION ?? "platform=iOS Simulator,name=BookOrbit Test iPad", fixtureDate: "2026-10-05T00:00:00Z", apiURL: "http://localhost:16482/api/v1", webURL: "http://localhost:16484", annotationCase: pdfRecovery ? "pdf-recovery" : pdfHandoff ? "pdf-handoff" : recordedLayout ? "recorded-layout" : (annotationCase ?? "all"), nativeInputSubstitution: annotationsProof ? "debug-only deterministic Pencil/Scribble boundary" : null }, null, 2)}\n`,
+    `${JSON.stringify({ runID, mode: e05Proof ? "e05" : e03Proof ? "e03" : annotationsProof ? "e02" : "e01", node: process.version, nativeScheme, profile: annotationVisualProfile, destination: process.env.IPAD_TEST_DESTINATION ?? "platform=iOS Simulator,name=BookOrbit Test iPad", fixtureDate: "2026-10-05T00:00:00Z", apiURL: `http://localhost:${apiPort}/api/v1`, webURL: `http://localhost:${webPort}`, annotationCase: pdfRecovery ? "pdf-recovery" : pdfHandoff ? "pdf-handoff" : recordedLayout ? "recorded-layout" : (annotationCase ?? "all"), nativeInputSubstitution: annotationsProof ? "debug-only deterministic Pencil/Scribble boundary" : null }, null, 2)}\n`,
   );
   await createCoverFixture(env.IPAD_COVER_FIXTURE_DIR);
   if (epubProof || annotationsProof || e03Proof) {
@@ -1238,6 +1278,24 @@ try {
     });
   });
   if (e03Proof) await configureE03Fixtures();
+  if (e05Proof) {
+    await configureE05Fixture(artifactsRoot, env.IPAD_BASE_URL);
+    const shellQuote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
+    const keys = [
+      "IPAD_BASE_URL",
+      "IPAD_API_BASE",
+      "IPAD_WEB_URL",
+      "IPAD_E05_PROFILE",
+      "IPAD_E05_SERVER_URL",
+      "IPAD_TEST_RUN",
+      "IPAD_TEST_ARTIFACTS",
+      "DATABASE_URL",
+      "IPAD_FIXTURE_PASSWORD",
+    ];
+    await writeFile(`${artifactsRoot}/e05-runtime.env`, keys.map((key) => `export ${key}=${shellQuote(env[key] ?? "")}`).join("\n") + "\n", {
+      mode: 0o600,
+    });
+  }
   if (annotationsProof) {
     stopFaultProxy = await startFaultProxy({
       port: combinedFaultPort,
@@ -1256,7 +1314,7 @@ try {
     console.log(`[ipad.harness_serve] [start] runId=${runID} - retaining isolated test surfaces`);
     if (process.argv.includes("--web")) await startWeb();
     console.log(
-      `[ipad.harness_serve] [end] runId=${runID} apiPort=16482 durationMs=${Date.now() - servingAt} web=${Boolean(web)} ready=true - isolated test surfaces retained until interruption`,
+      `[ipad.harness_serve] [end] runId=${runID} apiPort=${apiPort} durationMs=${Date.now() - servingAt} web=${Boolean(web)} ready=true - isolated test surfaces retained until interruption`,
     );
     await interrupt;
   } else {
@@ -1281,11 +1339,12 @@ try {
       await command(process.execPath, ["scripts/ipad/e03-runner.mjs", ...(e03Case ? [`--case=${e03Case}`] : [])]);
       if ((!e03Case || e03Case === "A03") && (process.argv.includes("--ui") || process.argv.includes("--web"))) await prepareE03MigrationFixtures();
     }
-    if (!progressOnly && !annotationsProof && !e03Proof) await command(process.execPath, ["--test", "scripts/ipad/http.test.mjs"]);
+    if (e05Proof) await command(process.execPath, ["scripts/ipad/e05-runner.mjs", ...(e05Case ? [`--case=${e05Case}`] : [])]);
+    if (!progressOnly && !annotationsProof && !e03Proof && !e05Proof) await command(process.execPath, ["--test", "scripts/ipad/http.test.mjs"]);
     if (organizationProof || crossClient) await command(process.execPath, ["--test", "scripts/ipad/organization-http.test.mjs"]);
-    if (!annotationsProof && !e03Proof) await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);
+    if (!annotationsProof && !e03Proof && !e05Proof) await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);
     if (comicProof) await command(process.execPath, ["--test", "scripts/ipad/comic-http.test.mjs"]);
-    if (process.argv.includes("--ui") && !stopFaultProxy) stopFaultProxy = await startFaultProxy({ port: combinedFaultPort });
+    if (process.argv.includes("--ui") && !stopFaultProxy && !e05Proof) stopFaultProxy = await startFaultProxy({ port: combinedFaultPort });
     if (annotationConcurrent) {
       await startWeb();
       const outcomes = combinedRecovery
@@ -1317,6 +1376,7 @@ try {
           ...(qa5BrowserOnly ? { timeoutMs: 150_000 } : {}),
         });
         if (e03Proof) await compareWebE03Visuals(artifactsRoot, annotationVisualProfile.name);
+        if (e05Proof) await compareE05Captures(artifactsRoot, annotationVisualProfile.name, "web");
         await runAdditionalAnnotationBrowserTests();
       }
     }

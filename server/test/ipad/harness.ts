@@ -46,7 +46,10 @@ async function cleanupFixture() {
 
 async function main() {
   const fixtureBookCount =
-    process.env.IPAD_RECORDED_LAYOUT_ONLY === '1' || process.env.IPAD_PDF_HANDOFF_ONLY === '1' || process.env.IPAD_PDF_RECOVERY_ONLY === '1'
+    process.env.IPAD_E05_PROOF === '1' ||
+    process.env.IPAD_RECORDED_LAYOUT_ONLY === '1' ||
+    process.env.IPAD_PDF_HANDOFF_ONLY === '1' ||
+    process.env.IPAD_PDF_RECOVERY_ONLY === '1'
       ? 10
       : 50_000;
   console.log(`[ipad.harness] [start] runId=${process.pid} books=${fixtureBookCount} batchSize=500 - isolated harness starting`);
@@ -63,7 +66,7 @@ async function main() {
   if (!reuseFixture) disposableFixtureFolder = folder;
   if (reuseFixture) await stat(folder);
   const progressOnly = process.env.IPAD_PROGRESS_ONLY === '1';
-  const apiPort = progressOnly ? 16487 : 16482;
+  const apiPort = process.env.IPAD_E05_PROOF === '1' ? 16486 : progressOnly ? 16487 : 16482;
   process.env.APP_DATA_PATH = join(folder, 'data');
   process.env.COVER_SLOTS_BACKFILL_MODE = 'skip';
   console.log(`[ipad.fixture] [start] runId=${process.pid} stage=application - constructing isolated application`);
@@ -78,7 +81,9 @@ async function main() {
   const coverFixtureFolder = process.env.IPAD_COVER_FIXTURE_DIR;
   if (!coverFixtureFolder) throw new Error('The iPad harness requires its generated cover fixture folder');
   const oidc =
-    progressOnly || process.env.IPAD_ANNOTATIONS_PROOF === '1' || process.env.IPAD_E03_PROOF === '1' ? undefined : await startOidcProvider();
+    progressOnly || process.env.IPAD_E05_PROOF === '1' || process.env.IPAD_ANNOTATIONS_PROOF === '1' || process.env.IPAD_E03_PROOF === '1'
+      ? undefined
+      : await startOidcProvider();
 
   if (!reuseFixture) {
     const passwordHash = await hash('IpadFixture123', 4);

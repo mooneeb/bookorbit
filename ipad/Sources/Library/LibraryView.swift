@@ -16,6 +16,8 @@ struct LibraryView: View {
   @State private var showingScopes = false
   @State private var showingAnnotations = false
   @State private var showingOfflineBooks = false
+  @State private var showingSettings = false
+  @State private var appearance: NativeAppearanceModel?
   @State private var showingQuery = false
   @State private var showingSavedViews = false
   @State private var showingTableLayout = false
@@ -37,6 +39,9 @@ struct LibraryView: View {
 
   init(session: SessionModel, api: BookOrbitAPI) {
     self.session = session
+    let personalAppearance = session.user.map { NativeAppearanceModel(api: api, user: $0) }
+    _appearance = State(initialValue: personalAppearance)
+    _presentation = State(initialValue: personalAppearance?.layout ?? "list")
     _library = State(initialValue: LibraryModel(api: api, seriesCollapse: session.seriesCollapse))
     _savedViews = State(
       initialValue: SavedViewModel(serverURL: session.serverURL, userID: session.user?.id ?? 0))
@@ -67,6 +72,8 @@ struct LibraryView: View {
           .accessibilityIdentifier("openAnnotationHub")
         Button("Offline books") { showingOfflineBooks = true }
           .accessibilityIdentifier("offlineLibrary")
+        Button("Settings") { showingSettings = true }
+          .accessibilityIdentifier("openSettings")
         if let user = session.user {
           LibraryManagementSidebar(user: user) { managementDestination = $0 }
         }
@@ -258,6 +265,7 @@ struct LibraryView: View {
           }.padding()
         }
         .navigationTitle(library.location.title)
+        .background { NativeAppearanceBackground(pattern: appearance?.background ?? "none") }
         .toolbar {
           if canUseBulkActions {
             ToolbarItem(placement: .topBarLeading) {
@@ -303,7 +311,16 @@ struct LibraryView: View {
         }
       }
     }
-    .task { await library.load() }
+    .task {
+      await library.load()
+      await appearance?.load()
+    }
+    .preferredColorScheme(appearance?.colorScheme)
+    .tint(appearance?.tint ?? .accentColor)
+    .environment(\.locale, Locale(identifier: appearance?.language ?? "en"))
+    .onChange(of: appearance?.layout) { _, layout in
+      if let layout { presentation = layout }
+    }
     .onChange(of: library.collapseSeries) { Task { await library.seriesCollapseChanged() } }
     .sheet(item: $selectedSeries, onDismiss: { Task { await library.refreshAfterTableMutation() } })
     { group in
@@ -332,6 +349,7 @@ struct LibraryView: View {
       moveNotice = nil
       moveRefresh = nil
       managementDestination = nil
+      showingSettings = false
       resetBookSelection()
     }
     .sheet(item: $movement) { movement in
@@ -387,6 +405,14 @@ struct LibraryView: View {
     }
     .sheet(isPresented: $showingOfflineBooks) {
       OfflineLibraryView(api: library.api, user: session.user)
+    }
+    .sheet(isPresented: $showingSettings) {
+      if let appearance {
+        PersonalSettingsView(session: session, api: library.api, appearance: appearance) { bookID in
+          showingSettings = false
+          selectedBook = bookID
+        }
+      }
     }
     .sheet(isPresented: $showingSavedViews) {
       SavedViewsView(

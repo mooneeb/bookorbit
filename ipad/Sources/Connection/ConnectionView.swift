@@ -5,6 +5,7 @@ struct ConnectionView: View {
   @State private var username = ""
   @State private var password = ""
   @State private var showingPasswordRecovery = false
+  @State private var magicLinkInput = ""
 
   var body: some View {
     NavigationStack {
@@ -46,6 +47,20 @@ struct ConnectionView: View {
               }
             }
           }
+          Section {
+            SecureField("Magic link or token", text: $magicLinkInput)
+              .textInputAutocapitalization(.never).autocorrectionDisabled()
+              .accessibilityIdentifier("magicLinkInput")
+            Button("Sign in with magic link", action: signInWithMagicLink)
+              .disabled(magicLinkInput.isEmpty || session.isBusy)
+              .accessibilityIdentifier("magicLinkSignIn")
+          } header: {
+            Text("Magic-link sign-in")
+          } footer: {
+            Text(
+              "Paste the link or token issued by your administrator. It is sent only to this connected server."
+            )
+          }
         } else {
           Section {
             TextField(
@@ -72,9 +87,21 @@ struct ConnectionView: View {
         if let error = session.error {
           Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("connectionError") }
         }
+        if let error = session.signOutError {
+          Section {
+            Text(
+              "Local sign-out completed. The server could not confirm session revocation: \(error)"
+            )
+            .accessibilityIdentifier("signOutRevocationWarning")
+          }
+        }
       }
       .navigationTitle("BookOrbit")
       .formStyle(.grouped)
+      .onChange(of: session.identityKey) {
+        magicLinkInput = ""
+        password = ""
+      }
       .sheet(isPresented: $showingPasswordRecovery) {
         if let api = session.api, session.canRecoverPassword(using: api),
           let profile = try? ServerProfile(session.serverURL)
@@ -89,6 +116,15 @@ struct ConnectionView: View {
     password = ""
     session.error = nil
     showingPasswordRecovery = true
+  }
+
+  private func signInWithMagicLink() {
+    let input = magicLinkInput
+    magicLinkInput = ""
+    do {
+      let token = try MagicLinkInput.token(from: input, profile: ServerProfile(session.serverURL))
+      Task { await session.signIn(magicLinkToken: token) }
+    } catch { session.error = error.localizedDescription }
   }
 }
 

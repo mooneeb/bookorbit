@@ -18,6 +18,7 @@ final class SessionModel {
       Task {
         guard self.api === api, self.user?.id == user.id else { return }
         await self.synchronizeAnnotations(api: api)
+        guard self.api === api, self.user?.id == user.id else { return }
         await api.reconcileOfflineBooks()
       }
     }
@@ -32,7 +33,10 @@ final class SessionModel {
   private var sessionOperationID = UUID()
   private var isValidating = false
 
+  var identityKey: String { "\(serverURL).user.\(user?.id.description ?? "signed-out")" }
+
   func connect() async {
+    guard user == nil else { return }
     await perform {
       let profile = try ServerProfile(self.serverURL)
       let api = try BookOrbitAPI(profile: profile)
@@ -77,8 +81,27 @@ final class SessionModel {
   }
 
   func signIn(username: String, password: String) async {
-    guard let api else { return }
+    guard let api, user == nil else { return }
     await perform { self.user = try await api.login(username: username, password: password) }
+  }
+
+  func signIn(magicLinkToken: String) async {
+    guard let api, user == nil else { return }
+    await perform { self.user = try await api.loginWithMagicLink(token: magicLinkToken) }
+  }
+
+  func refreshCurrentUser() async {
+    guard let api, user != nil else { return }
+    let operationID = sessionOperationID
+    do {
+      let refreshed = try await api.resume()
+      guard self.api === api, operationID == sessionOperationID else { return }
+      user = refreshed
+    } catch {
+      guard self.api === api, operationID == sessionOperationID else { return }
+      if case ConnectionError.expiredSession = error { user = nil }
+      self.error = error.localizedDescription
+    }
   }
 
   func canRecoverPassword(using api: BookOrbitAPI) -> Bool {
@@ -113,15 +136,40 @@ final class SessionModel {
   func signOut() async {
     guard let api, !isBusy else { return }
     await perform {
+      let previousUser = self.user
+      self.oidc.cancel()
+      self.user = nil
+      await NativeAnnotationRepository.disconnect(api: api)
       do {
         try await api.logout()
       } catch {
         self.signOutError = error.localizedDescription
-        throw error
+        if (try? await api.currentSessionID()) != nil {
+          self.user = previousUser
+          throw error
+        }
       }
-      self.user = nil
       self.api = nil
       self.options = nil
+    }
+  }
+
+  func switchAccount() async {
+    await signOut()
+    guard user == nil, api == nil else { return }
+    await connect()
+  }
+
+  func revokeSession(_ id: Int, using api: BookOrbitAPI) async throws {
+    guard self.api === api, user != nil, !isBusy else { throw ConnectionError.denied }
+    let current = try await api.currentSessionID()
+    try await api.revokeAccountSession(id)
+    guard self.api === api else { return }
+    if id == current {
+      try await api.invalidateSession()
+      user = nil
+      await NativeAnnotationRepository.disconnect(api: api)
+      self.api = try BookOrbitAPI(profile: api.profile)
     }
   }
 
@@ -130,18 +178,29 @@ final class SessionModel {
     await perform {
       try await api.changePassword(current: current, new: new)
       self.user = nil
+      await NativeAnnotationRepository.disconnect(api: api)
+      self.api = try BookOrbitAPI(profile: api.profile)
     }
   }
 
   func signIn(provider: OidcProviderPublic, window: UIWindow) async {
-    guard let api else { return }
+    guard let api, user == nil else { return }
     await perform {
       self.user = try await self.oidc.signIn(provider: provider, api: api, window: window)
     }
   }
 
+  func link(provider: OidcProviderPublic, window: UIWindow) async throws {
+    guard let api, user != nil, !isBusy else { throw ConnectionError.denied }
+    isBusy = true
+    defer { isBusy = false }
+    try await oidc.link(provider: provider, api: api, window: window)
+    await refreshCurrentUser()
+  }
+
   func changeServer() {
     guard user == nil, !isBusy else { return }
+    oidc.cancel()
     sessionOperationID = UUID()
     api = nil
     options = nil

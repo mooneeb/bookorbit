@@ -221,7 +221,7 @@ export class LibraryService {
     return { ...normalizeLibraryOrganizationMode(library), folders };
   }
 
-  async create(dto: CreateLibraryDto) {
+  async create(dto: CreateLibraryDto, creatorUserId?: number) {
     const libraryType = dto.type ?? 'books';
     if (libraryType === 'podcasts' && !APP_FEATURES.podcasts) {
       throw new BadRequestException('Podcast libraries are not available');
@@ -278,6 +278,10 @@ export class LibraryService {
     });
 
     const folders = await this.libraryRepo.insertFolders(folderInputs.map(({ path, role }) => ({ libraryId: library.id, path, role })));
+
+    if (creatorUserId !== undefined) {
+      await this.libraryRepo.grantAccess(library.id, creatorUserId, 'owner');
+    }
 
     if (library.type === 'podcasts') await this.libraryRepo.insertPodcastSettings(library.id);
 
