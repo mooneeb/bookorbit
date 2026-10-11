@@ -38,6 +38,7 @@ export const uploadSessions = pgTable(
   },
   (t) => [
     uniqueIndex('upload_sessions_user_idempotency_uidx').on(t.userId, t.idempotencyKey),
+    index('upload_sessions_user_dock_idx').on(t.userId, t.resultBookDockFileId),
     index('upload_sessions_user_created_idx').on(t.userId, sql`${t.createdAt} desc`),
     index('upload_sessions_status_expires_idx').on(t.status, t.expiresAt),
     check('upload_sessions_target_kind_chk', sql`${t.targetKind} in ('library', 'existing_book', 'book_dock')`),

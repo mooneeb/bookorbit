@@ -9,6 +9,7 @@ interface MappedPathRow {
   sourcePath: string;
   mappedPath: string;
   mappingIndex: number | null;
+  lookupPaths: string[];
 }
 
 export interface MappingStats {
@@ -24,7 +25,7 @@ export interface MappingStats {
 export class PathMappingValidationService {
   constructor(private readonly repo: MigrationRepository) {}
 
-  async validate(params: { sourceBooks: SourceBook[]; pathMappings: PathMapping[]; sampleLimit?: number }): Promise<{
+  async validate(params: { sourceBooks: SourceBook[]; pathMappings: PathMapping[]; actorUserId: number; sampleLimit?: number }): Promise<{
     summary: {
       totalSourceBooks: number;
       booksWithFilePath: number;
@@ -38,29 +39,24 @@ export class PathMappingValidationService {
     const sampleLimit = Math.min(Math.max(params.sampleLimit ?? 10, 1), 100);
     const mappings = normalizeMappings(params.pathMappings);
 
-    const filePathRows: string[] = [];
+    const mappedRows: MappedPathRow[] = [];
     for (const book of params.sourceBooks) {
-      const path = normalizePath(book.filePath);
-      if (path) filePathRows.push(path);
+      const sourcePaths = [...new Set([book.filePath, ...(book.files ?? []).map((file) => file.filePath)].map(normalizePath).filter(isPresentPath))];
+      const sourcePath = sourcePaths[0];
+      if (!sourcePath) continue;
+      const matched = findMatchingMapping(sourcePath, mappings);
+      mappedRows.push({
+        sourcePath,
+        mappedPath: mapPath(sourcePath, mappings),
+        mappingIndex: matched?.index ?? null,
+        lookupPaths: isSafePath(sourcePath) ? sourcePaths.map((path) => mapPath(path, mappings)).filter(isSafePath) : [],
+      });
     }
 
-    const mappedRows: MappedPathRow[] = filePathRows.map((sourcePath) => {
-      const matched = findMatchingMapping(sourcePath, mappings);
-      if (matched) {
-        return {
-          sourcePath,
-          mappedPath: `${matched.mapping.targetPrefix}${sourcePath.slice(matched.mapping.sourcePrefix.length)}`,
-          mappingIndex: matched.index,
-        };
-      }
-      return {
-        sourcePath,
-        mappedPath: sourcePath,
-        mappingIndex: null,
-      };
-    });
-
-    const existingTargetPaths = await this.repo.findExistingBookFilePaths(mappedRows.map((row) => row.mappedPath));
+    const existingTargetPaths = await this.repo.findExistingBookFilePaths(
+      mappedRows.flatMap((row) => row.lookupPaths),
+      params.actorUserId,
+    );
 
     const mappingStats: MappingStats[] = mappings.map((mapping) => ({
       sourcePrefix: mapping.sourcePrefix,
@@ -85,7 +81,7 @@ export class PathMappingValidationService {
         stats.affectedBooks += 1;
       }
 
-      const isMatched = existingTargetPaths.has(row.mappedPath);
+      const isMatched = row.lookupPaths.some((path) => existingTargetPaths.has(path));
       if (isMatched) {
         matchedTargetPaths += 1;
         if (row.mappingIndex != null) {
@@ -106,7 +102,7 @@ export class PathMappingValidationService {
     return {
       summary: {
         totalSourceBooks: params.sourceBooks.length,
-        booksWithFilePath: filePathRows.length,
+        booksWithFilePath: mappedRows.length,
         mappedByPrefix,
         matchedTargetPaths,
         unmatchedTargetPaths,
@@ -115,6 +111,19 @@ export class PathMappingValidationService {
       mappings: mappingStats,
     };
   }
+}
+
+function isPresentPath(path: string | null): path is string {
+  return path !== null;
+}
+
+function isSafePath(path: string): boolean {
+  return !path.includes('\0') && !path.split(/[/\\]/).includes('..');
+}
+
+function mapPath(sourcePath: string, mappings: PathMapping[]): string {
+  const matched = findMatchingMapping(sourcePath, mappings);
+  return matched ? `${matched.mapping.targetPrefix}${sourcePath.slice(matched.mapping.sourcePrefix.length)}` : sourcePath;
 }
 
 function findMatchingMapping(sourcePath: string, mappings: PathMapping[]): { index: number; mapping: PathMapping } | null {

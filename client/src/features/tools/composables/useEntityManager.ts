@@ -1,4 +1,5 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
+import { i18n } from '@/i18n'
 
 import {
   ENTITY_CAPABILITIES,
@@ -17,6 +18,7 @@ import * as entityManagerApi from '../api/entity-manager'
 export type EntityManagerMode = 'duplicates' | 'browse'
 
 export function useEntityManager() {
+  const t = i18n.global.t
   const entityType = ref<EntityType>('author')
   const mode = ref<EntityManagerMode>('browse')
 
@@ -62,6 +64,34 @@ export function useEntityManager() {
   const selectionAnchorSelected = ref(false)
 
   // Operation state
+  const pendingFileUpdates = ref<{ operationId: string }[]>([])
+  const fileUpdateError = ref<string | null>(null)
+  const retryingFileUpdates = ref(false)
+
+  async function fetchPendingFileUpdates(): Promise<void> {
+    try {
+      pendingFileUpdates.value = await entityManagerApi.listFileWriteRecovery(entityType.value)
+      fileUpdateError.value = null
+    } catch (err) {
+      fileUpdateError.value = err instanceof Error ? err.message : t('tools.entityManager.fileUpdates.loadError')
+    }
+  }
+
+  async function retryPendingFileUpdates(): Promise<void> {
+    const operation = pendingFileUpdates.value[0]
+    if (!operation) return
+    retryingFileUpdates.value = true
+    try {
+      const result = await entityManagerApi.retryFileWrites(entityType.value, operation.operationId)
+      fileUpdateError.value = result.pendingBookCount ? t('tools.entityManager.fileUpdates.remaining', { count: result.pendingBookCount }) : null
+      pendingFileUpdates.value = await entityManagerApi.listFileWriteRecovery(entityType.value)
+    } catch (err) {
+      fileUpdateError.value = err instanceof Error ? err.message : t('tools.entityManager.fileUpdates.retryError')
+    } finally {
+      retryingFileUpdates.value = false
+    }
+  }
+
   const operationLoading = ref(false)
   const operationError = ref<string | null>(null)
 
@@ -69,6 +99,13 @@ export function useEntityManager() {
   const showDismissed = ref(false)
   const dismissedPairs = ref<DismissedPairInfo[]>([])
   const dismissedLoading = ref(false)
+  const dismissedPage = ref(1)
+  const dismissedPageSize = ref(20)
+  const dismissedTotal = ref(0)
+  const dismissedError = ref<string | null>(null)
+  const dismissedTotalPages = computed(() => Math.max(1, Math.ceil(dismissedTotal.value / dismissedPageSize.value)))
+  let dismissedAbortController: AbortController | null = null
+  onUnmounted(() => dismissedAbortController?.abort())
 
   const hasScanned = ref(false)
 
@@ -161,6 +198,11 @@ export function useEntityManager() {
     }
     showDismissed.value = false
     dismissedPairs.value = []
+    dismissedAbortController?.abort()
+    dismissedPage.value = 1
+    dismissedTotal.value = 0
+    dismissedLoading.value = false
+    dismissedError.value = null
     stopStatusPoll()
     duplicateScanStatus.value = null
   })
@@ -193,6 +235,12 @@ export function useEntityManager() {
       clusters.value = result.clusters
       scanTotal.value = result.total
       scanPage.value = result.page
+      scanPageSize.value = result.pageSize
+      if (scanPage.value > scanTotalPages.value) {
+        scanPage.value = scanTotalPages.value
+        await scan()
+        return
+      }
       hasScanned.value = true
     } catch (err) {
       if (controller.signal.aborted) return
@@ -240,6 +288,7 @@ export function useEntityManager() {
         ? { targetValue: targetId as string, sourceValues: sourceIds as string[], writeFiles }
         : { targetEntityId: targetId as number, sourceEntityIds: sourceIds as number[], writeFiles }
       await entityManagerApi.mergeEntities(entityType.value, payload)
+      await fetchPendingFileUpdates()
     } catch (err) {
       operationError.value = err instanceof Error ? err.message : 'Merge failed'
       throw err
@@ -320,28 +369,77 @@ export function useEntityManager() {
   )
 
   async function dismissPair(idA: number | string, idB: number | string, reason?: string): Promise<void> {
-    const payload = isInline.value
-      ? { valueA: idA as string, valueB: idB as string, reason }
-      : { entityIdA: idA as number, entityIdB: idB as number, reason }
-    await entityManagerApi.dismissPair(entityType.value, payload)
-    await fetchDismissedPairs()
+    await dismissPairs([{ idA, idB }], reason)
+  }
+
+  async function dismissPairs(pairs: { idA: number | string; idB: number | string }[], reason?: string): Promise<void> {
+    operationLoading.value = true
+    operationError.value = null
+    const type = entityType.value
+    const inline = isInline.value
+    try {
+      for (const { idA, idB } of pairs) {
+        const payload = inline
+          ? { valueA: idA as string, valueB: idB as string, reason }
+          : { entityIdA: idA as number, entityIdB: idB as number, reason }
+        await entityManagerApi.dismissPair(type, payload)
+      }
+    } catch (cause) {
+      operationError.value = cause instanceof Error ? cause.message : 'Dismiss failed'
+      throw cause
+    } finally {
+      await fetchDismissedPairs()
+      operationLoading.value = false
+    }
   }
 
   async function undismissPair(idA: number | string, idB: number | string): Promise<void> {
+    operationLoading.value = true
+    operationError.value = null
     const payload = isInline.value ? { valueA: idA as string, valueB: idB as string } : { entityIdA: idA as number, entityIdB: idB as number }
-    await entityManagerApi.undismissPair(entityType.value, payload)
-    await fetchDismissedPairs()
+    try {
+      await entityManagerApi.undismissPair(entityType.value, payload)
+      await fetchDismissedPairs()
+    } catch (cause) {
+      operationError.value = cause instanceof Error ? cause.message : 'Restore failed'
+      throw cause
+    } finally {
+      operationLoading.value = false
+    }
   }
 
   async function fetchDismissedPairs(): Promise<void> {
+    dismissedAbortController?.abort()
+    const controller = new AbortController()
+    dismissedAbortController = controller
     dismissedLoading.value = true
+    dismissedError.value = null
     try {
-      dismissedPairs.value = await entityManagerApi.getDismissedPairs(entityType.value)
-    } catch {
-      dismissedPairs.value = []
+      const result = await entityManagerApi.getDismissedPairsPage(
+        entityType.value,
+        { page: dismissedPage.value, pageSize: dismissedPageSize.value },
+        controller.signal,
+      )
+      if (controller.signal.aborted) return
+      dismissedPairs.value = result.items
+      dismissedTotal.value = result.total
+      dismissedPage.value = result.page
+      dismissedPageSize.value = result.pageSize
+      if (dismissedPage.value > dismissedTotalPages.value) {
+        dismissedPage.value = dismissedTotalPages.value
+        await fetchDismissedPairs()
+      }
+    } catch (cause) {
+      if (!controller.signal.aborted) dismissedError.value = cause instanceof Error ? cause.message : 'Failed to load dismissed pairs'
     } finally {
-      dismissedLoading.value = false
+      if (!controller.signal.aborted) dismissedLoading.value = false
     }
+  }
+
+  async function changeDismissedPage(page: number): Promise<void> {
+    if (page < 1 || page > dismissedTotalPages.value) return
+    dismissedPage.value = page
+    await fetchDismissedPairs()
   }
 
   function syncSelectedItem(id: number | string, selected: boolean): void {
@@ -482,6 +580,11 @@ export function useEntityManager() {
     operationLoading,
     operationError,
     mergeEntities,
+    pendingFileUpdates,
+    fileUpdateError,
+    retryingFileUpdates,
+    fetchPendingFileUpdates,
+    retryPendingFileUpdates,
     renameEntity,
     deleteEntity,
     bulkDeleteEntities,
@@ -490,7 +593,13 @@ export function useEntityManager() {
     showDismissed,
     dismissedPairs,
     dismissedLoading,
+    dismissedPage,
+    dismissedTotal,
+    dismissedTotalPages,
+    dismissedError,
+    changeDismissedPage,
     dismissPair,
+    dismissPairs,
     undismissPair,
     fetchDismissedPairs,
   }

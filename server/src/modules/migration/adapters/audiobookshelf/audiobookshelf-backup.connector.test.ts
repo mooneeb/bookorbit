@@ -76,6 +76,36 @@ describe('AudiobookshelfBackupConnector', () => {
     expect(await readdir(importRoot)).toEqual(['valid.audiobookshelf']);
   });
 
+  it('streams a large bookmark history without losing rows across source batches', async () => {
+    const backupPath = await createBackup(importRoot, 'large.audiobookshelf', (path) => {
+      createCompleteDatabase(path);
+      const database = new DatabaseSync(path);
+      database.prepare('UPDATE users SET bookmarks = ?').run(
+        JSON.stringify(
+          Array.from({ length: 501 }, (_, index) => ({
+            libraryItemId: 'item-1',
+            time: index,
+            title: `Bookmark ${index}`,
+          })),
+        ),
+      );
+      database.close();
+    });
+    const connector = new AudiobookshelfBackupConnector({ encryptionKey: '', importRoot });
+    let bookmarks = 0;
+    let batches = 0;
+    for await (const records of connector.fetchSourceRecordBatches({ mode: 'backup', backupPath })) {
+      expect(records.libraryItems.length).toBeLessThanOrEqual(100);
+      expect(records.bookmarks.length).toBeLessThanOrEqual(500);
+      expect(records.mediaProgress.length).toBeLessThanOrEqual(500);
+      expect(records.playbackSessions?.length ?? 0).toBeLessThanOrEqual(500);
+      bookmarks += records.bookmarks.length;
+      batches += 1;
+    }
+    expect(bookmarks).toBe(501);
+    expect(batches).toBeGreaterThan(1);
+  });
+
   it('continues with warnings when optional relationship tables and row JSON are unavailable', async () => {
     const backupPath = await createBackup(importRoot, 'reduced.audiobookshelf', (path) =>
       createRequiredDatabase(path, { userBookmarks: '{bad json', audioFiles: '{bad json' }),

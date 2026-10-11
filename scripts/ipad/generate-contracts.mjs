@@ -54,6 +54,24 @@ const entries = [
   "table-view-backup",
   "tts",
   "translation",
+  "book-bulk",
+  "book-dock",
+  "book-duplicates",
+  "book-request",
+  "book-request-automation",
+  "book-request-preferences",
+  "book-request-review",
+  "book-request-profile",
+  "entity-manager",
+  "download-client",
+  "indexer",
+  "indexer-manager",
+  "maintenance",
+  "migration",
+  "scanner",
+  "upload",
+  "language",
+  "maintenance-settings",
 ].map((name) => path.join(root, `packages/types/src/${name}.ts`));
 const program = ts.createProgram(entries, {
   strict: true,
@@ -128,7 +146,7 @@ const projections = {
     "seriesCollapsePreferences",
     "achievementPreferences",
   ],
-  Library: ["id", "type", "accessLevel", "name", "bookCount"],
+  Library: ["id", "type", "accessLevel", "name", "bookCount", "folders"],
   BookCard: [
     "id",
     "title",
@@ -364,8 +382,240 @@ const integerFields = new Set([
   "EpubBookmarkNavigationItemPageNumber",
   "UserFontFileSize",
   "TableViewBackupVersion",
+  "MigrationPlanPageApiOffset",
+  "MigrationPlanPageApiLimit",
+  "MigrationPlanPageApiNextOffset",
+  "MigrationReportPageApiOffset",
+  "MigrationReportPageApiLimit",
+  "MigrationReportPageApiNextOffset",
+  "MigrationDuplicateCandidatePageApiOffset",
+  "MigrationDuplicateCandidatePageApiLimit",
+  "MigrationDuplicateCandidatePageApiNextOffset",
+  "MigrationPageCursorLimit",
+  "MigrationPageCursorNextOffset",
+  "MigrationReportUserPreviewCountsStatuses",
+  "MigrationReportUserPreviewCountsFileProgress",
+  "MigrationReportUserPreviewCountsReadingSessions",
+  "MigrationReportUserPreviewCountsBookmarks",
+  "MigrationReportUserPreviewCountsAnnotations",
+  "MigrationReportUserPreviewCountsShelves",
 ]);
 const declarations = new Map();
+const integerField = (field, name) =>
+  integerFields.has(field) ||
+  integerFields.has(name) ||
+  (acquisitionModels.some((model) => name?.startsWith(model)) &&
+    (/(?:Id|Ids|Count|Bytes)$/.test(field) ||
+      [
+        "added",
+        "updated",
+        "missing",
+        "imported",
+        "unresolved",
+        "ready",
+        "duplicates",
+        "destinationConflicts",
+        "missingDestination",
+        "blocked",
+        "itemLimit",
+        "requested",
+        "cleaned",
+        "remaining",
+        "discarded",
+        "updatedBooks",
+        "skippedLocked",
+        "totalGroups",
+        "totalExtraCopies",
+        "totalBooks",
+        "totalFiles",
+        "processedBooks",
+        "brokenCovers",
+        "orphanedCoverDirs",
+        "missingBooks",
+        "counts",
+        "maxAttempts",
+        "totalPairs",
+        "sortOrder",
+        "queued",
+        "usersProcessed",
+        "awardsGranted",
+        "entityTotal",
+        "pairTotal",
+        "nextPage",
+        "detailsPageSize",
+      ].includes(field)));
+const acquisitionModels = [
+  "UploadTarget",
+  "CreateUploadSessionRequest",
+  "UploadSessionResponse",
+  "UploadCapabilitiesLibrary",
+  "UploadCapabilitiesResponse",
+  "BookDockMetadata",
+  "BookDockUnitFile",
+  "BookDockFile",
+  "BookDockFilesPage",
+  "BookDockSettings",
+  "UpdateBookDockSettingsRequest",
+  "BookDockFinalizeOverride",
+  "BookDockFinalizeRequest",
+  "BookDockFinalizeJobRequest",
+  "BookDockFinalizeJob",
+  "BookDockFinalizeFileResult",
+  "BookDockFinalizeResult",
+  "BookDockFinalizePreviewItem",
+  "BookDockFinalizePreviewResult",
+  "UpdateBookDockFileRequest",
+  "LibraryScanConfiguration",
+  "ScanStartResult",
+  "ScanStatusResponse",
+  "ScanProgressEvent",
+  "LibraryScanHistoryEntry",
+  "PrescanResult",
+  "PrescanPathResult",
+  "LibraryFolder",
+  "ScanStartRequest",
+  "ScanConfigurationRequest",
+  "ScanPreviewRequest",
+  "BookRequestPage",
+  "BookRequestItem",
+  "BookRequestSubmitResult",
+  "BookRequestAvailability",
+  "BookRequestAvailabilityQuery",
+  "CreateBookRequestPayload",
+  "DecideBookRequestPayload",
+  "FulfillBookRequestPayload",
+  "BookRequestReview",
+  "ReleaseSearchResult",
+  "ReleaseCandidateItem",
+  "BookRequestDownloadItem",
+  "DownloadClientSummary",
+  "GrabBookRequestPayload",
+  "IndexerListResult",
+  "IndexerAdapterListResult",
+  "IndexerItem",
+  "IndexerTestResult",
+  "CreateIndexerPayload",
+  "UpdateIndexerPayload",
+  "PluginInspection",
+  "PluginInstallResult",
+  "PluginUpdateListResult",
+  "PluginUpdateReview",
+  "PluginUpdateStatus",
+  "IndexerManagerListResult",
+  "IndexerManagerItem",
+  "IndexerManagerTestResult",
+  "IndexerManagerSyncResult",
+  "CreateIndexerManagerPayload",
+  "UpdateIndexerManagerPayload",
+  "UpdateIndexerManagerSourcePayload",
+  "DownloadClientListResult",
+  "DownloadClientItem",
+  "DownloadClientTestResult",
+  "PathMappingHardlinkTestResult",
+  "DownloadClientReconciliationResult",
+  "DownloadClientReconciliationAttempt",
+  "DownloadClientReconciliationItem",
+  "CreateDownloadClientPayload",
+  "UpdateDownloadClientPayload",
+  "BookRequestAutomationSettings",
+  "BookRequestPreferences",
+  "UpdateBookRequestAutomationSettingsPayload",
+  "ReleaseTier",
+  "ReleaseTierConditions",
+  "MigrationSourceApi",
+  "MigrationProfileApi",
+  "MigrationPlanArtifactApi",
+  "MigrationRunApi",
+  "MigrationRunMetricApi",
+  "MigrationProgressEvent",
+  "MigrationSourceCapabilities",
+  "MigrationPlanSummary",
+  "MigrationUserMapping",
+  "MigrationPathMapping",
+  "CreateMigrationSourcePayload",
+  "CreateMigrationProfilePayload",
+  "CreateMigrationDryRunPayload",
+  "StartMigrationRunPayload",
+  "ResolveMigrationDuplicatesPayload",
+  "MigrationWorkflowStateApi",
+  "MigrationTargetUser",
+  "MigrationMappingSuggestions",
+  "MigrationRunProgressApi",
+  "MigrationRunReportApi",
+  "MigrationPlanPageApi",
+  "MigrationPageCursor",
+  "MigrationReportMatchedBook",
+  "MigrationReportUnresolvedBook",
+  "MigrationReportDuplicateMatch",
+  "MigrationReportUserPreview",
+  "MigrationReportPageApi",
+  "MigrationDuplicateCandidatePageApi",
+  "BrowseEntityItem",
+  "BrowseEntitiesResponse",
+  "EntityInfo",
+  "EntityMergeRequest",
+  "EntityRenameRequest",
+  "EntityDeleteRequest",
+  "EntityBulkDeleteRequest",
+  "EntitySplitRequest",
+  "MergeResult",
+  "RenameResult",
+  "DeleteResult",
+  "BulkDeleteResult",
+  "SplitResult",
+  "DuplicateCluster",
+  "ClusterEntity",
+  "PairDetail",
+  "DuplicateScanResponse",
+  "DuplicateScanStatus",
+  "DismissedPairInfo",
+  "EntityDismissPairRequest",
+  "EntityUndismissPairRequest",
+  "EntityRefreshDuplicatesRequest",
+  "EntityDismissedPairsPage",
+  "EntityDuplicateClusterPage",
+  "BookDuplicateScan",
+  "BookDuplicateGroup",
+  "BookDuplicateGroupsResponse",
+  "CreateBookDuplicateScanRequest",
+  "CreateBookDuplicateDismissalRequest",
+  "BulkRenamePreviewItem",
+  "BulkRenamePreviewPage",
+  "BulkRenameExecuteRequest",
+  "BulkRenameProgressEvent",
+  "MissingResourcesSummary",
+  "CoverSweep",
+  "MissingBookEntry",
+  "BrokenCoverEntry",
+  "OrphanedCoverDirEntry",
+  "MissingResourceCleanupRequest",
+  "MissingResourceCleanupResult",
+  "BulkArrayEdit",
+  "BulkStringEdit",
+  "BulkNumberEdit",
+  "BulkMetadataEditFields",
+  "SelectedBulkMetadataRequest",
+  "BulkMetadataPreview",
+  "BulkEditMetadataResult",
+  "SelectedBookExportRequest",
+  "SelectedMetadataExportRequest",
+  "MetadataExportPreflight",
+  "BookExportPreview",
+  "MissingFileRepairRequest",
+  "MissingFileRepairPreview",
+  "MissingFileRepairResult",
+  "BulkMetadataVersion",
+  "BulkMetadataPreviewBook",
+  "MissingResourcePage",
+  "MergeBooksRequest",
+  "MergeBooksPreview",
+  "MergeBooksResult",
+  "AppSettingResponse",
+  "UpdateAppSettingRequest",
+  "BookEmbeddingRebuildResult",
+  "AchievementBackfillResult",
+  "MaintenanceOperationStatus",
+];
 const patchRequests = new Set([
   "UpdateBookRatingPayload",
   "ReadingAttemptPatch",
@@ -427,6 +677,112 @@ function generateValueUnion(type, name) {
   return name;
 }
 
+function generateJSONValue() {
+  if (declarations.has("JSONValue")) return "JSONValue";
+  declarations.set(
+    "JSONValue",
+    `indirect enum JSONValue: Codable, Sendable, Equatable, Hashable {
+    case string(String), number(Double), boolean(Bool), null, array([JSONValue]), object([String: JSONValue])
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null }
+        else if let value = try? container.decode(Bool.self) { self = .boolean(value) }
+        else if let value = try? container.decode(Double.self) { self = .number(value) }
+        else if let value = try? container.decode(String.self) { self = .string(value) }
+        else if let value = try? container.decode([JSONValue].self) { self = .array(value) }
+        else { self = .object(try container.decode([String: JSONValue].self)) }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .boolean(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        case .array(let value): try container.encode(value)
+        case .object(let value): try container.encode(value)
+        }
+    }
+}`,
+  );
+  return "JSONValue";
+}
+
+function generateStringOrNumber() {
+  if (!declarations.has("StringOrNumber")) {
+    generateValueUnion({ types: [{ flags: ts.TypeFlags.String }, { flags: ts.TypeFlags.Number }] }, "StringOrNumber");
+    declarations.set("StringOrNumber", declarations.get("StringOrNumber").replace("Sendable, Equatable", "Sendable, Equatable, Hashable"));
+  }
+  return "StringOrNumber";
+}
+
+function generateDiscriminatedUnion(type, name) {
+  if (declarations.has(name)) return name;
+  if (name === "BulkRenameProgressEvent") {
+    const fields = new Map();
+    for (const variant of type.types) {
+      for (const property of checker.getPropertiesOfType(variant)) {
+        const declaration = property.valueDeclaration ?? property.declarations[0];
+        const target = swiftType(
+          checker.getTypeOfSymbolAtLocation(property, declaration),
+          `${name}${property.name[0].toUpperCase()}${property.name.slice(1)}`,
+          property.name,
+        );
+        const existing = fields.get(property.name);
+        if (existing && existing.target !== target) throw new Error(`${name}.${property.name} union changed`);
+        fields.set(property.name, { target, count: (existing?.count ?? 0) + 1 });
+      }
+    }
+    declarations.set(
+      name,
+      `struct ${name}: Codable, Sendable, Equatable {\n${[...fields].map(([field, value]) => `    var \`${field}\`: ${value.target}${value.count !== type.types.length && !value.target.endsWith("?") ? "?" : ""} = nil`).join("\n")}\n}`,
+    );
+    return name;
+  }
+  const discriminator = ["kind", "type", "code"].find((field) =>
+    type.types.every((part) => checker.getTypeOfPropertyOfType(part, field)?.flags & ts.TypeFlags.StringLiteral),
+  );
+  if (!discriminator) throw new Error(`Unsupported object union in ${name}: ${type.types.map((part) => checker.typeToString(part)).join(" | ")}`);
+  declarations.set(name, "");
+  const variants = type.types.map((part) => {
+    const key = checker.getTypeOfPropertyOfType(part, discriminator).value;
+    const model =
+      name +
+      key
+        .split(/[^a-zA-Z0-9]+/)
+        .map((value) => value[0].toUpperCase() + value.slice(1))
+        .join("");
+    generateModel(model, part);
+    return { key, model };
+  });
+  if (new Set(variants.map((variant) => variant.key)).size !== variants.length) throw new Error(`Ambiguous discriminator in ${name}`);
+  declarations.set(
+    name,
+    `enum ${name}: Codable, Sendable, Equatable {
+${variants.map(({ key, model }) => `    case \`${key}\`(${model})`).join("\n")}
+
+    private enum CodingKeys: String, CodingKey { case \`${discriminator}\` }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .\`${discriminator}\`) {
+${variants.map(({ key, model }) => `        case ${JSON.stringify(key)}: self = .\`${key}\`(try ${model}(from: decoder))`).join("\n")}
+        default: throw DecodingError.dataCorruptedError(forKey: .\`${discriminator}\`, in: container, debugDescription: "Invalid ${name} discriminator")
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        switch self {
+${variants.map(({ key }) => `        case .\`${key}\`(let value): try value.encode(to: encoder)`).join("\n")}
+        }
+    }
+}`,
+  );
+  return name;
+}
+
 function generateRule() {
   if (declarations.has("Rule")) return;
   declarations.set("Rule", "");
@@ -468,6 +824,8 @@ function generateRuleNode() {
 }
 
 function swiftType(type, name, field) {
+  if (type.flags & (ts.TypeFlags.Unknown | ts.TypeFlags.Any)) return generateJSONValue();
+  if (type.flags & ts.TypeFlags.TypeParameter) return type.symbol.name;
   if (name.startsWith("NativePdfPageSource") && field === "nextPage") {
     return type.isUnion() ? "Int?" : "Int";
   }
@@ -526,27 +884,37 @@ function swiftType(type, name, field) {
           ? "Double"
           : name.startsWith("EpubMediaOverlay") && field === "durationSeconds"
             ? "Double"
-            : integerFields.has(field) || integerFields.has(name)
+            : integerField(field, name)
               ? "Int"
               : "Double";
     else if (values.every((part) => part.flags & ts.TypeFlags.BooleanLike)) value = "Bool";
     else if (values.length === 1) value = swiftType(values[0], name, field);
-    else if (name === "GroupRuleRulesItem") value = generateRuleNode();
     else if (
       type.aliasSymbol?.name === "RuleValue" ||
-      name === "RuleValue" ||
-      name === "RuleValueTo" ||
-      name === "CoverSearchResultUrl" ||
+      ["RuleValue", "RuleValueTo", "CoverSearchResultUrl"].includes(name) ||
       (name.startsWith("Kobo") && name.endsWith("CountsValue"))
-    ) {
+    )
       value = generateValueUnion({ types: values }, name);
-    } else throw new Error(`Unsupported union in ${name}: ${checker.typeToString(type)}`);
+    else if (values.every((part) => part.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike))) value = generateStringOrNumber();
+    else if (values.every((part) => part.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike)))
+      value = generateJSONValue();
+    else if (
+      values.every(
+        (part) => part.flags & ts.TypeFlags.StringLike || (part.isIntersection() && part.types.some((item) => item.flags & ts.TypeFlags.StringLike)),
+      )
+    )
+      value = "String";
+    else if (name === "GroupRuleRulesItem") value = generateRuleNode();
+    else if (values.every((part) => part.flags & ts.TypeFlags.Object))
+      value = generateDiscriminatedUnion({ types: values }, type.aliasSymbol?.name ?? name);
+    else throw new Error(`Unsupported union in ${name}: ${checker.typeToString(type)}`);
     return value + (optional ? "?" : "");
   }
   if (type.flags & ts.TypeFlags.StringLike) return "String";
-  if (type.flags & ts.TypeFlags.NumberLike) return integerFields.has(field) || integerFields.has(name) ? "Int" : "Double";
+  if (type.flags & ts.TypeFlags.NumberLike) return integerField(field, name) ? "Int" : "Double";
   if (type.flags & ts.TypeFlags.BooleanLike) return "Bool";
-  if (checker.isArrayType(type)) return `[${swiftType(checker.getTypeArguments(type)[0], `${name}Item`, field)}]`;
+  if (checker.isArrayType(type) || type.symbol?.name === "ReadonlyArray")
+    return `[${swiftType(checker.getTypeArguments(type)[0], `${name}Item`, field)}]`;
   const indexed = checker.getIndexTypeOfType(type, ts.IndexKind.String) ?? checker.getIndexTypeOfType(type, ts.IndexKind.Number);
   if (indexed) return `[String: ${swiftType(indexed, `${name}Value`, field)}]`;
   if (type.flags & ts.TypeFlags.Object || type.isIntersection()) {
@@ -563,6 +931,7 @@ function generateModel(name, type) {
   declarations.set(name, "");
   const properties = checker.getPropertiesOfType(type);
   const selected = projections[name] ?? properties.map((property) => property.name);
+  const coding = [];
   const fields = selected.map((field) => {
     const property = properties.find((candidate) => candidate.name === field);
     if (!property) throw new Error(`${name}.${field} no longer exists in the shared contract`);
@@ -592,15 +961,67 @@ function generateModel(name, type) {
       target = `FieldUpdate<${target.replace(/\?$/, "")}>?`;
     }
     if (property.flags & ts.SymbolFlags.Optional && !target.endsWith("?")) target += "?";
-    const nativeDefault = (name.startsWith("NativeAnnotation") || name.startsWith("NativeInk")) && target.endsWith("?") ? " = nil" : "";
+    if (name === "Library" && field === "folders") target += "?";
+    coding.push({
+      field,
+      optional: !!(property.flags & ts.SymbolFlags.Optional),
+      nullable: propertyType.isUnion() && propertyType.types.some((part) => part.flags & ts.TypeFlags.Null),
+    });
+    const nativeDefault =
+      target.endsWith("?") &&
+      (name.startsWith("NativeAnnotation") ||
+        name.startsWith("NativeInk") ||
+        acquisitionModels.includes(name) ||
+        (name === "Library" && field === "folders"))
+        ? " = nil"
+        : "";
     return `    var \`${field}\`: ${target}${nativeDefault}`;
   });
   const identifiable = selected.includes("id") ? ", Identifiable" : "";
+  const parameters = type.aliasTypeArguments?.filter((argument) => argument.flags & ts.TypeFlags.TypeParameter) ?? type.typeParameters ?? [];
+  const generic = parameters.length
+    ? `<${parameters.map((parameter) => `${parameter.symbol.name}: Codable & Sendable & Equatable`).join(", ")}>`
+    : "";
+  const encoder =
+    acquisitionModels.includes(name) && coding.some((field) => field.nullable && !field.optional)
+      ? `\n\n    func encode(to encoder: any Encoder) throws {\n        var container = encoder.container(keyedBy: CodingKeys.self)\n${coding.map(({ field, optional }) => `        try container.${optional ? "encodeIfPresent" : "encode"}(\`${field}\`, forKey: .\`${field}\`)`).join("\n")}\n    }`
+      : "";
   declarations.set(
     name,
-    `struct ${aliases[name] ?? name}: ${requestModels.has(name) ? "Encodable" : "Codable"}, Sendable, Equatable${identifiable} {\n${fields.join("\n")}\n}`,
+    `struct ${aliases[name] ?? name}${generic}: ${requestModels.has(name) ? "Encodable" : "Codable"}, Sendable, Equatable${identifiable} {\n${fields.join("\n")}${encoder}\n}`,
   );
 }
+
+for (const name of acquisitionModels) {
+  const symbol = symbols.get(name);
+  if (!symbol) throw new Error(`Missing shared acquisition contract: ${name}`);
+  swiftType(checker.getDeclaredTypeOfSymbol(symbol), name);
+}
+
+for (const name of ["EntityType", "MigrationRunState", "MissingResourceCategory"]) {
+  const type = checker.getDeclaredTypeOfSymbol(symbols.get(name));
+  if (!type.isUnion() || !type.types.every((part) => part.flags & ts.TypeFlags.StringLiteral)) throw new Error(`${name} vocabulary changed`);
+  declarations.set(name, `typealias ${name} = String`);
+}
+for (const [name, entry] of [
+  ["MissingBooksPage", "MissingBookEntry"],
+  ["BrokenCoversPage", "BrokenCoverEntry"],
+  ["OrphanedCoverDirsPage", "OrphanedCoverDirEntry"],
+]) {
+  declarations.set(name, `typealias ${name} = MissingResourcePage<${entry}>`);
+}
+const requestLanguageSource = program.getSourceFile(path.join(root, "packages/types/src/language.ts"));
+const requestLanguageJavaScript = ts.transpileModule(requestLanguageSource.text, {
+  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const requestLanguages = (await import(`data:text/javascript;base64,${Buffer.from(requestLanguageJavaScript).toString("base64")}`))
+  .REQUEST_LANGUAGE_CODES;
+if (!Array.isArray(requestLanguages) || requestLanguages.some((value) => typeof value !== "string"))
+  throw new Error("Request language vocabulary changed");
+declarations.set(
+  "BookRequestLanguageVocabulary",
+  `enum BookRequestLanguageVocabulary {\n    static let codes: [String] = [${requestLanguages.map((value) => JSON.stringify(value)).join(", ")}]\n}`,
+);
 
 for (const name of [
   "AccountActivityListResponse",

@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { basename, dirname, extname, join, relative } from 'path';
 
 import { isAudioFormat, resolveUploadPath } from '@bookorbit/types';
@@ -28,6 +29,36 @@ export interface BookFileTargetsInput {
   organizationMode: string | null;
   pattern: string;
   sanitizeForCrossPlatform: boolean;
+}
+
+export function bookRenameInputVersion(input: BookFileTargetsInput): string {
+  const metadata = input.metadata;
+  const version = [
+    input.primaryFileId,
+    input.files
+      .map((file) => [file.id, file.absolutePath, file.format, file.role, file.sortOrder, file.mediaOverlayAvailable ?? null])
+      .sort((a, b) => Number(a[0]) - Number(b[0])),
+    [
+      metadata.title,
+      metadata.subtitle,
+      metadata.publisher,
+      metadata.language,
+      metadata.isbn10,
+      metadata.isbn13,
+      metadata.publishedYear,
+      metadata.seriesName,
+      metadata.seriesIndex,
+    ],
+    input.authors ?? [],
+    input.narrators ?? [],
+    input.libraryName ?? null,
+    input.libraryFolderPath,
+    input.bookFolderPath,
+    input.organizationMode,
+    input.pattern,
+    input.sanitizeForCrossPlatform,
+  ];
+  return createHash('sha256').update(JSON.stringify(version)).digest('hex');
 }
 
 /**

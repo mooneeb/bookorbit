@@ -53,7 +53,6 @@ interface BookSeriesLink {
 const MAX_ARCHIVE_ENTRIES = 20_000;
 const MAX_DETAILS_BYTES = 1024 * 1024;
 const MAX_SQLITE_BYTES = 8 * 1024 * 1024 * 1024;
-const SQLITE_QUERY_BATCH_SIZE = 1_000;
 const MAX_SQL_ROWS_PER_TABLE = 1_000_000;
 const MAX_WARNINGS = 100;
 
@@ -161,6 +160,34 @@ export class AudiobookshelfBackupConnector {
   constructor(@Inject(migrationConfig.KEY) private readonly config: ConfigType<typeof migrationConfig>) {}
 
   async fetchSourceRecords(config: BackupConfig): Promise<AudiobookshelfSourceRecords> {
+    const result: AudiobookshelfSourceRecords = {
+      sourceVersion: null,
+      users: [],
+      libraryItems: [],
+      mediaProgress: [],
+      bookmarks: [],
+      playbackSessions: null,
+      libraryFolders: null,
+      warnings: [],
+      authorsAvailable: false,
+    };
+    for await (const records of this.fetchSourceRecordBatches(config)) {
+      result.sourceVersion = records.sourceVersion;
+      result.authorsAvailable = records.authorsAvailable;
+      result.users.push(...records.users);
+      if (records.bookOverlays !== false) result.libraryItems.push(...records.libraryItems);
+      result.mediaProgress.push(...records.mediaProgress);
+      result.bookmarks.push(...records.bookmarks);
+      if (records.playbackSessions) (result.playbackSessions ??= []).push(...records.playbackSessions);
+      if (records.libraryFolders) (result.libraryFolders ??= []).push(...records.libraryFolders);
+      result.warnings = records.warnings;
+    }
+    result.users = [...new Map(result.users.map((user) => [user.id, user])).values()];
+    result.libraryFolders = result.libraryFolders && [...new Map(result.libraryFolders.map((folder) => [folder.path, folder])).values()];
+    return result;
+  }
+
+  async *fetchSourceRecordBatches(config: BackupConfig): AsyncGenerator<AudiobookshelfSourceRecords> {
     let authorized: AuthorizedBackupFile | null = null;
     let temporaryDirectory: string | null = null;
     let database: DatabaseSync | null = null;
@@ -179,7 +206,7 @@ export class AudiobookshelfBackupConnector {
       database = new DatabaseSync(databasePath, { readOnly: true });
       database.exec('PRAGMA trusted_schema = OFF; PRAGMA query_only = ON');
       database.enableDefensive?.(true);
-      return readSourceRecords(database, parseSourceVersion(details));
+      yield* readSourceRecordBatches(database, parseSourceVersion(details));
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
       throw new BadRequestException('The Audiobookshelf backup could not be read safely');
@@ -353,47 +380,116 @@ function parseSourceVersion(details: Buffer): string | null {
   return version || null;
 }
 
-function readSourceRecords(database: DatabaseSync, sourceVersion: string | null): AudiobookshelfSourceRecords {
+function* readSourceRecordBatches(database: DatabaseSync, sourceVersion: string | null): Generator<AudiobookshelfSourceRecords> {
   const warnings = new WarningCollector();
   const availableTables = getAvailableTables(database);
   verifyRequiredSchema(database, availableTables);
-
-  const authorRelationsAvailable = verifyOptionalGroup(database, availableTables, ['authors', 'bookAuthors'], warnings, 'authors');
-  const seriesRelationsAvailable = verifyOptionalGroup(database, availableTables, ['series', 'bookSeries'], warnings, 'series');
-  const playbackSessionsAvailable = verifyOptionalGroup(database, availableTables, ['playbackSessions'], warnings, 'playback sessions');
-  const libraryFoldersAvailable = verifyOptionalGroup(database, availableTables, ['libraryFolders'], warnings, 'library folders');
-
-  const users = readBatched(database, USER_SQL).flatMap((row) => mapUser(row, warnings));
-  const authorLinks = authorRelationsAvailable
-    ? readBatched(database, buildAuthorLinkSql(getColumns(database, 'authors'))).flatMap(mapBookAuthorLink)
-    : [];
-  const seriesLinks = seriesRelationsAvailable ? readBatched(database, SERIES_LINK_SQL).flatMap(mapBookSeriesLink) : [];
-  const authorsByBook = groupByBook(authorLinks);
-  const seriesByBook = groupByBook(seriesLinks);
-  const booksById = new Map(
-    readBatched(database, BOOK_SQL)
-      .flatMap((row) => mapBook(row, authorsByBook, seriesByBook, warnings))
-      .map((book) => [book.id, book]),
-  );
-  const libraryItems = readBatched(database, LIBRARY_ITEM_SQL).flatMap((row) => mapLibraryItem(row, booksById, warnings));
-  const mediaProgress = readBatched(database, MEDIA_PROGRESS_SQL).flatMap((row) => mapMediaProgress(row, warnings));
-  const bookmarks = users.flatMap((user) => readBookmarks(user, warnings));
-  const playbackSessions = playbackSessionsAvailable
-    ? readBatched(database, PLAYBACK_SESSION_SQL).flatMap((row) => mapPlaybackSession(row, warnings))
-    : null;
-  const libraryFolders = libraryFoldersAvailable ? readBatched(database, LIBRARY_FOLDER_SQL).flatMap((row) => mapLibraryFolder(row, warnings)) : null;
-
-  return {
+  const authorsAvailable = verifyOptionalGroup(database, availableTables, ['authors', 'bookAuthors'], warnings, 'authors');
+  const seriesAvailable = verifyOptionalGroup(database, availableTables, ['series', 'bookSeries'], warnings, 'series');
+  const sessionsAvailable = verifyOptionalGroup(database, availableTables, ['playbackSessions'], warnings, 'playback sessions');
+  const foldersAvailable = verifyOptionalGroup(database, availableTables, ['libraryFolders'], warnings, 'library folders');
+  const template = (): AudiobookshelfSourceRecords => ({
     sourceVersion,
-    users: users.map((user) => ({ id: user.id, username: user.username, email: user.email, isActive: user.isActive })),
-    libraryItems,
-    mediaProgress,
-    bookmarks,
-    playbackSessions,
-    libraryFolders,
-    authorsAvailable: authorRelationsAvailable,
+    users: [],
+    libraryItems: [],
+    mediaProgress: [],
+    bookmarks: [],
+    playbackSessions: sessionsAvailable ? [] : null,
+    libraryFolders: foldersAvailable ? [] : null,
+    authorsAvailable,
     warnings: warnings.values(),
-  };
+    bookOverlays: false,
+  });
+  const userSql = USER_SQL.replace('bookmarks FROM', 'NULL AS bookmarks FROM');
+  for (const rows of sourceRowPages(database, userSql)) {
+    yield {
+      ...template(),
+      users: rows
+        .flatMap((row) => mapUser(row, warnings))
+        .map((user) => ({ id: user.id, username: user.username, email: user.email, isActive: user.isActive })),
+    };
+  }
+  if (foldersAvailable) {
+    for (const rows of sourceRowPages(database, LIBRARY_FOLDER_SQL)) {
+      yield { ...template(), libraryFolders: rows.flatMap((row) => mapLibraryFolder(row, warnings)) };
+    }
+  }
+  for (const itemRows of sourceRowPages(database, LIBRARY_ITEM_SQL, '1 = 1', [], 100)) {
+    const bookIds = itemRows.flatMap((row) => (typeof row.mediaId === 'string' && row.mediaType === 'book' ? [row.mediaId] : []));
+    const itemIds = itemRows.flatMap((row) => (typeof row.id === 'string' ? [row.id] : []));
+    const placeholders = bookIds.map(() => '?').join(',') || 'NULL';
+    const authorLinks = authorsAvailable
+      ? [...sourceRowPages(database, buildAuthorLinkSql(getColumns(database, 'authors')), `bookId IN (${placeholders})`, bookIds)]
+          .flat()
+          .flatMap(mapBookAuthorLink)
+      : [];
+    const seriesLinks = seriesAvailable
+      ? [...sourceRowPages(database, SERIES_LINK_SQL, `bookId IN (${placeholders})`, bookIds)].flat().flatMap(mapBookSeriesLink)
+      : [];
+    const authors = groupByBook(authorLinks);
+    const series = groupByBook(seriesLinks);
+    const books = new Map(
+      [...sourceRowPages(database, BOOK_SQL, `id IN (${placeholders})`, bookIds)]
+        .flat()
+        .flatMap((row) => mapBook(row, authors, series, warnings))
+        .map((book) => [book.id, book]),
+    );
+    const libraryItems = itemRows.flatMap((row) => mapLibraryItem(row, books, warnings));
+    yield { ...template(), libraryItems, bookOverlays: true };
+    const usersFor = (ids: string[]) => {
+      const unique = [...new Set(ids)];
+      if (!unique.length) return [];
+      return [...sourceRowPages(database, userSql, `id IN (${unique.map(() => '?').join(',')})`, unique)]
+        .flat()
+        .flatMap((row) => mapUser(row, warnings))
+        .map((user) => ({ id: user.id, username: user.username, email: user.email, isActive: user.isActive }));
+    };
+    for (const rows of sourceRowPages(database, MEDIA_PROGRESS_SQL, `mediaItemId IN (${placeholders})`, bookIds, 250)) {
+      const mediaProgress = rows.flatMap((row) => mapMediaProgress(row, warnings));
+      yield { ...template(), libraryItems, mediaProgress, users: usersFor(mediaProgress.map((row) => row.userId)) };
+    }
+    if (sessionsAvailable) {
+      for (const rows of sourceRowPages(database, PLAYBACK_SESSION_SQL, `mediaItemId IN (${placeholders})`, bookIds)) {
+        const playbackSessions = rows.flatMap((row) => mapPlaybackSession(row, warnings));
+        yield { ...template(), libraryItems, playbackSessions, users: usersFor(playbackSessions.map((row) => row.userId)) };
+      }
+    }
+    const bookmarkSql = `SELECT u.id || ':' || printf('%012d', bookmark.key) AS id, u.id AS userId, CASE WHEN bookmark.type = 'object' THEN bookmark.value ELSE '{}' END AS bookmark
+      FROM users u, json_each(CASE WHEN json_valid(u.bookmarks) THEN CASE WHEN json_type(u.bookmarks) = 'array' THEN u.bookmarks ELSE '[]' END ELSE '[]' END) bookmark`;
+    for (const rows of sourceRowPages(
+      database,
+      bookmarkSql,
+      `json_extract(bookmark, '$.libraryItemId') IN (${itemIds.map(() => '?').join(',') || 'NULL'})`,
+      itemIds,
+    )) {
+      const bookmarks = rows.flatMap((row) =>
+        readBookmarks({ id: String(row.userId), username: '', bookmarks: [JSON.parse(String(row.bookmark))] }, warnings),
+      );
+      yield { ...template(), libraryItems, bookmarks, users: usersFor(bookmarks.map((row) => row.userId)) };
+    }
+  }
+}
+
+function* sourceRowPages(
+  database: DatabaseSync,
+  sql: string,
+  where = '1 = 1',
+  parameters: Array<string | number> = [],
+  pageSize = 500,
+): Generator<SqlRow[]> {
+  const projection = sql.replace(/ ORDER BY[\s\S]*$/, '');
+  const statement = database.prepare(`SELECT * FROM (${projection}) source_page WHERE (${where}) AND id > ? ORDER BY id LIMIT ?`);
+  let lastId: string | number = '';
+  let processed = 0;
+  while (processed < MAX_SQL_ROWS_PER_TABLE) {
+    const rows = statement.all(...parameters, lastId, pageSize) as SqlRow[];
+    if (!rows.length) return;
+    yield rows;
+    lastId = rows.at(-1)!.id as string | number;
+    processed += rows.length;
+    if (rows.length < pageSize) return;
+  }
+  throw new BadRequestException('Audiobookshelf backup table exceeds the migration row limit');
 }
 
 function getAvailableTables(database: DatabaseSync): Set<string> {
@@ -440,17 +536,6 @@ function getColumns(database: DatabaseSync, table: string): Set<string> {
   if (!sql) throw new BadRequestException('Audiobookshelf backup schema inspection failed');
   const rows = database.prepare(sql).all() as SqlRow[];
   return new Set(rows.flatMap((row) => (typeof row.name === 'string' ? [row.name] : [])));
-}
-
-function readBatched(database: DatabaseSync, sql: string): SqlRow[] {
-  const statement = database.prepare(sql);
-  const rows: SqlRow[] = [];
-  for (let offset = 0; offset < MAX_SQL_ROWS_PER_TABLE; offset += SQLITE_QUERY_BATCH_SIZE) {
-    const batch = statement.all(SQLITE_QUERY_BATCH_SIZE, offset) as SqlRow[];
-    rows.push(...batch);
-    if (batch.length < SQLITE_QUERY_BATCH_SIZE) return rows;
-  }
-  throw new BadRequestException('Audiobookshelf backup table exceeds the migration row limit');
 }
 
 interface BackupUserRecord extends AudiobookshelfUserRecord {

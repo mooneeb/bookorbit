@@ -39,6 +39,31 @@ export class BookloreConnector {
     }
   }
 
+  async *withConnectionBatches<T>(config: BookloreConnectionConfig, fn: (conn: mysql.Connection) => AsyncIterable<T>): AsyncGenerator<T> {
+    let connection: mysql.Connection;
+    try {
+      connection = await mysql.createConnection({
+        host: config.host,
+        port: config.port ?? 3306,
+        user: config.user,
+        password: config.password,
+        database: config.database,
+        ssl: config.ssl ? {} : undefined,
+        supportBigNumbers: true,
+        connectTimeout: CONNECT_TIMEOUT_MS,
+      });
+    } catch (error) {
+      throw toSourceConnectionException(error);
+    }
+    try {
+      yield* fn(connection);
+    } catch (error) {
+      throw toSourceConnectionException(error);
+    } finally {
+      await connection.end();
+    }
+  }
+
   async listTables(conn: mysql.Connection): Promise<Set<string>> {
     const [rows] = await conn.query<Row[]>(
       `

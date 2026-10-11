@@ -84,6 +84,23 @@ export class UploadSessionRepository {
       .where(inArray(libraryFolders.libraryId, libraryIds));
   }
 
+  async recordDockFinalization(dockFileId: number, userId: number, bookId: number) {
+    await this.db
+      .update(uploadSessions)
+      .set({ resultBookId: bookId, updatedAt: new Date() })
+      .where(and(eq(uploadSessions.resultBookDockFileId, dockFileId), eq(uploadSessions.userId, userId), eq(uploadSessions.targetKind, 'book_dock')));
+  }
+
+  async findDockFinalization(dockFileId: number, userId: number) {
+    const [row] = await this.db
+      .select({ bookId: uploadSessions.resultBookId, filename: uploadSessions.filename, libraryId: books.libraryId })
+      .from(uploadSessions)
+      .innerJoin(books, eq(books.id, uploadSessions.resultBookId))
+      .where(and(eq(uploadSessions.resultBookDockFileId, dockFileId), eq(uploadSessions.userId, userId), eq(uploadSessions.targetKind, 'book_dock')))
+      .limit(1);
+    return row?.bookId ? row : null;
+  }
+
   async findLibrary(id: number) {
     const [row] = await this.db.select().from(libraries).where(eq(libraries.id, id)).limit(1);
     return row ?? null;

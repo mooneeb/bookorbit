@@ -1,7 +1,21 @@
+import { PgDialect } from 'drizzle-orm/pg-core';
 import * as schema from '../../db/schema';
 import { MigrationRepository } from './migration.repository';
 
 describe('MigrationRepository', () => {
+  it('conditions state transitions on the state still held in the database', async () => {
+    const returning = vi.fn().mockResolvedValue([]);
+    const where = vi.fn().mockReturnValue({ returning });
+    const set = vi.fn().mockReturnValue({ where });
+    const repo = new MigrationRepository({ update: vi.fn().mockReturnValue({ set }) } as never);
+
+    await expect(repo.updateRunState(77, 'completed', { currentStage: 'completed' }, 'running')).resolves.toBeNull();
+
+    const query = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
+    expect(query.sql).toContain('"migration_runs"."state" =');
+    expect(query.params).toEqual([77, 'running']);
+  });
+
   it('deduplicates path lookups and queries in chunks of 500', async () => {
     const where = vi
       .fn()
@@ -15,17 +29,24 @@ describe('MigrationRepository', () => {
     const inputPaths = Array.from({ length: 1001 }, (_, i) => `/books/${i}.epub`);
     inputPaths.push('/books/1.epub', '', '   ');
 
-    const existing = await repo.findExistingBookFilePaths(inputPaths);
+    const existing = await repo.findExistingBookFilePaths(inputPaths, 7);
 
     expect(where).toHaveBeenCalledTimes(3);
     expect(existing).toEqual(new Set(['/books/1.epub', '/books/2.epub', '/books/3.epub']));
+    for (const [predicate] of where.mock.calls) {
+      const query = new PgDialect().sqlToQuery(predicate);
+      expect(query.sql).toContain('"users"."is_superuser"');
+      expect(query.sql).toContain('"user_library_access"."library_id" = "books"."library_id"');
+      expect(query.sql).toContain("in ('editor', 'owner')");
+      expect(query.params.slice(-2)).toEqual([7, 7]);
+    }
   });
 
   it('short-circuits path lookup when no non-empty input paths are provided', async () => {
     const select = vi.fn();
     const repo = new MigrationRepository({ select } as never);
 
-    await expect(repo.findExistingBookFilePaths(['', '   '])).resolves.toEqual(new Set());
+    await expect(repo.findExistingBookFilePaths(['', '   '], 7)).resolves.toEqual(new Set());
     expect(select).not.toHaveBeenCalled();
   });
 
@@ -226,7 +247,7 @@ describe('MigrationRepository', () => {
     await expect(repo.updateSourceValidation(1, { capabilities: {}, lastValidatedAt: null } as never)).resolves.toBeNull();
     await expect(repo.updateProfileScope(1, {})).resolves.toEqual({ id: 12 });
     await expect(repo.updatePlanArtifact(1, { plan: {}, summary: {} })).resolves.toEqual({ id: 14 });
-    await expect(repo.updateRunState(1, 'failed', {})).resolves.toBeNull();
+    await expect(repo.updateRunState(1, 'failed', {}, 'running')).resolves.toBeNull();
 
     await expect(repo.findSourceById(100)).resolves.toEqual({ id: 100 });
     await expect(repo.findProfileById(200)).resolves.toEqual({ id: 200 });
@@ -252,7 +273,8 @@ describe('MigrationRepository', () => {
   });
 
   it('lists sources/profiles/plans/runs and run metrics via select query chains', async () => {
-    const orderBy = vi.fn().mockResolvedValue([{ id: 1 }]);
+    const limit = vi.fn().mockResolvedValue([{ id: 1 }]);
+    const orderBy = vi.fn().mockReturnValue(Object.assign(Promise.resolve([{ id: 1 }]), { limit }));
     const where = vi.fn().mockReturnValue({ orderBy });
     const from = vi.fn().mockReturnValue({ where, orderBy });
     const select = vi.fn().mockReturnValue({ from });

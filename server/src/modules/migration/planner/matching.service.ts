@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { inArray, or, sql } from 'drizzle-orm';
+import { and, inArray, or, sql } from 'drizzle-orm';
+import { sanitizeLogValue } from '../../../common/utils/log-sanitize.utils';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../../db';
@@ -32,6 +33,7 @@ export class MatchingService {
   async matchBooks(
     sourceBooks: SourceBook[],
     pathMappings: PathMapping[],
+    actorUserId?: number,
   ): Promise<{ matches: PlannedBookMatch[]; unresolved: PlannedUnresolvedBook[] }> {
     const startMs = Date.now();
     this.logger.log(`[book.matching] [start] sourceBooks=${sourceBooks.length} pathMappings=${pathMappings.length} - matching started`);
@@ -39,11 +41,36 @@ export class MatchingService {
     const matches: PlannedBookMatch[] = [];
     const unresolved: PlannedUnresolvedBook[] = [];
 
-    const isbnIndex = await this.batchLookupIsbns(sourceBooks);
-    const asinIndex = await this.batchLookupAsins(sourceBooks);
-    const hashIndex = await this.batchLookupFileHashes(sourceBooks);
-    const filePathIndex = await this.batchLookupFilePaths(sourceBooks, pathMappings);
-    const titleAuthorIndex = await this.batchLookupTitleAuthors(sourceBooks);
+    try {
+      for (let offset = 0; offset < sourceBooks.length; offset += LOOKUP_CHUNK_SIZE) {
+        const batch = await this.matchBatch(sourceBooks.slice(offset, offset + LOOKUP_CHUNK_SIZE), pathMappings, actorUserId);
+        matches.push(...batch.matches);
+        unresolved.push(...batch.unresolved);
+      }
+      this.logger.log(
+        `[book.matching] [end] sourceBooks=${sourceBooks.length} pathMappings=${pathMappings.length} matched=${matches.length} unresolved=${unresolved.length} durationMs=${Date.now() - startMs} - matching completed`,
+      );
+      return { matches, unresolved };
+    } catch (error) {
+      this.logger.error(
+        `[book.matching] [fail] sourceBooks=${sourceBooks.length} pathMappings=${pathMappings.length} durationMs=${Date.now() - startMs} errorClass=${error instanceof Error ? error.name : 'Unknown'} error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - matching failed`,
+      );
+      throw error;
+    }
+  }
+
+  private async matchBatch(
+    sourceBooks: SourceBook[],
+    pathMappings: PathMapping[],
+    actorUserId?: number,
+  ): Promise<{ matches: PlannedBookMatch[]; unresolved: PlannedUnresolvedBook[] }> {
+    const matches: PlannedBookMatch[] = [];
+    const unresolved: PlannedUnresolvedBook[] = [];
+    const isbnIndex = await this.batchLookupIsbns(sourceBooks, actorUserId);
+    const asinIndex = await this.batchLookupAsins(sourceBooks, actorUserId);
+    const hashIndex = await this.batchLookupFileHashes(sourceBooks, actorUserId);
+    const filePathIndex = await this.batchLookupFilePaths(sourceBooks, pathMappings, actorUserId);
+    const titleAuthorIndex = await this.batchLookupTitleAuthors(sourceBooks, actorUserId);
 
     sourceBooksLoop: for (const sourceBook of sourceBooks) {
       const attempts: MatchAttempt[] = [];
@@ -121,12 +148,10 @@ export class MatchingService {
       );
     }
 
-    const durationMs = Date.now() - startMs;
-    this.logger.log(`[book.matching] [end] matched=${matches.length} unresolved=${unresolved.length} durationMs=${durationMs} - matching completed`);
     return { matches, unresolved };
   }
 
-  private async batchLookupIsbns(sourceBooks: SourceBook[]): Promise<Map<string, LookupResult>> {
+  private async batchLookupIsbns(sourceBooks: SourceBook[], actorUserId?: number): Promise<Map<string, LookupResult>> {
     const isbn13s = new Set<string>();
     const isbn10s = new Set<string>();
     for (const book of sourceBooks) {
@@ -148,7 +173,7 @@ export class MatchingService {
       const rows = await this.db
         .select({ bookId: schema.bookMetadata.bookId, isbn13: normalizedTargetIsbn13 })
         .from(schema.bookMetadata)
-        .where(inArray(normalizedTargetIsbn13, chunk));
+        .where(and(inArray(normalizedTargetIsbn13, chunk), targetAccessPredicate(schema.bookMetadata.bookId, actorUserId)));
       for (const row of rows) {
         const isbn = normalizeIsbn(row.isbn13);
         if (!isbn) continue;
@@ -165,7 +190,7 @@ export class MatchingService {
       const rows = await this.db
         .select({ bookId: schema.bookMetadata.bookId, isbn10: normalizedTargetIsbn10 })
         .from(schema.bookMetadata)
-        .where(inArray(normalizedTargetIsbn10, chunk));
+        .where(and(inArray(normalizedTargetIsbn10, chunk), targetAccessPredicate(schema.bookMetadata.bookId, actorUserId)));
       for (const row of rows) {
         const isbn = normalizeIsbn(row.isbn10);
         if (!isbn) continue;
@@ -197,7 +222,7 @@ export class MatchingService {
     return results;
   }
 
-  private async batchLookupAsins(sourceBooks: SourceBook[]): Promise<Map<string, LookupResult>> {
+  private async batchLookupAsins(sourceBooks: SourceBook[], actorUserId?: number): Promise<Map<string, LookupResult>> {
     const asins = new Set<string>();
     for (const book of sourceBooks) {
       for (const asin of sourceAsinCandidates(book)) asins.add(asin);
@@ -220,7 +245,12 @@ export class MatchingService {
           audibleId: normalizedTargetAudibleId,
         })
         .from(schema.bookMetadata)
-        .where(or(inArray(normalizedTargetAmazonId, chunk), inArray(normalizedTargetAudibleId, chunk)));
+        .where(
+          and(
+            or(inArray(normalizedTargetAmazonId, chunk), inArray(normalizedTargetAudibleId, chunk)),
+            targetAccessPredicate(schema.bookMetadata.bookId, actorUserId),
+          ),
+        );
 
       for (const row of rows) {
         const matchedAsins = new Set([normalizeAsin(row.amazonId), normalizeAsin(row.audibleId)]);
@@ -255,7 +285,7 @@ export class MatchingService {
     return results;
   }
 
-  private async batchLookupFileHashes(sourceBooks: SourceBook[]): Promise<Map<string, LookupResult>> {
+  private async batchLookupFileHashes(sourceBooks: SourceBook[], actorUserId?: number): Promise<Map<string, LookupResult>> {
     const hashes = new Set<string>();
     for (const book of sourceBooks) {
       for (const hash of sourceFileHashes(book)) hashes.add(hash);
@@ -272,7 +302,7 @@ export class MatchingService {
       const rows = await this.db
         .select({ bookId: schema.bookFiles.bookId, hash: schema.bookFiles.fileHash })
         .from(schema.bookFiles)
-        .where(inArray(schema.bookFiles.fileHash, chunk));
+        .where(and(inArray(schema.bookFiles.fileHash, chunk), targetAccessPredicate(schema.bookFiles.bookId, actorUserId)));
       for (const row of rows) {
         if (!row.hash) continue;
         const existing = bookIdsByHash.get(row.hash) ?? [];
@@ -295,7 +325,11 @@ export class MatchingService {
     return results;
   }
 
-  private async batchLookupFilePaths(sourceBooks: SourceBook[], pathMappings: PathMapping[]): Promise<Map<string, LookupResult>> {
+  private async batchLookupFilePaths(
+    sourceBooks: SourceBook[],
+    pathMappings: PathMapping[],
+    actorUserId?: number,
+  ): Promise<Map<string, LookupResult>> {
     const mappedPaths = new Set<string>();
     for (const sourceBook of sourceBooks) {
       for (const sourcePath of sourceFilePaths(sourceBook)) {
@@ -311,7 +345,7 @@ export class MatchingService {
       const rows = await this.db
         .select({ bookId: schema.bookFiles.bookId, absolutePath: schema.bookFiles.absolutePath })
         .from(schema.bookFiles)
-        .where(inArray(schema.bookFiles.absolutePath, chunk));
+        .where(and(inArray(schema.bookFiles.absolutePath, chunk), targetAccessPredicate(schema.bookFiles.bookId, actorUserId)));
       for (const row of rows) {
         const bookIds = bookIdsByPath.get(row.absolutePath) ?? new Set<number>();
         bookIds.add(row.bookId);
@@ -326,7 +360,7 @@ export class MatchingService {
     return results;
   }
 
-  private async batchLookupTitleAuthors(sourceBooks: SourceBook[]): Promise<Map<string, LookupResult>> {
+  private async batchLookupTitleAuthors(sourceBooks: SourceBook[], actorUserId?: number): Promise<Map<string, LookupResult>> {
     const candidates = new Map<string, { cacheKey: string; title: string; authors: string[] }>();
     for (const sourceBook of sourceBooks) {
       const title = sourceBook.title?.trim();
@@ -388,6 +422,7 @@ export class MatchingService {
           )
           inner join ${schema.bookAuthors} on ${schema.bookAuthors.bookId} = ${schema.bookMetadata.bookId}
           inner join ${schema.authors} on ${schema.authors.id} = ${schema.bookAuthors.authorId}
+          where ${targetAccessPredicate(schema.bookMetadata.bookId, actorUserId) ?? sql`true`}
           group by source_candidates.match_key, ${schema.bookMetadata.bookId}
         ),
         ranked_matches as (
@@ -552,4 +587,19 @@ function normalizePathPrefix(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return '';
   return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+}
+
+function targetAccessPredicate(bookId: typeof schema.bookMetadata.bookId | typeof schema.bookFiles.bookId, actorUserId?: number) {
+  if (actorUserId === undefined) return undefined;
+  return sql`exists (
+    select 1 from ${schema.books}
+    inner join ${schema.users} on ${schema.users.id} = ${actorUserId}
+    where ${schema.books.id} = ${bookId}
+      and (${schema.users.isSuperuser} or exists (
+        select 1 from ${schema.userLibraryAccess}
+        where ${schema.userLibraryAccess.userId} = ${actorUserId}
+          and ${schema.userLibraryAccess.libraryId} = ${schema.books.libraryId}
+          and ${schema.userLibraryAccess.accessLevel} in ('editor', 'owner')
+      ))
+  )`;
 }

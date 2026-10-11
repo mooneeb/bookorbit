@@ -8,6 +8,7 @@ import { AchievementModule } from '../achievement/achievement.module';
 import { AuthModule } from '../auth/auth.module';
 import { BookMetadataFetchModule } from '../book-metadata-fetch/book-metadata-fetch.module';
 import { BookCoverStoreModule } from '../book-cover-store/book-cover-store.module';
+import { BookMergeScanModule } from '../book-duplicates/book-merge-scan.module';
 import { MetadataModule } from '../metadata/metadata.module';
 import { NotificationModule } from '../notification/notification.module';
 import { FileEventProcessorService } from './file-event-processor.service';
@@ -22,6 +23,7 @@ import { ScannerService } from './scanner.service';
   imports: [
     MetadataModule,
     BookCoverStoreModule,
+    BookMergeScanModule,
     AuthModule,
     AchievementModule,
     SelfWriteRegistryModule,

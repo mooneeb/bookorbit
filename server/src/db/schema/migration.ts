@@ -80,8 +80,9 @@ export const migrationPlanArtifacts = pgTable(
       .$onUpdateFn(() => new Date()),
   },
   (t) => [
-    uniqueIndex('migration_plan_artifacts_plan_hash_uidx').on(t.planHash),
+    index('migration_plan_artifacts_plan_hash_idx').on(t.planHash),
     unique('migration_plan_artifacts_id_source_profile_unique').on(t.id, t.sourceId, t.profileId),
+    unique('migration_plan_artifacts_id_owner_unique').on(t.id, t.createdByUserId),
     index('migration_plan_artifacts_source_id_idx').on(t.sourceId),
     index('migration_plan_artifacts_profile_id_idx').on(t.profileId),
     foreignKey({
@@ -163,6 +164,116 @@ export const migrationRunMetrics = pgTable(
     check('migration_run_metrics_unresolved_nonnegative_chk', sql`${t.unresolved} >= 0`),
     check('migration_run_metrics_failed_nonnegative_chk', sql`${t.failed} >= 0`),
   ],
+);
+
+export const migrationPlanSourceBatches = pgTable(
+  'migration_plan_source_batches',
+  {
+    id: serial('id').primaryKey(),
+    artifactId: integer('artifact_id')
+      .notNull()
+      .references(() => migrationPlanArtifacts.id, { onDelete: 'cascade' }),
+    batchIndex: integer('batch_index').notNull(),
+    bookOverlays: integer('book_overlays').notNull().default(1),
+    sourceData: jsonb('source_data').notNull(),
+  },
+  (t) => [uniqueIndex('migration_plan_source_batches_artifact_index_uidx').on(t.artifactId, t.batchIndex)],
+);
+
+export const migrationPlanBookMatches = pgTable(
+  'migration_plan_book_matches',
+  {
+    id: serial('id').primaryKey(),
+    artifactId: integer('artifact_id').notNull(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    sourceBookId: text('source_book_id').notNull(),
+    targetBookId: integer('target_book_id').notNull(),
+    strategy: varchar('strategy', { length: 32 }).notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.artifactId, t.userId],
+      foreignColumns: [migrationPlanArtifacts.id, migrationPlanArtifacts.createdByUserId],
+      name: 'migration_plan_book_matches_artifact_owner_fk',
+    }).onDelete('cascade'),
+    uniqueIndex('migration_plan_book_matches_source_uidx').on(t.artifactId, t.userId, t.sourceBookId),
+    uniqueIndex('migration_plan_book_matches_position_uidx').on(t.artifactId, t.userId, t.position),
+    index('migration_plan_book_matches_user_idx').on(t.userId),
+    check('migration_plan_book_matches_position_chk', sql`${t.position} >= 0`),
+    check('migration_plan_book_matches_strategy_chk', sql`${t.strategy} IN ('isbn', 'asin', 'file_hash', 'path_mapping', 'title_author')`),
+  ],
+);
+
+export const migrationPlanSourceBooks = pgTable(
+  'migration_plan_source_books',
+  {
+    id: serial('id').primaryKey(),
+    artifactId: integer('artifact_id').notNull(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    sourceBookId: text('source_book_id').notNull(),
+    title: text('title'),
+    author: text('author'),
+    filePath: text('file_path'),
+    targetBookId: integer('target_book_id'),
+    strategy: varchar('strategy', { length: 32 }),
+    unresolvedReason: text('unresolved_reason'),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.artifactId, t.userId],
+      foreignColumns: [migrationPlanArtifacts.id, migrationPlanArtifacts.createdByUserId],
+      name: 'migration_plan_source_books_artifact_owner_fk',
+    }).onDelete('cascade'),
+    uniqueIndex('migration_plan_source_books_source_uidx').on(t.artifactId, t.userId, t.sourceBookId),
+    index('migration_plan_source_books_target_idx').on(t.artifactId, t.userId, t.targetBookId),
+  ],
+);
+
+export const migrationPlanPreviewCounts = pgTable(
+  'migration_plan_preview_counts',
+  {
+    id: serial('id').primaryKey(),
+    artifactId: integer('artifact_id').notNull(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    sourceBookId: text('source_book_id').notNull(),
+    sourceUserId: text('source_user_id').notNull(),
+    statuses: integer('statuses').notNull().default(0),
+    fileProgress: integer('file_progress').notNull().default(0),
+    readingSessions: integer('reading_sessions').notNull().default(0),
+    bookmarks: integer('bookmarks').notNull().default(0),
+    annotations: integer('annotations').notNull().default(0),
+    shelves: integer('shelves').notNull().default(0),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.artifactId, t.userId],
+      foreignColumns: [migrationPlanArtifacts.id, migrationPlanArtifacts.createdByUserId],
+      name: 'migration_plan_preview_counts_artifact_owner_fk',
+    }).onDelete('cascade'),
+    uniqueIndex('migration_plan_preview_counts_source_uidx').on(t.artifactId, t.userId, t.sourceBookId, t.sourceUserId),
+  ],
+);
+
+export const migrationRunBatchCheckpoints = pgTable(
+  'migration_run_batch_checkpoints',
+  {
+    id: serial('id').primaryKey(),
+    runId: integer('run_id')
+      .notNull()
+      .references(() => migrationRuns.id, { onDelete: 'cascade' }),
+    stage: varchar('stage', { length: 64 }).notNull(),
+    batchIndex: integer('batch_index').notNull(),
+    metrics: jsonb('metrics').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('migration_run_batch_checkpoints_run_stage_uidx').on(t.runId, t.stage)],
 );
 
 export type MigrationSource = typeof migrationSources.$inferSelect;

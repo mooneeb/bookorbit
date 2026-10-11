@@ -1,0 +1,1 @@
+ALTER TABLE "migration_plan_artifacts" ADD CONSTRAINT "migration_plan_artifacts_id_owner_unique" UNIQUE("id","created_by_user_id");

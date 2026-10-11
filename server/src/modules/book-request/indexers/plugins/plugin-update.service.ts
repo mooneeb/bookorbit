@@ -1,7 +1,7 @@
 import { createHash, createPublicKey, randomUUID, verify } from 'node:crypto';
 import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { BadRequestException, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import type { IndexerPlugin, PluginUpdateManifest } from '@bookorbit/plugin-api';
 import type { PluginInstallResult, PluginUpdateReview, PluginUpdateStatus } from '@bookorbit/types';
 
@@ -18,6 +18,9 @@ const MAX_MANIFEST_BYTES = 64 * 1024;
 const MAX_REDIRECTS = 3;
 const STATE_FILE = '.update-state.json';
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
+export const PLUGIN_UPDATE_FETCH = Symbol('PLUGIN_UPDATE_FETCH');
+export type PluginUpdateFetch = typeof safeFetch;
 
 interface StoredUpdateState {
   autoUpdate: boolean;
@@ -42,6 +45,7 @@ export class PluginUpdateService implements OnApplicationBootstrap, OnModuleDest
     private readonly registry: IndexerRegistry,
     private readonly loader: PluginLoaderService,
     private readonly installer: PluginInstallService,
+    @Optional() @Inject(PLUGIN_UPDATE_FETCH) private readonly fetchUpdate?: PluginUpdateFetch,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -91,7 +95,7 @@ export class PluginUpdateService implements OnApplicationBootstrap, OnModuleDest
     try {
       const headers: Record<string, string> = { Accept: 'application/json' };
       if (stored.manifestUrl === plugin.update.manifestUrl && stored.etag) headers['If-None-Match'] = stored.etag;
-      const response = await requestBounded(plugin.update.manifestUrl, headers, MAX_MANIFEST_BYTES, true);
+      const response = await requestBounded(plugin.update.manifestUrl, headers, MAX_MANIFEST_BYTES, true, this.fetchUpdate ?? safeFetch);
       const manifest = response.status === 304 ? stored.manifest : parseManifest(response.body, type);
       if (!manifest) throw new Error('the server returned 304 without a cached manifest');
 
@@ -171,7 +175,13 @@ export class PluginUpdateService implements OnApplicationBootstrap, OnModuleDest
     const manifest = stored.manifest;
     if (!manifest) throw new BadRequestException('No plugin update manifest is available');
 
-    const response = await requestBounded(manifest.sourceUrl, { Accept: 'text/javascript, text/plain' }, MAX_PLUGIN_BYTES, false);
+    const response = await requestBounded(
+      manifest.sourceUrl,
+      { Accept: 'text/javascript, text/plain' },
+      MAX_PLUGIN_BYTES,
+      false,
+      this.fetchUpdate ?? safeFetch,
+    );
     const source = response.body;
     const digest = sha256(source);
     if (digest !== manifest.sha256) throw new BadRequestException('The downloaded plugin does not match the digest in its update manifest');
@@ -389,13 +399,14 @@ async function requestBounded(
   headers: Record<string, string>,
   limit: number,
   allowNotModified: boolean,
+  fetchUpdate: PluginUpdateFetch,
 ): Promise<{ status: number; body: string; etag?: string }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let current = rawUrl;
   try {
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-      const response = await safeFetch(
+      const response = await fetchUpdate(
         current,
         { method: 'GET', headers, redirect: 'manual', signal: controller.signal },
         { pinResolvedAddress: true },

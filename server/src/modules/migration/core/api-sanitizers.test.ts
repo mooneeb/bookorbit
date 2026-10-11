@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { sanitizeSourceForApi, sanitizeProfileForApi, sanitizePlanArtifactForApi, sanitizeRunForApi } from './api-sanitizers';
+import { sanitizeSourceForApi, sanitizeProfileForApi, sanitizePlanArtifactForApi, sanitizeRunForApi, sanitizePlanPreview } from './api-sanitizers';
 import type { MigrationSource, MigrationProfile, MigrationPlanArtifact, MigrationRun } from '../../../db/schema';
 
 function makeSource(overrides: Partial<MigrationSource> = {}): MigrationSource {
@@ -205,5 +205,15 @@ describe('sanitizeRunForApi', () => {
     const result = sanitizeRunForApi(makeRun({ endedAt: null, errorMessage: null }));
     expect(result.endedAt).toBeNull();
     expect(result.errorMessage).toBeNull();
+  });
+});
+
+describe('durable matched preview pagination', () => {
+  it('keeps the full count when persisted matches contain only 40 preview rows', () => {
+    const preview = sanitizePlanPreview({
+      matchedBooks: Array.from({ length: 40 }, (_, index) => ({ sourceBookId: String(index) })),
+      previewPagination: { matchedBooks: { total: 105, limit: 40, nextOffset: 40 } },
+    });
+    expect(preview).toMatchObject({ previewPagination: { matchedBooks: { total: 105, limit: 40, nextOffset: 40 } } });
   });
 });

@@ -85,10 +85,13 @@ export class AppSettingsService {
       throw new BadRequestException(`Setting '${key}' is managed by the Book Dock endpoints and cannot be written here`);
     }
     if (key === APP_SETTING_KEYS.MAX_UPLOAD_SIZE_MB) {
-      const parsed = parseInt(value, 10);
-      if (isNaN(parsed) || parsed <= 0 || parsed > HARD_MAX_UPLOAD_SIZE_MB) {
+      const parsed = Number(value);
+      if (!/^\d+$/.test(value) || !Number.isSafeInteger(parsed) || parsed <= 0 || parsed > HARD_MAX_UPLOAD_SIZE_MB) {
         throw new BadRequestException(`Upload size limit must be an integer between 1 and ${HARD_MAX_UPLOAD_SIZE_MB}`);
       }
+    }
+    if (key === APP_SETTING_KEYS.UPDATE_CHECK_ENABLED && value !== 'true' && value !== 'false') {
+      throw new BadRequestException('Update checks must be true or false');
     }
     const setting = await this.repo.updateByKey(key, value);
     if (!setting) throw new NotFoundException(`Setting '${key}' not found`);

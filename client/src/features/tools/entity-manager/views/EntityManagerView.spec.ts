@@ -71,6 +71,11 @@ function makeEntityManagerMock() {
     removeFromSelection: mockFn(),
     clearSelection: mockFn(),
 
+    pendingFileUpdates: ref([]),
+    fileUpdateError: ref(null),
+    retryingFileUpdates: ref(false),
+    fetchPendingFileUpdates: mockFn(),
+    retryPendingFileUpdates: mockFn(),
     operationLoading: ref(false),
     operationError: ref(null),
     mergeEntities: mockFn(),

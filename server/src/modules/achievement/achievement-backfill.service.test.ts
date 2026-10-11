@@ -5,7 +5,7 @@ import { ACHIEVEMENT_EVENT_BACKFILL } from './achievement-events.service';
 
 function makeRepo(overrides: Record<string, unknown> = {}) {
   return {
-    findAllUserIds: vi.fn().mockResolvedValue([]),
+    backfillUserIdsAfter: vi.fn().mockResolvedValue([]),
     findUserEarnedKeys: vi.fn().mockResolvedValue(new Set()),
     ...overrides,
   };
@@ -50,17 +50,17 @@ describe('AchievementBackfillService', () => {
 
   it('throws ForbiddenException for non-superuser callers', async () => {
     await expect(service.runBackfill(makeRegularUser())).rejects.toThrow(ForbiddenException);
-    expect(repo.findAllUserIds).not.toHaveBeenCalled();
+    expect(repo.backfillUserIdsAfter).not.toHaveBeenCalled();
   });
 
   it('returns zero counts when no users exist', async () => {
-    repo.findAllUserIds.mockResolvedValue([]);
+    repo.backfillUserIdsAfter.mockResolvedValue([]);
     const result = await service.runBackfill(makeSuperuser());
     expect(result).toEqual({ usersProcessed: 0, awardsGranted: 0 });
   });
 
   it('calls handleEvent with ACHIEVEMENT_EVENT_BACKFILL for each user', async () => {
-    repo.findAllUserIds.mockResolvedValue([1, 2, 3]);
+    repo.backfillUserIdsAfter.mockResolvedValueOnce([1, 2, 3]);
     repo.findUserEarnedKeys.mockResolvedValue(new Set());
 
     await service.runBackfill(makeSuperuser());
@@ -71,7 +71,7 @@ describe('AchievementBackfillService', () => {
     expect(achievementService.handleEvent).toHaveBeenCalledWith(ACHIEVEMENT_EVENT_BACKFILL, { userId: 3 });
   });
   it('correctly counts awards granted based on earned key delta', async () => {
-    repo.findAllUserIds.mockResolvedValue([1, 2]);
+    repo.backfillUserIdsAfter.mockResolvedValueOnce([1, 2]);
     // Keyed by user (not global call order) so the assertion does not depend on batch interleaving.
     // user 1: 1 key before -> 2 after (delta 1); user 2: 0 before -> 1 after (delta 1); total 2.
     const earnedByUser: Record<number, Set<string>[]> = {
@@ -88,7 +88,7 @@ describe('AchievementBackfillService', () => {
   });
 
   it('is idempotent - awards granted is 0 when all keys already earned', async () => {
-    repo.findAllUserIds.mockResolvedValue([1]);
+    repo.backfillUserIdsAfter.mockResolvedValueOnce([1]);
     const earned = new Set(['books_finished_1', 'marathoner']);
     repo.findUserEarnedKeys.mockResolvedValue(earned);
 
@@ -99,7 +99,7 @@ describe('AchievementBackfillService', () => {
   });
 
   it('continues processing remaining users when one user fails', async () => {
-    repo.findAllUserIds.mockResolvedValue([1, 2, 3]);
+    repo.backfillUserIdsAfter.mockResolvedValueOnce([1, 2, 3]);
     repo.findUserEarnedKeys.mockResolvedValue(new Set());
     achievementService.handleEvent.mockRejectedValueOnce(new Error('DB timeout')).mockResolvedValue(undefined);
 
@@ -113,7 +113,7 @@ describe('AchievementBackfillService', () => {
     const flush = () => new Promise((resolve) => setImmediate(resolve));
 
     it('backfills all users and stores the seed signature when none is stored', async () => {
-      repo.findAllUserIds.mockResolvedValue([1, 2]);
+      repo.backfillUserIdsAfter.mockResolvedValueOnce([1, 2]);
 
       service.onModuleInit();
       await flush();
@@ -124,7 +124,7 @@ describe('AchievementBackfillService', () => {
     });
 
     it('waits for the catalogue seed before awarding, so badge FKs resolve', async () => {
-      repo.findAllUserIds.mockResolvedValue([1]);
+      repo.backfillUserIdsAfter.mockResolvedValueOnce([1]);
       const order: string[] = [];
       achievementService.ensureCatalogueSeeded.mockImplementation(() => {
         order.push('seed');
@@ -153,13 +153,13 @@ describe('AchievementBackfillService', () => {
       service.onModuleInit();
       await flush();
 
-      expect(repo.findAllUserIds).not.toHaveBeenCalled();
+      expect(repo.backfillUserIdsAfter).not.toHaveBeenCalled();
       expect(achievementService.handleEvent).not.toHaveBeenCalled();
       expect(appSettings.setValue).not.toHaveBeenCalled();
     });
 
     it('does not store the signature when backfill fails, so it retries on the next start', async () => {
-      repo.findAllUserIds.mockRejectedValue(new Error('DB down'));
+      repo.backfillUserIdsAfter.mockRejectedValue(new Error('DB down'));
 
       service.onModuleInit();
       await flush();

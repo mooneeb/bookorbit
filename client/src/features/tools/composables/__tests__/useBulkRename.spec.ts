@@ -35,6 +35,7 @@ describe('useBulkRename execute stream', () => {
   function armed() {
     const bulk = useBulkRename()
     bulk.selectLibrary(1)
+    bulk.previewToken.value = 'reviewed-preview'
     return bulk
   }
 
@@ -157,7 +158,7 @@ describe('useBulkRename execute stream', () => {
 
     expect(apiMock).toHaveBeenCalledWith(
       '/api/v1/libraries/1/bulk-rename/execute',
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ includeBookIds: [42] }) }),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ includeBookIds: [42], previewToken: 'reviewed-preview' }) }),
     )
   })
 

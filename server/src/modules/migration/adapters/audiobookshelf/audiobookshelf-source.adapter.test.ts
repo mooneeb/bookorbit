@@ -98,7 +98,12 @@ function buildAdapter() {
     }),
     fetchLibraryFolders: vi.fn().mockResolvedValue([{ path: '/audiobooks/' }, { path: '/audiobooks' }, { path: '/other\\' }]),
   };
-  const backupConnector = { fetchSourceRecords: vi.fn().mockResolvedValue(sourceRecords) };
+  const backupConnector = {
+    fetchSourceRecords: vi.fn().mockResolvedValue(sourceRecords),
+    fetchSourceRecordBatches: vi.fn(async function* () {
+      yield await Promise.resolve(sourceRecords);
+    }),
+  };
   const normalizer = { normalize: vi.fn().mockReturnValue(normalizationResult) };
   return {
     adapter: new AudiobookshelfSourceAdapter(connector as never, backupConnector as never, normalizer as never),
@@ -147,7 +152,7 @@ describe('AudiobookshelfSourceAdapter', () => {
         bookmarks: 0,
       },
     });
-    expect(backupConnector.fetchSourceRecords).toHaveBeenCalledWith(backupConfig);
+    expect(backupConnector.fetchSourceRecordBatches).toHaveBeenCalledWith(backupConfig);
     expect(connector.fetchSnapshotSummary).not.toHaveBeenCalled();
     expect(normalizer.normalize).toHaveBeenCalledWith(sourceRecords);
   });

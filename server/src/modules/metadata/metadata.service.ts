@@ -193,7 +193,7 @@ export class MetadataService {
     choices: readonly CoverDownloadChoice[],
     bookId: number,
     medium: CoverMedium,
-    options: { userChosen?: boolean } = {},
+    options: { userChosen?: boolean; expectedBookUpdatedAt?: string } = {},
   ): Promise<boolean> {
     const event = 'metadata.cover_download';
     const startedAt = Date.now();
@@ -224,18 +224,18 @@ export class MetadataService {
           continue;
         }
         if (!checkShape) {
-          saved = await this.persistCover(bookId, medium, bytes, true, 'provider');
+          saved = await this.persistCover(bookId, medium, bytes, true, 'provider', options.expectedBookUpdatedAt);
           break;
         }
         const fit = await this.measureCoverFit(bytes, medium);
         if (fit === 'fits') {
-          saved = await this.persistCover(bookId, medium, bytes, true, 'provider');
+          saved = await this.persistCover(bookId, medium, bytes, true, 'provider', options.expectedBookUpdatedAt);
           break;
         }
         skipped++;
         if (fit === 'wrong_shape' && !slotFilled && !lastResort) lastResort = bytes;
       }
-      if (!saved && lastResort) saved = await this.persistCover(bookId, medium, lastResort, true, 'provider');
+      if (!saved && lastResort) saved = await this.persistCover(bookId, medium, lastResort, true, 'provider', options.expectedBookUpdatedAt);
 
       this.logger.debug(
         `[${event}] [end] bookId=${bookId} medium=${medium} durationMs=${Date.now() - startedAt} downloads=${downloads} skipped=${skipped} saved=${saved} - cover download completed`,
@@ -295,9 +295,13 @@ export class MetadataService {
     return coverShapeFromSize(width, height) === (medium === 'audio' ? 'square' : 'portrait') ? 'fits' : 'wrong_shape';
   }
 
-  async saveExtractedCoverBytes(bookId: number, bytes: Buffer, medium?: CoverMedium): Promise<void> {
+  async getCoverBookVersion(bookId: number): Promise<string | null> {
+    return this.coverStore.getBookVersion(bookId);
+  }
+
+  async saveExtractedCoverBytes(bookId: number, bytes: Buffer, medium?: CoverMedium, expectedBookUpdatedAt?: string): Promise<void> {
     const target = medium ?? (await this.coverStore.chooseWriteMedium(bookId, bytes));
-    if (await this.persistCover(bookId, target, bytes, true, 'dock')) await this.scoreService.calculateAndSave(bookId);
+    if (await this.persistCover(bookId, target, bytes, true, 'dock', expectedBookUpdatedAt)) await this.scoreService.calculateAndSave(bookId);
   }
 
   async refreshCoverForBook(bookId: number, absolutePath: string, format: string, requestedMedium?: CoverMedium): Promise<boolean> {
@@ -513,12 +517,14 @@ export class MetadataService {
 
   // ── Genres ───────────────────────────────────────────────────────────────────
 
-  async replaceNarrators(bookId: number, narratorNames: { name: string; sortName: string | null }[]) {
-    await this.narratorService.replaceForBook(bookId, narratorNames);
+  async replaceNarrators(bookId: number, narratorNames: { name: string; sortName: string | null }[], options: RelationMutationOptions = {}) {
+    if (options.executor) await this.narratorService.replaceForBook(bookId, narratorNames, options);
+    else await this.narratorService.replaceForBook(bookId, narratorNames);
   }
 
-  async upsertComicMetadata(bookId: number, fields: ComicMetadataFields) {
-    await this.comicMetadataRepository.upsert(bookId, fields);
+  async upsertComicMetadata(bookId: number, fields: ComicMetadataFields, executor?: Parameters<ComicMetadataRepository['upsert']>[2]) {
+    if (executor) await this.comicMetadataRepository.upsert(bookId, fields, executor);
+    else await this.comicMetadataRepository.upsert(bookId, fields);
   }
 
   async replaceGenres(bookId: number, parsedGenres: string[], options: RelationMutationOptions = {}) {
@@ -930,8 +936,19 @@ export class MetadataService {
    * refreshed. When overwrite is true the extracted cover replaces it (used for the leading source
    * and fetched covers).
    */
-  private async persistCover(bookId: number, medium: CoverMedium, bytes: Buffer, overwrite: boolean, origin: BookCoverOrigin): Promise<boolean> {
-    return this.coverStore.saveExtracted(bookId, medium, bytes, { origin, overwrite });
+  private async persistCover(
+    bookId: number,
+    medium: CoverMedium,
+    bytes: Buffer,
+    overwrite: boolean,
+    origin: BookCoverOrigin,
+    expectedBookUpdatedAt?: string,
+  ): Promise<boolean> {
+    return this.coverStore.saveExtracted(bookId, medium, bytes, {
+      origin,
+      overwrite,
+      ...(expectedBookUpdatedAt === undefined ? {} : { expectedBookUpdatedAt }),
+    });
   }
 
   /** An OPF image belongs to no medium, so on a book with both media its shape picks the slot. */

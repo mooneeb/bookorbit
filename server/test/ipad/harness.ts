@@ -26,8 +26,18 @@ import { SourcePdfFaultsModule } from './source-pdf-faults.module';
 import { createE04Fixture, ensureE04ActivityAccounts, initializeE04ReadingActivity } from './e04-fixture';
 import { createE04KoboScaleFixture } from './e04-kobo-scale-fixture';
 import { ensureE04ActivityMediaFixture } from './e04-activity-media-fixture';
+import { createE03Fixture } from './e03-fixture';
+import { BookDockFinalizeFaultsModule } from './book-dock-finalize-faults.module';
+import { MigrationFaultsModule } from './migration-faults.module';
+import { PluginUpdateFixtureModule } from './plugin-update-fixture.module';
 
-@Module({ imports: [SourcePdfFaultsModule, AppModule] })
+@Module({
+  imports: [
+    SourcePdfFaultsModule,
+    ...(process.env.IPAD_E03_PROOF === '1' ? [BookDockFinalizeFaultsModule, MigrationFaultsModule, PluginUpdateFixtureModule] : []),
+    AppModule,
+  ],
+})
 class IpadHarnessModule {}
 
 const started = Date.now();
@@ -59,7 +69,7 @@ async function main() {
     throw new Error('Fixture reuse requires an existing isolated temporary content folder');
   }
   const folder = reuseFixture ? resumeFolder! : await mkdtemp(join(tmpdir(), 'bookorbit-ipad-'));
-  if (!reuseFixture) disposableFixtureFolder = folder;
+  if (!reuseFixture || e04Restart) disposableFixtureFolder = folder;
   if (reuseFixture) await stat(folder);
   const progressOnly = process.env.IPAD_PROGRESS_ONLY === '1';
   const e04ApiPort = Number(process.env.IPAD_E04_API_PORT ?? 16502);
@@ -68,7 +78,9 @@ async function main() {
   let e04Fixture: Awaited<ReturnType<typeof createE04Fixture>> | undefined;
   process.env.APP_DATA_PATH = join(folder, 'data');
   process.env.COVER_SLOTS_BACKFILL_MODE = 'skip';
+  console.log(`[ipad.fixture] [start] runId=${process.pid} stage=application - constructing isolated application`);
   const app = await NestFactory.create<NestFastifyApplication>(IpadHarnessModule, new FastifyAdapter(), { logger: false, abortOnError: false });
+  console.log(`[ipad.fixture] [end] runId=${process.pid} durationMs=${Date.now() - started} stage=application - isolated application constructed`);
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalFilters(new GlobalExceptionFilter());
@@ -77,7 +89,10 @@ async function main() {
   const db = app.get<NodePgDatabase<typeof schema>>(DB);
   const coverFixtureFolder = process.env.IPAD_COVER_FIXTURE_DIR;
   if (!coverFixtureFolder && !e04Restart) throw new Error('The iPad harness requires its generated cover fixture folder');
-  const oidc = e04Restart || progressOnly || process.env.IPAD_ANNOTATIONS_PROOF === '1' ? undefined : await startOidcProvider();
+  const oidc =
+    e04Restart || progressOnly || process.env.IPAD_ANNOTATIONS_PROOF === '1' || process.env.IPAD_E03_PROOF === '1'
+      ? undefined
+      : await startOidcProvider();
 
   if (!reuseFixture) {
     const passwordHash = await hash('IpadFixture123', 4);
@@ -148,8 +163,14 @@ async function main() {
           language: index % 2 ? 'eng' : 'urd',
         })),
       );
+      if ((offset + created.length) % 10_000 === 0) {
+        console.log(
+          `[ipad.fixture] [end] runId=${process.pid} durationMs=${Date.now() - started} stage=books count=${offset + created.length} - book fixture batch boundary completed`,
+        );
+      }
     }
     if (fixtureBookCount === 50_000) await createOrganizationFixture(db);
+    console.log(`[ipad.fixture] [end] runId=${process.pid} durationMs=${Date.now() - started} stage=organization - organization fixture prepared`);
     const document = await PDFDocument.create();
     const font = await document.embedFont(StandardFonts.Helvetica);
     for (let index = 0; index < 3; index++) {
@@ -267,7 +288,9 @@ async function main() {
         smtpPort: Number(process.env.IPAD_E04_SMTP_PORT),
       });
     }
+    if (process.env.IPAD_E03_PROOF === '1') await createE03Fixture(db, folder);
   }
+  console.log(`[ipad.fixture] [start] runId=${process.pid} stage=listen - initializing HTTP listener`);
   await app.listen(apiPort, '127.0.0.1');
   if (e04Fixture) {
     const readingActivity = await initializeE04ReadingActivity(`http://127.0.0.1:${apiPort}/api/v1`, e04Fixture);
@@ -321,14 +344,15 @@ async function main() {
   console.log(
     `[ipad.harness] [end] runId=${process.pid} durationMs=${Date.now() - started} books=${fixtureBookCount} port=${apiPort} reused=${reuseFixture} - localhost server ready`,
   );
-  const close = async () => {
+  const close = async ({ preserveFixture = false } = {}) => {
     await app.close();
     if (oidc) await new Promise<void>((resolve, reject) => oidc.close((error) => (error ? reject(error) : resolve())));
-    await cleanupFixture();
+    if (!preserveFixture) await cleanupFixture();
     process.exit(0);
   };
   process.once('SIGTERM', () => void close());
   process.once('SIGINT', () => void close());
+  if (e04Proof) process.once('SIGUSR2', () => void close({ preserveFixture: true }));
 }
 
 void main().catch(async (error: unknown) => {

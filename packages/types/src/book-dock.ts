@@ -220,3 +220,30 @@ export interface BookDockStatistics {
   totalSizeBytes: number;
   byFormat: { format: string; count: number; sizeBytes: number }[];
 }
+
+export interface UpdateBookDockFileRequest {
+  expectedUpdatedAt?: string;
+  selectedMetadata?: BookDockMetadata;
+  targetLibraryId?: number | null;
+  targetFolderId?: number | null;
+}
+
+export interface BookDockFinalizeJobRequest extends BookDockFinalizeRequest {
+  idempotencyKey: string;
+  needsReview?: boolean;
+  readyToFile?: boolean;
+}
+
+export interface BookDockFinalizeJob {
+  id: number;
+  state: "queued" | "running" | "completed" | "failed";
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  results: BookDockFinalizeFileResult[];
+  resultsTruncated: boolean;
+}

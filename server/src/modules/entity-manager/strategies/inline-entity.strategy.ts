@@ -23,7 +23,8 @@ import type {
   StrategySplitResult,
   EntityBookScope,
 } from './entity-strategy.interface';
-import { buildEntityBookScopeClauses } from './entity-book-scope';
+import { assertEntityRelationsWithinLibraries, buildEntityBookScopeClauses } from './entity-book-scope';
+import { mutateEntityBooks } from './entity-mutation-books';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -114,6 +115,7 @@ export abstract class InlineEntityStrategy implements EntityStrategy {
   }
 
   async browse(params: BrowseParams): Promise<BrowseResult> {
+    if (params.libraryIds.length === 0) return { items: [], total: 0 };
     const f = sql.raw(this.rawFieldName);
 
     let searchFilter = sql``;
@@ -121,13 +123,23 @@ export abstract class InlineEntityStrategy implements EntityStrategy {
       searchFilter = sql` AND ${accentInsensitiveIlike(sql`bm.${f}`, '%' + escapeLike(params.search) + '%')}`;
     }
 
-    const idsLiteral = sql.raw(`(${params.libraryIds.join(',')})`);
+    const scopedBooks = this.db
+      .select({ id: books.id })
+      .from(books)
+      .where(
+        and(
+          ...buildEntityBookScopeClauses(this.db, {
+            libraryIds: params.libraryIds,
+            contentFilters: params.contentFilters,
+          }),
+        ),
+      );
 
     const countQuery = await this.db.execute<{ total: number }>(sql`
       SELECT count(DISTINCT bm.${f})::int AS total
       FROM book_metadata bm
       JOIN books b ON b.id = bm.book_id
-      WHERE b.library_id IN ${idsLiteral}
+      WHERE bm.book_id IN (${scopedBooks})
       AND bm.${f} IS NOT NULL AND bm.${f} <> ''
       ${searchFilter}
     `);
@@ -139,7 +151,7 @@ export abstract class InlineEntityStrategy implements EntityStrategy {
       SELECT bm.${f} AS name, count(*)::int AS "bookCount"
       FROM book_metadata bm
       JOIN books b ON b.id = bm.book_id
-      WHERE b.library_id IN ${idsLiteral}
+      WHERE bm.book_id IN (${scopedBooks})
       AND bm.${f} IS NOT NULL AND bm.${f} <> ''
       ${searchFilter}
       GROUP BY bm.${f}
@@ -153,32 +165,30 @@ export abstract class InlineEntityStrategy implements EntityStrategy {
     };
   }
 
+  assertMutationScope(ids: (number | string)[], scope: EntityBookScope): Promise<void> {
+    return assertEntityRelationsWithinLibraries(this.db, 'book_metadata', this.rawFieldName, ids, scope.libraryIds, scope.contentFilters, true);
+  }
+
   async merge(input: MergeInput): Promise<StrategyMergeResult> {
     const targetValue = input.targetId as string;
     const sourceValues = input.sourceIds as string[];
-    const libraryIds = input.libraryIds ?? [];
+    const scope = { libraryIds: input.libraryIds ?? [], contentFilters: input.contentFilters };
+    if (sourceValues.length === 0 || scope.libraryIds.length === 0) return { affectedBookIds: [], affectedBookCount: 0 };
 
-    if (sourceValues.length === 0 || libraryIds.length === 0) return { affectedBookIds: [] };
-
-    const libraryIdList = sql.join(
-      libraryIds.map((id) => sql`${id}`),
-      sql`, `,
+    return mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks(sourceValues, scope),
+      async (tx) => {
+        await tx.execute(sql`
+          UPDATE book_metadata bm SET ${sql.raw(this.rawFieldName)} = ${targetValue}
+          WHERE bm.book_id IN (SELECT book_id FROM entity_mutation_books)
+        `);
+      },
+      (tx) =>
+        assertEntityRelationsWithinLibraries(tx, 'book_metadata', this.rawFieldName, sourceValues, scope.libraryIds, scope.contentFilters, true),
     );
-    const affectedBookIds = new Set<number>();
-
-    for (const sourceValue of sourceValues) {
-      const affectedRows = await this.db.execute<{ bookId: number }>(sql`
-        UPDATE book_metadata bm SET ${sql.raw(this.rawFieldName)} = ${targetValue}
-        FROM books b
-        WHERE bm.book_id = b.id
-        AND b.library_id IN (${libraryIdList})
-        AND bm.${sql.raw(this.rawFieldName)} = ${sourceValue}
-        RETURNING bm.book_id AS "bookId"
-      `);
-      for (const row of affectedRows.rows) affectedBookIds.add(row.bookId);
-    }
-
-    return { affectedBookIds: [...affectedBookIds] };
   }
 
   async rename(input: RenameInput): Promise<StrategyRenameResult> {
@@ -187,33 +197,38 @@ export abstract class InlineEntityStrategy implements EntityStrategy {
     if (!trimmed) throw new BadRequestException('Name cannot be empty');
 
     if (input.libraryIds.length === 0) {
-      return { oldName: currentValue, affectedBookIds: [], wasImplicitMerge: false };
+      return { oldName: currentValue, affectedBookIds: [], affectedBookCount: 0, wasImplicitMerge: false };
     }
 
-    const idsLiteral = sql.raw(`(${input.libraryIds.join(',')})`);
-
-    const existingCount = await this.db.execute<{ cnt: number }>(sql`
-      SELECT count(DISTINCT bm.book_id)::int AS cnt
-      FROM book_metadata bm
-      JOIN books b ON b.id = bm.book_id
-      WHERE b.library_id IN ${idsLiteral}
-      AND bm.${sql.raw(this.rawFieldName)} <> ${currentValue}
-      AND ${this.buildIdentityEqualsCondition('bm', trimmed)}
-    `);
-    const wasImplicitMerge = (existingCount.rows[0]?.cnt ?? 0) > 0;
-
-    const affectedRows = await this.db.execute<{ bookId: number }>(sql`
-      UPDATE book_metadata bm SET ${sql.raw(this.rawFieldName)} = ${trimmed}
-      FROM books b
-      WHERE bm.book_id = b.id
-      AND b.library_id IN ${idsLiteral}
-      AND bm.${sql.raw(this.rawFieldName)} = ${currentValue}
-      RETURNING bm.book_id AS "bookId"
-    `);
+    const scope = { libraryIds: input.libraryIds, contentFilters: input.contentFilters };
+    let wasImplicitMerge = false;
+    const affected = await mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks([currentValue], scope),
+      async (tx) => {
+        const existing = await tx.execute<{ exists: boolean }>(sql`
+          SELECT EXISTS (
+            SELECT 1 FROM book_metadata bm JOIN ${books} ON ${books.id} = bm.book_id
+            WHERE ${and(...buildEntityBookScopeClauses(tx, scope))}
+              AND bm.${sql.raw(this.rawFieldName)} <> ${currentValue}
+              AND ${this.buildIdentityEqualsCondition('bm', trimmed)}
+          ) AS "exists"
+        `);
+        wasImplicitMerge = existing.rows[0]?.exists ?? false;
+        await tx.execute(sql`
+          UPDATE book_metadata bm SET ${sql.raw(this.rawFieldName)} = ${trimmed}
+          WHERE bm.book_id IN (SELECT book_id FROM entity_mutation_books)
+        `);
+      },
+      (tx) =>
+        assertEntityRelationsWithinLibraries(tx, 'book_metadata', this.rawFieldName, [currentValue], scope.libraryIds, scope.contentFilters, true),
+    );
 
     return {
       oldName: currentValue,
-      affectedBookIds: affectedRows.rows.map((r) => r.bookId),
+      ...affected,
       wasImplicitMerge,
       mergedEntityId: wasImplicitMerge ? trimmed : undefined,
     };
@@ -221,20 +236,36 @@ export abstract class InlineEntityStrategy implements EntityStrategy {
 
   async deleteEntity(input: DeleteInput): Promise<StrategyDeleteResult> {
     const value = input.entityId as string;
-    if (input.libraryIds.length === 0) return { name: value, affectedBookIds: [] };
+    if (input.libraryIds.length === 0) return { name: value, affectedBookIds: [], affectedBookCount: 0 };
 
-    const idsLiteral = sql.raw(`(${input.libraryIds.join(',')})`);
+    const scope = { libraryIds: input.libraryIds, contentFilters: input.contentFilters };
+    const affected = await mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks([value], scope),
+      async (tx) => {
+        await tx.execute(sql`
+          UPDATE book_metadata bm SET ${sql.raw(this.rawFieldName)} = NULL
+          WHERE bm.book_id IN (SELECT book_id FROM entity_mutation_books)
+        `);
+      },
+      (tx) => assertEntityRelationsWithinLibraries(tx, 'book_metadata', this.rawFieldName, [value], scope.libraryIds, scope.contentFilters, true),
+    );
+    return { name: value, ...affected };
+  }
 
-    const affectedRows = await this.db.execute<{ bookId: number }>(sql`
-      UPDATE book_metadata bm SET ${sql.raw(this.rawFieldName)} = NULL
-      FROM books b
-      WHERE bm.book_id = b.id
-      AND b.library_id IN ${idsLiteral}
-      AND bm.${sql.raw(this.rawFieldName)} = ${value}
-      RETURNING bm.book_id AS "bookId"
-    `);
-
-    return { name: value, affectedBookIds: affectedRows.rows.map((r) => r.bookId) };
+  private selectMutationBooks(values: string[], scope: EntityBookScope): SQL {
+    const valueList = sql.join(
+      values.map((value) => sql`${value}`),
+      sql`, `,
+    );
+    return sql`
+      SELECT DISTINCT bm.book_id FROM book_metadata bm
+      JOIN ${books} ON ${books.id} = bm.book_id
+      WHERE bm.${sql.raw(this.rawFieldName)} IN (${valueList})
+        AND ${and(...buildEntityBookScopeClauses(this.db, scope))}
+    `;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

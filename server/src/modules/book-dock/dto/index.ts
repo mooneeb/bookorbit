@@ -3,11 +3,14 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsISO8601,
   IsNotEmpty,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
+  ArrayMaxSize,
   Matches,
   Max,
   MaxLength,
@@ -21,7 +24,7 @@ import {
   ValidatorConstraint,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { MetadataProviderKey, SERIES_INDEX_MAX_LENGTH, SERIES_INDEX_PATTERN, type SeriesIndex } from '@bookorbit/types';
+import { MetadataProviderKey, SERIES_INDEX_MAX_LENGTH, SERIES_INDEX_PATTERN, type SeriesIndex, type BookDockFileStatus } from '@bookorbit/types';
 
 @ValidatorConstraint({ name: 'hasCompleteDefaultDestination', async: false })
 class HasCompleteDefaultDestinationConstraint implements ValidatorConstraintInterface {
@@ -129,6 +132,10 @@ export class BookDockMetadataFieldsDto {
 
 export class UpdateBookDockFileDto {
   @IsOptional()
+  @IsISO8601()
+  expectedUpdatedAt?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => BookDockMetadataFieldsDto)
   selectedMetadata?: BookDockMetadataFieldsDto;
@@ -210,6 +217,35 @@ export class FinalizeBookDockDto {
   @ValidateNested({ each: true })
   @Type(() => FinalizeOverrideDto)
   overrides?: FinalizeOverrideDto[];
+}
+
+export class FinalizeBookDockJobDto extends FinalizeBookDockDto {
+  @IsOptional()
+  @IsIn(['pending', 'extracting', 'fetching', 'ready', 'error'])
+  declare status?: BookDockFileStatus;
+
+  @IsUUID('4')
+  idempotencyKey!: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  declare fileIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsInt({ each: true })
+  declare excludedIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @ValidateNested({ each: true })
+  @Type(() => FinalizeOverrideDto)
+  declare overrides?: FinalizeOverrideDto[];
 }
 
 export class BulkDiscardDto {

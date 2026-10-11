@@ -21,6 +21,7 @@ function makeSourceBook(id: string, title: string) {
 
 describe('MigrationPlannerService', () => {
   it('builds plan with normalized mappings, split duplicates, and merged scope', async () => {
+    const actorUserId = 501;
     const sourceData = {
       users: [
         { sourceUserId: 'u1', username: 'user-one', name: null, email: null },
@@ -109,6 +110,7 @@ describe('MigrationPlannerService', () => {
     const service = new MigrationPlannerService(adapterRegistry as never, matchingService as never);
 
     const result = await service.buildPlan({
+      actorUserId,
       source: {
         type: 'booklore',
         connectionConfig: {
@@ -136,10 +138,14 @@ describe('MigrationPlannerService', () => {
     });
 
     expect(adapterRegistry.get).toHaveBeenCalledWith('booklore');
-    expect(matchingService.matchBooks).toHaveBeenCalledWith(sourceData.books, [
-      { sourcePrefix: '/src', targetPrefix: '/library' },
-      { sourcePrefix: '/legacy', targetPrefix: '/new-library' },
-    ]);
+    expect(matchingService.matchBooks).toHaveBeenCalledWith(
+      sourceData.books,
+      [
+        { sourcePrefix: '/src', targetPrefix: '/library' },
+        { sourcePrefix: '/legacy', targetPrefix: '/new-library' },
+      ],
+      actorUserId,
+    );
 
     expect(result.plan.userMappings).toEqual([
       { sourceUserId: 'u1', targetUserId: 501 },

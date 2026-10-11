@@ -22,6 +22,9 @@ import { BookDockMetadataService } from './book-dock-metadata.service';
 import { BookDockProcessingStateService } from './book-dock-processing-state.service';
 import { BookDockWatcherService } from './book-dock-watcher.service';
 import { BookDockService } from './book-dock.service';
+import { BookDockPublicationService } from './book-dock-publication.service';
+import { BookDockFinalizationRepository } from './book-dock-finalization.repository';
+import { BookDockFinalizeJobsService } from './book-dock-finalize-jobs.service';
 import { BookDockRepository } from './book-dock.repository';
 
 @Module({
@@ -53,6 +56,9 @@ import { BookDockRepository } from './book-dock.repository';
     BookDockMetadataService,
     BookDockProcessingStateService,
     BookDockFinalizeService,
+    BookDockPublicationService,
+    BookDockFinalizationRepository,
+    BookDockFinalizeJobsService,
     BookDockWatcherService,
     BookDockGateway,
   ],

@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { sanitizeLogValue } from '../../../../common/utils/log-sanitize.utils';
 import { lookup } from 'node:dns/promises';
 import { request as httpRequest } from 'node:http';
 import type { ClientRequest, IncomingMessage, RequestOptions } from 'node:http';
@@ -89,6 +94,7 @@ const TRANSIENT_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
 @Injectable()
 export class AudiobookshelfApiConnector {
+  private readonly logger = new Logger(AudiobookshelfApiConnector.name);
   async getStatus(config: ApiConfig): Promise<AudiobookshelfStatus> {
     const payload = asRecord(await this.requestJson(config, '/status'));
     if (payload.app !== 'audiobookshelf') {
@@ -203,10 +209,7 @@ export class AudiobookshelfApiConnector {
     const libraryItems: AudiobookshelfLibraryItemRecord[] = [];
     for (const library of libraries) {
       if (library.mediaType !== 'book') continue;
-      const itemIds = await this.getAllLibraryItemIds(config, library.id);
-      for (let offset = 0; offset < itemIds.length; offset += ITEM_BATCH_SIZE) {
-        libraryItems.push(...(await this.getExpandedItems(config, itemIds.slice(offset, offset + ITEM_BATCH_SIZE))));
-      }
+      for await (const batch of this.iterateLibraryItems(config, library.id)) libraryItems.push(...batch);
     }
 
     const playbackSessions = (
@@ -226,24 +229,136 @@ export class AudiobookshelfApiConnector {
     };
   }
 
+  async *fetchSourceRecordBatches(config: ApiConfig): AsyncGenerator<AudiobookshelfSourceRecords> {
+    const startMs = Date.now();
+    this.logger.log('[migration.abs_export] [start] mode=api - source export started');
+    const workspace = await mkdtemp(join(tmpdir(), 'bookorbit-abs-migration-'));
+    let database: DatabaseSync | undefined;
+    let batches = 0;
+    let books = 0;
+    try {
+      database = new DatabaseSync(join(workspace, 'records.sqlite'));
+      database.exec(
+        'CREATE TABLE records (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, book_id TEXT NOT NULL, payload TEXT NOT NULL); CREATE INDEX records_book_idx ON records(book_id, id);',
+      );
+      const insert = database.prepare('INSERT INTO records(kind, book_id, payload) VALUES (?, ?, ?)');
+      const status = await this.getStatus(config);
+      await this.authorize(config);
+      const [users, libraries] = await Promise.all([this.getUsers(config), this.getLibraries(config)]);
+      const exportedUsers: AudiobookshelfUserRecord[] = [];
+      for (const user of users) {
+        const detail = await this.getUserDetails(config, user.id);
+        exportedUsers.push(detail.user);
+        database.exec('BEGIN');
+        try {
+          for (const progress of detail.mediaProgress) {
+            if (progress.mediaItemId) insert.run('progress', progress.mediaItemId, JSON.stringify(progress));
+          }
+          for (const bookmark of detail.bookmarks) insert.run('bookmark', bookmark.libraryItemId, JSON.stringify(bookmark));
+          database.exec('COMMIT');
+        } catch (error) {
+          database.exec('ROLLBACK');
+          throw error;
+        }
+        for await (const sessions of this.iterateListeningSessions(config, user.id)) {
+          database.exec('BEGIN');
+          try {
+            for (const session of sessions) insert.run('session', session.mediaItemId, JSON.stringify(session));
+            database.exec('COMMIT');
+          } catch (error) {
+            database.exec('ROLLBACK');
+            throw error;
+          }
+        }
+      }
+      for (const library of libraries) {
+        if (library.mediaType !== 'book') continue;
+        for await (const libraryItems of this.iterateLibraryItems(config, library.id)) {
+          const keys = [...new Set(libraryItems.flatMap((item) => (item.mediaType === 'book' ? [item.id, item.book.id] : [item.id])))];
+          const statement = database.prepare(
+            `SELECT id, kind, payload FROM records WHERE book_id IN (${keys.map(() => '?').join(',')}) AND id > ? ORDER BY id LIMIT 500`,
+          );
+          let lastId = 0;
+          let emitted = false;
+          for (;;) {
+            const rows = statement.all(...keys, lastId) as Array<{ id: number; kind: string; payload: string }>;
+            if (rows.length === 0 && emitted) break;
+            const records: AudiobookshelfSourceRecords = {
+              bookOverlays: !emitted,
+              sourceVersion: status.sourceVersion,
+              users: exportedUsers,
+              libraryItems,
+              mediaProgress: [],
+              bookmarks: [],
+              playbackSessions: [],
+              libraryFolders: libraries.flatMap((entry) => entry.folders),
+              authorsAvailable: true,
+              warnings: [],
+            };
+            for (const row of rows) {
+              const payload = JSON.parse(row.payload) as unknown;
+              if (row.kind === 'progress') records.mediaProgress.push(payload as AudiobookshelfMediaProgressRecord);
+              else if (row.kind === 'bookmark') records.bookmarks.push(payload as AudiobookshelfBookmarkRecord);
+              else records.playbackSessions?.push(payload as AudiobookshelfPlaybackSessionRecord);
+              lastId = row.id;
+            }
+            batches++;
+            if (!emitted) books += libraryItems.length;
+            emitted = true;
+            yield records;
+            if (rows.length < 500) break;
+          }
+          if (batches % 50 === 0)
+            this.logger.log(`[migration.abs_export] [start] mode=api batches=${batches} books=${books} - source export progress`);
+        }
+      }
+      if (books === 0)
+        yield {
+          sourceVersion: status.sourceVersion,
+          users: exportedUsers,
+          libraryItems: [],
+          mediaProgress: [],
+          bookmarks: [],
+          playbackSessions: [],
+          libraryFolders: libraries.flatMap((entry) => entry.folders),
+          authorsAvailable: true,
+          warnings: [],
+        };
+      this.logger.log(
+        `[migration.abs_export] [end] mode=api durationMs=${Date.now() - startMs} batches=${batches} books=${books} - source export completed`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[migration.abs_export] [fail] mode=api durationMs=${Date.now() - startMs} errorClass=${error instanceof Error ? error.name : 'Unknown'} error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - source export failed`,
+      );
+      throw error;
+    } finally {
+      database?.close();
+      await rm(workspace, { recursive: true, force: true });
+    }
+  }
+
   async fetchSnapshotSummary(config: ApiConfig): Promise<AudiobookshelfApiSnapshotSummary> {
     const status = await this.getStatus(config);
     await this.authorize(config);
     const [users, libraries] = await Promise.all([this.getUsers(config), this.getLibraries(config)]);
     const bookLibraries = libraries.filter((library) => library.mediaType === 'book');
-    const [firstItemPages, userDetails, firstSessionPages] = await Promise.all([
+    const [firstItemPages, userCounts, sessionCounts] = await Promise.all([
       mapWithConcurrency(bookLibraries, USER_DETAIL_CONCURRENCY, (library) => this.getLibraryItemsPage(config, library.id, 0)),
-      mapWithConcurrency(users, USER_DETAIL_CONCURRENCY, (user) => this.getUserDetails(config, user.id)),
-      mapWithConcurrency(users, USER_DETAIL_CONCURRENCY, (user) => this.getUserListeningSessionsPage(config, user.id, 0)),
+      mapWithConcurrency(users, USER_DETAIL_CONCURRENCY, async (user) => {
+        const detail = await this.getUserDetails(config, user.id);
+        return { progress: detail.mediaProgress.length, bookmarks: detail.bookmarks.length };
+      }),
+      mapWithConcurrency(users, USER_DETAIL_CONCURRENCY, async (user) => (await this.getUserListeningSessionsPage(config, user.id, 0)).total),
     ]);
     return {
       sourceVersion: status.sourceVersion,
       counts: {
         users: users.length,
         libraryItems: firstItemPages.reduce((total, page) => total + page.total, 0),
-        mediaProgress: userDetails.reduce((total, detail) => total + detail.mediaProgress.length, 0),
-        bookmarks: userDetails.reduce((total, detail) => total + detail.bookmarks.length, 0),
-        readingSessions: firstSessionPages.reduce((total, page) => total + page.total, 0),
+        mediaProgress: userCounts.reduce((total, counts) => total + counts.progress, 0),
+        bookmarks: userCounts.reduce((total, counts) => total + counts.bookmarks, 0),
+        readingSessions: sessionCounts.reduce((total, count) => total + count, 0),
       },
     };
   }
@@ -254,53 +369,47 @@ export class AudiobookshelfApiConnector {
     return (await this.getLibraries(config)).flatMap((library) => library.folders);
   }
 
-  private async getAllLibraryItemIds(config: ApiConfig, libraryId: string): Promise<string[]> {
-    const ids: string[] = [];
+  async *iterateLibraryItems(config: ApiConfig, libraryId: string): AsyncGenerator<AudiobookshelfLibraryItemRecord[]> {
     const seen = new Set<string>();
     for (let page = 0; page < MAX_PAGE_COUNT; page++) {
       const result = await this.getLibraryItemsPage(config, libraryId, page);
-      const countBeforePage = ids.length;
-      for (const item of result.results) {
-        if (!seen.has(item.id)) {
-          seen.add(item.id);
-          ids.push(item.id);
-        }
+      const itemIds = result.results.filter((item) => !seen.has(item.id)).map((item) => item.id);
+      for (const id of itemIds) seen.add(id);
+      for (let offset = 0; offset < itemIds.length; offset += ITEM_BATCH_SIZE) {
+        yield await this.getExpandedItems(config, itemIds.slice(offset, offset + ITEM_BATCH_SIZE));
       }
       if (
         result.results.length === 0 ||
-        // A server that ignores `page` returns the same rows forever, and deduplication keeps
-        // `ids.length` below `total`, so no other condition here would ever terminate.
-        ids.length === countBeforePage ||
-        (result.total > 0 && ids.length >= result.total) ||
+        itemIds.length === 0 ||
+        (result.total > 0 && seen.size >= result.total) ||
         (result.total === 0 && result.results.length < LIBRARY_PAGE_SIZE)
-      ) {
-        return ids;
-      }
+      )
+        return;
     }
     throw new BadRequestException('Audiobookshelf library pagination exceeded the safety limit');
   }
 
   private async getAllListeningSessions(config: ApiConfig, sourceUserId: string): Promise<AudiobookshelfPlaybackSessionRecord[]> {
     const sessions: AudiobookshelfPlaybackSessionRecord[] = [];
+    for await (const page of this.iterateListeningSessions(config, sourceUserId)) sessions.push(...page);
+    return sessions;
+  }
+
+  async *iterateListeningSessions(config: ApiConfig, sourceUserId: string): AsyncGenerator<AudiobookshelfPlaybackSessionRecord[]> {
     const seen = new Set<string>();
     for (let page = 0; page < MAX_PAGE_COUNT; page++) {
       const result = await this.getUserListeningSessionsPage(config, sourceUserId, page);
-      const countBeforePage = sessions.length;
-      for (const session of result.sessions) {
-        if (seen.has(session.id)) continue;
-        seen.add(session.id);
-        sessions.push(session);
-      }
+      const sessions = result.sessions.filter((session) => !seen.has(session.id));
+      for (const session of sessions) seen.add(session.id);
+      if (sessions.length > 0) yield sessions;
       if (
         result.sessions.length === 0 ||
-        // Guards against a server that ignores `page` and replays the same rows indefinitely.
-        sessions.length === countBeforePage ||
-        (result.total > 0 && sessions.length >= result.total) ||
+        sessions.length === 0 ||
+        (result.total > 0 && seen.size >= result.total) ||
         (result.numPages > 0 && page + 1 >= result.numPages) ||
         (result.total === 0 && result.numPages === 0 && result.sessions.length < SESSION_PAGE_SIZE)
-      ) {
-        return sessions;
-      }
+      )
+        return;
     }
     throw new BadRequestException('Audiobookshelf listening-session pagination exceeded the safety limit');
   }

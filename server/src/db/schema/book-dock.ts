@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { bigint, boolean, check, index, integer, jsonb, pgTable, serial, text, timestamp, varchar } from 'drizzle-orm/pg-core';
-import type { BookDockMetadata } from '@bookorbit/types';
+import { bigint, boolean, check, index, integer, jsonb, pgTable, serial, text, timestamp, varchar, uuid, uniqueIndex } from 'drizzle-orm/pg-core';
+import type { BookDockMetadata, BookDockFinalizeFileResult, BookDockFinalizeJobRequest } from '@bookorbit/types';
 
 import { libraries, libraryFolders } from './libraries';
 import { users } from './auth';
@@ -89,3 +89,88 @@ export const bookDockUnitFiles = pgTable(
 
 export type BookDockUnitFileRow = typeof bookDockUnitFiles.$inferSelect;
 export type NewBookDockUnitFileRow = typeof bookDockUnitFiles.$inferInsert;
+
+export interface BookDockFinalizeIntent {
+  managedRequest?: { requestId: number; userId: number };
+  row: BookDockFileRow;
+  libraryId: number;
+  folderId: number;
+  root: string;
+  format: string;
+  destPath: string;
+  bookFolderPath?: string;
+  placement: Array<{
+    sourcePath: string;
+    destPath: string;
+    format: string | null;
+    role: 'content' | 'cover' | 'metadata' | 'supplement';
+    sortOrder: number | null;
+  }>;
+  publication: Array<{ sourcePath: string; destPath: string; stagingPath: string; hash: string }>;
+}
+
+export const bookDockFinalizations = pgTable(
+  'book_dock_finalizations',
+  {
+    fileId: integer('file_id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    libraryId: integer('library_id')
+      .notNull()
+      .references(() => libraries.id, { onDelete: 'cascade' }),
+    state: varchar('state', { length: 20 }).notNull().default('placing'),
+    intent: jsonb('intent').$type<BookDockFinalizeIntent>().notNull(),
+    bookIds: jsonb('book_ids').$type<number[]>().notNull().default([]),
+    result: jsonb('result').$type<BookDockFinalizeFileResult>(),
+    error: text('error'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('book_dock_finalizations_user_id_idx').on(t.userId, t.fileId),
+    index('book_dock_finalizations_state_idx').on(t.state, t.fileId),
+    check('book_dock_finalizations_state_chk', sql`${t.state} in ('placing', 'committed', 'completed', 'failed')`),
+  ],
+);
+
+export const bookDockFinalizeJobs = pgTable(
+  'book_dock_finalize_jobs',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    idempotencyKey: uuid('idempotency_key').notNull(),
+    request: jsonb('request').$type<BookDockFinalizeJobRequest>().notNull(),
+    state: varchar('state', { length: 20 }).notNull().default('queued'),
+    cursor: integer('cursor').notNull().default(0),
+    total: integer('total').notNull().default(0),
+    succeeded: integer('succeeded').notNull().default(0),
+    failed: integer('failed').notNull().default(0),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('book_dock_finalize_jobs_user_key_idx').on(t.userId, t.idempotencyKey),
+    index('book_dock_finalize_jobs_state_idx').on(t.state, t.id),
+    check('book_dock_finalize_jobs_state_chk', sql`${t.state} in ('queued', 'running', 'completed', 'failed')`),
+  ],
+);
+
+export const bookDockFinalizeJobItems = pgTable(
+  'book_dock_finalize_job_items',
+  {
+    id: serial('id').primaryKey(),
+    jobId: integer('job_id')
+      .notNull()
+      .references(() => bookDockFinalizeJobs.id, { onDelete: 'cascade' }),
+    fileId: integer('file_id').notNull(),
+    state: varchar('state', { length: 20 }).notNull().default('pending'),
+    result: jsonb('result').$type<BookDockFinalizeFileResult>(),
+  },
+  (t) => [
+    uniqueIndex('book_dock_finalize_job_items_job_file_idx').on(t.jobId, t.fileId),
+    index('book_dock_finalize_job_items_pending_idx').on(t.jobId, t.state, t.id),
+  ],
+);

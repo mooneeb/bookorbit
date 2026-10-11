@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { inArray, sql, type SQL } from 'drizzle-orm';
+import { and, inArray, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { buildContentFilterClauses } from '../../../common/utils/content-filter-sql.utils';
@@ -19,8 +19,10 @@ export async function assertEntityRelationsWithinLibraries(
   db: Db,
   relationTableName: string,
   relationEntityIdColumn: string,
-  entityIds: number[],
+  entityIds: (number | string)[],
   libraryIds: number[],
+  contentFilters?: EntityBookScope['contentFilters'],
+  onlyAccessibleLibraries = false,
 ): Promise<void> {
   if (entityIds.length === 0) return;
 
@@ -39,12 +41,21 @@ export async function assertEntityRelationsWithinLibraries(
         )})`
       : sql`true`;
 
+  const outsideScopeCondition = contentFilters
+    ? sql`${books.id} NOT IN (${db
+        .select({ id: books.id })
+        .from(books)
+        .where(and(...buildEntityBookScopeClauses(db, { libraryIds, contentFilters })))})`
+    : outsideLibraryCondition;
+  const affectedLibraryCondition = onlyAccessibleLibraries ? (libraryIds.length > 0 ? inArray(books.libraryId, libraryIds) : sql`false`) : sql`true`;
+
   const result = await db.execute(sql`
     SELECT 1
     FROM ${relationTable} scoped_relation
     JOIN ${books} ON ${relationBookId} = ${books.id}
     WHERE ${relationEntityId} IN (${entityIdList})
-      AND ${outsideLibraryCondition}
+      AND ${outsideScopeCondition}
+      AND ${affectedLibraryCondition}
     LIMIT 1
   `);
 

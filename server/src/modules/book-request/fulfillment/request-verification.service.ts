@@ -161,10 +161,11 @@ export class RequestVerificationService implements OnModuleInit {
     const folderId = request.targetFolderId ?? (await this.resolveFolder(request.targetLibraryId));
     if (folderId === null) return { ok: false, reason: 'the destination library has no folder to file the book into' };
 
-    const result = await this.finalizeService.finalizeManagedFile(fileId, {
-      libraryId: request.targetLibraryId ?? undefined,
-      folderId,
-    });
+    const result = await this.finalizeService.finalizeManagedFile(
+      fileId,
+      { libraryId: request.targetLibraryId ?? undefined, folderId },
+      { requestId: request.id, userId: request.userId },
+    );
     if (!result.success) return { ok: false, reason: result.message ?? 'the Book Dock could not file this book' };
 
     // Conditional, like every other write in the pipeline. Scoring an import and handing it to the

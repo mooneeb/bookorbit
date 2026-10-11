@@ -1,7 +1,12 @@
-import { BadRequestException, ConflictException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import type { RequestUser } from '../../common/types/request-user';
+import { BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 
 import { MigrationService } from './migration.service';
+
+function makeUser(id = 1): RequestUser {
+  return { id, isSuperuser: true } as RequestUser;
+}
 
 const noopEncryption = {
   encryptConfig: (c: Record<string, unknown>) => c,
@@ -11,6 +16,7 @@ const noopEncryption = {
 
 function createService(overrides: Partial<Record<string, unknown>> = {}): MigrationService {
   const repo = {
+    planningStore: vi.fn().mockReturnValue({}),
     findSourceById: vi.fn(() =>
       Promise.resolve({
         id: 1,
@@ -53,6 +59,7 @@ function createService(overrides: Partial<Record<string, unknown>> = {}): Migrat
     listSources: vi.fn(() => Promise.resolve([])),
     findRunById: vi.fn(),
     updateRunState: vi.fn(),
+    findPlanArtifactOwnershipById: vi.fn(() => Promise.resolve({ id: 100, profileId: 2, createdByUserId: 1 })),
     findPlanArtifactById: vi.fn(() =>
       Promise.resolve({
         id: 100,
@@ -89,6 +96,10 @@ function createService(overrides: Partial<Record<string, unknown>> = {}): Migrat
       }),
     ),
     purgeRunState: vi.fn(() => Promise.resolve()),
+    listPlanSourceBatches: vi.fn(() => Promise.resolve([])),
+    appendPlanSourceBatch: vi.fn(() => Promise.resolve()),
+    deletePlanArtifact: vi.fn(() => Promise.resolve()),
+    updatePlanArtifact: vi.fn((id: number, values: Record<string, unknown>) => Promise.resolve({ id, ...values })),
     listPlanArtifacts: vi.fn(() => Promise.resolve([])),
     ...overrides,
   };
@@ -96,13 +107,21 @@ function createService(overrides: Partial<Record<string, unknown>> = {}): Migrat
   return new MigrationService(
     repo as never,
     { buildPlan: vi.fn() } as never,
-    { start: vi.fn() } as never,
+    { start: vi.fn(), waitForIdle: vi.fn().mockResolvedValue(undefined) } as never,
     { getRunProgress: vi.fn(), getRunReport: vi.fn(), exportRunReport: vi.fn() } as never,
     noopEncryption,
   );
 }
 
 describe('MigrationService', () => {
+  it("rejects another user's plan before starting a live migration through the service boundary", async () => {
+    const service = createService();
+
+    await expect(service.startLiveRun({ planArtifactId: 100 }, { id: 2, isSuperuser: false } as RequestUser)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
   it('rejects live run start when another active run exists for the same source and target', async () => {
     const service = createService();
 
@@ -112,7 +131,7 @@ describe('MigrationService', () => {
           planArtifactId: 100,
           targetKey: 'bookorbit',
         },
-        1,
+        makeUser(1),
       ),
     ).rejects.toBeInstanceOf(ConflictException);
   });
@@ -151,7 +170,7 @@ describe('MigrationService', () => {
       createRunWithLock: vi.fn(() => Promise.resolve({ run, activeRun: null })),
     });
 
-    await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, 1)).resolves.toEqual({
+    await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, makeUser(1))).resolves.toEqual({
       id: 78,
       sourceId: 1,
       profileId: 2,
@@ -185,7 +204,7 @@ describe('MigrationService', () => {
       ),
     });
 
-    await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, 1)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, makeUser(1))).rejects.toBeInstanceOf(BadRequestException);
   });
 
   describe('cancelRun', () => {
@@ -226,7 +245,7 @@ describe('MigrationService', () => {
         updateRunState: vi.fn(() => Promise.resolve(updatedRun)),
       });
 
-      const result = await service.cancelRun(77);
+      const result = await service.cancelRun(77, makeUser());
       expect(result.state).toBe('failed');
       expect(result.currentStage).toBe('cancelled');
       expect(result.errorMessage).toBe('Migration cancelled by user');
@@ -237,7 +256,7 @@ describe('MigrationService', () => {
         findRunById: vi.fn(() => Promise.resolve(undefined)),
       });
 
-      await expect(service.cancelRun(999)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.cancelRun(999, makeUser())).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('throws BadRequestException for non-running run', async () => {
@@ -261,10 +280,10 @@ describe('MigrationService', () => {
         ),
       });
 
-      await expect(service.cancelRun(77)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.cancelRun(77, makeUser())).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('throws InternalServerErrorException when update fails', async () => {
+    it('rejects cancellation when completion already won', async () => {
       const service = createService({
         findRunById: vi.fn(() =>
           Promise.resolve({
@@ -286,7 +305,7 @@ describe('MigrationService', () => {
         updateRunState: vi.fn(() => Promise.resolve(null)),
       });
 
-      await expect(service.cancelRun(77)).rejects.toBeInstanceOf(InternalServerErrorException);
+      await expect(service.cancelRun(77, makeUser())).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
@@ -309,7 +328,7 @@ describe('MigrationService', () => {
       ),
     });
 
-    await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, 1)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, makeUser(1))).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rejects live run when source has never been validated', async () => {
@@ -341,7 +360,7 @@ describe('MigrationService', () => {
       ),
     });
 
-    await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, 1)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, makeUser(1))).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rejects live run when dry-run plan is stale', async () => {
@@ -374,7 +393,7 @@ describe('MigrationService', () => {
       ),
     });
 
-    await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, 1)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, makeUser(1))).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rejects live run when target users no longer exist', async () => {
@@ -410,7 +429,7 @@ describe('MigrationService', () => {
       ),
     });
 
-    await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, 1)).rejects.toThrow('Target users no longer exist');
+    await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, makeUser(1))).rejects.toThrow('Target users no longer exist');
   });
 
   describe('retryFailedRun', () => {
@@ -452,9 +471,9 @@ describe('MigrationService', () => {
         updateRunState: vi.fn(() => Promise.resolve(updatedRun)),
       });
 
-      (service as any).executor = { start: startFn };
+      (service as any).executor = { start: startFn, waitForIdle: vi.fn().mockResolvedValue(undefined) };
 
-      const result = await service.retryFailedRun(77);
+      const result = await service.retryFailedRun(77, makeUser());
       expect(result.state).toBe('running');
       expect(result.errorMessage).toBeNull();
       expect(startFn).toHaveBeenCalledWith(77);
@@ -465,7 +484,7 @@ describe('MigrationService', () => {
         findRunById: vi.fn(() => Promise.resolve(undefined)),
       });
 
-      await expect(service.retryFailedRun(999)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.retryFailedRun(999, makeUser())).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('throws BadRequestException for non-failed run', async () => {
@@ -489,7 +508,7 @@ describe('MigrationService', () => {
         ),
       });
 
-      await expect(service.retryFailedRun(77)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.retryFailedRun(77, makeUser())).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws ConflictException when another run is already active', async () => {
@@ -523,7 +542,7 @@ describe('MigrationService', () => {
         ),
       });
 
-      await expect(service.retryFailedRun(77)).rejects.toBeInstanceOf(ConflictException);
+      await expect(service.retryFailedRun(77, makeUser())).rejects.toBeInstanceOf(ConflictException);
     });
   });
 
@@ -569,12 +588,16 @@ describe('MigrationService', () => {
         updatePlanArtifact: updateFn,
       });
 
-      const result = await service.resolveDuplicateMatches(100, {
-        resolutions: [
-          { targetBookId: 5, selectedSourceBookId: 'sb10' },
-          { targetBookId: 6, selectedSourceBookId: 'sb22' },
-        ],
-      });
+      const result = await service.resolveDuplicateMatches(
+        100,
+        {
+          resolutions: [
+            { targetBookId: 5, selectedSourceBookId: 'sb10' },
+            { targetBookId: 6, selectedSourceBookId: 'sb22' },
+          ],
+        },
+        makeUser(),
+      );
 
       expect(updateFn).toHaveBeenCalledOnce();
       const updatedPlan = (updateFn.mock.calls as unknown[][])[0][1] as { plan: Record<string, unknown>; summary: Record<string, unknown> };
@@ -601,9 +624,9 @@ describe('MigrationService', () => {
       const service = createService({
         findPlanArtifactById: vi.fn(() => Promise.resolve(undefined)),
       });
-      await expect(service.resolveDuplicateMatches(999, { resolutions: [{ targetBookId: 1, selectedSourceBookId: 'sb1' }] })).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.resolveDuplicateMatches(999, { resolutions: [{ targetBookId: 1, selectedSourceBookId: 'sb1' }] }, makeUser()),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('throws BadRequestException when no duplicates exist', async () => {
@@ -615,9 +638,9 @@ describe('MigrationService', () => {
           }),
         ),
       });
-      await expect(service.resolveDuplicateMatches(100, { resolutions: [{ targetBookId: 5, selectedSourceBookId: 'sb10' }] })).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        service.resolveDuplicateMatches(100, { resolutions: [{ targetBookId: 5, selectedSourceBookId: 'sb10' }] }, makeUser()),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws BadRequestException when selected source book is not in the group', async () => {
@@ -625,24 +648,32 @@ describe('MigrationService', () => {
         findPlanArtifactById: vi.fn(() => Promise.resolve({ ...duplicatePlanArtifact })),
       });
       await expect(
-        service.resolveDuplicateMatches(100, {
-          resolutions: [
-            { targetBookId: 5, selectedSourceBookId: 'sb99' },
-            { targetBookId: 6, selectedSourceBookId: 'sb22' },
-          ],
-        }),
+        service.resolveDuplicateMatches(
+          100,
+          {
+            resolutions: [
+              { targetBookId: 5, selectedSourceBookId: 'sb99' },
+              { targetBookId: 6, selectedSourceBookId: 'sb22' },
+            ],
+          },
+          makeUser(),
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('throws BadRequestException when not all groups are resolved', async () => {
+    it('keeps remaining duplicate groups blocked after resolving one page', async () => {
+      const updatePlanArtifact = vi.fn((id: number, values: Record<string, unknown>) => Promise.resolve({ ...duplicatePlanArtifact, id, ...values }));
       const service = createService({
         findPlanArtifactById: vi.fn(() => Promise.resolve({ ...duplicatePlanArtifact })),
+        updatePlanArtifact,
       });
-      await expect(
-        service.resolveDuplicateMatches(100, {
-          resolutions: [{ targetBookId: 5, selectedSourceBookId: 'sb10' }],
-        }),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      const result = await service.resolveDuplicateMatches(100, { resolutions: [{ targetBookId: 5, selectedSourceBookId: 'sb10' }] }, makeUser());
+
+      expect(result.summary).toMatchObject({ status: 'blocked', matchedBooks: 2, unresolvedBooks: 2, duplicateBookMatches: 1 });
+      expect(updatePlanArtifact).toHaveBeenCalledWith(
+        100,
+        expect.objectContaining({ plan: expect.objectContaining({ duplicateBookMatches: [duplicatePlanArtifact.plan.duplicateBookMatches[1]] }) }),
+      );
     });
 
     it('uses explicit duplicate match objects and parses plan user mappings', async () => {
@@ -678,9 +709,13 @@ describe('MigrationService', () => {
         updatePlanArtifact: updateFn,
       });
 
-      const result = await service.resolveDuplicateMatches(100, {
-        resolutions: [{ targetBookId: 5, selectedSourceBookId: 'sb11' }],
-      });
+      const result = await service.resolveDuplicateMatches(
+        100,
+        {
+          resolutions: [{ targetBookId: 5, selectedSourceBookId: 'sb11' }],
+        },
+        makeUser(),
+      );
 
       expect(result.summary?.status).toBe('ready_for_live_run');
       expect(updateFn).toHaveBeenCalledWith(
@@ -708,7 +743,10 @@ describe('MigrationService', () => {
           updatedAt: new Date(),
         }),
       );
-      const service = createService({ createPlanArtifact });
+      const updatePlanArtifact = vi.fn((id: number, values: Record<string, unknown>) =>
+        Promise.resolve({ id, sourceId: 1, profileId: 2, createdByUserId: 5, createdAt: new Date(), updatedAt: new Date(), ...values }),
+      );
+      const service = createService({ createPlanArtifact, updatePlanArtifact });
       const buildPlan = vi.fn(() =>
         Promise.resolve({
           plan: {
@@ -736,7 +774,7 @@ describe('MigrationService', () => {
       );
       (service as any).planner = { buildPlan };
 
-      const result = await service.createDryRunPlan({ profileId: 2 }, 5);
+      const result = await service.createDryRunPlan({ profileId: 2 }, makeUser(5));
 
       expect(buildPlan).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -749,6 +787,12 @@ describe('MigrationService', () => {
           sourceId: 1,
           profileId: 2,
           createdByUserId: 5,
+          summary: { status: 'building' },
+        }),
+      );
+      expect(updatePlanArtifact).toHaveBeenCalledWith(
+        900,
+        expect.objectContaining({
           summary: expect.objectContaining({
             status: 'blocked',
             matchedBooks: 1,
@@ -773,7 +817,7 @@ describe('MigrationService', () => {
       const missingProfileService = createService({
         findProfileById: vi.fn(() => Promise.resolve(null)),
       });
-      await expect(missingProfileService.createDryRunPlan({ profileId: 999 }, 1)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(missingProfileService.createDryRunPlan({ profileId: 999 }, makeUser(1))).rejects.toBeInstanceOf(NotFoundException);
 
       const missingSourceService = createService({
         findProfileById: vi.fn(() =>
@@ -792,7 +836,7 @@ describe('MigrationService', () => {
         ),
         findSourceById: vi.fn(() => Promise.resolve(null)),
       });
-      await expect(missingSourceService.createDryRunPlan({ profileId: 2 }, 1)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(missingSourceService.createDryRunPlan({ profileId: 2 }, makeUser(1))).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
@@ -804,12 +848,12 @@ describe('MigrationService', () => {
       const service = createService();
       (service as any).reporting = { getRunProgress, getRunReport, exportRunReport };
 
-      expect(service.getRunProgress(7)).toEqual({ stage: 'init' });
-      expect(service.getRunReport(7)).toEqual({ summary: {} });
-      expect(service.exportRunReport(7, 'csv')).toBe('csv-data');
-      expect(getRunProgress).toHaveBeenCalledWith(7);
-      expect(getRunReport).toHaveBeenCalledWith(7);
-      expect(exportRunReport).toHaveBeenCalledWith(7, 'csv');
+      expect(service.getRunProgress(7, makeUser())).toEqual({ stage: 'init' });
+      expect(service.getRunReport(7, makeUser())).toEqual({ summary: {} });
+      expect(service.exportRunReport(7, 'csv', makeUser())).toBe('csv-data');
+      expect(getRunProgress).toHaveBeenCalledWith(7, makeUser());
+      expect(getRunReport).toHaveBeenCalledWith(7, makeUser());
+      expect(exportRunReport).toHaveBeenCalledWith(7, 'csv', makeUser());
     });
 
     it('returns active workflow bundle and hasActiveRun=true when an active run exists', async () => {
@@ -885,7 +929,7 @@ describe('MigrationService', () => {
         ),
       });
 
-      const state = await service.getWorkflowState();
+      const state = await service.getWorkflowState({ id: 7, isSuperuser: true } as RequestUser);
 
       expect(state.hasActiveRun).toBe(true);
       expect(state.active?.source.id).toBe(1);
@@ -903,7 +947,7 @@ describe('MigrationService', () => {
         listRuns: vi.fn(() => Promise.resolve([])),
       });
 
-      await expect(service.getWorkflowState()).resolves.toEqual({
+      await expect(service.getWorkflowState({ id: 7, isSuperuser: true } as RequestUser)).resolves.toEqual({
         active: null,
         hasActiveRun: false,
       });
@@ -949,7 +993,7 @@ describe('MigrationService', () => {
         listRuns: vi.fn(() => Promise.resolve([])),
       });
 
-      const state = await service.getWorkflowState();
+      const state = await service.getWorkflowState({ id: 7, isSuperuser: true } as RequestUser);
 
       expect(state.active?.source.id).toBe(1);
       expect(state.active?.profile).toBeNull();
@@ -1010,7 +1054,7 @@ describe('MigrationService', () => {
         ),
       });
 
-      const state = await service.getWorkflowState();
+      const state = await service.getWorkflowState({ id: 7, isSuperuser: true } as RequestUser);
 
       expect(state.active?.source.id).toBe(20);
       expect(state.hasActiveRun).toBe(true);
@@ -1089,7 +1133,7 @@ describe('MigrationService', () => {
         ),
       });
 
-      const state = await service.getWorkflowState();
+      const state = await service.getWorkflowState({ id: 7, isSuperuser: true } as RequestUser);
 
       expect(state.active?.source.id).toBe(7);
       expect(state.active?.profile?.id).toBe(11);
@@ -1153,7 +1197,7 @@ describe('MigrationService', () => {
         listRuns: vi.fn(() => Promise.resolve([])),
       });
 
-      const state = await service.getWorkflowState();
+      const state = await service.getWorkflowState({ id: 7, isSuperuser: true } as RequestUser);
 
       expect(state.active?.plan?.id).toBe(55);
     });
@@ -1189,7 +1233,7 @@ describe('MigrationService', () => {
         ),
       });
 
-      await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, 1)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.startLiveRun({ planArtifactId: 100, targetKey: 'bookorbit' }, makeUser(1))).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws BadRequestException when capabilities.ok is false and missingTables is missing', async () => {
@@ -1221,7 +1265,7 @@ describe('MigrationService', () => {
         ),
       });
 
-      await expect(service.startLiveRun({ planArtifactId: 100 }, 1)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.startLiveRun({ planArtifactId: 100 }, makeUser(1))).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws BadRequestException when profile.sourceId does not match source.id', async () => {
@@ -1254,7 +1298,7 @@ describe('MigrationService', () => {
         ),
       });
 
-      await expect(service.startLiveRun({ planArtifactId: 100 }, 1)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.startLiveRun({ planArtifactId: 100 }, makeUser(1))).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws BadRequestException when userMappings is empty', async () => {
@@ -1287,7 +1331,7 @@ describe('MigrationService', () => {
         ),
       });
 
-      await expect(service.startLiveRun({ planArtifactId: 100 }, 1)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.startLiveRun({ planArtifactId: 100 }, makeUser(1))).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws NotFoundException when plan artifact is missing', async () => {
@@ -1295,7 +1339,7 @@ describe('MigrationService', () => {
         findPlanArtifactById: vi.fn(() => Promise.resolve(null)),
       });
 
-      await expect(service.startLiveRun({ planArtifactId: 9999 }, 1)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.startLiveRun({ planArtifactId: 9999 }, makeUser(1))).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('throws NotFoundException when source is missing after artifact found', async () => {
@@ -1315,7 +1359,7 @@ describe('MigrationService', () => {
         findSourceById: vi.fn(() => Promise.resolve(null)),
       });
 
-      await expect(service.startLiveRun({ planArtifactId: 100 }, 1)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.startLiveRun({ planArtifactId: 100 }, makeUser(1))).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('throws NotFoundException when profile is not found during startLiveRun', async () => {
@@ -1335,7 +1379,7 @@ describe('MigrationService', () => {
         findProfileById: vi.fn(() => Promise.resolve(null)),
       });
 
-      await expect(service.startLiveRun({ planArtifactId: 100 }, 1)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.startLiveRun({ planArtifactId: 100 }, makeUser(1))).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('throws InternalServerErrorException when createRunWithLock returns no run and no conflict', async () => {
@@ -1357,7 +1401,7 @@ describe('MigrationService', () => {
         createRunWithLock: vi.fn(() => Promise.resolve({ run: null, activeRun: null })),
       });
 
-      await expect(service.startLiveRun({ planArtifactId: 100 }, 1)).rejects.toBeInstanceOf(InternalServerErrorException);
+      await expect(service.startLiveRun({ planArtifactId: 100 }, makeUser(1))).rejects.toBeInstanceOf(InternalServerErrorException);
     });
 
     it('uses default targetKey "bookorbit" when no targetKey provided', async () => {
@@ -1395,7 +1439,7 @@ describe('MigrationService', () => {
         createRunWithLock,
       });
 
-      await service.startLiveRun({ planArtifactId: 100 }, 1);
+      await service.startLiveRun({ planArtifactId: 100 }, makeUser(1));
 
       expect(createRunWithLock).toHaveBeenCalledWith(expect.objectContaining({ targetKey: 'bookorbit' }));
     });
@@ -1423,7 +1467,7 @@ describe('MigrationService', () => {
         ),
       });
 
-      await expect(service.retryFailedRun(77)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.retryFailedRun(77, makeUser())).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws NotFoundException when source is not found during retry', async () => {
@@ -1448,7 +1492,7 @@ describe('MigrationService', () => {
         findSourceById: vi.fn(() => Promise.resolve(null)),
       });
 
-      await expect(service.retryFailedRun(77)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.retryFailedRun(77, makeUser())).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('throws NotFoundException when artifact is not found during retry', async () => {
@@ -1473,10 +1517,10 @@ describe('MigrationService', () => {
         findPlanArtifactById: vi.fn(() => Promise.resolve(null)),
       });
 
-      await expect(service.retryFailedRun(77)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.retryFailedRun(77, makeUser())).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('throws InternalServerErrorException when updateRunState returns null during retry', async () => {
+    it('rejects a concurrent transition when updateRunState returns null during retry', async () => {
       const service = createService({
         findRunById: vi.fn(() =>
           Promise.resolve({
@@ -1498,7 +1542,7 @@ describe('MigrationService', () => {
         updateRunState: vi.fn(() => Promise.resolve(null)),
       });
 
-      await expect(service.retryFailedRun(77)).rejects.toBeInstanceOf(InternalServerErrorException);
+      await expect(service.retryFailedRun(77, makeUser())).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
@@ -1561,7 +1605,7 @@ describe('MigrationService', () => {
         listRuns: vi.fn(() => Promise.resolve([])),
       });
 
-      const state = await service.getWorkflowState();
+      const state = await service.getWorkflowState({ id: 7, isSuperuser: true } as RequestUser);
       const plan = state.active?.plan?.plan as Record<string, unknown>;
       const dupes = plan?.duplicateBookMatches as Array<Record<string, unknown>>;
 
@@ -1622,7 +1666,7 @@ describe('MigrationService', () => {
         listRuns: vi.fn(() => Promise.resolve([])),
       });
 
-      const state = await service.getWorkflowState();
+      const state = await service.getWorkflowState({ id: 7, isSuperuser: true } as RequestUser);
       const plan = state.active?.plan?.plan as Record<string, unknown>;
       const dupes = plan?.duplicateBookMatches as Array<Record<string, unknown>>;
       const candidates = dupes[0]?.sourceCandidates as Array<Record<string, unknown>>;
@@ -1670,7 +1714,7 @@ describe('MigrationService', () => {
         listRuns: vi.fn(() => Promise.resolve([])),
       });
 
-      const state = await service.getWorkflowState();
+      const state = await service.getWorkflowState({ id: 7, isSuperuser: true } as RequestUser);
       const plan = state.active?.plan?.plan as Record<string, unknown>;
       const dupes = plan?.duplicateBookMatches as unknown[];
 
@@ -1719,7 +1763,7 @@ describe('MigrationService', () => {
         listRuns: vi.fn(() => Promise.resolve([])),
       });
 
-      const state = await service.getWorkflowState();
+      const state = await service.getWorkflowState({ id: 7, isSuperuser: true } as RequestUser);
       const plan = state.active?.plan?.plan as Record<string, unknown>;
       const dupes = plan?.duplicateBookMatches as Array<Record<string, unknown>>;
 
@@ -1780,7 +1824,7 @@ describe('MigrationService', () => {
         listRuns: vi.fn(() => Promise.resolve([])),
       });
 
-      const state = await service.getWorkflowState();
+      const state = await service.getWorkflowState({ id: 7, isSuperuser: true } as RequestUser);
       const plan = state.active?.plan?.plan as Record<string, unknown>;
       const dupes = plan?.duplicateBookMatches as Array<Record<string, unknown>>;
       const candidates = dupes[0]?.sourceCandidates as Array<Record<string, unknown>>;
@@ -1832,9 +1876,13 @@ describe('MigrationService', () => {
         updatePlanArtifact: updateFn,
       });
 
-      const result = await service.resolveDuplicateMatches(100, {
-        resolutions: [{ targetBookId: 5, selectedSourceBookId: 'sb10' }],
-      });
+      const result = await service.resolveDuplicateMatches(
+        100,
+        {
+          resolutions: [{ targetBookId: 5, selectedSourceBookId: 'sb10' }],
+        },
+        makeUser(),
+      );
 
       const updatedPlan = (updateFn.mock.calls as unknown[][])[0][1] as { plan: Record<string, unknown> };
       const unresolvedBooks = updatedPlan.plan.unresolvedBooks as Array<{ sourceBookId: string; title: string | null }>;
@@ -1882,9 +1930,13 @@ describe('MigrationService', () => {
         updatePlanArtifact: updateFn,
       });
 
-      await service.resolveDuplicateMatches(100, {
-        resolutions: [{ targetBookId: 5, selectedSourceBookId: 'sb10' }],
-      });
+      await service.resolveDuplicateMatches(
+        100,
+        {
+          resolutions: [{ targetBookId: 5, selectedSourceBookId: 'sb10' }],
+        },
+        makeUser(),
+      );
 
       const updatedPlan = (updateFn.mock.calls as unknown[][])[0][1] as { summary: Record<string, unknown> };
       expect(updatedPlan.summary.mappedUsers).toBe(1);
@@ -1915,13 +1967,139 @@ describe('MigrationService', () => {
       });
 
       await expect(
-        service.resolveDuplicateMatches(100, {
-          resolutions: [
-            { targetBookId: 999, selectedSourceBookId: 'sb10' },
-            { targetBookId: 5, selectedSourceBookId: 'sb10' },
-          ],
-        }),
+        service.resolveDuplicateMatches(
+          100,
+          {
+            resolutions: [
+              { targetBookId: 999, selectedSourceBookId: 'sb10' },
+              { targetBookId: 5, selectedSourceBookId: 'sb10' },
+            ],
+          },
+          makeUser(),
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
+  });
+});
+
+describe('duplicate resolution with durable matched rows', () => {
+  it('preserves full summary counts and adds winners without loading all existing matches', async () => {
+    const artifact = {
+      id: 100,
+      sourceId: 1,
+      profileId: 2,
+      createdByUserId: 1,
+      plan: {
+        matchedBooksBatched: true,
+        matchedBooks: Array.from({ length: 40 }, (_, i) => ({ sourceBookId: String(i), targetBookId: i + 1, strategy: 'isbn' })),
+        unresolvedBooks: [],
+        userMappings: [{ sourceUserId: 'u', targetUserId: 10 }],
+        userPreview: [],
+        duplicateBookMatches: [{ targetBookId: 106, sourceBookIds: ['winner', 'loser'], strategies: ['isbn', 'isbn'] }],
+      },
+      summary: { matchedBooks: 105 },
+      sourceData: null,
+    };
+    const updatePlanArtifact = vi.fn((id, values) => Promise.resolve({ ...artifact, id, ...values }));
+    const findPlanMatchesForBooks = vi.fn().mockResolvedValue([{ sourceBookId: '104', targetBookId: 105, strategy: 'isbn' }]);
+    const sourceData = {
+      users: [],
+      books: [{ sourceBookId: '104' }, { sourceBookId: 'winner' }],
+      userBookStatuses: [],
+      userFileProgress: [],
+      bookmarks: [
+        { sourceBookId: '104', sourceUserId: 'u' },
+        { sourceBookId: 'winner', sourceUserId: 'u' },
+      ],
+      annotations: [],
+      shelves: [],
+      shelfBooks: [],
+    };
+    const service = createService({
+      findPlanArtifactById: vi.fn().mockResolvedValue(artifact),
+      updatePlanArtifact,
+      findPlanMatchesForBooks,
+      listPlanSourceBatches: vi
+        .fn()
+        .mockResolvedValueOnce([{ batchIndex: 0, sourceData }])
+        .mockResolvedValueOnce([]),
+    });
+    const result = await service.resolveDuplicateMatches(100, { resolutions: [{ targetBookId: 106, selectedSourceBookId: 'winner' }] }, makeUser());
+    expect(result.summary).toMatchObject({ matchedBooks: 106, perUserPreview: [{ counts: { bookmarks: 2 } }] });
+    expect(updatePlanArtifact).toHaveBeenCalledWith(
+      100,
+      expect.objectContaining({
+        matchedBookAdditions: [{ sourceBookId: 'winner', targetBookId: 106, strategy: 'isbn' }],
+      }),
+    );
+    expect(findPlanMatchesForBooks).toHaveBeenCalledWith(100, ['104', 'winner']);
+  });
+});
+
+describe('missing plan artifact during match publication', () => {
+  it('rejects a removed pending dry-run artifact and cleans up without publishing a plan', async () => {
+    const deletePlanArtifact = vi.fn().mockResolvedValue(undefined);
+    const updatePlanArtifact = vi.fn().mockResolvedValue(undefined);
+    const service = createService({
+      createPlanArtifact: vi.fn().mockResolvedValue({ id: 900 }),
+      updatePlanArtifact,
+      deletePlanArtifact,
+    });
+    const planner = {
+      buildPlan: vi.fn().mockResolvedValue({
+        plan: {
+          generatedAt: '2026-01-01T00:00:00.000Z',
+          snapshot: {},
+          matchedBooks: [],
+          unresolvedBooks: [],
+          duplicateBookMatches: [],
+          userPreview: [],
+        },
+        execution: {
+          sourceData: {
+            books: [],
+            users: [],
+            userBookStatuses: [],
+            userFileProgress: [],
+            bookmarks: [],
+            annotations: [],
+            shelves: [],
+            shelfBooks: [],
+          },
+        },
+      }),
+    };
+    Object.assign(service, { planner });
+
+    await expect(service.createDryRunPlan({ profileId: 2 }, makeUser())).rejects.toThrow(
+      new NotFoundException('Migration plan artifact not found: 900'),
+    );
+    expect(updatePlanArtifact).toHaveBeenCalledOnce();
+    expect(deletePlanArtifact).toHaveBeenCalledWith(900);
+  });
+
+  it('rejects an artifact removed after duplicate validation instead of returning a partial plan', async () => {
+    const updatePlanArtifact = vi.fn().mockResolvedValue(undefined);
+    const service = createService({
+      findPlanArtifactById: vi.fn().mockResolvedValue({
+        id: 100,
+        createdByUserId: 1,
+        sourceData: null,
+        plan: {
+          matchedBooks: [],
+          unresolvedBooks: [],
+          userMappings: [],
+          userPreview: [],
+          duplicateBookMatches: [{ targetBookId: 106, sourceBookIds: ['winner', 'loser'], strategies: ['isbn', 'isbn'] }],
+        },
+        summary: {},
+      }),
+      updatePlanArtifact,
+    });
+
+    await expect(
+      service.resolveDuplicateMatches(100, { resolutions: [{ targetBookId: 106, selectedSourceBookId: 'winner' }] }, makeUser()),
+    ).rejects.toThrow(new NotFoundException('Migration plan artifact not found: 100'));
+    expect(updatePlanArtifact).toHaveBeenCalledOnce();
   });
 });
