@@ -1,6 +1,6 @@
 {
-  "id": "ca1b88ed-d854-44a7-aefb-9edee8c49eec",
-  "prevId": "e2e711da-950e-421c-8822-06406af8ac10",
+  "id": "2d5084fe-c622-4125-a19d-e28ae0d6f876",
+  "prevId": "d8afb042-5262-42b4-8c59-aea487e606be",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2053,8 +2053,8 @@
         }
       },
       "indexes": {
-        "migration_plan_artifacts_plan_hash_uidx": {
-          "name": "migration_plan_artifacts_plan_hash_uidx",
+        "migration_plan_artifacts_plan_hash_idx": {
+          "name": "migration_plan_artifacts_plan_hash_idx",
           "columns": [
             {
               "expression": "plan_hash",
@@ -2063,7 +2063,7 @@
               "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2145,6 +2145,82 @@
           "columns": ["id", "source_id", "profile_id"]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.migration_plan_source_batches": {
+      "name": "migration_plan_source_batches",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "artifact_id": {
+          "name": "artifact_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_index": {
+          "name": "batch_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "book_overlays": {
+          "name": "book_overlays",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "source_data": {
+          "name": "source_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "migration_plan_source_batches_artifact_index_uidx": {
+          "name": "migration_plan_source_batches_artifact_index_uidx",
+          "columns": [
+            {
+              "expression": "artifact_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "batch_index",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "migration_plan_source_batches_artifact_id_migration_plan_artifacts_id_fk": {
+          "name": "migration_plan_source_batches_artifact_id_migration_plan_artifacts_id_fk",
+          "tableFrom": "migration_plan_source_batches",
+          "tableTo": "migration_plan_artifacts",
+          "columnsFrom": ["artifact_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -2298,6 +2374,88 @@
           "value": "\"migration_profiles\".\"version\" >= 1"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.migration_run_batch_checkpoints": {
+      "name": "migration_run_batch_checkpoints",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stage": {
+          "name": "stage",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_index": {
+          "name": "batch_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "metrics": {
+          "name": "metrics",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "migration_run_batch_checkpoints_run_stage_uidx": {
+          "name": "migration_run_batch_checkpoints_run_stage_uidx",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "stage",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "migration_run_batch_checkpoints_run_id_migration_runs_id_fk": {
+          "name": "migration_run_batch_checkpoints_run_id_migration_runs_id_fk",
+          "tableFrom": "migration_run_batch_checkpoints",
+          "tableTo": "migration_runs",
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.migration_run_metrics": {
@@ -14035,6 +14193,396 @@
       },
       "isRLSEnabled": false
     },
+    "public.book_dock_finalizations": {
+      "name": "book_dock_finalizations",
+      "schema": "",
+      "columns": {
+        "file_id": {
+          "name": "file_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "library_id": {
+          "name": "library_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'placing'"
+        },
+        "intent": {
+          "name": "intent",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "book_ids": {
+          "name": "book_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "book_dock_finalizations_user_id_idx": {
+          "name": "book_dock_finalizations_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "file_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "book_dock_finalizations_state_idx": {
+          "name": "book_dock_finalizations_state_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "file_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "book_dock_finalizations_user_id_users_id_fk": {
+          "name": "book_dock_finalizations_user_id_users_id_fk",
+          "tableFrom": "book_dock_finalizations",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "book_dock_finalizations_library_id_libraries_id_fk": {
+          "name": "book_dock_finalizations_library_id_libraries_id_fk",
+          "tableFrom": "book_dock_finalizations",
+          "tableTo": "libraries",
+          "columnsFrom": ["library_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "book_dock_finalizations_state_chk": {
+          "name": "book_dock_finalizations_state_chk",
+          "value": "\"book_dock_finalizations\".\"state\" in ('placing', 'committed', 'completed', 'failed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.book_dock_finalize_job_items": {
+      "name": "book_dock_finalize_job_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "file_id": {
+          "name": "file_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "book_dock_finalize_job_items_job_file_idx": {
+          "name": "book_dock_finalize_job_items_job_file_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "file_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "book_dock_finalize_job_items_pending_idx": {
+          "name": "book_dock_finalize_job_items_pending_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "book_dock_finalize_job_items_job_id_book_dock_finalize_jobs_id_fk": {
+          "name": "book_dock_finalize_job_items_job_id_book_dock_finalize_jobs_id_fk",
+          "tableFrom": "book_dock_finalize_job_items",
+          "tableTo": "book_dock_finalize_jobs",
+          "columnsFrom": ["job_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.book_dock_finalize_jobs": {
+      "name": "book_dock_finalize_jobs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request": {
+          "name": "request",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'queued'"
+        },
+        "cursor": {
+          "name": "cursor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "total": {
+          "name": "total",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "succeeded": {
+          "name": "succeeded",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "failed": {
+          "name": "failed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "book_dock_finalize_jobs_user_key_idx": {
+          "name": "book_dock_finalize_jobs_user_key_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "book_dock_finalize_jobs_state_idx": {
+          "name": "book_dock_finalize_jobs_state_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "book_dock_finalize_jobs_user_id_users_id_fk": {
+          "name": "book_dock_finalize_jobs_user_id_users_id_fk",
+          "tableFrom": "book_dock_finalize_jobs",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "book_dock_finalize_jobs_state_chk": {
+          "name": "book_dock_finalize_jobs_state_chk",
+          "value": "\"book_dock_finalize_jobs\".\"state\" in ('queued', 'running', 'completed', 'failed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.book_dock_unit_files": {
       "name": "book_dock_unit_files",
       "schema": "",
@@ -20147,124 +20695,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.hardcover_sync_runs": {
-      "name": "hardcover_sync_runs",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'running'"
-        },
-        "total_books": {
-          "name": "total_books",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "processed_books": {
-          "name": "processed_books",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "synced_books": {
-          "name": "synced_books",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "failed_books": {
-          "name": "failed_books",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "skipped_books": {
-          "name": "skipped_books",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "error": {
-          "name": "error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "finished_at": {
-          "name": "finished_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "hardcover_sync_runs_user_id_idx": {
-          "name": "hardcover_sync_runs_user_id_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "hardcover_sync_runs_user_id_users_id_fk": {
-          "name": "hardcover_sync_runs_user_id_users_id_fk",
-          "tableFrom": "hardcover_sync_runs",
-          "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.hardcover_user_settings": {
       "name": "hardcover_user_settings",
       "schema": "",
@@ -20421,51 +20851,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "sync_state": {
-          "name": "sync_state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'idle'"
-        },
-        "sync_exported_highlights": {
-          "name": "sync_exported_highlights",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "sync_started_at": {
-          "name": "sync_started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sync_finished_at": {
-          "name": "sync_finished_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sync_lease_until": {
-          "name": "sync_lease_until",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sync_received_book_ids": {
-          "name": "sync_received_book_ids",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
         },
         "created_at": {
           "name": "created_at",
@@ -20748,12 +21133,6 @@
         "last_synced_at": {
           "name": "last_synced_at",
           "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_sync_status": {
-          "name": "last_sync_status",
-          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -21526,6 +21905,27 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "upload_sessions_user_dock_idx": {
+          "name": "upload_sessions_user_dock_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "result_book_dock_file_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -23783,84 +24183,6 @@
           "value": "\"user_podcast_queue\".\"position\" >= 0"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.reading_session_deletions": {
-      "name": "reading_session_deletions",
-      "schema": "",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "session_id": {
-          "name": "session_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "book_id": {
-          "name": "book_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "reading_session_deletions_book_idx": {
-          "name": "reading_session_deletions_book_idx",
-          "columns": [
-            {
-              "expression": "book_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "reading_session_deletions_user_id_users_id_fk": {
-          "name": "reading_session_deletions_user_id_users_id_fk",
-          "tableFrom": "reading_session_deletions",
-          "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "reading_session_deletions_book_id_books_id_fk": {
-          "name": "reading_session_deletions_book_id_books_id_fk",
-          "tableFrom": "reading_session_deletions",
-          "tableTo": "books",
-          "columnsFrom": ["book_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "reading_session_deletions_user_id_session_id_pk": {
-          "name": "reading_session_deletions_user_id_session_id_pk",
-          "columns": ["user_id", "session_id"]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

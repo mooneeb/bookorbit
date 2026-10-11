@@ -82,3 +82,27 @@ export type MissingResourceCleanupResult = {
   /** Entries still matching after this pass. Cleaning "all" works in bounded passes; repeat until zero. */
   remaining: number;
 };
+
+export type MissingFileRepairRequest = {
+  bookId: number;
+  fileId: number;
+  replacementPath: string;
+  previewToken?: string;
+};
+
+export type MissingFileRepairPreview = {
+  bookId: number;
+  fileId: number;
+  currentPath: string;
+  replacementPath: string;
+  previewToken: string;
+  sizeBytes: number;
+  alreadyApplied: boolean;
+};
+
+export type MissingFileRepairResult = {
+  bookId: number;
+  fileId: number;
+  repaired: boolean;
+  alreadyApplied: boolean;
+};

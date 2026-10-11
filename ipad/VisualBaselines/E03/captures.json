@@ -1,0 +1,759 @@
+{
+  "version": 1,
+  "issue": 4,
+  "notice": "Agent inspections are observations only. No human baseline approval or complete UI pass is claimed.",
+  "entries": [
+    {
+      "testId": "IPAD-E03-A01",
+      "state": "imported-web-detail",
+      "screenshotName": "IPAD-E03-A01-imported-web-detail",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa1-web-portrait-light/e03-browser/e03-upload-web-IPAD-E03-A0-e8c18--PDF-with-matching-metadata/IPAD-E03-A01-imported-web-detail.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A01-upload-web: reviewed import opens an actual rendered PDF with matching metadata",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Imported title wraps into two readable lines; Read and file details are visible. The cover thumbnail clips its long source title; fixture UUID and related-book loading placeholders need stabilization.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "b69d59f7267484eb01bee1d5dbd4eca3a743359f216ce2d108170047fd903506"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A01",
+      "state": "imported-web-reader",
+      "screenshotName": "IPAD-E03-A01-imported-web-reader",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa1-web-portrait-light/e03-browser/e03-upload-web-IPAD-E03-A0-e8c18--PDF-with-matching-metadata/IPAD-E03-A01-imported-web-reader.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A01-upload-web: reviewed import opens an actual rendered PDF with matching metadata",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "The PDF is rendered, but 315% zoom cuts off the right end of the source title. Reader toolbar fits. Review reader fit/zoom and recapture before choosing this as a baseline.",
+        "disposition": "Needs fit/zoom review and settled recapture",
+        "sha256": "36f3168b2b515f64daebd8325677ffa0e0775cc98a1932aa9e245876324e38bc"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A01",
+      "state": "scanned-book-web",
+      "screenshotName": "IPAD-E03-A01-scanned-book-web",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa1-web-scan-portrait-light/e03-browser/e03-scan-web-IPAD-E03-A01--7b313-ble-in-the-real-web-library/IPAD-E03-A01-scanned-book-web.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A01-scan-web: server-scanned PDF remains readable in the real web library",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Scanned book title, Read button, PDF format and library are visible. Your reading still says Loading and related placeholders remain; this is an intermediate capture.",
+        "disposition": "Needs settled recapture",
+        "sha256": "100509e2399c31484f7b45b4a26fbb9c24f6122e926f53876d372370348c7a09"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A01",
+      "state": "scanned-pdf-web-reader",
+      "screenshotName": "IPAD-E03-A01-scanned-pdf-web-reader",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa1-web-scan-portrait-light/e03-browser/e03-scan-web-IPAD-E03-A01--7b313-ble-in-the-real-web-library/IPAD-E03-A01-scanned-pdf-web-reader.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A01-scan-web: server-scanned PDF remains readable in the real web library",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Page 2 of 3 displays Orbit fixture: passage 2 with readable toolbar and page placement. The next page starts below the viewport; this is expected scrolling continuation.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "86559517395a093bb27980d435173d6ed31dd11b31374700b203805f38f3a815"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A01",
+      "state": "native-connection-setup-failure",
+      "screenshotName": null,
+      "surface": "native",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa1-native-build10-1/in-progress.png",
+      "evidenceOnly": true,
+      "testTitle": "BookOrbitUITests/AcquisitionJourneyTests/testIPADE03A01NativeFileSelectionDockReviewFinalizeAndReader",
+      "deviceName": "iPad Pro 13-inch (M4), iOS 26.0 Simulator",
+      "viewport": null,
+      "profileVerification": "Requested profile; native system profile assertion was not reached",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Connection form is visible with server URL and Connect control; no feature journey is reached. Native result records AX snapshot timeout and cancellation. Requested text size and Reduce Motion were not verified.",
+        "disposition": "Failure evidence only; ineligible for a passing state baseline",
+        "sha256": "670926dd04fca27dd9a373a577e2dc0272540018bde44a4450c5be5ae376170d"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A02",
+      "state": "web-subscribed",
+      "screenshotName": "IPAD-E03-A02-web-subscribed",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa2-browser-lifecycle/e03-browser/e03-request-lifecycle-cros-7c3b5-ible-in-the-real-web-reader/IPAD-E03-A02-web-subscribed.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A02-cross-client: subscriptions, cancellation, source retry and a received PDF stay visible in the real web reader",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Approved request pane shows destination, follower, manual-release message and progress labels without overlap. Long fixture title fits.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "63b65cf2dd857d7fed3b6d63e8e1692a2dbee923d02477b4c8cdcf97e90ff517"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A02",
+      "state": "web-unsubscribed",
+      "screenshotName": "IPAD-E03-A02-web-unsubscribed",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa2-browser-lifecycle/e03-browser/e03-request-lifecycle-cros-7c3b5-ible-in-the-real-web-reader/IPAD-E03-A02-web-unsubscribed.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A02-cross-client: subscriptions, cancellation, source retry and a received PDF stay visible in the real web reader",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Discovery controls and the You have left this request toast are readable. Transient toast timing should be pinned or excluded only by an explicitly reviewed mask.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "e41b12e7739de71a846e9d0fcc943fd3d3bdc909676bfd421fff0a5a3ddc8ccf"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A02",
+      "state": "web-cancelled",
+      "screenshotName": "IPAD-E03-A02-web-cancelled",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa2-browser-lifecycle/e03-browser/e03-request-lifecycle-cros-7c3b5-ible-in-the-real-web-reader/IPAD-E03-A02-web-cancelled.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A02-cross-client: subscriptions, cancellation, source retry and a received PDF stay visible in the real web reader",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Cancelled request badge and status steps are readable; close control and request metadata fit the pane.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "4896318b1de6e9cdc5833d55cd2b1bad7556a6c68465cee1e153b1e1057da0a3"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A02",
+      "state": "web-source-failure",
+      "screenshotName": "IPAD-E03-A02-web-source-failure",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa2-browser-lifecycle/e03-browser/e03-request-lifecycle-cros-7c3b5-ible-in-the-real-web-reader/IPAD-E03-A02-web-source-failure.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A02-cross-client: subscriptions, cancellation, source retry and a received PDF stay visible in the real web reader",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Search failed is explicit for the controlled source, and Search again plus Edit fields remain visible. Release pane fits.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "e72eb3e9e376bdbfd849a23a903e39fff73bd7e982dc04df4c684d6901c83d73"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A02",
+      "state": "web-release-picker",
+      "screenshotName": "IPAD-E03-A02-web-release-picker",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa2-browser-lifecycle/e03-browser/e03-request-lifecycle-cros-7c3b5-ible-in-the-real-web-reader/IPAD-E03-A02-web-release-picker.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A02-cross-client: subscriptions, cancellation, source retry and a received PDF stay visible in the real web reader",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Release card shows format, unlikely-size warning and Download release. Text and actions fit without overlap.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "0a8b94b586071c662878e40342955a9fb7e70cdf7bf77e5d2436c2cc7e090028"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A02",
+      "state": "web-import-review",
+      "screenshotName": "IPAD-E03-A02-web-import-review",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa2-browser-lifecycle/e03-browser/e03-request-lifecycle-cros-7c3b5-ible-in-the-real-web-reader/IPAD-E03-A02-web-import-review.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A02-cross-client: subscriptions, cancellation, source retry and a received PDF stay visible in the real web reader",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Needs review pane shows requested/imported comparison, actual 978-byte PDF, filing and discard actions. Download-client section continues below the viewport and needs its own settled capture.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "35420afa7a9d5c320dd9ff57e01e7681fa69bcb83f4270f103a12012b742f5f1"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A02",
+      "state": "web-filing-failure",
+      "screenshotName": null,
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa2-browser-lifecycle/e03-browser/e03-request-lifecycle-cros-7c3b5-ible-in-the-real-web-reader/test-failed-1.png",
+      "evidenceOnly": true,
+      "testTitle": "IPAD-E03-A02-cross-client: subscriptions, cancellation, source retry and a received PDF stay visible in the real web reader",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "After the failed filing, Needs review persists and Go to book is absent. This belongs to the failed filename-collision journey, not a delivered-book success state.",
+        "disposition": "Failure evidence only; ineligible for a passing state baseline",
+        "sha256": "01548d13c6688a0399c046170bea37d25aba2b8e7709262fd5d32f3e2fd5822d"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A04",
+      "state": "selected-book-1-reloaded",
+      "screenshotName": "IPAD-E03-A04-selected-book-1-reloaded",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/e03-qa4-20261011/e03-browser/e03-bulk-cross-client-IPAD-458c3-survives-real-web-reopening/IPAD-E03-A04-selected-book-1-reloaded.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A04-browser: selected native contract metadata survives real web reopening",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Selected PDF metadata shows Browser E03 Selected Press and E03 cross-client tag; inputs and controls fit. The longer form continues below the viewport.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "3dbe8645dad9cfa15885057235d8e9ab3bfdd55be4659bc5dd0b54a41a7c44be"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A04",
+      "state": "selected-book-2-reloaded",
+      "screenshotName": "IPAD-E03-A04-selected-book-2-reloaded",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/e03-qa4-20261011/e03-browser/e03-bulk-cross-client-IPAD-458c3-survives-real-web-reopening/IPAD-E03-A04-selected-book-2-reloaded.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A04-browser: selected native contract metadata survives real web reopening",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Selected EPUB metadata shows the expected publisher, tag and eng language. Cover selection and input fields fit; provider IDs continue below the viewport.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "4f3e17efc37297aa44415e9bda868bf6390f2aa11edbef5ab17cce91724baac3"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A04",
+      "state": "selected-reader-1-reopened",
+      "screenshotName": "IPAD-E03-A04-selected-reader-1-reopened",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/e03-qa4-20261011/e03-browser/e03-bulk-cross-client-IPAD-458c3-survives-real-web-reopening/IPAD-E03-A04-selected-reader-1-reopened.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A04-browser: selected native contract metadata survives real web reopening",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "PDF page 1 of 3 displays Orbit fixture: passage 1, with toolbar visible and no text clipping.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "710e2aa8773b4fe69a556c3e849c42f555e8295ffbc8c0bae30adc77e5d13379"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A04",
+      "state": "selected-reader-2-reopened",
+      "screenshotName": "IPAD-E03-A04-selected-reader-2-reopened",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/e03-qa4-20261011/e03-browser/e03-bulk-cross-client-IPAD-458c3-survives-real-web-reopening/IPAD-E03-A04-selected-reader-2-reopened.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A04-browser: selected native contract metadata survives real web reopening",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "EPUB chapter One displays Alpha, emoji, café omega and First chapter ends here; page and 51% footer fit. Reader toolbar is hidden at this capture and has no placement evidence.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "62b317b999a7e6e1f0757c70e6c94cd4e701d800f2c396f48a1f6600a8cb59a6"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A04",
+      "state": "web-export-response-failure",
+      "screenshotName": null,
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/e03-qa4-20261011/e03-browser/e03-bulk-cross-client-IPAD-458c3-survives-real-web-reopening/test-failed-1.png",
+      "evidenceOnly": true,
+      "testTitle": "IPAD-E03-A04-browser: selected native contract metadata survives real web reopening",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Same EPUB view is visible when the test fails on export response status. This does not show a successful export UI or artifact delivery.",
+        "disposition": "Failure evidence only; ineligible for a passing state baseline",
+        "sha256": "62b317b999a7e6e1f0757c70e6c94cd4e701d800f2c396f48a1f6600a8cb59a6"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A05",
+      "state": "web-repaired-book-detail",
+      "screenshotName": "IPAD-E03-A05-web-repaired-book-detail",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa5-maintenance-1791709130/e03-browser/e03-maintenance-web-IPAD-E-3873a--and-identical-source-bytes/IPAD-E03-A05-web-repaired-book-detail.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A05-maintenance-web: a repaired PDF reopens with private notes, progress and identical source bytes",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Repaired detail shows title, Read and preserved private note. Reading card remains Loading and library sidebar says No libraries yet; settled layout is unverified.",
+        "disposition": "Needs settled recapture",
+        "sha256": "d1f40417ff5803361e593521850c1eb0beff1949854cf4187ed65774f0fa340b"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A05",
+      "state": "web-repaired-pdf-reader",
+      "screenshotName": "IPAD-E03-A05-web-repaired-pdf-reader",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa5-maintenance-1791709130/e03-browser/e03-maintenance-web-IPAD-E-3873a--and-identical-source-bytes/IPAD-E03-A05-web-repaired-pdf-reader.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A05-maintenance-web: a repaired PDF reopens with private notes, progress and identical source bytes",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Repaired PDF displays page 1 of 3 and Orbit fixture: passage 1 with readable controls and page placement.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "710e2aa8773b4fe69a556c3e849c42f555e8295ffbc8c0bae30adc77e5d13379"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A05",
+      "state": "web-repaired-pdf-reopened",
+      "screenshotName": "IPAD-E03-A05-web-repaired-pdf-reopened",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa5-maintenance-1791709130/e03-browser/e03-maintenance-web-IPAD-E-3873a--and-identical-source-bytes/IPAD-E03-A05-web-repaired-pdf-reopened.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A05-maintenance-web: a repaired PDF reopens with private notes, progress and identical source bytes",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Reopened PDF retains the same passage and page count. No ink appears in this fixture capture; source ink preservation is not proved by this image.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "710e2aa8773b4fe69a556c3e849c42f555e8295ffbc8c0bae30adc77e5d13379"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A05",
+      "state": "web-reader-permission",
+      "screenshotName": "IPAD-E03-A05-web-reader-permission",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa5-maintenance-1791709130/e03-browser/e03-maintenance-web-IPAD-E-24e64--forbidden-to-a-reader-role/IPAD-E03-A05-web-reader-permission.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A05-maintenance-web-denial: repair remains forbidden to a reader role",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Reader role has Read and download but no repair action or Tools entry. Reading card remains Loading; this is permission visibility evidence, not a settled layout baseline.",
+        "disposition": "Needs settled recapture",
+        "sha256": "3d320a1f53773ea593daf5ac81fca0eb42d973ea4a66a366dccf109d2f9a1b99"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A05",
+      "state": "baseline-maintenance-web",
+      "screenshotName": "IPAD-E03-A05-baseline-maintenance-web",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa5-maintenance-1791709130/e03-browser/e03-maintenance-web-IPAD-E-aba4a-the-actual-maintenance-form/IPAD-E03-A05-baseline-maintenance-web.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A05-baseline-maintenance-web: native settings are reflected in the actual maintenance form",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Owner Maintenance page shows 500 MB limit, import, recommendation, achievement and update controls. Descriptions wrap within cards without overlap.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "727c91da767c73af998c76abea42489b1c9a0356726edf525f6dc106207f998b"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A05",
+      "state": "baseline-maintenance-admin",
+      "screenshotName": "IPAD-E03-A05-baseline-maintenance-admin",
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa5-maintenance-1791709130/e03-browser/e03-maintenance-web-IPAD-E-5d601--without-superuser-backfill/IPAD-E03-A05-baseline-maintenance-admin.png",
+      "evidenceOnly": false,
+      "testTitle": "IPAD-E03-A05-baseline-maintenance-admin: a settings administrator can edit upload limits without superuser backfill",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Settings operator shows upload limit and update toggle; superuser backfill and recommendation controls are absent. Form and navigation fit.",
+        "disposition": "Pending human review and deterministic runtime/fixture pins",
+        "sha256": "9f1a691b50b1a140f1abeef33ea18552965bec961bcf437928625d41c42411a8"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A05",
+      "state": "web-entities-navigation-failure",
+      "screenshotName": null,
+      "surface": "web",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa5-entities-initial/e03-browser/e03-entity-pagination-cros-285f8-eturn-and-dismissed-restore/test-failed-1.png",
+      "evidenceOnly": true,
+      "testTitle": "IPAD-E03-A05-entity-web-pagination: bounded group pages, explicit merge preview, mobile return and dismissed restore",
+      "deviceName": "Chromium desktop user agent, tablet viewport",
+      "viewport": {
+        "width": 1024,
+        "height": 1366
+      },
+      "profileVerification": "Browser viewport/theme configuration; native Dynamic Type is not exercised",
+      "runtimePins": {
+        "fixture": "run-78858-1791630906387",
+        "browserVersion": "not recorded for this capture",
+        "webBuildSha256": "not recorded for this capture",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Genre browse page shows Find Duplicates, bounded 25 rows and pagination. Long generated names truncate. Duplicate-group, selected merge and mobile states were not reached.",
+        "disposition": "Failure evidence only; ineligible for a passing state baseline",
+        "sha256": "bbded7b56fd2e24355ca64e1a6803ee2bd7a42d0792852e0dbb045760ab2a8a9"
+      }
+    },
+    {
+      "testId": "IPAD-E03-A04",
+      "state": "restricted-actions-hidden",
+      "screenshotName": "IPAD-E03-A04-restricted-actions-hidden",
+      "surface": "native",
+      "profile": "pro13-portrait-light",
+      "sourcePath": "test-results/ipad/qa1-native-startup-proof-1/attachments/C51036B1-AB4A-493A-834B-8DFBE3AD0611.png",
+      "evidenceOnly": false,
+      "testIdentifier": "BookOrbitUITests/BulkActionsJourneyTests/testIPADE03A04RestrictedAccountHidesBulkActions",
+      "deviceName": "iPad Pro 13-inch (M4), iOS 26.0 (23A343) Simulator",
+      "deviceId": "BFC78674-A5BF-45C1-86AC-7AE96627A0E7",
+      "configurationName": "Test Scheme Action",
+      "viewport": null,
+      "functionalResult": {
+        "summaryPath": "test-results/ipad/qa1-native-startup-proof-1/native-summary.json",
+        "passedTests": 1,
+        "failedTests": 0,
+        "skippedTests": 0
+      },
+      "profileVerification": "Recipe sets full portrait, light appearance and system Large. This method does not assert native Reduce Motion or system profile.",
+      "runtimePins": {
+        "nativeBuild": "central frozen build.10",
+        "fixture": "run-78858-1791630906387",
+        "osBuild": "23A343",
+        "fontHashes": "not recorded for this capture"
+      },
+      "inspection": {
+        "inspectedBy": "Codex (agent)",
+        "inspectedAt": "2026-10-11",
+        "method": "view_image on the original artifact",
+        "findings": "Restricted account shows 0 books, visible search, layout switcher and library navigation, with no selected-book bulk control. Sidebar and content fit without clipping or overlap. This is only the restricted-role startup method, not the selected-edit/export journey.",
+        "disposition": "Pending human review and exact runtime/font pins; no visual baseline approval",
+        "sha256": "bc77e465b3e302cb78c918ca0f086779b49cccdb29b13619cffdf91c908a2f1b"
+      }
+    }
+  ]
+}

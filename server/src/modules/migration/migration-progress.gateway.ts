@@ -65,10 +65,9 @@ export class MigrationProgressGateway implements OnGatewayInit, OnGatewayConnect
   async handleSubscribeRun(client: Socket, runId: number): Promise<void> {
     const user = (client.data as { user?: RequestUser }).user;
     if (!user) return;
-    void client.join(`run:${runId}`);
-
     const run = await this.repo.findRunById(runId);
-    if (!run) return;
+    if (!run || (!user.isSuperuser && run.triggeredByUserId !== user.id)) return;
+    void client.join(`run:${runId}`);
 
     const metrics = await this.repo.listRunMetrics(runId);
     const totals = metrics.reduce(

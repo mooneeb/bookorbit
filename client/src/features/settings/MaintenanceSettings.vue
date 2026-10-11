@@ -11,6 +11,7 @@ import MigrationModal from '@/features/migration/components/MigrationModal.vue'
 import { api } from '@/lib/api'
 import { getWorkflowState, type MigrationWorkflowState } from '@/features/migration/lib/migration-api'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
+import { Permission, type AchievementBackfillResult, type AppSettingResponse, type BookEmbeddingRebuildResult } from '@bookorbit/types'
 
 const { t } = useI18n()
 
@@ -34,12 +35,11 @@ const localMaxUploadSizeMb = ref(500)
 const maxUploadSizeSaving = ref(false)
 const achievementBackfillRunning = ref(false)
 const achievementBackfillError = ref<string | null>(null)
-const achievementBackfillResult = ref<{
-  usersProcessed: number
-  awardsGranted: number
-} | null>(null)
+const achievementBackfillResult = ref<AchievementBackfillResult | null>(null)
 
-const { isSuperuser } = usePermissions()
+const { isSuperuser, hasPermission } = usePermissions()
+const canManageSettings = computed(() => hasPermission(Permission.ManageAppSettings))
+const canBackfill = computed(() => canManageSettings.value && isSuperuser.value)
 
 const migrationSource = computed(() => migrationState.value?.active?.source ?? null)
 const migrationRun = computed(() => migrationState.value?.active?.run ?? null)
@@ -52,6 +52,7 @@ const migrationCardState = computed(() => {
 })
 
 onMounted(async () => {
+  if (!canManageSettings.value) return
   try {
     migrationState.value = await getWorkflowState()
   } catch {
@@ -63,7 +64,7 @@ onMounted(async () => {
   try {
     const res = await api('/api/v1/app-settings')
     if (res.ok) {
-      const settings: { key: string; value: string }[] = await res.json()
+      const settings: AppSettingResponse[] = await res.json()
       const row = settings.find((s) => s.key === 'update_check_enabled')
       if (row) updateCheckEnabled.value = row.value === 'true'
       const uploadRow = settings.find((s) => s.key === 'max_upload_size_mb')
@@ -119,7 +120,7 @@ async function rebuildEmbeddings() {
   try {
     const res = await api('/api/v1/books/embed-all', { method: 'POST' })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data: { queued: number } = await res.json()
+    const data: BookEmbeddingRebuildResult = await res.json()
     queued.value = data.queued
     toast.success(
       t('settings.admin.maintenance.booksQueuedForEmbedding', {
@@ -139,7 +140,7 @@ async function rebuildEmbeddings() {
 }
 
 async function runAchievementBackfill() {
-  if (!isSuperuser.value || achievementBackfillRunning.value) return
+  if (!canBackfill.value || achievementBackfillRunning.value) return
 
   if (!confirm(t('settings.admin.maintenance.achievementBackfillConfirm'))) return
 
@@ -153,7 +154,7 @@ async function runAchievementBackfill() {
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
-    const result: { usersProcessed: number; awardsGranted: number } = await res.json()
+    const result: AchievementBackfillResult = await res.json()
     achievementBackfillResult.value = result
     toast.success(
       t('settings.admin.maintenance.achievementBackfillComplete', {
@@ -174,7 +175,7 @@ async function runAchievementBackfill() {
 
 async function saveMaxUploadSize() {
   const val = localMaxUploadSizeMb.value
-  if (isNaN(val) || val <= 0) {
+  if (!Number.isSafeInteger(val) || val <= 0 || val > 4096) {
     toast.error(t('settings.admin.maintenance.uploadSizeInvalid'))
     return
   }
@@ -227,9 +228,9 @@ function formatDate(iso: string | null | undefined): string {
     </p>
   </div>
 
-  <div class="space-y-6" :class="{ 'mt-5 md:mt-0': !props.embedded }">
+  <div v-if="canManageSettings" class="space-y-6" :class="{ 'mt-5 md:mt-0': !props.embedded }">
     <!-- Uploads -->
-    <div v-if="isSuperuser">
+    <div>
       <p class="settings-group-label">
         {{ t('settings.admin.maintenance.uploadsGroup') }}
       </p>
@@ -253,8 +254,9 @@ function formatDate(iso: string | null | undefined): string {
               <input
                 type="number"
                 v-model.number="localMaxUploadSizeMb"
+                :aria-label="t('settings.admin.maintenance.maxUploadSize')"
                 min="1"
-                max="10000"
+                max="4096"
                 class="w-24 rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 :disabled="maxUploadSizeSaving"
               />
@@ -413,7 +415,7 @@ function formatDate(iso: string | null | undefined): string {
     </div>
 
     <!-- Achievements -->
-    <div v-if="isSuperuser">
+    <div v-if="canBackfill">
       <p class="settings-group-label">
         {{ t('settings.admin.maintenance.achievementsGroup') }}
       </p>
@@ -483,7 +485,12 @@ function formatDate(iso: string | null | undefined): string {
               </p>
             </div>
           </div>
-          <ToggleSwitch :model-value="updateCheckEnabled" :disabled="updateCheckLoading" @update:model-value="toggleUpdateCheck" />
+          <ToggleSwitch
+            :aria-label="t('settings.admin.maintenance.checkForUpdates')"
+            :model-value="updateCheckEnabled"
+            :disabled="updateCheckLoading"
+            @update:model-value="toggleUpdateCheck"
+          />
         </div>
       </div>
     </div>

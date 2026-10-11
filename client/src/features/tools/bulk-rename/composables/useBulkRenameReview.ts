@@ -116,7 +116,7 @@ export function useBulkRenameReview(items: Ref<BulkRenamePreviewItem[]>, totalRe
   })
 
   /** The narrower of the two lists, which is what the run request carries. */
-  const runSelection = computed<BulkRenameExecuteRequest>(() =>
+  const runSelection = computed<Omit<BulkRenameExecuteRequest, 'previewToken'>>(() =>
     mode.value === 'all-except' ? { excludeBookIds: [...marked.value] } : { includeBookIds: [...marked.value] },
   )
 

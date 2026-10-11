@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { BrowseEntityItem, DuplicateCluster } from '@bookorbit/types'
 
 import { useEntityManager, type EntityManagerMode } from '../../composables/useEntityManager'
@@ -17,6 +18,7 @@ import SplitModal from '../components/SplitModal.vue'
 import BulkDeleteModal from '../components/BulkDeleteModal.vue'
 import BrowseMergeModal from '../components/BrowseMergeModal.vue'
 
+const { t } = useI18n()
 const em = useEntityManager()
 const { density } = useEntityRowDensity()
 
@@ -55,6 +57,7 @@ watch(em.browseSearch, () => {
 watch(
   [em.mode, em.entityType],
   ([newMode]) => {
+    em.fetchPendingFileUpdates()
     if (newMode === 'browse') {
       em.fetchBrowse()
     } else if (newMode === 'duplicates') {
@@ -89,10 +92,8 @@ function handleScanPage(value: number): void {
 }
 
 async function handleDismissCluster(cluster: DuplicateCluster): Promise<void> {
-  for (const pair of cluster.pairDetails) {
-    await em.dismissPair(pair.idA, pair.idB)
-  }
-  em.removeClustersByIds(cluster.entities.map((entity) => entity.id))
+  await em.dismissPairs(cluster.pairDetails)
+  await em.scan()
 }
 
 function handleUpdateSearch(value: string): void {
@@ -144,27 +145,23 @@ function handleUpdateBookCount(value: 'any' | 'empty'): void {
 
 async function handleMerge(targetId: number | string, sourceIds: (number | string)[], writeFiles: boolean): Promise<void> {
   await em.mergeEntities(targetId, sourceIds, writeFiles)
-  em.removeClustersByIds(sourceIds)
+  await em.scan()
 }
 
 async function handleDismissEntity(cluster: DuplicateCluster, entityId: number | string): Promise<void> {
   const pairs = cluster.pairDetails.filter((p) => p.idA === entityId || p.idB === entityId)
-  for (const pair of pairs) {
-    await em.dismissPair(pair.idA, pair.idB)
-  }
-  em.removeClustersByIds([entityId])
+  await em.dismissPairs(pairs)
+  await em.scan()
 }
 
 async function handleDismissPair(idA: number | string, idB: number | string): Promise<void> {
   await em.dismissPair(idA, idB)
-  em.removePairFromClusters(idA, idB)
+  await em.scan()
 }
 
 async function handleUndismiss(idA: number | string, idB: number | string): Promise<void> {
   await em.undismissPair(idA, idB)
-  if (em.clusters.value.length > 0) {
-    em.scan()
-  }
+  await em.scan()
 }
 
 function handleToggleDismissed(): void {
@@ -242,6 +239,21 @@ async function handleBulkDeleteConfirm(mode: 'soft' | 'hard' | 'inline', writeFi
 
 <template>
   <div class="flex flex-col h-full overflow-hidden">
+    <div
+      v-if="em.pendingFileUpdates.value.length || em.fileUpdateError.value"
+      class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm"
+    >
+      <span>{{ t('tools.entityManager.fileUpdates.pending') }}</span>
+      <span v-if="em.fileUpdateError.value" class="text-destructive">{{ em.fileUpdateError.value }}</span>
+      <button
+        v-if="em.pendingFileUpdates.value.length"
+        class="rounded border border-border px-3 py-1"
+        :disabled="em.retryingFileUpdates.value"
+        @click="em.retryPendingFileUpdates"
+      >
+        {{ t('tools.entityManager.fileUpdates.retry') }}
+      </button>
+    </div>
     <div class="flex flex-none flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border border-border bg-card px-2.5 py-2">
       <EntityTypeSelector v-model="em.entityType.value" />
       <span class="hidden h-5 w-px shrink-0 bg-border sm:block" aria-hidden="true" />
@@ -278,6 +290,7 @@ async function handleBulkDeleteConfirm(mode: 'soft' | 'hard' | 'inline', writeFi
     <!-- Duplicates mode -->
     <div v-if="em.mode.value === 'duplicates'" class="flex-1 min-h-0 overflow-hidden pt-3">
       <DuplicatesPanel
+        :entity-type="em.entityType.value"
         :clusters="em.clusters.value"
         :page="em.scanPage.value"
         :total-pages="em.scanTotalPages.value"
@@ -285,9 +298,15 @@ async function handleBulkDeleteConfirm(mode: 'soft' | 'hard' | 'inline', writeFi
         :has-scanned="em.hasScanned.value"
         :scan-error="em.scanError.value"
         :operation-loading="em.operationLoading.value"
+        :operation-error="em.operationError.value"
         :dismissed-pairs="em.dismissedPairs.value"
         :dismissed-loading="em.dismissedLoading.value"
         :show-dismissed="em.showDismissed.value"
+        :dismissed-page="em.dismissedPage.value"
+        :dismissed-total="em.dismissedTotal.value"
+        :dismissed-total-pages="em.dismissedTotalPages.value"
+        :dismissed-error="em.dismissedError.value"
+        @update:dismissed-page="em.changeDismissedPage"
         @update:page="handleScanPage"
         @merge="handleMerge"
         @dismiss-entity="handleDismissEntity"

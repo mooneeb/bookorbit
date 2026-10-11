@@ -10,6 +10,8 @@ import { bookCovers, bookFiles, bookMetadata, books, libraries } from '../../db/
 type Db = NodePgDatabase<typeof schema>;
 type DbTransaction = Parameters<Parameters<Db['transaction']>[0]>[0];
 
+export const BOOK_COVER_WRITE_LOCK_NAMESPACE = 4106;
+
 export type BookCoverOrigin = 'embedded' | 'folder_image' | 'opf' | 'provider' | 'dock' | 'upload' | 'legacy';
 export type BookCoverSource = 'extracted' | 'custom';
 export type BookCoverSlotRow = typeof bookCovers.$inferSelect;
@@ -83,6 +85,7 @@ export type BookCoverContext = {
   bookId: number;
   libraryId: number;
   coverAspectRatio: string;
+  bookUpdatedAt?: Date;
   primaryFileId: number | null;
   coverSource: BookCoverSource | null;
   coverUpdatedAt: Date | null;
@@ -142,13 +145,21 @@ export function didKoboCoverChange(
 
 @Injectable()
 export class BookCoverStoreRepository {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(@Inject(DB) private readonly db: Db | DbTransaction) {}
+
+  async withBookWriteLock<T>(bookId: number, operation: (repository: BookCoverStoreRepository) => Promise<T>): Promise<T> {
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(${BOOK_COVER_WRITE_LOCK_NAMESPACE}, ${bookId})`);
+      return operation(new BookCoverStoreRepository(tx));
+    });
+  }
 
   async findContext(bookId: number): Promise<BookCoverContext | null> {
     const mediaProjection = coverMediaSql(books.id);
     const [book] = await this.db
       .select({
         bookId: books.id,
+        bookUpdatedAt: books.updatedAt,
         libraryId: books.libraryId,
         coverAspectRatio: libraries.coverAspectRatio,
         primaryFileId: books.primaryFileId,
@@ -180,6 +191,7 @@ export class BookCoverStoreRepository {
 
     return {
       bookId: book.bookId,
+      bookUpdatedAt: book.bookUpdatedAt,
       libraryId: book.libraryId,
       coverAspectRatio: book.coverAspectRatio,
       primaryFileId: book.primaryFileId,
@@ -210,12 +222,22 @@ export class BookCoverStoreRepository {
     medium: CoverMedium,
     media: CoverMedia,
     mutation: SlotMutation,
-    options: { bumpBook: boolean; servedBytesChanged: boolean; updatedAt: Date; beforeMedia?: CoverMedia },
-  ): Promise<{ libraryId: number; koboCoverChanged: boolean }> {
+    options: { bumpBook: boolean; servedBytesChanged: boolean; updatedAt: Date; beforeMedia?: CoverMedia; onlyIfAbsent?: boolean },
+  ): Promise<{ libraryId: number; koboCoverChanged: boolean; mutationApplied: boolean }> {
     return this.db.transaction(async (tx) => {
       const before = await this.selectSlots(bookId, tx);
       if (mutation.kind === 'delete') {
         await tx.delete(bookCovers).where(and(eq(bookCovers.bookId, bookId), eq(bookCovers.medium, medium)));
+      } else if (options.onlyIfAbsent) {
+        const inserted = await tx
+          .insert(bookCovers)
+          .values({ bookId, medium, ...mutation.row })
+          .onConflictDoNothing()
+          .returning({ bookId: bookCovers.bookId });
+        if (inserted.length === 0) {
+          const [book] = await tx.select({ libraryId: books.libraryId }).from(books).where(eq(books.id, bookId)).limit(1);
+          return { libraryId: book?.libraryId ?? 0, koboCoverChanged: false, mutationApplied: false };
+        }
       } else {
         await tx
           .insert(bookCovers)
@@ -255,7 +277,7 @@ export class BookCoverStoreRepository {
       }
 
       const [book] = await tx.select({ libraryId: books.libraryId }).from(books).where(eq(books.id, bookId)).limit(1);
-      return { libraryId: book?.libraryId ?? 0, koboCoverChanged };
+      return { libraryId: book?.libraryId ?? 0, koboCoverChanged, mutationApplied: true };
     });
   }
 

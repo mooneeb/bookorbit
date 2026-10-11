@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { Transform } from 'class-transformer';
 import type { BulkRenameStatus } from '@bookorbit/types';
 
@@ -7,12 +7,13 @@ const VALID_STATUSES: BulkRenameStatus[] = ['will_rename', 'unchanged', 'collisi
 export class BulkRenamePreviewQueryDto {
   @IsInt()
   @Min(1)
-  @Transform(({ value }) => parseInt(value, 10))
+  @Transform(({ value }) => Number(value))
   page: number = 1;
 
   @IsInt()
   @Min(1)
-  @Transform(({ value }) => parseInt(value, 10))
+  @Max(200)
+  @Transform(({ value }) => Number(value))
   pageSize: number = 50;
 
   @IsOptional()

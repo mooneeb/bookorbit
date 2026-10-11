@@ -1,13 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, count, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import { bookCustomMetadataValues, books, customMetadataFields, customMetadataLibraryFields, libraries } from '../../db/schema';
+import { chunk } from '../../common/utils/batch.utils';
 
 type Db = NodePgDatabase<typeof schema>;
 type DbExecutor = Pick<Db, 'delete' | 'insert' | 'select' | 'update'>;
+type ValueColumns = Pick<typeof bookCustomMetadataValues.$inferInsert, 'valueText' | 'valueNumber' | 'valueDate' | 'valueBoolean'>;
+const VALUE_WRITE_BATCH_SIZE = 500;
 
 @Injectable()
 export class CustomMetadataRepository {
@@ -169,6 +172,44 @@ export class CustomMetadataRepository {
 
   deleteField(fieldId: number) {
     return this.db.delete(customMetadataFields).where(eq(customMetadataFields.id, fieldId));
+  }
+
+  async writeValuesForBooks(
+    bookIds: readonly number[],
+    values: ReadonlyArray<{ fieldId: number; value: ValueColumns | null }>,
+    executor: DbExecutor = this.db,
+  ): Promise<void> {
+    if (bookIds.length === 0 || values.length === 0) return;
+    const selectedBookIds = [...new Set(bookIds)];
+    const finalValues = [...new Map(values.map((value) => [value.fieldId, value])).values()];
+    const clearFieldIds = finalValues.filter((item) => item.value === null).map((item) => item.fieldId);
+    for (const fieldIds of chunk(clearFieldIds, VALUE_WRITE_BATCH_SIZE)) {
+      for (const ids of chunk(selectedBookIds, VALUE_WRITE_BATCH_SIZE)) {
+        await executor
+          .delete(bookCustomMetadataValues)
+          .where(and(inArray(bookCustomMetadataValues.bookId, ids), inArray(bookCustomMetadataValues.fieldId, fieldIds)));
+      }
+    }
+    const storedValues = finalValues.filter((item) => item.value !== null);
+    for (const fields of chunk(storedValues, VALUE_WRITE_BATCH_SIZE)) {
+      const booksPerBatch = Math.max(1, Math.floor(VALUE_WRITE_BATCH_SIZE / fields.length));
+      for (const ids of chunk(selectedBookIds, booksPerBatch)) {
+        const updatedAt = new Date();
+        await executor
+          .insert(bookCustomMetadataValues)
+          .values(ids.flatMap((bookId) => fields.map((item) => ({ bookId, fieldId: item.fieldId, ...item.value, updatedAt }))))
+          .onConflictDoUpdate({
+            target: [bookCustomMetadataValues.bookId, bookCustomMetadataValues.fieldId],
+            set: {
+              valueText: sql`excluded.value_text`,
+              valueNumber: sql`excluded.value_number`,
+              valueDate: sql`excluded.value_date`,
+              valueBoolean: sql`excluded.value_boolean`,
+              updatedAt: sql`excluded.updated_at`,
+            },
+          });
+      }
+    }
   }
 
   async deleteValue(bookId: number, fieldId: number, executor: DbExecutor = this.db): Promise<void> {

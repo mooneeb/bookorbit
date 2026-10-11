@@ -1,5 +1,7 @@
-import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BadRequestException, Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
+import { ConfigService, type ConfigType } from '@nestjs/config';
+import { storageConfig } from '../../config/config';
+import { BulkRenameJournal } from './bulk-rename-journal';
 import { access, mkdir, readdir, rename as fsRename, rmdir } from 'fs/promises';
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, sep } from 'path';
 
@@ -18,13 +20,21 @@ import type { BookFilePathUpdate, BookRenameData } from './file-rename.repositor
 import { FileRenameRepository } from './file-rename.repository';
 import { FileLockService, bookOperationLockKey } from './file-lock.service';
 import { buildPatternTokens } from '../../common/utils/pattern-tokens.utils';
-import { isSameWork, resolveBookFileTargets } from './book-file-targets';
+import { isSameWork, bookRenameInputVersion, resolveBookFileTargets } from './book-file-targets';
 
 const FILE_RENAME_EVENT = 'file.rename';
 const FILE_RENAME_ROLLBACK_EVENT = 'file.rename_rollback';
 const DEFAULT_RENAME_DEBOUNCE_MS = 3_000;
 
 export const RENAME_RELEVANT_FIELDS = new Set(['title', 'authors', 'seriesName', 'seriesIndex', 'publishedYear', 'isbn10', 'isbn13'] as const);
+
+export interface BulkRenameExpectation {
+  libraryId: number;
+  currentPath: string;
+  targetPath: string;
+  preserveBook: true;
+  inputVersion?: string;
+}
 
 type RenameBookFile = Awaited<ReturnType<FileRenameRepository['findAllBookFiles']>>[number];
 
@@ -44,6 +54,7 @@ export class FileRenameService implements OnModuleDestroy {
     private readonly selfWriteRegistry: SelfWriteRegistry,
     private readonly coverStore: BookCoverStore,
     @Optional() private readonly coverReconciler?: CoverSlotReconciler,
+    @Optional() @Inject(storageConfig.KEY) private readonly storage?: ConfigType<typeof storageConfig>,
   ) {
     this.debounceMs = resolvePositiveInteger(this.config.get('fileWrite.debounceMs'), DEFAULT_RENAME_DEBOUNCE_MS);
   }
@@ -88,17 +99,40 @@ export class FileRenameService implements OnModuleDestroy {
     }
   }
 
-  async performRename(bookId: number, userId: number, force = false, suppressNotification = false): Promise<FileRenameResult> {
-    return this.lockService.withLock(bookOperationLockKey(bookId), () => this.performRenameLocked(bookId, userId, force, suppressNotification));
+  async performRename(
+    bookId: number,
+    userId: number,
+    force = false,
+    suppressNotification = false,
+    expected?: BulkRenameExpectation,
+  ): Promise<FileRenameResult> {
+    return this.lockService.withLock(bookOperationLockKey(bookId), () =>
+      this.performRenameLocked(bookId, userId, force, suppressNotification, expected),
+    );
   }
 
-  private async performRenameLocked(bookId: number, userId: number, force = false, suppressNotification = false): Promise<FileRenameResult> {
+  private async performRenameLocked(
+    bookId: number,
+    userId: number,
+    force = false,
+    suppressNotification = false,
+    expected?: BulkRenameExpectation,
+  ): Promise<FileRenameResult> {
     const startedAt = Date.now();
     this.logger.log(`[${FILE_RENAME_EVENT}] [start] bookId=${bookId} userId=${userId} force=${force} - file rename started`);
 
-    const data = await this.renameRepo.findBookRenameData(bookId);
+    let data = await this.renameRepo.findBookRenameData(bookId);
     if (!data) {
       return this.logAndReturn(bookId, startedAt, { status: 'skipped', reason: 'book not found' });
+    }
+
+    const journal = expected && this.storage ? new BulkRenameJournal(join(this.storage.appDataPath, 'rename-recovery'), this.renameRepo) : undefined;
+    if (expected && data.libraryId !== expected.libraryId) {
+      return this.logAndReturn(bookId, startedAt, { status: 'skipped', reason: 'book moved to another library' });
+    }
+    if (journal && (await journal.recover(bookId, data.libraryId, data.libraryFolderPath))) {
+      data = await this.renameRepo.findBookRenameData(bookId);
+      if (!data) return this.logAndReturn(bookId, startedAt, { status: 'skipped', reason: 'book not found' });
     }
 
     if (!data.fileRenameEnabled && !force) {
@@ -141,7 +175,7 @@ export class FileRenameService implements OnModuleDestroy {
 
     const allFiles = await this.renameRepo.findAllBookFiles(bookId);
     // Shared with the bulk rename preview so the preview can never promise a rename this refuses.
-    const fileTargets = resolveBookFileTargets({
+    const targetInput = {
       primaryFileId: data.file.id,
       files: allFiles,
       metadata: data.metadata,
@@ -153,11 +187,19 @@ export class FileRenameService implements OnModuleDestroy {
       organizationMode: data.organizationMode,
       pattern,
       sanitizeForCrossPlatform,
-    });
+    };
+    if (expected?.inputVersion && expected.inputVersion !== bookRenameInputVersion(targetInput)) {
+      return this.logAndReturn(bookId, startedAt, { status: 'skipped', reason: 'rename preview changed' });
+    }
+    const fileTargets = resolveBookFileTargets(targetInput);
 
     const newAbsolutePath = fileTargets.get(data.file.id) ?? baseNewAbsolutePath;
     const newFolderPath = dirname(newAbsolutePath);
     const newBookPath = isBookPerFolder ? resolveSingleFileBookPath(newAbsolutePath, data.libraryFolderPath, data.organizationMode) : newAbsolutePath;
+
+    if (expected && (expected.currentPath !== currentAbsolutePath || expected.targetPath !== newAbsolutePath)) {
+      return this.logAndReturn(bookId, startedAt, { status: 'skipped', reason: 'rename preview changed' });
+    }
 
     let pathUnchanged = newAbsolutePath === currentAbsolutePath;
     if (pathUnchanged) {
@@ -180,7 +222,7 @@ export class FileRenameService implements OnModuleDestroy {
       const owner = (await this.renameRepo.findFolderOwners(data.libraryId, [newFolderPath])).get(newFolderPath);
       if (owner && owner.bookId !== bookId) {
         const sameWork = isSameWork({ title: data.metadata.title, primaryAuthor: data.authors[0] ?? null }, owner);
-        if (!sameWork || !(await this.pathExists(newFolderPath))) {
+        if (expected?.preserveBook || !sameWork || !(await this.pathExists(newFolderPath))) {
           const reason = 'target folder belongs to another book';
           this.logger.warn(
             `[${FILE_RENAME_EVENT}] [end] bookId=${bookId} userId=${userId} durationMs=${Date.now() - startedAt} status=skipped reason="${sanitizeLogValue(reason)}" ownerBookId=${owner.bookId} newFolder="${sanitizeLogValue(newFolderPath)}" - rename skipped: target folder belongs to another book`,
@@ -248,7 +290,10 @@ export class FileRenameService implements OnModuleDestroy {
     const suppressPaths = this.buildSuppressedRenamePaths(allFiles, fileTargets, currentFolderPath, newFolderPath, data.libraryFolderPath);
     this.selfWriteRegistry.begin(suppressPaths);
     try {
-      if (mergeTargetBookId !== null) {
+      if (expected?.preserveBook) {
+        if (!journal) throw new BadRequestException('Rename recovery storage is unavailable.');
+        await journal.move(bookId, data.libraryId, data.libraryFolderPath, newBookPath, allFiles, fileTargets);
+      } else if (mergeTargetBookId !== null) {
         await this.mergeBookIntoExistingFolder(
           bookId,
           data,

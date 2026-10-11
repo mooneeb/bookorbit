@@ -1,1 +1,0 @@
-CREATE INDEX "reading_session_deletions_book_idx" ON "reading_session_deletions" USING btree ("book_id");

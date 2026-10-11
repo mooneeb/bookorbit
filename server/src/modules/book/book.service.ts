@@ -12,6 +12,8 @@ import {
   Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
+import type { BookEmbeddingRebuildResult, MaintenanceOperationStatus } from '@bookorbit/types';
 import { mkdtemp, rm, stat, rename } from 'fs/promises';
 import { inArray, type SQL } from 'drizzle-orm';
 
@@ -64,6 +66,11 @@ import type {
   BookDeletionAuditMeta,
   BookQuery,
   BookWriteAndRenameResult,
+  BulkMetadataPreview,
+  BulkMetadataVersion,
+  BulkEditFieldResult,
+  BulkEditMetadataResult,
+  MetadataExportPreflight,
   BooksPage,
   CustomMetadataFieldTypeMap,
   CoverMedium,
@@ -159,11 +166,7 @@ export type ExportScope = 'primary' | 'all' | 'audio';
 const READ_ALOUD_MAX_DURATION_DIFF_RATIO = 0.05;
 const READ_ALOUD_MAX_DURATION_DIFF_SECONDS = 300;
 
-export type BulkEditFieldResult = { updated: number; skippedLocked: number };
-export type BulkEditMetadataResult = {
-  updatedBooks: number;
-  fields: Record<string, BulkEditFieldResult>;
-};
+export type { BulkEditFieldResult, BulkEditMetadataResult } from '@bookorbit/types';
 const BULK_METADATA_LOCK_FIELD_BY_FIELD: Record<BulkMetadataField, BookMetadataLockField> = {
   seriesName: 'seriesName',
   publisher: 'publisher',
@@ -222,16 +225,6 @@ type MetadataExportResolvedOptions = {
 
 type MetadataExportSelectionScope = 'selected' | 'all-matching';
 
-type MetadataExportPreflight = {
-  schemaVersion: number;
-  rowCount: number;
-  estimatedBytes: number;
-  sizeCategory: MetadataExportSizeCategory;
-  fileName: string;
-  scope: MetadataExportSelectionScope;
-  format: MetadataExportFormat;
-};
-
 type MetadataExportContextMeta = {
   exportedAt: string;
   exportedByUserId: number;
@@ -282,7 +275,15 @@ export type ProgressStatusFileContext = {
 export class BookService {
   private readonly logger = new Logger(BookService.name);
   private readonly appDataPath: string;
-  private embeddingRun: Promise<void> | null = null;
+  private embeddingProgress: MaintenanceOperationStatus = {
+    runId: null,
+    status: 'idle',
+    processed: 0,
+    failed: 0,
+    awardsGranted: 0,
+    startedAt: null,
+    completedAt: null,
+  };
   private metadataUpdateFailpoint: MetadataUpdateFailpoint | null = null;
   private readonly activeExportCounts = new Map<number, number>();
 
@@ -343,6 +344,9 @@ export class BookService {
     const uniqueLibraryIds = [...new Set(rows.map((row) => row.libraryId))];
     const isSuperuser = this.isSuperuser(user);
     await Promise.all(uniqueLibraryIds.map((libraryId) => this.libraryService.verifyUserAccess(user.id, libraryId, isSuperuser)));
+    if (!isSuperuser && user.contentFilters && !(await this.bookRepo.bookIdsPassContentFilters(uniqueBookIds, user.contentFilters))) {
+      throw new NotFoundException('One or more selected books are unavailable');
+    }
     return rows;
   }
 
@@ -1850,6 +1854,7 @@ export class BookService {
     let libraryAutoWriteEnabled = false;
 
     await this.bookRepo.withTransaction(async (tx) => {
+      if (hasMetadataUpdate) await this.bookRepo.bulkUpdateMetadataFields([id], {}, tx);
       if (scalarFieldCount > 0) {
         scalarFields.updatedAt = new Date();
         await this.bookRepo.updateMetadataFields(id, scalarFields, tx);
@@ -2065,26 +2070,50 @@ export class BookService {
     throw new InternalServerErrorException(`Metadata update failpoint triggered: ${stage}`);
   }
 
-  async embedAll(): Promise<{ queued: number }> {
+  embeddingStatus(): MaintenanceOperationStatus {
+    return { ...this.embeddingProgress };
+  }
+
+  async embedAll(): Promise<BookEmbeddingRebuildResult> {
     const event = 'book.embed_all';
     const startedAt = Date.now();
     this.logger.log(`[${event}] [start] - embed all started`);
     try {
       if (!this.embedder) {
+        this.embeddingProgress.status = 'disabled';
         this.logger.log(`[${event}] [end] durationMs=${Date.now() - startedAt} queued=0 runStarted=false - embed all completed`);
         return { queued: 0 };
       }
-      if (this.embeddingRun) {
+      if (this.embeddingProgress.status === 'running') {
         this.logger.log(`[${event}] [end] durationMs=${Date.now() - startedAt} queued=0 runStarted=false alreadyRunning=true - embed all completed`);
         return { queued: 0 };
       }
-      const bookIds = await this.bookRepo.findAllIds();
-      this.embeddingRun = this.runEmbeddings(bookIds).finally(() => {
-        this.embeddingRun = null;
-      });
-      this.logger.log(`[${event}] [end] durationMs=${Date.now() - startedAt} queued=${bookIds.length} runStarted=true - embed all completed`);
-      return { queued: bookIds.length };
+      this.embeddingProgress = {
+        runId: randomUUID(),
+        status: 'running',
+        processed: 0,
+        failed: 0,
+        awardsGranted: 0,
+        startedAt: new Date().toISOString(),
+        completedAt: null,
+      };
+      const scope = await this.bookRepo.embeddingScope();
+      void this.runEmbeddings(scope.maximumId)
+        .catch((error: unknown) => {
+          this.embeddingProgress.status = 'failed';
+          const errorClass = error instanceof Error ? error.name : 'Error';
+          this.logger.warn(
+            `[${event}] [fail] durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - embedding run failed`,
+          );
+        })
+        .finally(() => {
+          this.embeddingProgress.completedAt = new Date().toISOString();
+        });
+      this.logger.log(`[${event}] [end] durationMs=${Date.now() - startedAt} queued=${scope.total} runStarted=true - embed all completed`);
+      return { queued: scope.total };
     } catch (err) {
+      this.embeddingProgress.status = 'failed';
+      this.embeddingProgress.completedAt = new Date().toISOString();
       const errorClass = err instanceof Error ? err.name : 'Error';
       const errorMessage = sanitizeLogValue(err instanceof Error ? err.message : String(err));
       this.logger.warn(`[${event}] [fail] durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${errorMessage}" - embed all failed`);
@@ -2092,40 +2121,49 @@ export class BookService {
     }
   }
 
-  private async runEmbeddings(bookIds: number[]): Promise<void> {
+  private async runEmbeddings(maximumId: number): Promise<void> {
     const event = 'book.run_embeddings';
     const startedAt = Date.now();
     const batch = 10;
-    this.logger.log(`[${event}] [start] totalBooks=${bookIds.length} batchSize=${batch} - embeddings run started`);
+    this.logger.log(`[${event}] [start] maximumBookId=${maximumId} batchSize=${batch} - embeddings run started`);
     if (!this.embedder) {
       this.logger.log(
-        `[${event}] [end] totalBooks=${bookIds.length} durationMs=${Date.now() - startedAt} processed=0 failed=0 - embeddings run completed`,
+        `[${event}] [end] maximumBookId=${maximumId} durationMs=${Date.now() - startedAt} processed=0 failed=0 - embeddings run completed`,
       );
       return;
     }
     let processed = 0;
     let failed = 0;
-    for (let i = 0; i < bookIds.length; i += batch) {
-      const currentBatch = bookIds.slice(i, i + batch);
-      const results = await Promise.allSettled(currentBatch.map((id) => this.embedder!.embedBook(id)));
-      for (let batchIndex = 0; batchIndex < results.length; batchIndex += 1) {
-        const result = results[batchIndex]!;
-        const bookId = currentBatch[batchIndex]!;
-        if (result.status === 'fulfilled') {
-          processed += 1;
-          continue;
+    let cursor = 0;
+    while (true) {
+      const page = await this.bookRepo.embeddingIdsAfter(cursor, maximumId);
+      if (page.length === 0) break;
+      for (let i = 0; i < page.length; i += batch) {
+        const currentBatch = page.slice(i, i + batch);
+        const results = await Promise.allSettled(currentBatch.map((id) => this.embedder!.embedBook(id)));
+        for (let batchIndex = 0; batchIndex < results.length; batchIndex += 1) {
+          const result = results[batchIndex]!;
+          const bookId = currentBatch[batchIndex]!;
+          if (result.status === 'fulfilled') {
+            processed += 1;
+            continue;
+          }
+          failed += 1;
+          const reason = result.reason;
+          const errorClass = reason instanceof Error ? reason.name : 'Error';
+          const errorMessage = sanitizeLogValue(reason instanceof Error ? reason.message : String(reason));
+          this.logger.warn(
+            `[${event}] [fail] bookId=${bookId} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${errorMessage}" - embedding run item failed`,
+          );
         }
-        failed += 1;
-        const reason = result.reason;
-        const errorClass = reason instanceof Error ? reason.name : 'Error';
-        const errorMessage = sanitizeLogValue(reason instanceof Error ? reason.message : String(reason));
-        this.logger.warn(
-          `[${event}] [fail] bookId=${bookId} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${errorMessage}" - embedding run item failed`,
-        );
+        this.embeddingProgress.processed = processed;
+        this.embeddingProgress.failed = failed;
       }
+      cursor = page[page.length - 1];
     }
+    this.embeddingProgress.status = 'completed';
     this.logger.log(
-      `[${event}] [end] totalBooks=${bookIds.length} durationMs=${Date.now() - startedAt} processed=${processed} failed=${failed} - embeddings run completed`,
+      `[${event}] [end] maximumBookId=${maximumId} durationMs=${Date.now() - startedAt} processed=${processed} failed=${failed} - embeddings run completed`,
     );
   }
 
@@ -2671,7 +2709,99 @@ export class BookService {
     );
   }
 
-  async bulkEditMetadata(bookIds: number[], fields: BulkEditFieldsDto, user: RequestUser): Promise<BulkEditMetadataResult> {
+  async previewBulkMetadata(bookIds: number[], fields: BulkEditFieldsDto, user: RequestUser): Promise<BulkMetadataPreview> {
+    const event = 'book.bulk.preview_metadata';
+    const startedAt = Date.now();
+    this.logger.log(`[${event}] [start] userId=${user.id} count=${bookIds.length} - metadata preview started`);
+    try {
+      const result = await this.buildBulkMetadataPreview(bookIds, fields, user);
+      this.logger.log(
+        `[${event}] [end] userId=${user.id} count=${bookIds.length} durationMs=${Date.now() - startedAt} books=${result.books.length} fields=${Object.keys(result.fields).length} - metadata preview completed`,
+      );
+      return result;
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'UnknownError';
+      const message = error instanceof Error ? sanitizeLogValue(error.message) : 'unknown';
+      this.logger.error(
+        `[${event}] [fail] userId=${user.id} count=${bookIds.length} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${message}" - metadata preview failed`,
+      );
+      throw error;
+    }
+  }
+
+  private async buildBulkMetadataPreview(bookIds: number[], fields: BulkEditFieldsDto, user: RequestUser): Promise<BulkMetadataPreview> {
+    if (!fields.hasAtLeastOneField() || !fields.hasValidArrayValues()) throw new BadRequestException('Choose valid editable fields');
+    const ids = [...new Set(bookIds)];
+    if (ids.length === 0 || ids.length > 100) throw new BadRequestException('Select 1 to 100 books');
+    await this.verifyLibraryAccessForBookIds(ids, user);
+    const rows = await this.bookRepo.findBulkMetadataPreview(ids);
+    if (rows.length !== ids.length) throw new BadRequestException('Some selected books have no editable metadata');
+    if (fields.customMetadata) {
+      for (const libraryId of new Set(rows.map((row) => row.libraryId))) {
+        await this.customMetadataService.validateBookValues(libraryId, fields.customMetadata);
+      }
+    }
+    const [authors, genres, tags, narrators, custom] = await Promise.all([
+      fields.authors ? this.bookRepo.findAuthorsByBookIds(ids) : Promise.resolve(new Map<number, string[]>()),
+      fields.genres ? this.bookRepo.findGenresByBookIds(ids) : Promise.resolve(new Map<number, string[]>()),
+      fields.tags ? this.bookRepo.findTagsByBookIds(ids) : Promise.resolve(new Map<number, string[]>()),
+      fields.narrators ? this.bookRepo.findNarratorsByBookIds(ids) : Promise.resolve(new Map<number, string[]>()),
+      fields.customMetadata ? this.customMetadataService.getExportValues(ids) : Promise.resolve(new Map()),
+    ]);
+    const result: BulkMetadataPreview = {
+      books: rows.map((row) => {
+        const current: Record<string, unknown> = {
+          publisher: row.publisher,
+          language: row.language,
+          publishedYear: row.publishedYear,
+          seriesName: row.seriesName,
+          authors: authors.get(row.bookId) ?? [],
+          genres: genres.get(row.bookId) ?? [],
+          tags: tags.get(row.bookId) ?? [],
+          narrators: narrators.get(row.bookId) ?? [],
+          customMetadata: custom.get(row.bookId) ?? {},
+        };
+        return {
+          bookId: row.bookId,
+          libraryId: row.libraryId,
+          title: row.title,
+          lockedFields: row.lockedFields,
+          updatedAt: row.updatedAt.toISOString(),
+          currentValues: Object.keys(fields)
+            .filter((key) => (fields as unknown as Record<string, unknown>)[key] !== undefined)
+            .map((field) => ({
+              field,
+              value:
+                current[field] === null || current[field] === undefined
+                  ? null
+                  : typeof current[field] === 'string'
+                    ? (current[field] as string)
+                    : JSON.stringify(current[field]),
+            })),
+        };
+      }),
+      fields: {},
+    };
+    for (const key of Object.keys(fields)) {
+      if ((fields as unknown as Record<string, unknown>)[key] === undefined) continue;
+      const updated = rows.filter(
+        (row) =>
+          key === 'customMetadata' ||
+          (key === 'seriesMemberships'
+            ? !row.lockedFields.includes('seriesName') && !row.lockedFields.includes('seriesIndex')
+            : !row.lockedFields.includes(key)),
+      ).length;
+      result.fields[key] = { updated, skippedLocked: ids.length - updated };
+    }
+    return result;
+  }
+
+  async bulkEditMetadata(
+    bookIds: number[],
+    fields: BulkEditFieldsDto,
+    user: RequestUser,
+    expectedVersions?: BulkMetadataVersion[],
+  ): Promise<BulkEditMetadataResult> {
     const event = 'book.bulk.edit_metadata';
     const startedAt = Date.now();
     const fieldNames = Object.keys(fields).filter((k) => (fields as unknown as Record<string, unknown>)[k] !== undefined);
@@ -2685,6 +2815,19 @@ export class BookService {
     }
 
     await this.verifyLibraryAccessForBookIds(bookIds, user);
+
+    if (
+      expectedVersions &&
+      (bookIds.length > 100 ||
+        expectedVersions.length !== new Set(bookIds).size ||
+        new Set(expectedVersions.map((item) => item.bookId)).size !== expectedVersions.length ||
+        expectedVersions.some((item) => !bookIds.includes(item.bookId)))
+    ) {
+      throw new BadRequestException('Each selected book requires one preview version, with at most 100 books');
+    }
+    if (fields.customMetadata !== undefined && bookIds.length > 100)
+      throw new BadRequestException('Custom metadata edits require batches of at most 100 books');
+    const customLibraryRows = fields.customMetadata !== undefined ? await this.bookRepo.findLibraryIdsByBookIds(bookIds) : [];
 
     const locksMap = await this.bookMetadataLockService.getLockedFieldsMap(bookIds);
     const fieldResults: Record<string, BulkEditFieldResult> = {};
@@ -2712,6 +2855,15 @@ export class BookService {
 
     try {
       await this.bookRepo.withTransaction(async (tx) => {
+        if (expectedVersions) {
+          const current = await this.bookRepo.findBulkMetadataPreview(bookIds, tx, true);
+          const expected = new Map(expectedVersions.map((item) => [item.bookId, new Date(item.updatedAt).toISOString()]));
+          if (current.length !== expected.size || current.some((item) => expected.get(item.bookId) !== item.updatedAt.toISOString())) {
+            throw new ConflictException('Selected metadata changed after preview. Reload and review before applying again.');
+          }
+          locksMap.clear();
+          for (const row of current) locksMap.set(row.bookId, row.lockedFields);
+        }
         for (const fieldName of ['seriesName', 'publisher', 'language'] as const) {
           if (!fields[fieldName]) continue;
           const ids = getUpdatableIds(BULK_METADATA_LOCK_FIELD_BY_FIELD[fieldName]);
@@ -2834,6 +2986,13 @@ export class BookService {
               }
             }
           }
+        }
+        if (fields.customMetadata !== undefined) {
+          recordResult('customMetadata', bookIds);
+          await this.customMetadataService.updateManyBookValues(customLibraryRows, fields.customMetadata, tx);
+        }
+        if (allUpdatedBookIds.size > 0) {
+          await this.bookRepo.bulkUpdateMetadataFields([...allUpdatedBookIds], { updatedAt: new Date() }, tx);
         }
       });
     } catch (error) {
@@ -3247,6 +3406,8 @@ export class BookService {
       if (uniqueBookIds.length > EXPORT_LIMITS.MAX_BOOKS) {
         throw new BadRequestException(`Too many books selected. Limit is ${EXPORT_LIMITS.MAX_BOOKS}.`);
       }
+
+      await this.verifyLibraryAccessForBookIds(uniqueBookIds, user);
 
       const rows = await this.bookRepo.findLibraryIdsByBookIds(uniqueBookIds);
       const foundBookIds = new Set(rows.map((row) => row.id));

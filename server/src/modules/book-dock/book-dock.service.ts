@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { rmdir, unlink } from 'fs/promises';
 import { eq, inArray } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -11,6 +11,7 @@ import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { BookDockRepository, type ListOptions } from './book-dock.repository';
 import { BookDockIngestService } from './book-dock-ingest.service';
 import { BookDockFinalizeService } from './book-dock-finalize.service';
+import { BookDockFinalizationRepository } from './book-dock-finalization.repository';
 import { BookDockGateway } from './book-dock.gateway';
 import { normalizeBookDockMetadata, normalizeBookDockMetadataSources } from './book-dock-metadata.utils';
 import { BookDockProcessingStateService } from './book-dock-processing-state.service';
@@ -33,6 +34,7 @@ export class BookDockService {
     private readonly watcherService: BookDockWatcherService,
     private readonly processingState: BookDockProcessingStateService,
     private readonly gateway: BookDockGateway,
+    @Optional() private readonly finalizations?: BookDockFinalizationRepository,
   ) {}
 
   async listFiles(query: ListOptions): Promise<BookDockFilesPage> {
@@ -62,27 +64,36 @@ export class BookDockService {
 
   async updateFile(
     id: number,
-    data: { selectedMetadata?: Partial<BookDockMetadata>; targetLibraryId?: number | null; targetFolderId?: number | null },
+    data: {
+      expectedUpdatedAt?: string;
+      selectedMetadata?: Partial<BookDockMetadata>;
+      targetLibraryId?: number | null;
+      targetFolderId?: number | null;
+    },
     userId: number,
     canManageAll: boolean,
   ): Promise<BookDockFile> {
     await this.findFileForUser(id, userId, canManageAll);
+    await this.assertNotFinalizing(id);
 
     if (data.targetLibraryId !== undefined || data.targetFolderId !== undefined) {
       await this.assertValidTarget(data.targetLibraryId, data.targetFolderId);
     }
 
+    const { expectedUpdatedAt, ...fields } = data;
     const updateData =
-      data.selectedMetadata !== undefined
-        ? { ...data, selectedMetadata: normalizeBookDockMetadata(data.selectedMetadata) ?? {}, metadataEditedAt: new Date() }
-        : data;
-    const updated = await this.repo.update(id, updateData);
+      fields.selectedMetadata !== undefined
+        ? { ...fields, selectedMetadata: normalizeBookDockMetadata(fields.selectedMetadata) ?? {}, metadataEditedAt: new Date() }
+        : fields;
+    const updated = expectedUpdatedAt ? await this.repo.update(id, updateData, expectedUpdatedAt) : await this.repo.update(id, updateData);
+    if (!updated && expectedUpdatedAt) throw new ConflictException('This staged book changed. Reload it before saving your review.');
     if (!updated) throw new NotFoundException('Book Dock file not found');
     return toDto(updated);
   }
 
   async discardFile(id: number, userId: number, canManageAll: boolean): Promise<void> {
     const row = await this.findFileForUser(id, userId, canManageAll);
+    await this.assertNotFinalizing(id);
 
     await this.cleanupFiles(row);
     await this.repo.deleteById(id);
@@ -112,10 +123,12 @@ export class BookDockService {
         canManageAll,
       },
       async (rows) => {
+        const ids = rows.map((row) => row.id);
+        await this.assertNotFinalizing(ids);
         for (const row of rows) {
           await this.cleanupFiles(row);
         }
-        await this.repo.deleteByIds(rows.map((row) => row.id));
+        await this.repo.deleteByIds(ids);
       },
     );
   }
@@ -460,6 +473,11 @@ export class BookDockService {
     const errorClass = error instanceof Error ? error.name : 'Error';
     const errorMessage = sanitizeLogValue(error instanceof Error ? error.message : String(error));
     this.logger.warn(`[${event}] [fail] durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${errorMessage}" - ${message}`);
+  }
+
+  private async assertNotFinalizing(id: number | number[]): Promise<void> {
+    const accepted = Array.isArray(id) ? await this.finalizations?.hasAcceptedForFileIds(id) : await this.finalizations?.find(id);
+    if (accepted) throw new ConflictException('This book has an accepted import. Retry that import before changing or discarding it');
   }
 
   private async assertValidTarget(targetLibraryId?: number | null, targetFolderId?: number | null): Promise<void> {

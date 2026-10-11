@@ -79,6 +79,10 @@ class MemoryCoverRepository {
     });
   }
 
+  withBookWriteLock<T>(_bookId: number, operation: () => Promise<T>): Promise<T> {
+    return operation();
+  }
+
   findContext(bookId: number): Promise<BookCoverContext | null> {
     const book = this.books.get(bookId);
     if (!book) return Promise.resolve(null);

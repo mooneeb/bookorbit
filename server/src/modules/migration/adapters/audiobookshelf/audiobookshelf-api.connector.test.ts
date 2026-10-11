@@ -135,6 +135,71 @@ describe('AudiobookshelfApiConnector validation and field selection', () => {
 });
 
 describe('AudiobookshelfApiConnector pagination and batching', () => {
+  it('expands each source page before fetching more IDs from a large library', async () => {
+    let expandedItems = 0;
+    await withServer(
+      (request, response) => {
+        const url = new URL(request.url ?? '/', 'http://fixture');
+        response.setHeader('content-type', 'application/json');
+        if (url.pathname === '/status') {
+          response.end(JSON.stringify({ app: 'audiobookshelf', serverVersion: '2.36.0', isInit: true }));
+        } else if (url.pathname === '/api/authorize') {
+          response.end(JSON.stringify({ user: { id: 'root', username: 'root', type: 'root' } }));
+        } else if (url.pathname === '/api/users') {
+          response.end(JSON.stringify({ users: [] }));
+        } else if (url.pathname === '/api/libraries') {
+          response.end(JSON.stringify({ libraries: [{ id: 'books', mediaType: 'book', folders: [] }] }));
+        } else if (url.pathname === '/api/libraries/books/items') {
+          const page = Number(url.searchParams.get('page'));
+          if (expandedItems < page * 200) {
+            response.statusCode = 409;
+            response.end(JSON.stringify({ error: 'Consume the current page before requesting another' }));
+            return;
+          }
+          const start = page * 200;
+          response.end(
+            JSON.stringify({
+              page,
+              total: 50_000,
+              results: Array.from({ length: Math.min(200, 50_000 - start) }, (_, index) => ({ id: `li${start + index}`, mediaType: 'book' })),
+            }),
+          );
+        } else if (url.pathname === '/api/items/batch/get') {
+          let body = '';
+          request.on('data', (chunk: Buffer) => (body += chunk.toString()));
+          request.on('end', () => {
+            const { libraryItemIds } = JSON.parse(body) as { libraryItemIds: string[] };
+            if (libraryItemIds.length > 100) {
+              response.statusCode = 413;
+              response.end('{}');
+              return;
+            }
+            expandedItems += libraryItemIds.length;
+            response.end(
+              JSON.stringify({
+                libraryItems: libraryItemIds.map((id) => ({ id, mediaType: 'book', media: { id: `book-${id}`, metadata: { title: id } } })),
+              }),
+            );
+          });
+        } else {
+          response.statusCode = 404;
+          response.end('{}');
+        }
+      },
+      async (baseUrl) => {
+        let count = 0;
+        let lastId = '';
+        for await (const records of new AudiobookshelfApiConnector().fetchSourceRecordBatches({ ...config, baseUrl, allowPrivateNetwork: true })) {
+          expect(records.libraryItems.length).toBeLessThanOrEqual(100);
+          count += records.libraryItems.length;
+          lastId = records.libraryItems.at(-1)?.id ?? '';
+        }
+        expect(count).toBe(50_000);
+        expect(lastId).toBe('li49999');
+      },
+    );
+  }, 30_000);
+
   it('builds snapshot counts without expanding every library item or session page', async () => {
     const connector = new AudiobookshelfApiConnector();
     vi.spyOn(connector, 'getStatus').mockResolvedValue({ sourceVersion: '2.36.0' });

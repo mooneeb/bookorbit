@@ -103,3 +103,26 @@ export type BookDuplicateGroupsResponse = {
   page: number;
   pageSize: number;
 };
+
+export type MergeBooksRequest = {
+  sourceBookId: number;
+  targetBookId: number;
+  previewToken?: string;
+};
+
+export type MergeBooksPreview = {
+  sourceBookId: number;
+  targetBookId: number;
+  previewToken: string;
+  canApply: boolean;
+  blockers: string[];
+  warnings: string[];
+  filesPreserved: number;
+};
+
+export type MergeBooksResult = {
+  sourceBookId: number;
+  targetBookId: number;
+  filesPreserved: number;
+  alreadyApplied: boolean;
+};

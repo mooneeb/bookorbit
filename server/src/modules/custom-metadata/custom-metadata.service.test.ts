@@ -27,6 +27,7 @@ function makeRepository() {
       deleteField: vi.fn(),
       deleteValue: vi.fn(),
       upsertValue: vi.fn(),
+      writeValuesForBooks: vi.fn(),
       withTransaction: vi.fn((callback: (executor: unknown) => Promise<unknown>) => callback(tx)),
     },
   };
@@ -97,8 +98,14 @@ describe('CustomMetadataService', () => {
       tx as never,
     );
 
-    expect(repo.upsertValue).toHaveBeenCalledWith(5, 7, { valueText: null, valueNumber: null, valueDate: null, valueBoolean: false }, tx);
-    expect(repo.deleteValue).toHaveBeenCalledWith(5, 8, tx);
+    expect(repo.writeValuesForBooks).toHaveBeenCalledWith(
+      [5],
+      [
+        { fieldId: 7, value: { valueText: null, valueNumber: null, valueDate: null, valueBoolean: false } },
+        { fieldId: 8, value: null },
+      ],
+      tx,
+    );
   });
 
   it('rejects values for fields that are not enabled for the book library', async () => {
@@ -107,6 +114,7 @@ describe('CustomMetadataService', () => {
     await expect(service.updateBookValues(5, 2, [{ fieldId: 99, value: 'Hidden' }], tx as never)).rejects.toBeInstanceOf(BadRequestException);
     expect(repo.upsertValue).not.toHaveBeenCalled();
     expect(repo.deleteValue).not.toHaveBeenCalled();
+    expect(repo.writeValuesForBooks).not.toHaveBeenCalled();
   });
 
   it('parses file values for enabled custom fields and skips invalid values', async () => {

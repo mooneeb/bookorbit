@@ -125,6 +125,8 @@ watch(
   () => railRef.value?.revealCurrent(),
 )
 
+watch(bulk.previewToken, review.reset)
+
 watch(showFullPaths, (value) => storage.set(SHOW_FULL_PATHS_KEY, value))
 
 function handleSelectLibrary(libraryId: number): void {

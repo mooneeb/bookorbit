@@ -73,3 +73,43 @@ export interface ScanBooksAddedEvent {
   libraryId: number;
   books: import("./book").BookCard[];
 }
+
+/** Audited library projection used when configuring server-side scans. */
+export interface LibraryScanConfiguration {
+  id: number;
+  name: string;
+  type: import("./library").LibraryType;
+  folders: import("./library").LibraryFolder[];
+  watch: boolean;
+  autoScanCronExpression: string | null;
+  allowedFormats: string[];
+  excludePatterns: string[];
+  organizationMode: import("./library").OrganizationMode;
+}
+
+export interface ScanStartResult {
+  jobId: number;
+}
+
+export interface ScanStatusResponse {
+  progress: ScanProgressEvent | null;
+}
+
+/** Reusing the same baseline reconciles an accepted scan instead of repeating it. */
+export interface ScanStartRequest {
+  expectedLastJobId?: number;
+}
+
+export interface ScanConfigurationRequest {
+  folders: string[];
+  watch: boolean;
+  autoScanCronExpression: string | null;
+  allowedFormats: string[];
+  excludePatterns: string[];
+  organizationMode: import("./library").OrganizationMode;
+}
+
+export interface ScanPreviewRequest {
+  libraryId: number;
+  paths: string[];
+}

@@ -1,19 +1,25 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { constants, createWriteStream } from "node:fs";
 import { copyFile, lstat, mkdir, open, opendir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { sanitizeLogValue } from "../../server/src/common/utils/log-sanitize.utils.ts";
 import { startFaultProxy } from "./fault-proxy.mjs";
 import { createCoverFixture } from "./cover-fixture.mjs";
 import { annotationProfile } from "./annotation-matrix.mjs";
 import { compareNativeAnnotationVisuals } from "./annotation-visual.mjs";
+import { compareNativeE03Visuals, compareWebE03Visuals } from "./e03-visual.mjs";
 import { waitForNativeOfflineReady } from "./combined-coordination.mjs";
 import { readingSharingSelection, assertReadingSharingCoverage } from "./e04-selection.mjs";
 import { startE04Receivers } from "./e04-receivers.mjs";
 import { compareNativeReadingSharingVisuals } from "./e04-visual.mjs";
+import { e03Suites } from "./e03-runner.mjs";
+import { startRequestAdminFixture } from "./e03-request-admin-fixture.mjs";
+import { seedDuplicateMergeFixture } from "./e03-duplicate-merge-fixture.mjs";
+import { startE03ResponseProxy } from "./e03-response-proxy.mjs";
 
 const readingSharingProof = process.argv.includes("--reading-sharing");
 const readingSharingCase = readingSharingProof ? process.argv.find((argument) => argument.startsWith("--case="))?.slice(7) : undefined;
@@ -33,6 +39,7 @@ if (existingServer && (!readingSharingProof || process.argv.includes("--serve"))
   throw new Error("--existing-server requires --reading-sharing and attaches to an already retained E04 server");
 }
 const startedAt = Date.now();
+const execute = promisify(execFile);
 process.on("uncaughtExceptionMonitor", (error) => {
   console.error(
     `[ipad.harness] [fail] runId=${process.pid} durationMs=${Date.now() - startedAt} errorClass=${error.name} error="${sanitizeLogValue(error.message)}" - isolated acceptance run failed`,
@@ -48,7 +55,27 @@ const runID = `run-${process.pid}-${Date.now()}`;
 const resumeArtifacts = readingSharingProof && process.argv.includes("--resume-artifacts");
 const artifactsRoot = `${root}/test-results/ipad/${resumeArtifacts ? "e04-resume/" : ""}${runID}`;
 let commandNumber = 0;
+const packageManager = process.env.IPAD_PNPM_EXECUTABLE ?? "pnpm";
+const e03Proof = process.argv.includes("--e03");
+const skipBuild = process.argv.includes("--skip-build");
+if (skipBuild && (!e03Proof || !process.argv.includes("--serve"))) throw new Error("Compiled output reuse requires retained E03 fixture mode");
+const reuseNativeBuild = process.argv.includes("--reuse-native-build");
+if (reuseNativeBuild && (!e03Proof || !process.argv.includes("--ui"))) throw new Error("Joined native build reuse requires E03 UI mode");
+const e03Case = process.argv.find((argument) => argument.startsWith("--e03-case="))?.slice(11);
+const browserConfig = readingSharingProof
+  ? "scripts/ipad/e04-web.config.mjs"
+  : e03Proof
+    ? "scripts/ipad/e03-web.config.mjs"
+    : "scripts/ipad/playwright.config.mjs";
+if (e03Case && !e03Proof) throw new Error("--e03-case requires --e03");
+if (e03Proof) await e03Suites(e03Case);
+if (process.argv.includes("--list-e03")) {
+  console.log(JSON.stringify({ cases: ["A01", "A02", "A03", "A04", "A05"], suites: await e03Suites(e03Case) }, null, 2));
+  process.exit(0);
+}
 const annotationsProof = process.argv.includes("--annotations");
+if (e03Proof && (annotationsProof || readingSharingProof))
+  throw new Error("E03 acquisition, E02 annotation and E04 reading-sharing journeys run separately");
 const annotationVisualProfile = annotationProfile(process.argv.find((argument) => argument.startsWith("--profile="))?.slice(10));
 const nativeVisualProfile = annotationProfile(annotationVisualProfile.nativeProfile ?? annotationVisualProfile.name);
 const nativeOnly = process.argv.includes("--native-only");
@@ -286,6 +313,18 @@ const env = {
   IPAD_WEB_URL: `http://localhost:${webPort}`,
   IPAD_READING_RECORD_API_URL: `http://127.0.0.1:${apiPort}/api/v1`,
   IPAD_TEST_RUN: runID,
+  IPAD_TEST_ARTIFACTS: artifactsRoot,
+  IPAD_E03_PROOF: e03Proof ? "1" : "0",
+  IPAD_E03_CASE: e03Case ?? "",
+  IPAD_E03_PROFILE: annotationVisualProfile.name,
+  IPAD_E03_API_URL: "http://localhost:16482/api/v1",
+  IPAD_E03_BASE_URL: "http://localhost:16482/api/v1",
+  IPAD_API_BASE: "http://localhost:16482/api/v1",
+  IPAD_FIXTURE_PASSWORD: "IpadFixture123",
+  IPAD_E03_FIXTURE_FILE: `${artifactsRoot}/e03-fixture.json`,
+  IPAD_E03_UPLOAD_RECEIPT_FILE: `${artifactsRoot}/e03-upload-receipt.json`,
+  IPAD_E03_RECOVERY_RUN_ID: e03Proof ? runID : "",
+  ...(e03Proof ? { BOOK_REQUEST_ENCRYPTION_KEY: randomBytes(32).toString("hex"), MIGRATION_IMPORT_ROOT: `${artifactsRoot}/migration-source` } : {}),
   IPAD_ANNOTATIONS_PROOF: annotationsProof ? "1" : "0",
   IPAD_QA5_BROWSER_ONLY: qa5BrowserOnly ? "1" : "0",
   IPAD_RECORDED_LAYOUT_ONLY: recordedLayout ? "1" : "0",
@@ -314,7 +353,7 @@ const env = {
   IPAD_COMIC_PROOF: comicProof ? "1" : "0",
   IPAD_ORGANIZATION_PROOF: organizationProof ? "1" : "0",
   IPAD_PDF_READER: pdfReader ? "1" : "0",
-  ...(epubProof || annotationsProof || readingSharingProof
+  ...(epubProof || annotationsProof || readingSharingProof || e03Proof
     ? { IPAD_READER_PROOF_EPUB: `${root}/test-results/ipad/${runID}/reader-fixture/reader-proof.epub` }
     : {}),
   JWT_SECRET: randomBytes(32).toString("hex"),
@@ -384,7 +423,7 @@ async function command(cmd, args, { capture = false, timeoutMs, signal, ...optio
   });
 }
 
-async function publicExportDirectory(deviceID) {
+async function publicExportDirectory(deviceID, { create = false } = {}) {
   const container = (
     await command("xcrun", ["simctl", "get_app_container", deviceID, "com.mooneeb.bookorbit.private", "data"], {
       capture: true,
@@ -395,6 +434,7 @@ async function publicExportDirectory(deviceID) {
     throw new Error("Installed production app did not resolve to a simulator data container");
   const canonicalContainer = await realpath(container);
   const directory = join(canonicalContainer, "Documents");
+  if (create) await mkdir(directory, { recursive: true });
   const information = await lstat(directory);
   if (!information.isDirectory() || information.isSymbolicLink() || dirname(await realpath(directory)) !== canonicalContainer)
     throw new Error("Native export directory must be the installed app's public Documents directory");
@@ -629,7 +669,10 @@ function signalGroup(child, signal) {
 function requestStop() {
   interrupted = true;
   resolveInterrupt();
-  for (const child of children) void stop(child);
+  for (const child of children) {
+    if (e03Proof && (child === server || child === migrationFixtureHolder)) continue;
+    void stop(child);
+  }
 }
 process.once("SIGINT", requestStop);
 process.once("SIGTERM", requestStop);
@@ -671,6 +714,7 @@ async function startCore({ restart = false } = {}) {
   const fixture = restart ? JSON.parse(await readFile(join(artifactsRoot, "e04-fixture.json"), "utf8")) : undefined;
   const args = [
     ...(readingSharingProof ? ["--import", join(root, "scripts/ipad/kobo-query-observer.mjs")] : []),
+    ...(e03Proof ? ["--import", join(root, "scripts/ipad/e03-request-metadata-preload.mjs")] : []),
     join(root, "server/dist-ipad/test/ipad/harness.js"),
   ];
   server = launch(process.execPath, args, {
@@ -714,7 +758,7 @@ async function retainE04Core() {
     if (request && request.requestId !== completed) {
       const restartingAt = Date.now();
       console.log(`[ipad.core_restart] [start] runId=${runID} - restarting the retained core with its existing database and fixture`);
-      await stop(server);
+      await stop(server, "SIGUSR2");
       await startCore({ restart: true });
       completed = request.requestId;
       const temporary = join(env.IPAD_E04_RESTART_DIRECTORY, "ready.tmp");
@@ -725,9 +769,245 @@ async function retainE04Core() {
     await Promise.race([interrupt, new Promise((resolve) => setTimeout(resolve, 120))]);
   }
 }
+let requestFixture;
+let responseProxy;
+let migrationFixtureHolder;
+let migrationFixtureReady = false;
+async function prepareE03MigrationFixtures() {
+  env.IPAD_MIGRATION_ARTIFACTS_ROOT = join(artifactsRoot, "migration-native");
+  migrationFixtureHolder = launch(
+    process.execPath,
+    ["scripts/ipad/e03-migration-retain.mjs", ...(!process.argv.includes("--ui") ? ["--apply"] : [])],
+    { stdio: "inherit" },
+  );
+  let startupError;
+  migrationFixtureHolder.once("error", (error) => {
+    startupError = error;
+  });
+  const deadline = Date.now() + 30 * 60_000;
+  const checkpointPath = join(env.IPAD_MIGRATION_ARTIFACTS_ROOT, "fixture-checkpoint.json");
+  while (Date.now() < deadline) {
+    if (interrupted) throw new Error("iPad harness interrupted during migration preparation");
+    if (startupError) throw startupError;
+    if (migrationFixtureHolder.exitCode !== null || migrationFixtureHolder.signalCode !== null)
+      throw new Error("Retained migration fixture holder exited before readiness");
+    try {
+      const checkpoint = JSON.parse(await readFile(checkpointPath, "utf8"));
+      if (checkpoint.status === "ready") {
+        const config = await readFile(join(env.IPAD_MIGRATION_ARTIFACTS_ROOT, "native-config.json"), "utf8");
+        env.IPAD_MIGRATION_NATIVE_CONFIG = config;
+        env.TEST_RUNNER_IPAD_MIGRATION_NATIVE_CONFIG = config;
+        migrationFixtureReady = true;
+        return;
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  throw new Error("Retained migration fixture preparation exceeded 30 minutes");
+}
+async function configureE03Fixtures() {
+  const fixture = JSON.parse(await readFile(env.IPAD_E03_FIXTURE_FILE, "utf8"));
+  const client = new Client({ connectionString: databaseURL });
+  await client.connect();
+  let merge;
+  try {
+    merge = await seedDuplicateMergeFixture(client, join(fixture.contentRoot, "e03-http-merge"), fixture.libraryFolderId);
+    fixture.maintenance = {
+      ...fixture.maintenance,
+      ...(await seedDuplicateMergeFixture(client, join(fixture.contentRoot, "e03-native-merge"), fixture.libraryFolderId)),
+    };
+  } finally {
+    await client.end();
+  }
+  await writeFile(`${artifactsRoot}/e03-merge-fixture.json`, `${JSON.stringify(merge, null, 2)}\n`);
+  fixture.maintenanceHttp = { ...fixture.maintenanceHttp, ...merge };
+  await writeFile(env.IPAD_E03_FIXTURE_FILE, `${JSON.stringify(fixture, null, 2)}\n`);
+  requestFixture = await startRequestAdminFixture({ port: 0, localDownloadPath: fixture.downloadRoot });
+  const { PDFDocument } = require("pdf-lib");
+  const largePDF = await PDFDocument.load(await readFile(fixture.uploadFile));
+  largePDF.setCreationDate(new Date("2026-10-05T00:00:00Z"));
+  largePDF.setModificationDate(new Date("2026-10-05T00:00:00Z"));
+  const payload = new Uint8Array(12 * 1024 * 1024);
+  let seed = 0x1e03;
+  for (let index = 0; index < payload.length; index++) {
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    payload[index] = seed & 0xff;
+  }
+  await largePDF.attach(payload, "E03 deterministic payload.bin", { mimeType: "application/octet-stream" });
+  fixture.largeUploadFile = join(fixture.contentRoot, "E03 upload large.pdf");
+  await writeFile(fixture.largeUploadFile, await largePDF.save());
+  const largeUploadSHA256 = createHash("sha256")
+    .update(await readFile(fixture.largeUploadFile))
+    .digest("hex");
+  fixture.dockPath = join(fixture.contentRoot, "data", "book-dock");
+  await writeFile(env.IPAD_E03_FIXTURE_FILE, `${JSON.stringify(fixture, null, 2)}\n`);
+  responseProxy = await startE03ResponseProxy({
+    seedDock: async () => {
+      await mkdir(fixture.dockPath, { recursive: true });
+      const filename = `E03 scanned source ${randomBytes(8).toString("hex")}.pdf`;
+      const target = join(fixture.dockPath, filename);
+      await copyFile(fixture.uploadFile, target);
+      return {
+        filename,
+        sha256: createHash("sha256")
+          .update(await readFile(target))
+          .digest("hex"),
+      };
+    },
+  });
+  Object.assign(env, {
+    IPAD_MERGE_FIXTURE: `${artifactsRoot}/e03-merge-fixture.json`,
+    IPAD_MAINTENANCE_FIXTURE: JSON.stringify(fixture.maintenanceHttp),
+    IPAD_E03_SCAN_LIBRARY_ID: String(fixture.scanLibraryId),
+    IPAD_E03_SCAN_PATH: fixture.scanPath,
+    IPAD_E03_DOWNLOAD_PATH: dirname(requestFixture.filePath),
+    IPAD_E03_PROTOCOL_URL: requestFixture.origin,
+    IPAD_E03_FAULT_URL: responseProxy.origin,
+    IPAD_E03_SERVER_URL: responseProxy.origin,
+    IPAD_MIGRATION_IMPORT_ROOT: env.MIGRATION_IMPORT_ROOT,
+    IPAD_MIGRATION_BOOKS_ROOT: fixture.contentRoot,
+    IPAD_E03_UPLOAD_FILE: fixture.uploadFile,
+    IPAD_E03_LARGE_UPLOAD_FILE: fixture.largeUploadFile,
+    IPAD_E03_LARGE_UPLOAD_SHA256: largeUploadSHA256,
+    IPAD_E03_DOCK_PATH: fixture.dockPath,
+    IPAD_MAINTENANCE_REPLACEMENT_PATH: fixture.maintenance.replacementPath,
+    IPAD_MAINTENANCE_MISSING_BOOK_ID: String(fixture.maintenance.missingBookId),
+    IPAD_MAINTENANCE_SOURCE_BOOK_ID: String(fixture.maintenance.sourceBookId),
+    IPAD_MAINTENANCE_TARGET_BOOK_ID: String(fixture.maintenance.targetBookId),
+    TEST_RUNNER_IPAD_E03_UPLOAD_FILE: fixture.uploadFile,
+    TEST_RUNNER_IPAD_E03_LARGE_UPLOAD_FILE: fixture.largeUploadFile,
+    TEST_RUNNER_IPAD_E03_LARGE_UPLOAD_SHA256: largeUploadSHA256,
+    TEST_RUNNER_IPAD_E03_DOCK_PATH: fixture.dockPath,
+    TEST_RUNNER_IPAD_E03_SCAN_LIBRARY_ID: String(fixture.scanLibraryId),
+    TEST_RUNNER_IPAD_E03_PROTOCOL_URL: requestFixture.origin,
+    TEST_RUNNER_IPAD_E03_FAULT_URL: responseProxy.origin,
+    TEST_RUNNER_IPAD_E03_SERVER_URL: responseProxy.origin,
+    TEST_RUNNER_IPAD_MAINTENANCE_FIXTURE: JSON.stringify(fixture.maintenance),
+    TEST_RUNNER_IPAD_MAINTENANCE_REPLACEMENT_PATH: fixture.maintenance.replacementPath,
+    TEST_RUNNER_IPAD_MAINTENANCE_MISSING_BOOK_ID: String(fixture.maintenance.missingBookId),
+    TEST_RUNNER_IPAD_MAINTENANCE_SOURCE_BOOK_ID: String(fixture.maintenance.sourceBookId),
+    TEST_RUNNER_IPAD_MAINTENANCE_TARGET_BOOK_ID: String(fixture.maintenance.targetBookId),
+    ...(env.IPAD_MIGRATION_NATIVE_CONFIG ? { TEST_RUNNER_IPAD_MIGRATION_NATIVE_CONFIG: env.IPAD_MIGRATION_NATIVE_CONFIG } : {}),
+  });
+  const keys = [
+    "DATABASE_URL",
+    "E2E_DATABASE_URL",
+    "IPAD_TEST_RUN",
+    "IPAD_TEST_ARTIFACTS",
+    "IPAD_FIXTURE_PASSWORD",
+    "IPAD_E03_PROOF",
+    "IPAD_E03_API_URL",
+    "IPAD_E03_BASE_URL",
+    "IPAD_API_BASE",
+    "IPAD_E03_FIXTURE_FILE",
+    "IPAD_E03_UPLOAD_RECEIPT_FILE",
+    "IPAD_E03_RECOVERY_RUN_ID",
+    "IPAD_MERGE_FIXTURE",
+    "IPAD_MAINTENANCE_FIXTURE",
+    "IPAD_MAINTENANCE_REPLACEMENT_PATH",
+    "IPAD_MAINTENANCE_MISSING_BOOK_ID",
+    "IPAD_MAINTENANCE_SOURCE_BOOK_ID",
+    "IPAD_MAINTENANCE_TARGET_BOOK_ID",
+    "IPAD_E03_SCAN_LIBRARY_ID",
+    "IPAD_E03_SCAN_PATH",
+    "IPAD_E03_DOWNLOAD_PATH",
+    "IPAD_E03_PROTOCOL_URL",
+    "IPAD_E03_FAULT_URL",
+    "IPAD_E03_SERVER_URL",
+    "IPAD_MIGRATION_IMPORT_ROOT",
+    "IPAD_MIGRATION_BOOKS_ROOT",
+    "IPAD_MIGRATION_NATIVE_CONFIG",
+    "IPAD_E03_UPLOAD_FILE",
+    "IPAD_E03_LARGE_UPLOAD_FILE",
+    "IPAD_E03_LARGE_UPLOAD_SHA256",
+    "IPAD_E03_DOCK_PATH",
+    "MIGRATION_IMPORT_ROOT",
+    "BOOK_REQUEST_ENCRYPTION_KEY",
+    ...Object.keys(env).filter((key) => /^TEST_RUNNER_IPAD_(?:E03_|MAINTENANCE_|MIGRATION_)/.test(key)),
+  ];
+  const shellQuote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
+  const auth = await fetch(`${env.IPAD_E03_API_URL}/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      username: "ipad-owner",
+      password: env.IPAD_FIXTURE_PASSWORD,
+      clientKind: "native",
+      deviceLabel: "E03 fixture preparation",
+    }),
+  });
+  if (!auth.ok) throw new Error("E03 fixture preparation requires owner authentication");
+  const session = await auth.json();
+  try {
+    for (const [path, body] of [
+      [
+        "admin/request-indexers",
+        {
+          name: "E03 controlled source",
+          adapterType: "torznab",
+          baseUrl: `${requestFixture.origin}/torznab/api`,
+          allowPrivateAddress: true,
+          enabled: true,
+        },
+      ],
+      [
+        "admin/download-clients",
+        {
+          name: "E03 controlled client",
+          adapterType: "qbittorrent",
+          baseUrl: requestFixture.origin,
+          allowPrivateAddress: true,
+          enabled: true,
+          category: "bookorbit",
+          useHardlinks: false,
+          pathMappings: [{ remotePath: dirname(requestFixture.filePath), localPath: dirname(requestFixture.filePath) }],
+        },
+      ],
+    ]) {
+      const result = await fetch(`${env.IPAD_E03_API_URL}/${path}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!result.ok) throw new Error(`E03 protocol configuration failed (${result.status}): ${await result.text()}`);
+    }
+    for (const [bookID, author] of [
+      [1, "Entity fixture author"],
+      [2, "Entity fixture target"],
+    ]) {
+      const result = await fetch(`${env.IPAD_E03_API_URL}/books/${bookID}/metadata`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${session.accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          title: bookID === 1 ? "A E03 PDF fixture" : "A E03 EPUB fixture",
+          authors: [author],
+          tags: ["Entity fixture tag"],
+          genres: ["Entity fixture genre"],
+          publisher: "Entity fixture publisher",
+        }),
+      });
+      if (!result.ok) throw new Error(`E03 entity fixture preparation failed (${result.status})`);
+    }
+  } finally {
+    await fetch(`${env.IPAD_E03_API_URL}/auth/logout`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
+    });
+  }
+  await writeFile(`${artifactsRoot}/runtime-request-encryption-key`, `${env.BOOK_REQUEST_ENCRYPTION_KEY}\n`, { mode: 0o600 });
+  await writeFile(`${artifactsRoot}/runtime-jwt-secret`, `${env.JWT_SECRET}\n`, { mode: 0o600 });
+  await writeFile(`${artifactsRoot}/e03-runtime.env`, keys.map((key) => `export ${key}=${shellQuote(env[key] ?? "")}`).join("\n") + "\n", {
+    mode: 0o600,
+  });
+}
 async function startWeb() {
   if (web) return;
-  web = launch("pnpm", ["--filter", "client", "exec", "vite", "preview", "--host", "127.0.0.1", "--port", String(webPort), "--strictPort"], {
+  web = launch(packageManager, ["--filter", "client", "exec", "vite", "preview", "--host", "127.0.0.1", "--port", String(webPort), "--strictPort"], {
     env: { ...env, BOOKORBIT_API_TARGET: `http://localhost:${apiPort}` },
     stdio: "inherit",
   });
@@ -751,7 +1031,7 @@ async function runAdditionalAnnotationBrowserTests() {
   for (const suite of suites) {
     if (annotationCase && !suite.cases.includes(annotationCase)) continue;
     await command(
-      "pnpm",
+      packageManager,
       ["exec", "playwright", "test", "--config", suite.config, ...(annotationCase ? ["--grep", `IPAD-E02-${annotationCase}`] : [])],
       {
         env: { ...env, IPAD_TEST_RUN: `${runID}-${suite.artifactSuffix}` },
@@ -759,7 +1039,7 @@ async function runAdditionalAnnotationBrowserTests() {
     );
   }
 }
-async function stop(child) {
+async function stop(child, signal = "SIGTERM") {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   if (stops.has(child)) return stops.get(child);
   const stopped = new Promise((resolve, reject) => {
@@ -776,7 +1056,7 @@ async function stop(child) {
       resolve();
     });
     try {
-      signalGroup(child, "SIGTERM");
+      signalGroup(child, signal);
     } catch (error) {
       clearTimeout(timeout);
       reject(error);
@@ -787,9 +1067,20 @@ async function stop(child) {
 }
 async function cleanup() {
   restartMonitoringStopped = true;
+  const fixtureFailures = [];
+  try {
+    await stop(migrationFixtureHolder);
+    if (migrationFixtureReady)
+      await execute(process.execPath, ["scripts/ipad/e03-migration-retain.mjs", "--cleanup"], { cwd: root, env, timeout: 120_000 });
+  } catch (error) {
+    fixtureFailures.push({ status: "rejected", reason: error });
+  }
+  await requestFixture?.close();
+  await responseProxy?.close();
   await stopFaultProxy?.();
   await externalReceivers?.close();
   const stopped = await Promise.allSettled([...children].map(stop));
+  if (e03Proof) await stopRecoveredRuntime();
   await restartMonitor;
   if (!existingServer) {
     const client = new Client({ connectionString: "postgres://bookorbit:bookorbit@localhost:5432/postgres" });
@@ -800,12 +1091,44 @@ async function cleanup() {
       await client.end();
     }
   }
-  const failures = stopped.filter((result) => result.status === "rejected");
+  const failures = [...fixtureFailures, ...stopped.filter((result) => result.status === "rejected")];
   if (failures.length)
     throw new AggregateError(
       failures.map((result) => result.reason),
       "iPad subprocess cleanup failed",
     );
+}
+
+async function stopRecoveredRuntime() {
+  let runtime;
+  try {
+    runtime = JSON.parse(await readFile(join(artifactsRoot, "restarted-runtime.json"), "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  if (runtime.runID !== runID) throw new Error("Recovered runtime does not belong to this isolated fixture");
+  for (const [pid, commandPath] of [
+    [runtime.supervisorPID, "scripts/ipad/restart-server.mjs"],
+    [runtime.pid, "server/dist-ipad/test/ipad/harness.js"],
+  ]) {
+    if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error("Recovered runtime PID is invalid");
+    let commandLine;
+    try {
+      ({ stdout: commandLine } = await execute("ps", ["-p", String(pid), "-o", "command="], { maxBuffer: 4096 }));
+    } catch (error) {
+      if (error.code === 1 && !error.stdout?.trim()) continue;
+      throw error;
+    }
+    if (!commandLine.includes(commandPath) || (commandPath.endsWith("restart-server.mjs") && !commandLine.includes(runID))) {
+      throw new Error("Recovered runtime PID was reused; no process was stopped");
+    }
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch (error) {
+      if (error.code !== "ESRCH") throw error;
+    }
+  }
 }
 
 async function runNativeTests({ onExecutionStart, onFailure } = {}) {
@@ -842,7 +1165,7 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
     currentNativeDeviceID = selectedDevice.udid;
     if (selectedDevice.state === "Shutdown") await nativeCommand("xcrun", ["simctl", "boot", selectedDevice.udid]);
     await nativeCommand("xcrun", ["simctl", "bootstatus", selectedDevice.udid, "-b"]);
-    if (annotationsProof || readingSharingProof) {
+    if (annotationsProof || readingSharingProof || e03Proof) {
       const size = nativeVisualProfile.nativeDevice.includes("11") ? "11-inch" : "13-inch";
       if (!selectedDevice.deviceTypeIdentifier?.includes(size)) throw new Error(`Native profile requires an actual ${size} iPad simulator`);
       const contentSize =
@@ -926,6 +1249,32 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
       ]);
     }
     if (!prepared || incrementalNativeBuild) await nativeCommand("xcodegen", ["generate", "--spec", "ipad/project.yml"]);
+    if (e03Proof && !process.env.IPAD_TEST_ONLY) {
+      nativeTests = [];
+      for (const file of await readdir(`${root}/ipad/UITests`)) {
+        if (!file.endsWith(".swift")) continue;
+        const source = await readFile(`${root}/ipad/UITests/${file}`, "utf8");
+        const className = source.match(/class\s+([A-Za-z_][A-Za-z_0-9]*)\s*:\s*XCTestCase/)?.[1];
+        if (!className) continue;
+        for (const match of source.matchAll(/func (testIPADE03[A-Za-z_0-9]*)\(/g)) {
+          const methodCase = match[1].match(/A0[1-5]/)?.[0];
+          const classCase = /Acquisition|Scan/.test(className)
+            ? "A01"
+            : /Request/.test(className)
+              ? "A02"
+              : /Migration/.test(className)
+                ? "A03"
+                : /Bulk/.test(className)
+                  ? "A04"
+                  : /Entit|Maintenance/.test(className)
+                    ? "A05"
+                    : undefined;
+          if (!e03Case || (methodCase ?? classCase) === e03Case || className === "LibraryManagementJourneyTests")
+            nativeTests.push(`BookOrbitUITests/${className}/${match[1]}`);
+        }
+      }
+      if (!nativeTests.length) throw new Error(`No implemented native E03 ${e03Case ?? "all"} journey exists`);
+    }
     if (annotationsProof && !isolatedNative && !process.env.IPAD_TEST_ONLY) {
       nativeTests = [];
       for (const file of await readdir(`${root}/ipad/UITests`)) {
@@ -1037,14 +1386,21 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
           `${artifacts}/profile-attachments`,
         ]);
       }
-      if (isolatedNative) {
-        await nativeCommand("xcodebuild", ["build-for-testing", ...commonArguments], { env: nativeEnvironment });
+      if (isolatedNative || e03Proof) {
+        if (!reuseNativeBuild) await nativeCommand("xcodebuild", ["build-for-testing", ...commonArguments], { env: nativeEnvironment });
+        else if (!(await lstat(join(root, "ipad/DerivedData/Build/Products/Debug-iphonesimulator/BookOrbit.app/BookOrbit"))).isFile())
+          throw new Error("Joined native app build is absent");
         await nativeCommand("xcrun", [
           "simctl",
           "install",
           selectedDevice.udid,
           "ipad/DerivedData/Build/Products/Debug-iphonesimulator/BookOrbit.app",
         ]);
+        if (e03Proof) {
+          const documents = await publicExportDirectory(selectedDevice.udid, { create: true });
+          await copyFile(env.IPAD_E03_UPLOAD_FILE, join(documents, "E03 upload.pdf"));
+          await copyFile(env.IPAD_E03_LARGE_UPLOAD_FILE, join(documents, "E03 upload large.pdf"));
+        }
         if (combinedRecovery || pdfRecovery) {
           nativeEnvironment.IPAD_E02_CURRENT_PUBLIC_FILES = "1";
           nativeEnvironment.TEST_RUNNER_IPAD_E02_CURRENT_PUBLIC_FILES = "1";
@@ -1069,7 +1425,7 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
       await nativeCommand(
         "xcodebuild",
         [
-          annotationsProof || readingSharingProof ? "test-without-building" : "test",
+          annotationsProof || readingSharingProof || e03Proof ? "test-without-building" : "test",
           ...commonArguments,
           "-resultBundlePath",
           `${artifacts}/native.xcresult`,
@@ -1153,6 +1509,7 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
         console.log(
           `[ipad.ui] [end] runId=${runID} durationMs=${Date.now() - startedAt} tests=${summary.totalTestCount} - native tests passed; evidence exported`,
         );
+        if (e03Proof) await compareNativeE03Visuals(artifacts, nativeVisualProfile.name);
       } catch (error) {
         nativeFailure ??= error;
       }
@@ -1194,7 +1551,7 @@ async function runCombinedNativeAndBrowser() {
     nativeReady = true;
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new Error("QA456 browser has no time remaining in the owning native run");
-    await command("pnpm", ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"], {
+    await command(packageManager, ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"], {
       env: { ...env, IPAD_QA456_NATIVE_DEADLINE_MS: String(deadline) },
       timeoutMs: remaining,
       signal: browserAbort.signal,
@@ -1208,7 +1565,7 @@ try {
   await mkdir(artifactsRoot, { recursive: true });
   await writeFile(
     `${artifactsRoot}/environment.json`,
-    `${JSON.stringify({ runID, node: process.version, nativeScheme, profile: annotationVisualProfile, destination: nativeDestination, fixtureDate: readingSharingProof ? null : "2026-10-05T00:00:00Z", clock: readingSharingProof ? "actual system UTC with fixture date recorded in e04-fixture.json" : "existing E02 fixture", acceptanceCase: readingSharingCase ?? null, apiURL: `http://localhost:${apiPort}/api/v1`, webURL: `http://localhost:${webPort}`, ticket: readingSharingProof ? "IPAD-E04" : "IPAD-E02", annotationCase: pdfRecovery ? "pdf-recovery" : pdfHandoff ? "pdf-handoff" : recordedLayout ? "recorded-layout" : (annotationCase ?? "all"), nativeInputSubstitution: annotationsProof ? "debug-only deterministic Pencil/Scribble boundary" : readingSharingProof && nativeTests.some((name) => name.includes("A04")) ? "debug-only deterministic Pencil boundary" : null }, null, 2)}\n`,
+    `${JSON.stringify({ runID, mode: readingSharingProof ? "e04" : e03Proof ? "e03" : annotationsProof ? "e02" : "e01", node: process.version, nativeScheme, profile: annotationVisualProfile, destination: nativeDestination, fixtureDate: readingSharingProof ? null : "2026-10-05T00:00:00Z", clock: readingSharingProof ? "actual system UTC with fixture date recorded in e04-fixture.json" : "existing E02 fixture", acceptanceCase: readingSharingCase ?? null, apiURL: `http://localhost:${apiPort}/api/v1`, webURL: `http://localhost:${webPort}`, ticket: readingSharingProof ? "IPAD-E04" : e03Proof ? "IPAD-E03" : annotationsProof ? "IPAD-E02" : "IPAD-E01", annotationCase: pdfRecovery ? "pdf-recovery" : pdfHandoff ? "pdf-handoff" : recordedLayout ? "recorded-layout" : (annotationCase ?? "all"), nativeInputSubstitution: annotationsProof ? "debug-only deterministic Pencil/Scribble boundary" : readingSharingProof && nativeTests.some((name) => name.includes("A04")) ? "debug-only deterministic Pencil boundary" : null }, null, 2)}\n`,
   );
   if (readingSharingProof) {
     await writeFile(`${artifactsRoot}/acceptance-selection.json`, `${JSON.stringify(readingSharing, null, 2)}\n`);
@@ -1265,7 +1622,7 @@ try {
   }
   if (!existingServer) {
     await createCoverFixture(env.IPAD_COVER_FIXTURE_DIR);
-    if (epubProof || annotationsProof || readingSharingProof) {
+    if (epubProof || annotationsProof || readingSharingProof || e03Proof) {
       const prepared = readingSharingProof && process.env.IPAD_E04_PREPARED_READER_FIXTURE;
       if (prepared) {
         const fixtureDirectory = await realpath(prepared);
@@ -1287,17 +1644,28 @@ try {
         await command(process.execPath, ["scripts/ipad/reader-fixture.mjs", `${root}/test-results/ipad/${runID}/reader-fixture`]);
       }
     }
-    await command("pnpm", ["ipad:contracts:check"]);
-    await command("pnpm", ["--filter", "@bookorbit/types", "build"]);
-    await command("pnpm", ["--filter", "@bookorbit/plugin-api", "build"]);
-    if (process.argv.includes("--web")) await command("pnpm", ["--filter", "client", "build-only"]);
-    await command("pnpm", ["--filter", "server", "e2e:db:prepare"]);
-    await command("pnpm", ["--filter", "server", "db:migrate"]);
-    await command("pnpm", ["--filter", "server", "exec", "tsc", "-p", "tsconfig.ipad.json"]);
+    await command(packageManager, ["ipad:contracts:check"]);
+    if (skipBuild) {
+      for (const relativePath of [
+        "server/dist-ipad/test/ipad/harness.js",
+        "packages/types/dist/index.js",
+        "packages/plugin-api/dist/index.js",
+        ...(process.argv.includes("--web") ? ["client/dist/index.html"] : []),
+      ]) {
+        if (!(await lstat(join(root, relativePath))).isFile()) throw new Error("Compiled isolated fixture output is absent");
+      }
+    } else {
+      await command(packageManager, ["--filter", "@bookorbit/types", "build"]);
+      await command(packageManager, ["--filter", "@bookorbit/plugin-api", "build"]);
+      if (process.argv.includes("--web")) await command(packageManager, ["--filter", "client", "build-only"]);
+    }
+    await command(packageManager, ["--filter", "server", "e2e:db:prepare"]);
+    await command(packageManager, ["--filter", "server", "db:migrate"]);
+    if (!skipBuild) await command(packageManager, ["--filter", "server", "exec", "tsc", "-p", "tsconfig.ipad.json"]);
     await startCore();
   } else {
-    await command("pnpm", ["ipad:contracts:check"]);
-    if (process.argv.includes("--web")) await command("pnpm", ["--filter", "client", "build-only"]);
+    await command(packageManager, ["ipad:contracts:check"]);
+    if (process.argv.includes("--web")) await command(packageManager, ["--filter", "client", "build-only"]);
   }
   if (readingSharingProof && !existingServer) {
     restartMonitor = retainE04Core().catch((error) => {
@@ -1305,6 +1673,7 @@ try {
       requestStop();
     });
   }
+  if (e03Proof) await configureE03Fixtures();
   if (annotationsProof) {
     stopFaultProxy = await startFaultProxy({
       port: combinedFaultPort,
@@ -1345,9 +1714,14 @@ try {
         "scripts/ipad/source-pdf-cache-http.test.mjs",
       ]);
     }
-    if (!progressOnly && !annotationsProof && !readingSharingProof) await command(process.execPath, ["--test", "scripts/ipad/http.test.mjs"]);
+    if (e03Proof) {
+      await command(process.execPath, ["scripts/ipad/e03-runner.mjs", ...(e03Case ? [`--case=${e03Case}`] : [])]);
+      if ((!e03Case || e03Case === "A03") && (process.argv.includes("--ui") || process.argv.includes("--web"))) await prepareE03MigrationFixtures();
+    }
+    if (!progressOnly && !annotationsProof && !readingSharingProof && !e03Proof)
+      await command(process.execPath, ["--test", "scripts/ipad/http.test.mjs"]);
     if (organizationProof || crossClient) await command(process.execPath, ["--test", "scripts/ipad/organization-http.test.mjs"]);
-    if (!annotationsProof && !readingSharingProof) await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);
+    if (!annotationsProof && !readingSharingProof && !e03Proof) await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);
     if (comicProof) await command(process.execPath, ["--test", "scripts/ipad/comic-http.test.mjs"]);
     if (process.argv.includes("--ui") && !stopFaultProxy) {
       stopFaultProxy = await startFaultProxy({
@@ -1369,7 +1743,7 @@ try {
         ? await runCombinedNativeAndBrowser()
         : await Promise.allSettled([
             runNativeTests(),
-            command("pnpm", ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"]),
+            command(packageManager, ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"]),
           ]);
       const failed = outcomes.filter((outcome) => outcome.status === "rejected");
       if (failed.length)
@@ -1400,13 +1774,9 @@ try {
           `[ipad.browser_inspection] [end] runId=${runID} durationMs=${Date.now() - inspectionAt} closed=true - retained browser inspection finished`,
         );
       } else {
-        await command(
-          "pnpm",
-          ["exec", "playwright", "test", "--config", readingSharingProof ? "scripts/ipad/e04-web.config.mjs" : "scripts/ipad/playwright.config.mjs"],
-          {
-            ...(qa5BrowserOnly ? { timeoutMs: 150_000 } : {}),
-          },
-        );
+        await command(packageManager, ["exec", "playwright", "test", "--config", browserConfig], {
+          ...(qa5BrowserOnly ? { timeoutMs: 150_000 } : {}),
+        });
         if (readingSharingProof) {
           const summary = JSON.parse(await readFile(`${artifactsRoot}/e04-browser-summary.json`, "utf8"));
           readingSharingBrowser = summary.stats;
@@ -1418,6 +1788,7 @@ try {
           )
             throw new Error("E04 browser coverage requires every selected test to pass without skips, retries or failures");
         }
+        if (e03Proof) await compareWebE03Visuals(artifactsRoot, annotationVisualProfile.name);
         await runAdditionalAnnotationBrowserTests();
       }
     }

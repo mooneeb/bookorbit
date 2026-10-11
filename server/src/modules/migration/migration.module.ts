@@ -8,6 +8,7 @@ import { AuthModule } from '../auth/auth.module';
 import { NotificationModule } from '../notification/notification.module';
 import { ScannerModule } from '../scanner/scanner.module';
 import { BookCoverStoreModule } from '../book-cover-store/book-cover-store.module';
+import { MigrationAccessGuard } from './migration-access.guard';
 import { MigrationController } from './migration.controller';
 import { MigrationProgressGateway } from './migration-progress.gateway';
 import { MigrationRepository } from './migration.repository';
@@ -35,6 +36,7 @@ import { CoverImporter } from './executor/cover.importer';
 import { UserStateImporter } from './executor/user-state.importer';
 import { MigrationExecutorService } from './executor/migration-executor.service';
 import { MigrationReportingService } from './reporting/migration-reporting.service';
+import { MigrationReportRepository } from './reporting/migration-report.repository';
 
 @Module({
   imports: [
@@ -53,6 +55,7 @@ import { MigrationReportingService } from './reporting/migration-reporting.servi
   ],
   controllers: [MigrationController],
   providers: [
+    MigrationAccessGuard,
     MigrationRepository,
     MigrationImportRepository,
     MigrationEncryptionService,
@@ -75,6 +78,7 @@ import { MigrationReportingService } from './reporting/migration-reporting.servi
     UserStateImporter,
     MigrationExecutorService,
     MigrationReportingService,
+    MigrationReportRepository,
     MigrationSourceService,
     MigrationProfileService,
     MigrationService,

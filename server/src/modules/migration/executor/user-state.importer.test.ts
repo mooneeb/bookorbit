@@ -249,6 +249,7 @@ describe('UserStateImporter', () => {
 
     const planned = {
       plan: {
+        snapshot: { sourceType: 'booklore' },
         userMappings: [{ sourceUserId: 'u1', targetUserId: 10 }],
         pathMappings: [],
       },
@@ -766,8 +767,8 @@ describe('UserStateImporter', () => {
     expect(importRepo.batchUpsertAudiobookProgress).toHaveBeenCalledWith([
       expect.objectContaining({ bookId: 200, currentFileId: 502, userId: 10, percentage: 50, positionSeconds: 15 }),
     ]);
-    expect(importRepo.clearReadingProgress).toHaveBeenCalledWith([10], [500, 501, 502]);
-    expect(importRepo.clearAudiobookProgress).toHaveBeenCalledWith([10], [200]);
+    expect(importRepo.clearReadingProgress).not.toHaveBeenCalled();
+    expect(importRepo.clearAudiobookProgress).not.toHaveBeenCalled();
   });
 
   it('rejects a later audio track when compatible file counts make ordinal fallback unsafe', async () => {

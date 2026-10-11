@@ -1,6 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 
 import { InlineEntityStrategy } from './inline-entity.strategy';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 
 class TestInlineStrategy extends InlineEntityStrategy {
   readonly entityType = 'narrator' as const;
@@ -9,7 +11,41 @@ class TestInlineStrategy extends InlineEntityStrategy {
 }
 
 function makeStrategy(db: Record<string, unknown> = {}) {
-  return new TestInlineStrategy(db as never);
+  const dialect = new PgDialect();
+  const originalExecute = db.execute as ReturnType<typeof vi.fn> | undefined;
+  let ids: number[] = [];
+  let conflict = false;
+  const execute = vi.fn(async (statement: SQL) => {
+    const query = dialect.sqlToQuery(statement);
+    if (query.sql.includes('scoped_relation') || query.sql.includes('CREATE TEMP TABLE') || query.sql.includes('WITH locked')) return { rows: [] };
+    if (query.sql.includes('INSERT INTO entity_mutation_books')) {
+      let result = await originalExecute?.(statement);
+      if (result?.rows[0] && 'cnt' in result.rows[0]) {
+        conflict = result.rows[0].cnt > 0;
+        result = await originalExecute?.(statement);
+      }
+      ids = [...new Set<number>((result?.rows ?? []).map((row: { bookId: number }) => row.bookId))];
+      return { rows: [] };
+    }
+    if (query.sql.includes('AS outside')) return { rows: [{ outside: false }] };
+    if (query.sql.includes('count(*)::int AS count FROM entity_mutation_books')) return { rows: [{ count: ids.length }] };
+    if (query.sql.includes('AS "bookId" FROM entity_mutation_books'))
+      return {
+        rows: ids
+          .filter((id) => id > Number(query.params[0]))
+          .slice(0, 500)
+          .map((bookId) => ({ bookId })),
+      };
+    if (query.sql.includes('SELECT EXISTS')) return { rows: [{ exists: conflict }] };
+    if (query.sql.includes('UPDATE book_metadata')) return { rows: [] };
+    return originalExecute?.(statement);
+  });
+  const resolved = { select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({}) }) }), ...db };
+  if (!db.transaction) {
+    resolved.execute = execute;
+    Object.assign(resolved, { transaction: vi.fn(async (callback: (tx: typeof resolved) => Promise<unknown>) => callback(resolved)) });
+  }
+  return new TestInlineStrategy(resolved as never);
 }
 
 function flattenSql(value: unknown): string {
@@ -119,7 +155,7 @@ describe('InlineEntityStrategy', () => {
   });
 
   describe('merge', () => {
-    it('calls execute once per source value and returns affected book ids', async () => {
+    it('returns the distinct affected source books from a single snapshot', async () => {
       const execute = vi
         .fn()
         .mockResolvedValueOnce({ rows: [{ bookId: 10 }, { bookId: 20 }] })
@@ -128,8 +164,8 @@ describe('InlineEntityStrategy', () => {
 
       const result = await strategy.merge({ targetId: 'Alice', sourceIds: ['Alicia', 'Ali'], userId: 1, libraryIds: [7] });
 
-      expect(execute).toHaveBeenCalledTimes(2);
-      expect(result).toEqual({ affectedBookIds: [10, 20] });
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({ affectedBookIds: [10, 20], affectedBookCount: 2 });
     });
 
     it('does nothing when sourceIds is empty', async () => {
@@ -147,6 +183,7 @@ describe('InlineEntityStrategy', () => {
 
       await expect(strategy.merge({ targetId: 'Alice', sourceIds: ['Alicia'], userId: 1, libraryIds: [] })).resolves.toEqual({
         affectedBookIds: [],
+        affectedBookCount: 0,
       });
 
       expect(execute).not.toHaveBeenCalled();
@@ -220,7 +257,7 @@ describe('InlineEntityStrategy', () => {
 
       const result = await strategy.deleteEntity({ entityId: 'Alice', mode: 'inline', libraryIds: [1] });
 
-      expect(result).toEqual({ name: 'Alice', affectedBookIds: [10, 11] });
+      expect(result).toMatchObject({ name: 'Alice', affectedBookIds: [10, 11], affectedBookCount: 2 });
       expect(execute).toHaveBeenCalledTimes(1);
     });
 
@@ -230,7 +267,7 @@ describe('InlineEntityStrategy', () => {
 
       const result = await strategy.deleteEntity({ entityId: 'Nobody', mode: 'inline', libraryIds: [1] });
 
-      expect(result).toEqual({ name: 'Nobody', affectedBookIds: [] });
+      expect(result).toMatchObject({ name: 'Nobody', affectedBookIds: [], affectedBookCount: 0 });
     });
   });
 
