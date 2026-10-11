@@ -7,6 +7,11 @@ The pinned `go.mod` and `go.sum` preserve its linked dependencies, including
 `golang.org/x/sync v0.22.0` and `golang.org/x/text v0.41.0`.
 No converter source changes are applied.
 
+kepubify is distributed under the MIT license. The upstream copyright and
+permission notice ships with the binaries in
+[`server/bin/kepubify/LICENSE`](../../server/bin/kepubify/LICENSE), which is included
+in the container image.
+
 The rebuilt main module metadata is
 `v4.0.5-0.20220522015003-9546034bc023+dirty`, whereas the previous binaries
 reported `v4.0.0-20220522015003-9546034bc023+dirty`. The current upstream tag
