@@ -6,4 +6,9 @@ export class UpdatePersonalNoteDto implements UpdateBookPersonalNotePayload {
   @IsString()
   @MaxLength(PERSONAL_NOTE_MAX_LENGTH)
   note?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(PERSONAL_NOTE_MAX_LENGTH)
+  baseNote?: string | null;
 }

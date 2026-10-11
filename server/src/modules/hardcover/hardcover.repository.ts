@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { isAudioFormat, Permission } from '@bookorbit/types';
 import type { ContentFilterRules, ReadStatus } from '@bookorbit/types';
-import { and, asc, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, gt, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { buildContentFilterClauses } from '../../common/utils/content-filter-sql.utils';
@@ -9,6 +9,7 @@ import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import type { HardcoverBookState, HardcoverUserSetting, NewHardcoverBookState, NewHardcoverUserSetting } from '../../db/schema';
 import { HARDCOVER_EXTERNAL_PROVIDER } from './hardcover-read-selection';
+import { UserService } from '../user/user.service';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -73,7 +74,29 @@ export interface HardcoverImportLocalBook {
 
 @Injectable()
 export class HardcoverRepository {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    private readonly userService: UserService,
+  ) {}
+
+  async createSyncRun(userId: number) {
+    const [run] = await this.db.insert(schema.hardcoverSyncRuns).values({ userId }).returning();
+    return run!;
+  }
+
+  async updateSyncRun(userId: number, runId: number, values: Partial<typeof schema.hardcoverSyncRuns.$inferInsert>) {
+    await this.db
+      .update(schema.hardcoverSyncRuns)
+      .set(values)
+      .where(and(eq(schema.hardcoverSyncRuns.userId, userId), eq(schema.hardcoverSyncRuns.id, runId)));
+  }
+
+  async findLatestSyncRun(userId: number) {
+    return this.db.query.hardcoverSyncRuns.findFirst({
+      where: eq(schema.hardcoverSyncRuns.userId, userId),
+      orderBy: desc(schema.hardcoverSyncRuns.id),
+    });
+  }
 
   // ---- User Settings ----
 
@@ -178,8 +201,8 @@ export class HardcoverRepository {
 
   // ---- Books for sync ----
 
-  async findSyncableBooks(userId: number): Promise<BookSyncData[]> {
-    return this.findSyncableBooksForUser(userId);
+  async findSyncableBooks(userId: number, afterId = 0, limit = 100): Promise<BookSyncData[]> {
+    return this.findBookSyncDataForUser(userId, undefined, false, { afterId, limit: Math.min(limit, 100) });
   }
 
   async findSyncableBook(userId: number, bookId: number): Promise<BookSyncData | null> {
@@ -206,9 +229,27 @@ export class HardcoverRepository {
     userId: number,
     bookId?: number,
     includeUnread = true,
-    options: { statuses?: ReadStatus[]; limit?: number } = {},
+    options: { statuses?: ReadStatus[]; limit?: number; afterId?: number } = {},
   ): Promise<BookSyncData[]> {
+    const user = await this.userService.findByIdWithPermissions(userId);
+    if (!user?.active) return [];
+    const access = user.isSuperuser
+      ? undefined
+      : exists(
+          this.db
+            .select({ id: schema.userLibraryAccess.libraryId })
+            .from(schema.userLibraryAccess)
+            .where(and(eq(schema.userLibraryAccess.userId, userId), eq(schema.userLibraryAccess.libraryId, schema.books.libraryId))),
+        );
+    const filters = user.isSuperuser ? [] : buildContentFilterClauses(user.contentFilters, this.db);
     const bookFilter = bookId !== undefined ? eq(schema.books.id, bookId) : undefined;
+    const eligibleFilter = and(
+      bookFilter,
+      eq(schema.books.status, 'present'),
+      access,
+      ...filters,
+      options.afterId !== undefined ? gt(schema.books.id, options.afterId) : undefined,
+    );
 
     const maxProgressSq = this.db
       .select({
@@ -218,7 +259,7 @@ export class HardcoverRepository {
       .from(schema.books)
       .innerJoin(schema.bookFiles, eq(schema.bookFiles.bookId, schema.books.id))
       .innerJoin(schema.readingProgress, and(eq(schema.readingProgress.bookFileId, schema.bookFiles.id), eq(schema.readingProgress.userId, userId)))
-      .where(bookFilter)
+      .where(eligibleFilter)
       .groupBy(schema.books.id)
       .as('max_progress_sq');
 
@@ -274,13 +315,9 @@ export class HardcoverRepository {
       .leftJoin(schema.bookFiles, eq(schema.bookFiles.id, schema.books.primaryFileId));
 
     const statusFilter = options.statuses ? inArray(schema.userBookStatus.status, options.statuses) : ne(schema.userBookStatus.status, 'unread');
-    const filtered = includeUnread ? query.where(bookFilter) : query.where(and(bookFilter, statusFilter));
+    const filtered = includeUnread ? query.where(eligibleFilter) : query.where(and(eligibleFilter, statusFilter));
 
-    // Sync callers stay unordered and unbounded; only the bounded list needs a stable window.
-    const rows =
-      options.limit === undefined
-        ? await filtered
-        : await filtered.orderBy(asc(schema.bookMetadata.title), asc(schema.books.id)).limit(options.limit);
+    const rows = options.limit === undefined ? await filtered.limit(1) : await filtered.orderBy(asc(schema.books.id)).limit(options.limit);
 
     return rows.map(({ readingProgress, audioProgress, ...row }) => ({
       ...row,

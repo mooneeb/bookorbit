@@ -12,6 +12,14 @@ const mockRepo = {
   upsertImportProgress: vi.fn(),
 };
 
+const mockImportRepo = {
+  findCandidates: vi.fn(async (...args) => ({
+    books: await mockRepo.findImportCandidateBooks(...args.slice(0, 3)),
+    exactTruncated: false,
+    fuzzyTruncated: false,
+  })),
+};
+
 const mockClient = {
   query: vi.fn(),
 };
@@ -42,6 +50,7 @@ function makeService(attempts?: ReadingAttemptService) {
     mockLibraryService as never,
     mockUserBookStatusService as never,
     attempts,
+    mockImportRepo as never,
   );
 }
 
@@ -163,8 +172,8 @@ describe('HardcoverImportService', () => {
     expect(mockRepo.findImportCandidateBooks).toHaveBeenCalledWith(7, [1], undefined);
   });
 
-  it('returns an empty preview when Hardcover returns no user book page', async () => {
-    mockClient.query.mockResolvedValue({});
+  it('returns an empty preview when Hardcover returns an empty user book page', async () => {
+    mockClient.query.mockResolvedValue({ me: [{ user_books: [] }] });
     mockRepo.findImportCandidateBooks.mockResolvedValue([]);
 
     const preview = await makeService().previewImport(user as never);
@@ -173,26 +182,26 @@ describe('HardcoverImportService', () => {
     expect(preview.summary.totalHardcoverBooks).toBe(0);
   });
 
-  it('fetches all Hardcover pages until the page is shorter than the import page size', async () => {
-    const firstPage = Array.from({ length: 100 }, (_, index) =>
-      hardcoverBook({
-        id: 2000 + index,
-        book_id: 2000 + index,
-        edition_id: 3000 + index,
-        book: { id: 2000 + index, title: `Book ${index}`, slug: null, cached_contributors: [] },
-        edition: { id: 3000 + index, isbn_13: null, isbn_10: null, pages: null, audio_seconds: null },
-      }),
-    );
-    mockClient.query
-      .mockResolvedValueOnce({ me: [{ user_books: firstPage }] })
-      .mockResolvedValueOnce({ me: [{ user_books: [hardcoverBook({ id: 3000, book_id: 3000 })] }] });
+  it('returns one bounded provider page and a stable continuation cursor', async () => {
+    const page = Array.from({ length: 101 }, (_, index) => hardcoverBook({ id: 2000 + index, book_id: 2000 + index }));
+    mockClient.query.mockResolvedValue({ me: [{ user_books: page }] });
     mockRepo.findImportCandidateBooks.mockResolvedValue([]);
+    const preview = await makeService().previewImport(user as never, { afterId: 1500 });
+    expect(preview.rows).toHaveLength(100);
+    expect(preview).toMatchObject({ nextCursor: 2099, truncated: true, limit: 100 });
+    expect(preview.summary.totalHardcoverBooks).toBe(100);
+    expect(mockClient.query).toHaveBeenCalledOnce();
+    expect(mockClient.query).toHaveBeenCalledWith(7, 'tok', expect.any(String), { limit: 101, afterId: 1500 });
+  });
 
-    const preview = await makeService().previewImport(user as never);
+  it('rejects malformed provider data instead of claiming an empty successful preview', async () => {
+    mockClient.query.mockResolvedValue({});
+    await expect(makeService().previewImport(user as never)).rejects.toBeInstanceOf(BadRequestException);
+  });
 
-    expect(preview.summary.totalHardcoverBooks).toBe(101);
-    expect(mockClient.query).toHaveBeenNthCalledWith(1, 7, 'tok', expect.any(String), { limit: 100, offset: 0 });
-    expect(mockClient.query).toHaveBeenNthCalledWith(2, 7, 'tok', expect.any(String), { limit: 100, offset: 100 });
+  it('rejects a provider page that repeats its cursor rather than looping or applying it', async () => {
+    mockClient.query.mockResolvedValue({ me: [{ user_books: [hardcoverBook({ id: 1000 })] }] });
+    await expect(makeService().previewImport(user as never, { afterId: 1000 })).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('skips Hardcover ignored status', async () => {
@@ -447,7 +456,7 @@ describe('HardcoverImportService', () => {
     expect(preview.rows[0]).toMatchObject({
       localBookId: null,
       outcome: 'unmatched',
-      reason: 'No matching BookOrbit book found',
+      reason: 'No matching BookOrbit book found among identifier, title and author candidates',
     });
   });
 

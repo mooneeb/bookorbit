@@ -23,6 +23,20 @@ export class KoboDownloadRepository {
     });
   }
 
+  async invalidatePublishedSource(bookId: number, bookFileId: number): Promise<number> {
+    const result = await this.db.execute(sql`
+      UPDATE ${schema.koboSnapshotBooks} AS snapshot_book
+      SET synced = false, is_new = true, delivery_hash = NULL
+      FROM ${schema.books} AS book
+      WHERE snapshot_book.book_id = ${bookId}
+        AND book.id = snapshot_book.book_id
+        AND book.primary_file_id = ${bookFileId}
+        AND snapshot_book.pending_delete = false
+        AND snapshot_book.removed_by_device = false
+    `);
+    return result.rowCount ?? 0;
+  }
+
   async registerDeliveredHash(bookFileId: number, fileHash: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       // A busy library must fall back to the durable queue before delaying the download.

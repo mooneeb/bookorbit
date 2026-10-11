@@ -30,50 +30,71 @@ export class ReadwiseSyncService {
     @Inject(appConfig.KEY) private readonly appConfiguration: ConfigType<typeof appConfig>,
   ) {}
 
-  async flush(userId: number): Promise<void> {
+  async flush(userId: number): Promise<boolean> {
     const startedAtMs = Date.now();
-    const settings = await this.repo.findSettings(userId);
-    if (!settings?.apiToken || !settings.enabled) return;
-    const hasPermission = await this.repo.userHasReadwiseSyncPermission(userId);
-    if (!hasPermission) return;
-
+    const configured = await this.repo.findSettings(userId);
+    if (!configured?.apiToken || !configured.enabled || !(await this.repo.userHasReadwiseSyncPermission(userId))) return false;
+    const settings = await this.repo.claimSync(userId);
+    if (!settings?.apiToken) return false;
     let watermark = settings.lastSyncedAnnotationId;
     let syncedHighlights = 0;
     let batches = 0;
+    let receivedBookIds: number[] = settings.syncReceivedBookIds?.slice(-100) ?? [];
     this.logger.log(
       `[${SYNC_EVENT}] [start] userId=${userId} afterAnnotationId=${watermark} batchSize=${READWISE_BATCH_SIZE} - Readwise sync started`,
     );
-
-    for (;;) {
-      const rows = await this.repo.findNewHighlights(userId, watermark, READWISE_BATCH_SIZE);
-      if (rows.length === 0) break;
-      const payload = rows.map((r) => this.toHighlight(userId, r));
-      try {
-        await this.client.createHighlights(userId, settings.apiToken, payload);
-      } catch (err) {
-        const durationMs = Date.now() - startedAtMs;
-        const errorClass = err instanceof Error ? err.constructor.name : 'UnknownError';
-        if (err instanceof ReadwiseUnauthorizedError) {
-          await this.repo.upsertSettings(userId, { disabledReason: 'invalid_token', enabled: false });
-          this.logger.warn(
-            `[${SYNC_EVENT}] [fail] userId=${userId} durationMs=${durationMs} errorClass=${errorClass} error="${sanitizeLogValue(err.message)}" - Readwise sync disabled after token rejection`,
-          );
-          return;
-        }
-        this.logger.warn(
-          `[${SYNC_EVENT}] [fail] userId=${userId} durationMs=${durationMs} errorClass=${errorClass} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - Readwise sync push failed`,
+    try {
+      while (batches < 5) {
+        const current = await this.repo.findSettings(userId);
+        if (!current?.enabled || current.apiToken !== settings.apiToken || !(await this.repo.userHasReadwiseSyncPermission(userId))) break;
+        const rows = await this.repo.findNewHighlights(userId, watermark, READWISE_BATCH_SIZE);
+        if (rows.length === 0) break;
+        const ids = await this.client.createHighlights(
+          userId,
+          settings.apiToken,
+          rows.map((r) => this.toHighlight(userId, r)),
         );
-        throw err;
+        watermark = rows[rows.length - 1]!.annotationId;
+        syncedHighlights += rows.length;
+        batches += 1;
+        receivedBookIds = [...new Set([...receivedBookIds, ...ids])].slice(-100);
+        await this.repo.upsertSettings(userId, {
+          lastSyncedAnnotationId: watermark,
+          lastSyncedAt: new Date(),
+          syncExportedHighlights: syncedHighlights,
+          syncReceivedBookIds: receivedBookIds,
+          syncLeaseUntil: new Date(Date.now() + 5 * 60_000),
+        });
+        if (rows.length < READWISE_BATCH_SIZE) break;
       }
-      watermark = rows[rows.length - 1]!.annotationId;
-      await this.repo.upsertSettings(userId, { lastSyncedAnnotationId: watermark, lastSyncedAt: new Date() });
-      syncedHighlights += rows.length;
-      batches += 1;
-      if (rows.length < READWISE_BATCH_SIZE) break;
+      const remaining = batches === 5 && (await this.repo.countPendingHighlights(userId, watermark)) > 0;
+      await this.repo.upsertSettings(userId, {
+        syncState: remaining ? 'queued' : 'succeeded',
+        syncFinishedAt: new Date(),
+        syncLeaseUntil: null,
+        syncError: null,
+      });
+      this.logger.log(
+        `[${SYNC_EVENT}] [end] userId=${userId} durationMs=${Date.now() - startedAtMs} batches=${batches} syncedHighlights=${syncedHighlights} watermark=${watermark} remaining=${remaining} - Readwise sync completed`,
+      );
+      return remaining;
+    } catch (err) {
+      const unauthorized = err instanceof ReadwiseUnauthorizedError;
+      await this.repo.upsertSettings(userId, {
+        syncState: 'failed',
+        syncFinishedAt: new Date(),
+        syncLeaseUntil: null,
+        syncError: unauthorized
+          ? 'Readwise rejected the token. Reconnect with a valid token.'
+          : 'Readwise delivery could not be confirmed. Retry to resume safely.',
+        ...(unauthorized ? { disabledReason: 'invalid_token', enabled: false } : {}),
+      });
+      this.logger.warn(
+        `[${SYNC_EVENT}] [fail] userId=${userId} durationMs=${Date.now() - startedAtMs} errorClass=${err instanceof Error ? err.constructor.name : 'UnknownError'} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - Readwise sync failed`,
+      );
+      if (unauthorized) return false;
+      throw err;
     }
-    this.logger.log(
-      `[${SYNC_EVENT}] [end] userId=${userId} durationMs=${Date.now() - startedAtMs} batches=${batches} syncedHighlights=${syncedHighlights} watermark=${watermark} - Readwise sync completed`,
-    );
   }
 
   private toHighlight(userId: number, r: NewHighlightRow): ReadwiseHighlight {

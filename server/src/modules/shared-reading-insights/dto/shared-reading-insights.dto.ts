@@ -1,8 +1,8 @@
-import { READING_INSIGHTS_SHARING_LEVELS } from '@bookorbit/types';
+import { READING_INSIGHTS_SHARING_LEVELS, type UpdateReadingInsightsSharingRequest } from '@bookorbit/types';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 
-export class UpdateReadingInsightsSharingDto {
+export class UpdateReadingInsightsSharingDto implements UpdateReadingInsightsSharingRequest {
   @IsIn(READING_INSIGHTS_SHARING_LEVELS)
   sharingLevel!: (typeof READING_INSIGHTS_SHARING_LEVELS)[number];
 }

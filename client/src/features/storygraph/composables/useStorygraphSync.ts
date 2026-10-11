@@ -109,6 +109,7 @@ export function useStorygraphSync() {
   async function fetchStatus(): Promise<void> {
     const [status] = await Promise.all([fetchStorygraphSyncStatus(), fetchPendingSummary(), fetchSyncFailures()])
     activeSyncStatus.value = status
+    if (status && status.status !== 'running') lastRunSummary.value = status
     if (status?.status === 'running') {
       startSyncTracking()
     }

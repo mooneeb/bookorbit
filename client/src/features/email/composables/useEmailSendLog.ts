@@ -1,22 +1,8 @@
 import { ref } from 'vue'
 import { api } from '@/lib/api'
 
-export interface EmailSendLogEntry {
-  id: number
-  userId: number
-  bookId: number | null
-  bookFileId: number | null
-  providerId: number | null
-  templateId: number | null
-  toEmail: string
-  toName: string | null
-  subject: string | null
-  status: 'pending' | 'sent' | 'failed'
-  attemptCount: number
-  errorMessage: string | null
-  sentAt: string | null
-  createdAt: string
-}
+import type { EmailSendLogEntry } from '@bookorbit/types'
+export type { EmailSendLogEntry } from '@bookorbit/types'
 
 const logEntries = ref<EmailSendLogEntry[]>([])
 const total = ref(0)

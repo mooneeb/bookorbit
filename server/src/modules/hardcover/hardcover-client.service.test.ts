@@ -49,7 +49,7 @@ describe('HardcoverClientService', () => {
 
   it('should throw on GraphQL errors', async () => {
     fetchSpy.mockResolvedValueOnce(makeFetchResponse(200, { errors: [{ message: 'Unauthorized' }] }));
-    await expect(service.query(1, 'token', '{ me { id } }')).rejects.toThrow('Hardcover GraphQL error: Unauthorized');
+    await expect(service.query(1, 'token', '{ me { id } }')).rejects.toThrow('Hardcover rejected the request. Check your credentials and retry.');
   });
 
   it('should throw on non-OK HTTP status', async () => {
@@ -78,6 +78,16 @@ describe('HardcoverClientService', () => {
 
   it('should throw on network error', async () => {
     fetchSpy.mockRejectedValueOnce(new Error('Network failure'));
-    await expect(service.query(1, 'token', '{ me { id } }')).rejects.toThrow('Network failure');
+    await expect(service.query(1, 'token', '{ me { id } }')).rejects.toThrow('Hardcover could not be reached. Retry after checking the connection.');
+  });
+  it('rejects missing provider data instead of resolving an unconfirmed response', async () => {
+    fetchSpy.mockResolvedValueOnce(makeFetchResponse(200, {}));
+    await expect(service.query(1, 'token', '{ me { id } }')).rejects.toThrow('Hardcover returned no data');
+  });
+
+  it('returns an actionable timeout failure without retrying a potentially accepted mutation', async () => {
+    fetchSpy.mockRejectedValueOnce(new DOMException('request timeout', 'TimeoutError'));
+    await expect(service.query(1, 'token', 'mutation UpdateUserBook { id }')).rejects.toThrow('Hardcover request timed out');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

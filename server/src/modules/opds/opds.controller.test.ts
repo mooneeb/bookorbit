@@ -375,7 +375,7 @@ describe('OpdsController', () => {
       title: 'Bad:/Title*',
       authorName: 'Au<th>or',
     });
-    mockStat.mockResolvedValue({ size: 12345 } as never);
+    mockStat.mockResolvedValue({ size: 12345, mtimeMs: 1234 } as never);
     mockCreateReadStream.mockReturnValue(stream as never);
 
     await controller.download(99, 0, { userId: 2, isSuperuser: false } as never, reply);
@@ -385,6 +385,8 @@ describe('OpdsController', () => {
       'attachment; filename="BadTitle - Author.epub"; filename*=UTF-8\'\'BadTitle%20-%20Author.epub',
     );
     expect(reply.header).toHaveBeenCalledWith('Content-Length', 12345);
+    expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
+    expect(reply.header).toHaveBeenCalledWith('ETag', 'W/"12345-1234"');
     expect(reply.type).toHaveBeenCalledWith('application/epub+zip');
     expect(reply.send).toHaveBeenCalledWith(stream);
   });

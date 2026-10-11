@@ -8,6 +8,7 @@ import type { RequestUser } from '../../common/types/request-user';
 import { BookService } from '../book/book.service';
 import {
   ApplyHardcoverImportDto,
+  PreviewHardcoverImportDto,
   SetHardcoverEditionDto,
   UpdateHardcoverBookSyncDto,
   UpsertHardcoverSettingsDto,
@@ -62,6 +63,11 @@ export class HardcoverController {
     return this.syncService.getSyncStatus(user.id);
   }
 
+  @Get('sync/outcome')
+  getSyncOutcome(@CurrentUser() user: RequestUser) {
+    return this.syncService.getSyncOutcome(user.id);
+  }
+
   @Sse('sync/stream')
   getSyncStatusStream(@CurrentUser() user: RequestUser): Observable<MessageEvent> {
     return this.syncService.streamSyncStatus(user.id).pipe(map((status) => ({ data: { activeSyncStatus: status } })));
@@ -114,8 +120,8 @@ export class HardcoverController {
   }
 
   @Post('import/preview')
-  previewImport(@CurrentUser() user: RequestUser) {
-    return this.importService.previewImport(user);
+  previewImport(@CurrentUser() user: RequestUser, @Body() dto: PreviewHardcoverImportDto) {
+    return this.importService.previewImport(user, dto);
   }
 
   @Post('import/apply')

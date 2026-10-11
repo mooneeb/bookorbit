@@ -14,9 +14,10 @@ import {
   Query,
 } from '@nestjs/common';
 
-import { AuditAction, AuditResource } from '@bookorbit/types';
+import { AuditAction, AuditResource, Permission } from '@bookorbit/types';
 import type { BookQuery, JumpBucketsQuery } from '@bookorbit/types';
 import { MAX_OFFSET_ROWS, isOffsetWithinLimit } from '../../common/constants/pagination.constants';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Auditable } from '../../common/decorators/auditable.decorator';
 import type { RequestUser } from '../../common/types/request-user';
@@ -99,6 +100,7 @@ export class SmartScopeController {
   }
 
   @Put(':id/kobo-sync')
+  @RequirePermission(Permission.KoboSync)
   @Auditable({
     action: AuditAction.SmartScopeUpdate,
     resource: AuditResource.SmartScope,

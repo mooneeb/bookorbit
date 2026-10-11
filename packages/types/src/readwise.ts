@@ -11,9 +11,22 @@ export interface ReadwiseSettings {
 export interface UpsertReadwiseSettingsPayload {
   apiToken?: string;
   enabled?: boolean;
+  includeExistingHighlights?: boolean;
 }
 
 export interface ReadwiseTokenValidationResult {
   valid: boolean;
   message?: string;
+}
+
+export type ReadwiseSyncState = "idle" | "queued" | "running" | "succeeded" | "failed" | "interrupted";
+
+export interface ReadwiseSyncStatus {
+  state: ReadwiseSyncState;
+  exportedHighlights: number;
+  pendingHighlights: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
+  receivedBookIds: number[];
 }

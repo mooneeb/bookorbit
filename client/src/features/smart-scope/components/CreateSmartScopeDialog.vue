@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Permission } from '@bookorbit/types'
+import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { X } from '@lucide/vue'
@@ -22,6 +24,8 @@ const emit = defineEmits<{ close: [] }>()
 const router = useRouter()
 const { createSmartScope } = useSmartScopes()
 const { t } = useI18n()
+const { hasPermission } = usePermissions()
+const canSyncToKobo = computed(() => hasPermission(Permission.KoboSync))
 
 const name = ref('')
 const icon = ref('')
@@ -33,7 +37,7 @@ const trimmedName = computed(() => name.value.trim())
 const trimmedIcon = computed(() => icon.value.trim())
 const isPodcastScope = computed(() => props.mediaType === 'podcasts')
 /** A Kobo holds no podcasts, so the sync option is meaningless on a podcast scope. */
-const showKoboSync = computed(() => !isPodcastScope.value)
+const showKoboSync = computed(() => !isPodcastScope.value && canSyncToKobo.value)
 const dialogTitle = computed(() => (isPodcastScope.value ? t('smartScope.createDialog.podcastTitle') : t('smartScope.createDialog.title')))
 
 async function submit() {
@@ -70,16 +74,19 @@ async function submit() {
     saving.value = false
   }
 }
+function close() {
+  emit('close')
+}
 </script>
 
 <template>
   <Teleport to="body">
     <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-scrim" @click="emit('close')" />
+      <div class="absolute inset-0 bg-scrim" @click="close" />
       <div class="relative z-10 w-full max-w-md mx-4 bg-card border border-border rounded-lg shadow-2xl p-6">
         <div class="flex items-center justify-between mb-5">
           <h2 class="text-base font-semibold text-foreground">{{ dialogTitle }}</h2>
-          <button @click="emit('close')" class="text-muted-foreground hover:text-foreground transition-colors">
+          <button @click="close" class="text-muted-foreground hover:text-foreground transition-colors">
             <X :size="18" />
           </button>
         </div>
@@ -116,7 +123,7 @@ async function submit() {
           <div class="flex justify-end gap-2 mt-1">
             <button
               type="button"
-              @click="emit('close')"
+              @click="close"
               class="h-9 px-4 rounded-md border border-input bg-background text-sm text-foreground hover:bg-muted transition-colors"
             >
               {{ t('common.cancel') }}

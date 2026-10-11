@@ -119,7 +119,7 @@ describe('KoreaderPluginService', () => {
 
       const result = await service.matchCheck(makeUser(), dto);
 
-      expect(koreaderRepo.resolveBookFilesByHashes).toHaveBeenCalledWith([HASH_A, HASH_B], [1], 7);
+      expect(koreaderRepo.resolveBookFilesByHashes).toHaveBeenCalledWith([HASH_A, HASH_B], [1], 7, undefined);
       expect(koreaderRepo.clearUnmatchedBooks).toHaveBeenCalledWith(7, [HASH_A]);
       expect(koreaderRepo.upsertUnmatchedBooks).toHaveBeenCalledWith(7, [{ hash: HASH_B, source: 'statistics' }], DEVICE_ID);
       expect(result.matches).toEqual([{ hash: HASH_A, bookId: 20, bookFileId: 10 }]);
@@ -205,7 +205,7 @@ describe('KoreaderPluginService', () => {
         books: [{ hash: HASH_B, source: 'current_file', bookFileId: 11 }],
       } as MatchCheckDto);
       expect(result.matches).toEqual([{ hash: HASH_B, bookId: 40, bookFileId: 30 }]);
-      expect(koreaderRepo.resolveBookFilesByHashes).toHaveBeenLastCalledWith([HASH_B], [1], 7);
+      expect(koreaderRepo.resolveBookFilesByHashes).toHaveBeenLastCalledWith([HASH_B], [1], 7, undefined);
     });
 
     it('does not trust a file id reported only by a statistics row', async () => {

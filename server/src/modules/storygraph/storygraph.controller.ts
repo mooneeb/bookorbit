@@ -1,5 +1,5 @@
 import { Permission } from '@bookorbit/types';
-import { Body, Controller, Delete, Get, MessageEvent, Param, ParseIntPipe, Patch, Post, Sse } from '@nestjs/common';
+import { Body, Controller, Delete, Get, MessageEvent, Param, ParseIntPipe, Patch, Post, Query, Sse } from '@nestjs/common';
 import { map, Observable } from 'rxjs';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -15,6 +15,7 @@ import {
 } from './dto';
 import { StorygraphSettingsService } from './storygraph-settings.service';
 import { StorygraphSyncService } from './storygraph-sync.service';
+import { StorygraphBooksPageDto } from './dto/storygraph.dto';
 
 @Controller('storygraph')
 @RequirePermission(Permission.StorygraphSync)
@@ -84,6 +85,11 @@ export class StorygraphController {
   @Get('books')
   listLinkedBooks(@CurrentUser() user: RequestUser) {
     return this.syncService.listLinkedBooks(user);
+  }
+
+  @Get('books/page')
+  linkedBooksPage(@CurrentUser() user: RequestUser, @Query() dto: StorygraphBooksPageDto) {
+    return this.syncService.linkedBooksPage(user, dto.afterBookId);
   }
 
   @Patch('books/:bookId/link')

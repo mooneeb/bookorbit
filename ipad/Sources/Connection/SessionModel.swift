@@ -10,7 +10,12 @@ final class SessionModel {
       guard let user, let api else {
         seriesCollapse?.receive(user: nil)
         seriesCollapse = nil
-        if let api { Task { await NativeAnnotationRepository.disconnect(api: api) } }
+        if let api {
+          Task {
+            await NativeReadingActivityCoordinator.disconnect(api: api)
+            await NativeAnnotationRepository.disconnect(api: api)
+          }
+        }
         return
       }
       if seriesCollapse?.api !== api { seriesCollapse = SeriesCollapsePreferenceModel(api: api) }
@@ -19,6 +24,7 @@ final class SessionModel {
         guard self.api === api, self.user?.id == user.id else { return }
         await self.synchronizeAnnotations(api: api)
         await api.reconcileOfflineBooks()
+        await self.synchronizeReadingActivity(api: api)
       }
     }
   }
@@ -66,6 +72,7 @@ final class SessionModel {
       await seriesCollapse?.reconcile()
       await synchronizeAnnotations(api: api)
       await api.reconcileOfflineBooks()
+      await synchronizeReadingActivity(api: api)
     } catch {
       guard self.api === api, operationID == sessionOperationID else { return }
       switch error {
@@ -114,6 +121,7 @@ final class SessionModel {
     guard let api, !isBusy else { return }
     await perform {
       do {
+        await NativeReadingActivityCoordinator.disconnect(api: api)
         try await api.logout()
       } catch {
         self.signOutError = error.localizedDescription
@@ -128,6 +136,7 @@ final class SessionModel {
   func changePassword(current: String, new: String) async {
     guard let api else { return }
     await perform {
+      await NativeReadingActivityCoordinator.disconnect(api: api)
       try await api.changePassword(current: current, new: new)
       self.user = nil
     }
@@ -154,6 +163,16 @@ final class SessionModel {
       let repository = try await NativeAnnotationRepository.shared(api: api)
       guard self.api === api, user != nil else { return }
       await repository.synchronizePending()
+    } catch {
+      guard self.api === api, user != nil else { return }
+      self.error = error.localizedDescription
+    }
+  }
+
+  private func synchronizeReadingActivity(api: BookOrbitAPI) async {
+    do {
+      guard self.api === api, user != nil else { return }
+      try await NativeReadingActivityCoordinator.flush(api: api)
     } catch {
       guard self.api === api, user != nil else { return }
       self.error = error.localizedDescription

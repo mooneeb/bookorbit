@@ -17,7 +17,7 @@ function makeReturningChain(row: unknown) {
 
 function makeSelectChain(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  for (const method of ['from', 'leftJoin', 'where', 'groupBy', 'orderBy']) {
+  for (const method of ['from', 'leftJoin', 'innerJoin', 'where', 'groupBy', 'orderBy']) {
     chain[method] = vi.fn().mockReturnValue(chain);
   }
   chain.limit = vi.fn().mockResolvedValue(rows);
@@ -144,7 +144,9 @@ describe('ReadwiseRepository', () => {
         authorsCsv: '',
       },
     ];
-    db.select.mockReturnValueOnce(makeSelectChain(rows));
+    db.select
+      .mockReturnValueOnce(makeSelectChain([{ isSuperuser: true, active: true, seeOwnRequestedBooks: false }]))
+      .mockReturnValueOnce(makeSelectChain(rows));
 
     await expect(repo.findNewHighlights(7, 0, 100)).resolves.toEqual([
       {

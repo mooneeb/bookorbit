@@ -799,6 +799,27 @@
       "when": 1791492539693,
       "tag": "0113_source_ink_window_index",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1791628325236,
+      "tag": "0114_e04-reading-sharing",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1791628712136,
+      "tag": "0115_e04-reading-session-tombstone-index",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1791630083559,
+      "tag": "0116_e04-kobo-page-ack",
+      "breakpoints": true
     }
   ]
 }

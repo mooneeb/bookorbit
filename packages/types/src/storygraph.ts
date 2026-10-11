@@ -101,3 +101,28 @@ export interface StorygraphLinkResult {
   storygraphBookId?: string;
   title?: string;
 }
+
+export interface StorygraphLinkedBooksPage {
+  items: StorygraphLinkedBook[];
+  nextCursor: number | null;
+}
+
+export interface StorygraphSyncStartResult {
+  runId: number;
+}
+
+export interface StorygraphActionResult {
+  success: boolean;
+}
+
+export interface StorygraphRematchResult {
+  result: "synced" | "skipped" | "failed";
+}
+
+export interface StorygraphLinkPayload {
+  input: string;
+}
+
+export interface StorygraphEditionPayload {
+  editionId: string;
+}

@@ -9,10 +9,12 @@ import { annotationProfile } from "./annotation-matrix.mjs";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(new URL("../../server/package.json", import.meta.url));
 const sharp = require("sharp");
-const baselineRoot = join(root, "ipad/VisualBaselines/E02");
 
-export async function compareAnnotationVisual({ actualPath, outputDir, testId, state, surface, profile, metadata = {} }) {
-  assert.match(testId, /^IPAD-E02-A0[1-7]$/);
+
+export async function compareAnnotationVisual({ actualPath, outputDir, testId, state, surface, profile, metadata = {}, ticket = "E02" }) {
+  assert.ok(["E02", "E04"].includes(ticket));
+  assert.match(testId, ticket === "E04" ? /^IPAD-E04-A0[1-5]$/ : /^IPAD-E02-A0[1-7]$/);
+  const baselineRoot = join(root, `ipad/VisualBaselines/${ticket}`);
   assert.match(state, /^[a-zA-Z0-9_-]+$/);
   assert.ok(["native", "web"].includes(surface));
   const config = annotationProfile(profile);

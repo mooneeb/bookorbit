@@ -156,8 +156,11 @@ export async function setHardcoverEdition(bookId: number, editionId: number): Pr
   return res.json()
 }
 
-export async function previewHardcoverImport(): Promise<HardcoverImportPreview> {
-  const res = await api(`${BASE}/import/preview`, { method: 'POST' })
+export async function previewHardcoverImport(afterId?: number): Promise<HardcoverImportPreview> {
+  const res = await api(`${BASE}/import/preview`, {
+    method: 'POST',
+    ...(afterId !== undefined ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ afterId }) } : {}),
+  })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error((body as { message?: string }).message ?? 'Failed to preview Hardcover import')

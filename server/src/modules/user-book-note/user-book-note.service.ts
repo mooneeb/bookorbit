@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { PERSONAL_NOTE_MAX_LENGTH } from '@bookorbit/types';
 
 import type { UserBookNoteRow } from '../../db/schema';
@@ -48,6 +48,17 @@ export class UserBookNoteService {
       [...byBook].map(([bookId, note]) => ({ bookId, note })),
       updatedAt,
     );
+  }
+
+  async setNoteConditionally(userId: number, bookId: number, rawNote: string | null | undefined, baseNote: string | null): Promise<void> {
+    if (await this.repo.upsertConditionally(userId, bookId, this.normalizeNote(rawNote), baseNote)) return;
+    const current = await this.repo.findOne(userId, bookId);
+    throw new ConflictException({
+      message: 'The personal note changed while this edit was offline',
+      errorCode: 'PERSONAL_RECORD_CONFLICT',
+      field: 'note',
+      current: current?.note ?? null,
+    });
   }
 
   normalizeNote(rawNote: string | null | undefined): string | null {

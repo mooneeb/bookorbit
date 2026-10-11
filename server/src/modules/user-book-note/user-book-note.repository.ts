@@ -59,4 +59,20 @@ export class UserBookNoteRepository {
       .returning();
     return row!;
   }
+
+  async upsertConditionally(userId: number, bookId: number, note: string | null, baseNote: string | null): Promise<boolean> {
+    const result = await this.db.execute(sql`
+      insert into ${userBookNotes} (user_id, book_id, note, updated_at)
+      select ${userId}, ${bookId}, ${note}, ${new Date()}
+      where ${baseNote}::text is null or exists (
+        select 1 from ${userBookNotes}
+        where user_id = ${userId} and book_id = ${bookId} and note is not distinct from ${baseNote}::text
+      )
+      on conflict (user_id, book_id) do update
+      set note = excluded.note, updated_at = excluded.updated_at
+      where ${userBookNotes.note} is not distinct from ${baseNote}::text
+      returning book_id
+    `);
+    return result.rows.length > 0;
+  }
 }

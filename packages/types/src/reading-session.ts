@@ -9,6 +9,32 @@ export type ClientReadingSessionSource = (typeof CLIENT_READING_SESSION_SOURCES)
 export const READING_SESSION_TYPES = ["read", "tts", "listen"] as const;
 export type ReadingSessionType = (typeof READING_SESSION_TYPES)[number];
 
+export interface SaveReadingSessionPayload {
+  // Omission keeps legacy save-time attribution; null preserves an unknown reading attempt.
+  attemptId?: number | null;
+  sessionId: string;
+  startedAt: string;
+  endedAt: string;
+  durationSeconds: number;
+  progressDelta?: number | null;
+  endProgress?: number | null;
+  sessionType?: ReadingSessionType;
+  source?: ClientReadingSessionSource;
+}
+
+export interface NativeReadingSessionContext {
+  bookId: number;
+  attemptId: number | null;
+}
+
+export interface CreateManualReadingSessionPayload {
+  startedAt: string;
+  durationMinutes: number;
+  endProgress?: number | null;
+  format?: string;
+  clientId?: string;
+}
+
 export interface BookReadingSession {
   id: number;
   bookFileId: number | null;

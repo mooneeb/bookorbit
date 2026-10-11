@@ -222,7 +222,7 @@ export class StorygraphBookMatchService {
       const response = await this.client.get(userId, cookies, `/books/${storygraphBookId}/editions`);
       if (response.redirectedToSignIn || response.status !== 200) return [];
 
-      return this.parseEditions(response.html);
+      return this.parseEditions(response.html).slice(0, 200);
     } catch (err) {
       const errorClass = err instanceof Error ? err.constructor.name : 'Error';
       const error = sanitizeLogValue(err instanceof Error ? err.message : String(err));
@@ -238,6 +238,7 @@ export class StorygraphBookMatchService {
     const editions: StorygraphEdition[] = [];
 
     $('.book-pane').each((_, el) => {
+      if (editions.length >= 200) return false;
       const pane = $(el);
       const id = pane.attr('data-book-id');
       if (!id) return;
@@ -301,7 +302,9 @@ export class StorygraphBookMatchService {
         csrf,
       );
 
-      return (response.status >= 200 && response.status < 300) || response.status === 302 || response.status === 303;
+      return (
+        !response.redirectedToSignIn && ((response.status >= 200 && response.status < 300) || response.status === 302 || response.status === 303)
+      );
     } catch (err) {
       const errorClass = err instanceof Error ? err.constructor.name : 'Error';
       const error = sanitizeLogValue(err instanceof Error ? err.message : String(err));

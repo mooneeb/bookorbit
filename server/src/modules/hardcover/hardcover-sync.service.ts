@@ -3,7 +3,7 @@ import {
   type HardcoverBookSyncState,
   type HardcoverEditionsResult,
   type HardcoverLinkedBooksResult,
-  type HardcoverSettings,
+  type HardcoverSyncOutcome,
   type HardcoverSyncPendingSummary,
   isAudioFormat,
   type ReadStatus,
@@ -11,7 +11,7 @@ import {
   type UpdateHardcoverBookSyncPayload,
 } from '@bookorbit/types';
 
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { distinctUntilChanged, filter, map, merge, Observable, of, Subject } from 'rxjs';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
@@ -157,7 +157,7 @@ export class HardcoverSyncService {
   private readonly syncStatusEvents = new Subject<{ userId: number; status: HardcoverActiveSyncStatus | null }>();
   private readonly activeSyncs = new Map<number, HardcoverActiveSyncStatus>();
   private readonly bookSyncLocks = new Map<string, Promise<void>>();
-  private syncRunCounter = 0;
+  private readonly startingSyncs = new Map<number, Promise<number>>();
 
   constructor(
     private readonly repo: HardcoverRepository,
@@ -204,65 +204,72 @@ export class HardcoverSyncService {
   }
 
   async syncAll(userId: number): Promise<number> {
-    const existing = this.activeSyncs.get(userId);
-    if (existing) {
-      this.logger.warn(`[hardcover.sync_all] userId=${userId} runId=${existing.runId} - sync already running`);
-      this.emitSyncStatus(userId, existing);
-      return existing.runId;
+    const active = this.activeSyncs.get(userId);
+    if (active) return active.runId;
+    const starting = this.startingSyncs.get(userId);
+    if (starting) return starting;
+    const task = this.startSyncAll(userId);
+    this.startingSyncs.set(userId, task);
+    try {
+      return await task;
+    } finally {
+      this.startingSyncs.delete(userId);
     }
+  }
 
+  private async startSyncAll(userId: number): Promise<number> {
     const token = await this.settingsService.getTokenForUser(userId);
-    if (!token) return 0;
-
-    const settings = await this.settingsService.getSettings(userId);
-    const books = await this.repo.findSyncableBooks(userId);
-    const states = await this.repo.findBookStatesByBookIds(
-      userId,
-      books.map((book) => book.bookId),
-    );
-    const stateByBookId = new Map(states.map((state) => [state.bookId, state]));
-    const syncableBooks = books.filter((book) => this.isBookInSyncScope(settings, book, stateByBookId.get(book.bookId)));
-
-    // Re-check: a concurrent syncAll may have won the race during findSyncableBooks
-    const recheck = this.activeSyncs.get(userId);
-    if (recheck) {
-      this.logger.warn(`[hardcover.sync_all] userId=${userId} runId=${recheck.runId} - sync started concurrently`);
-      this.emitSyncStatus(userId, recheck);
-      return recheck.runId;
-    }
-
-    const runId = ++this.syncRunCounter;
-    const status: HardcoverActiveSyncStatus = {
-      runId,
-      syncedBooks: 0,
-      totalBooks: syncableBooks.length,
-      status: 'running',
-    };
+    if (!token) throw new BadRequestException('Hardcover is not connected or enabled');
+    const run = await this.repo.createSyncRun(userId);
+    const status: HardcoverActiveSyncStatus = { runId: run.id, syncedBooks: 0, totalBooks: 0, status: 'running' };
     this.activeSyncs.set(userId, status);
-
-    this.logger.log(`[hardcover.sync_all] [start] userId=${userId} runId=${runId} totalBooks=${syncableBooks.length} - sync all started`);
+    this.cancelRequests.delete(userId);
     this.emitSyncStatus(userId, status);
-
-    this.runSyncAll(userId, token, syncableBooks, runId, settings).catch((err) => {
-      const error = sanitizeLogValue(err instanceof Error ? err.message : String(err));
-      this.logger.error(
-        `[hardcover.sync_all] [fail] userId=${userId} runId=${runId} errorClass=${err?.constructor?.name ?? 'Error'} error="${error}" - sync all crashed`,
-      );
-      this.cancelRequests.delete(userId);
+    this.logger.log(`[hardcover.sync_all] [start] userId=${userId} runId=${run.id} - sync all started`);
+    void this.runSyncAll(userId, run.id).catch(async (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.repo.updateSyncRun(userId, run.id, {
+        status: 'failed',
+        finishedAt: new Date(),
+        error: sanitizeLogValue(message),
+      });
       this.activeSyncs.delete(userId);
+      this.cancelRequests.delete(userId);
       this.emitSyncStatus(userId, null);
+      this.logger.error(
+        `[hardcover.sync_all] [fail] userId=${userId} runId=${run.id} durationMs=${Date.now() - run.startedAt.getTime()} errorClass=${error instanceof Error ? error.constructor.name : 'Error'} error="${sanitizeLogValue(message)}" - sync all failed`,
+      );
     });
-
-    return runId;
+    return run.id;
   }
 
   cancelSync(userId: number): void {
-    const run = this.activeSyncs.get(userId);
-    if (!run) return;
-    this.cancelRequests.add(userId);
-    this.activeSyncs.delete(userId);
-    this.emitSyncStatus(userId, null);
-    this.logger.log(`[hardcover.sync_all] userId=${userId} runId=${run.runId} - sync cancelled`);
+    if (this.activeSyncs.has(userId)) this.cancelRequests.add(userId);
+  }
+
+  async getSyncOutcome(userId: number): Promise<HardcoverSyncOutcome | null> {
+    const run = await this.repo.findLatestSyncRun(userId);
+    if (!run) return null;
+    const interrupted = run.status === 'running' && !this.activeSyncs.has(userId) && !this.startingSyncs.has(userId);
+    if (interrupted) {
+      await this.repo.updateSyncRun(userId, run.id, {
+        status: 'failed',
+        finishedAt: new Date(),
+        error: 'Sync was interrupted. Retry to reconcile previously confirmed records.',
+      });
+    }
+    return {
+      runId: run.id,
+      status: interrupted ? 'failed' : (run.status as HardcoverSyncOutcome['status']),
+      totalBooks: run.totalBooks,
+      processedBooks: run.processedBooks,
+      syncedBooks: run.syncedBooks,
+      failedBooks: run.failedBooks,
+      skippedBooks: run.skippedBooks,
+      startedAt: run.startedAt.toISOString(),
+      finishedAt: interrupted ? new Date().toISOString() : (run.finishedAt?.toISOString() ?? null),
+      error: interrupted ? 'Sync was interrupted. Retry to reconcile previously confirmed records.' : run.error,
+    };
   }
 
   getSyncStatus(userId: number): HardcoverActiveSyncStatus | null {
@@ -286,27 +293,24 @@ export class HardcoverSyncService {
     }
 
     const settings = await this.settingsService.getSettings(userId);
-    const books = await this.repo.findSyncableBooks(userId);
-    if (books.length === 0) {
-      return { totalBooks: 0, pendingBooks: 0 };
-    }
-
-    const states = await this.repo.findBookStatesByBookIds(
-      userId,
-      books.map((book) => book.bookId),
-    );
-    const stateByBookId = new Map(states.map((state) => [state.bookId, state]));
-
     let pendingBooks = 0;
     let totalBooks = 0;
-    for (const book of books) {
-      const state = stateByBookId.get(book.bookId);
-      if (!this.isBookInSyncScope(settings, book, state)) continue;
-      totalBooks++;
-      const decision = this.resolveSyncDecision(settings, book, state);
-      if (decision.canSyncNow) {
-        pendingBooks++;
+    let afterId = 0;
+    while (true) {
+      const books = await this.repo.findSyncableBooks(userId, afterId, 100);
+      if (!books.length) break;
+      const states = await this.repo.findBookStatesByBookIds(
+        userId,
+        books.map((book) => book.bookId),
+      );
+      const stateByBookId = new Map(states.map((state) => [state.bookId, state]));
+      for (const book of books) {
+        const state = stateByBookId.get(book.bookId);
+        if (!this.isBookInSyncScope(settings, book, state)) continue;
+        totalBooks++;
+        if (this.resolveSyncDecision(settings, book, state).canSyncNow) pendingBooks++;
       }
+      afterId = books[books.length - 1]!.bookId;
     }
 
     return {
@@ -420,53 +424,48 @@ export class HardcoverSyncService {
     return { token, hardcoverBookId: state.hardcoverBookId };
   }
 
-  private async runSyncAll(userId: number, token: string, books: BookSyncData[], runId: number, settings: HardcoverSettings): Promise<void> {
+  private async runSyncAll(userId: number, runId: number): Promise<void> {
     const startedAt = Date.now();
-    let synced = 0;
-    let failed = 0;
-    let skipped = 0;
-
-    for (const book of books) {
-      if (this.cancelRequests.has(userId)) {
-        this.cancelRequests.delete(userId);
-        this.logger.log(`[hardcover.sync_all] userId=${userId} runId=${runId} - cancelled mid-run`);
-        return;
+    let afterId = 0;
+    let processedBooks = 0;
+    let syncedBooks = 0;
+    let failedBooks = 0;
+    let skippedBooks = 0;
+    let cancelled = false;
+    while (true) {
+      const books = await this.repo.findSyncableBooks(userId, afterId, 100);
+      if (!books.length) break;
+      for (const candidate of books) {
+        if (this.cancelRequests.has(userId)) {
+          cancelled = true;
+          break;
+        }
+        const result = await this.syncBook(userId, candidate.bookId);
+        processedBooks++;
+        if (result === 'synced') syncedBooks++;
+        else if (result === 'failed') failedBooks++;
+        else skippedBooks++;
+        const progress = { totalBooks: processedBooks, processedBooks, syncedBooks, failedBooks, skippedBooks };
+        await this.repo.updateSyncRun(userId, runId, progress);
+        const active = { runId, totalBooks: processedBooks, syncedBooks, status: 'running' as const };
+        this.activeSyncs.set(userId, active);
+        this.emitSyncStatus(userId, active);
       }
-
-      const result = await this.withBookSyncLock(userId, book.bookId, async () => {
-        const state = await this.repo.findBookState(userId, book.bookId);
-        if (!this.isBookInSyncScope(settings, book, state)) return 'skipped';
-        return this.syncSingleBook(userId, token, book, state);
-      });
-      if (result === 'synced') synced++;
-      else if (result === 'skipped') skipped++;
-      else failed++;
-
-      this.emitProgress(userId, synced);
+      if (cancelled) break;
+      afterId = books[books.length - 1]!.bookId;
     }
-
-    // Handle cancel requested after the last book was processed (loop exited without hitting the top check)
-    if (this.cancelRequests.has(userId)) {
-      this.cancelRequests.delete(userId);
-      this.logger.log(`[hardcover.sync_all] userId=${userId} runId=${runId} - cancelled after last book`);
-      this.activeSyncs.delete(userId);
-      return;
-    }
-
-    const durationMs = Date.now() - startedAt;
-    this.logger.log(
-      `[hardcover.sync_all] [end] userId=${userId} runId=${runId} durationMs=${durationMs} syncedBooks=${synced} failedBooks=${failed} skippedBooks=${skipped} - sync all completed`,
-    );
-
-    await this.repo.updateLastSyncedAt(userId, new Date());
+    await this.repo.updateSyncRun(userId, runId, {
+      status: cancelled ? 'cancelled' : failedBooks > 0 ? 'failed' : 'completed',
+      finishedAt: new Date(),
+      error: failedBooks > 0 ? 'Some records could not be confirmed. Review book errors and retry.' : null,
+    });
+    if (!cancelled && failedBooks === 0) await this.repo.updateLastSyncedAt(userId, new Date());
     this.activeSyncs.delete(userId);
+    this.cancelRequests.delete(userId);
     this.emitSyncStatus(userId, null);
-  }
-
-  private emitProgress(userId: number, synced: number): void {
-    const activeStatus = this.activeSyncs.get(userId);
-    if (activeStatus) activeStatus.syncedBooks = synced;
-    this.emitSyncStatus(userId, activeStatus ?? null);
+    this.logger.log(
+      `[hardcover.sync_all] [end] userId=${userId} runId=${runId} durationMs=${Date.now() - startedAt} syncedBooks=${syncedBooks} failedBooks=${failedBooks} skippedBooks=${skippedBooks} cancelled=${cancelled} - sync all ended`,
+    );
   }
 
   private async syncSingleBook(
@@ -496,7 +495,17 @@ export class HardcoverSyncService {
     const decision = this.resolveSyncDecision(settings, book, latestState ?? activeInitialState);
     if (!decision.canSyncNow) return 'skipped';
 
-    const match = await this.matchService.matchBook(userId, token, book);
+    let match;
+    try {
+      match = await this.matchService.matchBook(userId, token, book);
+    } catch (error: unknown) {
+      const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
+      await this.repo.upsertBookState({ userId, bookId: book.bookId, syncError: message });
+      this.logger.warn(
+        `[hardcover.sync_book] [fail] userId=${userId} bookId=${book.bookId} durationMs=${Date.now() - startedAt} errorClass=${error instanceof Error ? error.constructor.name : 'Error'} error="${message}" - match could not be verified`,
+      );
+      return 'failed';
+    }
     if (!match) {
       const state = activeInitialState ?? (await this.repo.findBookState(userId, book.bookId));
       await this.repo.upsertBookState({
@@ -549,8 +558,8 @@ export class HardcoverSyncService {
       const syncsPrimaryRead = startDate !== null || endDate !== null || book.progress != null;
       const syncsAudioProgress = book.format != null && isAudioFormat(book.format);
       if (syncsPrimaryRead && book.progress != null) {
-        if (syncsAudioProgress && !match.editionAudioSeconds) throw new Error('missing_edition_audio_seconds');
-        if (!syncsAudioProgress && !match.editionPages) throw new Error('missing_edition_pages');
+        if (syncsAudioProgress && !match.editionAudioSeconds) throw new BadGatewayException('missing_edition_audio_seconds');
+        if (!syncsAudioProgress && !match.editionPages) throw new BadGatewayException('missing_edition_pages');
       }
       const reads = syncsPrimaryRead || historyAttempts.length > 0 ? await this.findUserBookReads(userId, token, userBookId) : [];
 
@@ -655,6 +664,11 @@ export class HardcoverSyncService {
     token: string,
     input: { bookId: number; statusId: number; privacySettingId: number; editionId?: number },
   ): Promise<number> {
+    const existing = await this.client.query<FindUserBookResult>(userId, token, FIND_USER_BOOK_QUERY, {
+      bookId: input.bookId,
+    });
+    const linkedId = existing.me?.user_books?.[0]?.id;
+    if (linkedId) return linkedId;
     const insertResult = await this.client.query<InsertUserBookResult>(userId, token, INSERT_USER_BOOK_MUTATION, {
       object: {
         book_id: input.bookId,
@@ -672,7 +686,7 @@ export class HardcoverSyncService {
     });
 
     const existingId = findResult.me?.user_books?.[0]?.id;
-    if (!existingId) throw new Error(`Book ${input.bookId} not found in Hardcover library after insert`);
+    if (!existingId) throw new BadGatewayException(`Book ${input.bookId} not found in Hardcover library after insert`);
 
     return existingId;
   }
@@ -683,24 +697,17 @@ export class HardcoverSyncService {
     userBookId: number,
     fields: { statusId: number; privacySettingId: number; rating: number | null; editionId?: number },
   ): Promise<void> {
-    try {
-      const result = await this.client.query<UpdateUserBookResult>(userId, token, UPDATE_USER_BOOK_MUTATION, {
-        id: userBookId,
-        object: {
-          status_id: fields.statusId,
-          privacy_setting_id: fields.privacySettingId,
-          ...(fields.rating != null && { rating: fields.rating }),
-          ...(fields.editionId != null && { edition_id: fields.editionId }),
-        },
-      });
-
-      if (result.update_user_book?.error) {
-        throw new Error(result.update_user_book.error);
-      }
-    } catch (err) {
-      this.logger.warn(
-        `[hardcover.sync_book] update_user_book failed for userBookId=${userBookId}: ${sanitizeLogValue(err instanceof Error ? err.message : String(err))}`,
-      );
+    const result = await this.client.query<UpdateUserBookResult>(userId, token, UPDATE_USER_BOOK_MUTATION, {
+      id: userBookId,
+      object: {
+        status_id: fields.statusId,
+        privacy_setting_id: fields.privacySettingId,
+        rating: fields.rating,
+        ...(fields.editionId != null && { edition_id: fields.editionId }),
+      },
+    });
+    if (result.update_user_book?.error || result.update_user_book?.user_book?.id !== userBookId) {
+      throw new BadGatewayException('Hardcover did not confirm the reading record update');
     }
   }
 
@@ -734,10 +741,12 @@ export class HardcoverSyncService {
     });
 
     if (result.insert_user_book_read?.error) {
-      throw new Error(result.insert_user_book_read.error);
+      throw new BadGatewayException(result.insert_user_book_read.error);
     }
 
-    return result.insert_user_book_read?.user_book_read?.id ?? null;
+    const readId = result.insert_user_book_read?.user_book_read?.id;
+    if (!readId) throw new BadGatewayException('Hardcover did not confirm the reading date record');
+    return readId;
   }
 
   private async updateUserBookRead(userId: number, token: string, readId: number, object: Record<string, unknown>): Promise<number> {
@@ -746,11 +755,11 @@ export class HardcoverSyncService {
       object,
     });
 
-    if (result.update_user_book_read?.error) {
-      throw new Error(result.update_user_book_read.error);
+    if (result.update_user_book_read?.error || result.update_user_book_read?.user_book_read?.id !== readId) {
+      throw new BadGatewayException('Hardcover did not confirm the reading date update');
     }
 
-    return result.update_user_book_read?.user_book_read?.id ?? readId;
+    return readId;
   }
 
   private async findUserBookReads(userId: number, token: string, userBookId: number): Promise<FindUserBookReadsResult['user_book_reads']> {
@@ -802,7 +811,7 @@ export class HardcoverSyncService {
       // Hardcover answered with a different read, so move the stamp rather than leave it stale.
       input.reserved.add(readId);
       if ((await this.repo.linkReadingAttempt(userId, attempt.id, readId)) === 'conflict') {
-        throw new Error('read_link_conflict');
+        throw new BadGatewayException('read_link_conflict');
       }
       return readId;
     }
@@ -823,7 +832,7 @@ export class HardcoverSyncService {
     if (created == null) return null;
     input.reserved.add(created);
     if (attempt && (await this.repo.linkReadingAttempt(userId, attempt.id, created)) === 'conflict') {
-      throw new Error('read_link_conflict');
+      throw new BadGatewayException('read_link_conflict');
     }
     return created;
   }

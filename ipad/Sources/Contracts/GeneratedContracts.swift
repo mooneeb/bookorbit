@@ -2,6 +2,1241 @@
 // Regenerate after shared contract changes.
 import Foundation
 
+struct AccountActivityListResponse: Codable, Sendable, Equatable {
+    var `items`: [AccountActivityListItem]
+    var `total`: Int
+    var `page`: Int
+    var `pageSize`: Int
+}
+
+struct AccountActivityListItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `username`: String
+    var `name`: String
+    var `active`: Bool
+    var `isSuperuser`: Bool
+    var `provisioningMethod`: String
+    var `createdAt`: String
+    var `lastLoginAt`: String?
+    var `lastAuthenticatedAt`: String?
+    var `state`: String
+    var `readingInsightsSharingLevel`: String
+}
+
+struct NativeReadingSessionContext: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `attemptId`: Int?
+}
+
+struct UpdateBookRatingPayload: Encodable, Sendable, Equatable {
+    var `rating`: FieldUpdate<Double>?
+    var `baseRating`: FieldUpdate<Double>?
+}
+
+struct ActivityOverviewResponse: Codable, Sendable, Equatable {
+    var `generatedAt`: String
+    var `timezone`: String
+    var `libraryIds`: [Int]
+    var `achievementsEnabled`: Bool
+    var `snapshot`: ActivityOverviewResponseSnapshot
+    var `dailyActivity`: ActivityOverviewResponseDailyActivity
+    var `calendar`: ActivityCalendarResponse
+    var `goal`: ActivityOverviewResponseGoal
+    var `rhythm`: ActivityOverviewResponseRhythm
+    var `completion`: ActivityOverviewResponseCompletion
+    var `sources`: ActivityOverviewResponseSources
+    var `pace`: ActivityOverviewResponsePace
+}
+
+struct ActivityOverviewResponseSnapshot: Codable, Sendable, Equatable {
+    var `today`: ActivityDurationBreakdown
+    var `lastSevenDays`: ActivityDurationBreakdown
+    var `previousSevenDays`: ActivityDurationBreakdown
+    var `currentStreak`: Double
+    var `longestStreak`: Double
+    var `completedBooksYtd`: Double
+}
+
+struct ActivityDurationBreakdown: Codable, Sendable, Equatable {
+    var `totalSeconds`: Double
+    var `readingSeconds`: Double
+    var `listeningSeconds`: Double
+}
+
+struct ActivityOverviewResponseDailyActivity: Codable, Sendable, Equatable {
+    var `days`: [ActivityDayPoint]
+}
+
+struct ActivityDayPoint: Codable, Sendable, Equatable {
+    var `day`: String
+    var `sessionsCount`: Double
+    var `bySource`: ActivityDayPointBySource
+    var `totalSeconds`: Double
+    var `readingSeconds`: Double
+    var `listeningSeconds`: Double
+}
+
+struct ActivityDayPointBySource: Codable, Sendable, Equatable {
+    var `kobo`: Double
+    var `koreader`: Double
+    var `bookorbit`: Double
+    var `ios`: Double
+    var `watchos`: Double
+    var `android`: Double
+}
+
+struct ActivityCalendarResponse: Codable, Sendable, Equatable {
+    var `year`: Double
+    var `availableYears`: [Double]
+    var `days`: [ActivityDayPoint]
+}
+
+struct ActivityOverviewResponseGoal: Codable, Sendable, Equatable {
+    var `year`: Double
+    var `goalBooks`: Double?
+    var `completedBooks`: Double
+    var `projectedBooks`: Double
+    var `status`: String?
+    var `points`: [ActivityOverviewResponseGoalPointsItem]
+}
+
+struct ActivityOverviewResponseGoalPointsItem: Codable, Sendable, Equatable {
+    var `month`: Double
+    var `actualCumulative`: Double
+    var `targetCumulative`: Double?
+}
+
+struct ActivityOverviewResponseRhythm: Codable, Sendable, Equatable {
+    var `windowDays`: Double
+    var `sessionsCount`: Double
+    var `weekdays`: [ActivityOverviewResponseRhythmWeekdaysItem]
+    var `hours`: [ActivityOverviewResponseRhythmHoursItem]
+    var `favoriteDayOfWeek`: Double?
+    var `peakHour`: Double?
+}
+
+struct ActivityOverviewResponseRhythmWeekdaysItem: Codable, Sendable, Equatable {
+    var `dayOfWeek`: Double
+    var `averageSeconds`: Double
+    var `averageReadingSeconds`: Double
+    var `averageListeningSeconds`: Double
+    var `sessionsCount`: Double
+    var `averageBySource`: ActivityOverviewResponseRhythmWeekdaysItemAverageBySource
+}
+
+struct ActivityOverviewResponseRhythmWeekdaysItemAverageBySource: Codable, Sendable, Equatable {
+    var `kobo`: Double
+    var `koreader`: Double
+    var `bookorbit`: Double
+    var `ios`: Double
+    var `watchos`: Double
+    var `android`: Double
+}
+
+struct ActivityOverviewResponseRhythmHoursItem: Codable, Sendable, Equatable {
+    var `totalSeconds`: Double
+    var `readingSeconds`: Double
+    var `listeningSeconds`: Double
+    var `hour`: Double
+    var `sessionsCount`: Double
+    var `bySource`: ActivityOverviewResponseRhythmHoursItemBySource
+}
+
+struct ActivityOverviewResponseRhythmHoursItemBySource: Codable, Sendable, Equatable {
+    var `kobo`: Double
+    var `koreader`: Double
+    var `bookorbit`: Double
+    var `ios`: Double
+    var `watchos`: Double
+    var `android`: Double
+}
+
+struct ActivityOverviewResponseCompletion: Codable, Sendable, Equatable {
+    var `availableSince`: String?
+    var `months`: [ActivityOverviewResponseCompletionMonthsItem]
+    var `funnel`: UserProgressFunnelComparison
+}
+
+struct ActivityOverviewResponseCompletionMonthsItem: Codable, Sendable, Equatable {
+    var `year`: Double
+    var `month`: Double
+    var `count`: Double
+}
+
+struct UserProgressFunnelComparison: Codable, Sendable, Equatable {
+    var `days`: Double
+    var `current`: UserProgressFunnel
+    var `previous`: UserProgressFunnel?
+}
+
+struct UserProgressFunnel: Codable, Sendable, Equatable {
+    var `started`: Double
+    var `reached25`: Double
+    var `reached50`: Double
+    var `reached75`: Double
+    var `completed`: Double
+}
+
+struct ActivityOverviewResponseSources: Codable, Sendable, Equatable {
+    var `windowDays`: Double
+    var `totals`: ActivityDurationBreakdown
+    var `slices`: [ActivityOverviewResponseSourcesSlicesItem]
+}
+
+struct ActivityOverviewResponseSourcesSlicesItem: Codable, Sendable, Equatable {
+    var `bucket`: String
+    var `totalSeconds`: Double
+}
+
+struct ActivityOverviewResponsePace: Codable, Sendable, Equatable {
+    var `eligibleSessions`: Double
+    var `medianDurationSeconds`: Double?
+    var `medianProgressDelta`: Double?
+    var `byMedia`: [ActivityOverviewResponsePaceByMediaItem]
+}
+
+struct ActivityOverviewResponsePaceByMediaItem: Codable, Sendable, Equatable {
+    var `bucket`: String
+    var `eligibleSessions`: Double
+    var `medianDurationSeconds`: Double?
+    var `medianProgressDelta`: Double?
+}
+
+struct AchievementCatalogueResponse: Codable, Sendable, Equatable {
+    var `categories`: [AchievementCategoryGroup]
+    var `totalEarned`: Double
+    var `totalAvailable`: Double
+}
+
+struct AchievementCategoryGroup: Codable, Sendable, Equatable {
+    var `key`: String
+    var `label`: String
+    var `earnedCount`: Double
+    var `totalCount`: Double
+    var `achievements`: [AchievementItem]
+}
+
+struct AchievementItem: Codable, Sendable, Equatable {
+    var `key`: String
+    var `groupKey`: String?
+    var `tier`: Double?
+    var `category`: String
+    var `name`: String
+    var `description`: String
+    var `iconName`: String
+    var `rarity`: String
+    var `threshold`: Double?
+    var `hidden`: Bool
+    var `sortOrder`: Double
+    var `earned`: Bool
+    var `awardedAt`: String?
+    var `contextBookId`: Int?
+    var `contextBookTitle`: String?
+    var `currentProgress`: Double?
+}
+
+struct AchievementCelebrationClaim: Codable, Sendable, Equatable {
+    var `claimId`: String
+    var `expiresAt`: String
+    var `achievement`: AchievementItem
+}
+
+struct SaveReadingSessionPayload: Codable, Sendable, Equatable {
+    var `attemptId`: Int?
+    var `sessionId`: String
+    var `startedAt`: String
+    var `endedAt`: String
+    var `durationSeconds`: Int
+    var `progressDelta`: Double?
+    var `endProgress`: Double?
+    var `sessionType`: String?
+    var `source`: String?
+}
+
+struct CreateManualReadingSessionPayload: Codable, Sendable, Equatable {
+    var `startedAt`: String
+    var `durationMinutes`: Double
+    var `endProgress`: Double?
+    var `format`: String?
+    var `clientId`: String?
+}
+
+struct BookReadingSession: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `bookFileId`: Int?
+    var `startedAt`: String
+    var `endedAt`: String
+    var `durationSeconds`: Int
+    var `progressDelta`: Double?
+    var `endProgress`: Double?
+    var `format`: String?
+    var `source`: String?
+    var `attemptId`: Int?
+    var `sessionType`: String?
+}
+
+struct BookReadingSessionStats: Codable, Sendable, Equatable {
+    var `totalSessions`: Double
+    var `totalSeconds`: Double
+    var `avgDurationSeconds`: Double
+    var `firstSessionAt`: String?
+    var `lastSessionAt`: String?
+    var `dailySummary`: [BookReadingSessionStatsDailySummaryItem]
+    var `paceProgressDelta`: Double
+    var `paceDurationSeconds`: Double
+    var `progressSummary`: [BookReadingSessionStatsProgressSummaryItem]
+    var `latestEndProgress`: Double?
+    var `bySource`: [BookReadingSourceSlice]
+    var `longestSessionSeconds`: Double
+    var `longestSessionAt`: String?
+    var `backtrackCount`: Double
+}
+
+struct BookReadingSessionStatsDailySummaryItem: Codable, Sendable, Equatable {
+    var `day`: String
+    var `totalMinutes`: Double
+}
+
+struct BookReadingSessionStatsProgressSummaryItem: Codable, Sendable, Equatable {
+    var `day`: String
+    var `endProgress`: Double
+}
+
+struct BookReadingSourceSlice: Codable, Sendable, Equatable {
+    var `bucket`: String
+    var `totalSeconds`: Double
+    var `totalSessions`: Double
+}
+
+struct BookReadingSessionListResponse: Codable, Sendable, Equatable {
+    var `items`: [BookReadingSession]
+    var `total`: Int
+    var `page`: Int
+    var `pageSize`: Int
+    var `stats`: BookReadingSessionStats
+}
+
+struct CreateReadingAttemptPayload: Codable, Sendable, Equatable {
+    var `startedOn`: String?
+    var `endedOn`: String?
+    var `outcome`: String
+    var `clientId`: String?
+}
+
+struct StartRereadPayload: Codable, Sendable, Equatable {
+    var `resetProgress`: Bool?
+}
+
+struct ReadingAttempt: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `bookId`: Int
+    var `startedOn`: String?
+    var `endedOn`: String?
+    var `outcome`: String?
+    var `origin`: String
+    var `externalProvider`: String?
+    var `externalId`: String?
+    var `totalSessions`: Double
+    var `totalSeconds`: Double
+    var `createdAt`: String
+    var `updatedAt`: String
+}
+
+struct ReadingAttemptListResponse: Codable, Sendable, Equatable {
+    var `items`: [ReadingAttempt]
+    var `page`: Int
+    var `pageSize`: Int
+    var `total`: Int
+}
+
+struct ReadingAttemptPatch: Encodable, Sendable, Equatable {
+    var `startedOn`: FieldUpdate<String>?
+    var `endedOn`: FieldUpdate<String>?
+    var `outcome`: FieldUpdate<String>?
+    var `baseUpdatedAt`: String?
+}
+
+struct ReadingInsightsSharingSettings: Codable, Sendable, Equatable {
+    var `sharingLevel`: String
+    var `consentedAt`: String?
+}
+
+typealias ReadingInsightsSharingLevel = String
+
+struct ReadingInsightsAccessHistoryPage: Codable, Sendable, Equatable {
+    var `items`: [ReadingInsightsAccessHistoryItem]
+    var `total`: Int
+    var `page`: Int
+    var `pageSize`: Int
+}
+
+struct ReadingInsightsAccessHistoryItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `viewerUsername`: String
+    var `sharingLevel`: String
+    var `viewedAt`: String
+}
+
+struct SharedReadingInsightsSummary: Codable, Sendable, Equatable {
+    var `sharingLevel`: String
+    var `periodDays`: Double
+    var `activeDays`: Double
+    var `readingSeconds`: Double
+    var `sessionsCount`: Double
+    var `booksStarted`: Double
+    var `booksCompleted`: Double
+    var `formatDistribution`: [SharedReadingDistributionItem]
+    var `genreDistribution`: [SharedReadingGenreDistributionItem]
+    var `sourceCoverage`: [SharedReadingSourceItem]
+    var `trend`: [SharedReadingTrendPoint]
+}
+
+struct SharedReadingDistributionItem: Codable, Sendable, Equatable {
+    var `name`: String
+    var `readingSeconds`: Double
+}
+
+struct SharedReadingGenreDistributionItem: Codable, Sendable, Equatable {
+    var `name`: String
+    var `readingSeconds`: Double
+}
+
+struct SharedReadingSourceItem: Codable, Sendable, Equatable {
+    var `source`: String
+    var `readingSeconds`: Double
+    var `sessionsCount`: Double
+}
+
+struct SharedReadingTrendPoint: Codable, Sendable, Equatable {
+    var `day`: String
+    var `readingSeconds`: Double
+    var `sessionsCount`: Double
+}
+
+struct SharedReadingInsightsDetail: Codable, Sendable, Equatable {
+    var `sharingLevel`: String
+    var `periodDays`: Double
+    var `recentBooks`: [SharedReadingBookItem]
+    var `topBooks`: [SharedReadingBookItem]
+    var `topAuthors`: [SharedReadingRankedItem]
+    var `topGenres`: [SharedReadingRankedItem]
+    var `topSeries`: [SharedReadingRankedItem]
+    var `topNarrators`: [SharedReadingRankedItem]
+}
+
+struct SharedReadingBookItem: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `title`: String?
+    var `readingSeconds`: Double
+    var `lastReadAt`: String
+    var `status`: String?
+}
+
+struct SharedReadingRankedItem: Codable, Sendable, Equatable {
+    var `name`: String
+    var `readingSeconds`: Double
+}
+
+struct SharedReadingInsightsViewSession: Codable, Sendable, Equatable {
+    var `viewSessionId`: String
+    var `sharingLevel`: String
+    var `expiresAt`: String
+}
+
+struct UpdateReadingInsightsSharingRequest: Codable, Sendable, Equatable {
+    var `sharingLevel`: String
+}
+
+struct ContentFilterRules: Codable, Sendable, Equatable {
+    var `includeTagIds`: [Int]
+    var `excludeTagIds`: [Int]
+    var `includeGenreIds`: [Int]
+    var `excludeGenreIds`: [Int]
+    var `exemptRequestsFromUserId`: Int?
+}
+
+struct ContentFilterRulesWithNames: Codable, Sendable, Equatable {
+    var `includeTags`: [ContentFilterNamedItem]
+    var `excludeTags`: [ContentFilterNamedItem]
+    var `includeGenres`: [ContentFilterNamedItem]
+    var `excludeGenres`: [ContentFilterNamedItem]
+    var `seeOwnRequestedBooks`: Bool
+}
+
+struct ContentFilterNamedItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+}
+
+struct SetContentFiltersRequest: Codable, Sendable, Equatable {
+    var `includeTagIds`: [Int]?
+    var `excludeTagIds`: [Int]?
+    var `includeGenreIds`: [Int]?
+    var `excludeGenreIds`: [Int]?
+    var `seeOwnRequestedBooks`: Bool?
+}
+
+struct UserRestrictionTarget: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `username`: String
+    var `name`: String
+    var `isSuperuser`: Bool
+}
+
+struct UserRestrictionTargetPage: Codable, Sendable, Equatable {
+    var `users`: [UserRestrictionTarget]
+    var `total`: Int
+}
+
+struct KoreaderSyncStatus: Codable, Sendable, Equatable {
+    var `credentials`: KoreaderCredentials?
+    var `devices`: [KoreaderDeviceInfo]
+    var `totalSyncedBooks`: Double
+    var `lastSyncAt`: String?
+    var `latestPluginVersion`: String?
+    var `pluginUpdateAvailable`: Bool
+    var `sweeps`: [KoreaderDeviceSweepInfo]
+    var `pluginTotals`: KoreaderPluginTotals
+}
+
+struct KoreaderCredentials: Codable, Sendable, Equatable {
+    var `username`: String
+    var `syncEnabled`: Bool
+    var `createdAt`: String
+}
+
+struct KoreaderDeviceInfo: Codable, Sendable, Equatable {
+    var `device`: String
+    var `deviceId`: String
+    var `lastSyncAt`: String
+    var `lastBookTitle`: String?
+    var `retiredAt`: String?
+    var `fileNamingPattern`: String?
+    var `seriesFileNamingPattern`: String?
+    var `standaloneFileNamingPattern`: String?
+}
+
+struct KoreaderDeviceSweepInfo: Codable, Sendable, Equatable {
+    var `deviceId`: String
+    var `deviceModel`: String
+    var `pluginVersion`: String?
+    var `latestPluginVersion`: String?
+    var `updateAvailable`: Bool?
+    var `requiresManualUpdate`: Bool
+    var `lastSweepAt`: String
+    var `lastSweepBooksMatched`: Double
+    var `lastSweepPageStats`: Double
+    var `lastSweepAnnotations`: Double
+    var `retiredAt`: String?
+    var `fileNamingPattern`: String?
+    var `seriesFileNamingPattern`: String?
+    var `standaloneFileNamingPattern`: String?
+}
+
+struct KoreaderPluginTotals: Codable, Sendable, Equatable {
+    var `matchedBooks`: Int
+    var `trashedAnnotations`: Double
+    var `pendingDeletes`: Double
+    var `failedPositions`: Double
+    var `pageStatEvents`: Double
+    var `annotations`: Double
+    var `unmatchedBooks`: Double
+}
+
+struct CreateKoreaderCredentialsPayload: Codable, Sendable, Equatable {
+    var `username`: String
+    var `password`: String
+}
+
+struct UpdateKoreaderCredentialsPayload: Codable, Sendable, Equatable {
+    var `username`: String?
+    var `password`: String?
+    var `syncEnabled`: Bool?
+}
+
+struct TestKoreaderConnectionResult: Codable, Sendable, Equatable {
+    var `success`: Bool
+    var `username`: String
+    var `serverUrl`: String
+}
+
+struct KoreaderBookSyncInfo: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `bookFileId`: Int
+    var `canonicalPercentage`: Double
+    var `canonicalChapterIndex`: Double?
+    var `canonicalChapterTitle`: String?
+    var `canonicalSource`: String
+    var `canonicalUpdatedAt`: String
+    var `devices`: [KoreaderBookProgress]
+    var `fileModifiedSinceLastSync`: Bool
+    var `heldByReset`: [KoreaderResetHeldDevice]
+}
+
+struct KoreaderBookProgress: Codable, Sendable, Equatable {
+    var `device`: String
+    var `deviceId`: String
+    var `percentage`: Double
+    var `chapterIndex`: Int?
+    var `chapterTitle`: String?
+    var `updatedAt`: String
+}
+
+struct KoreaderResetHeldDevice: Codable, Sendable, Equatable {
+    var `device`: String
+    var `deviceId`: String
+    var `percentage`: Double
+    var `updatedAt`: String
+}
+
+struct KoreaderUnmatchedBook: Codable, Sendable, Equatable {
+    var `hash`: String
+    var `title`: String?
+    var `authors`: String?
+    var `lastOpen`: Double?
+    var `firstSeenAt`: String
+    var `lastSeenAt`: String
+}
+
+struct KoreaderManualHashLink: Codable, Sendable, Equatable {
+    var `hash`: String
+    var `bookId`: Int
+    var `bookFileId`: Int
+    var `bookTitle`: String?
+    var `bookAuthors`: [String]
+    var `koreaderTitle`: String?
+    var `koreaderAuthors`: String?
+    var `koreaderLastOpen`: Double?
+    var `createdAt`: String
+    var `updatedAt`: String
+}
+
+struct LinkKoreaderUnmatchedBookPayload: Codable, Sendable, Equatable {
+    var `bookId`: Int
+}
+
+struct LinkKoreaderUnmatchedBookResult: Codable, Sendable, Equatable {
+    var `hash`: String
+    var `bookId`: Int
+    var `bookFileId`: Int
+}
+
+struct UpdateKoreaderManualHashLinkPayload: Codable, Sendable, Equatable {
+    var `bookId`: Int
+}
+
+struct UnlinkKoreaderManualHashLinkResult: Codable, Sendable, Equatable {
+    var `hash`: String
+}
+
+struct DismissKoreaderUnmatchedBookResult: Codable, Sendable, Equatable {
+    var `hash`: String
+}
+
+struct DismissAllKoreaderUnmatchedBooksResult: Codable, Sendable, Equatable {
+    var `count`: Double
+}
+
+struct KoreaderFileNamingPattern: Codable, Sendable, Equatable {
+    var `pattern`: String
+}
+
+struct UpdateKoreaderDeviceFilePatternPayload: Codable, Sendable, Equatable {
+    var `pattern`: String
+    var `seriesPattern`: String
+    var `standalonePattern`: String
+}
+
+struct UpdateKoreaderDevicePayload: Codable, Sendable, Equatable {
+    var `retired`: Bool
+}
+
+struct OpdsUser: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `userId`: Int
+    var `username`: String
+    var `sortOrder`: String
+    var `createdAt`: String
+}
+
+struct CreateOpdsUserRequest: Codable, Sendable, Equatable {
+    var `username`: String
+    var `password`: String
+    var `sortOrder`: String?
+}
+
+struct UpdateOpdsUserRequest: Codable, Sendable, Equatable {
+    var `sortOrder`: String
+}
+
+struct KoboDevice: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `lastSeenAt`: String?
+    var `createdAt`: String
+}
+
+struct KoboDeviceWithToken: Codable, Sendable, Equatable, Identifiable {
+    var `token`: String
+    var `id`: Int
+    var `name`: String
+    var `lastSeenAt`: String?
+    var `createdAt`: String
+}
+
+struct KoboSyncSettings: Codable, Sendable, Equatable {
+    var `readingThreshold`: Double
+    var `finishedThreshold`: Double
+    var `convertToKepub`: Bool
+    var `forceEnableHyphenation`: Bool
+    var `kepubConversionLimitMb`: Double
+    var `twoWayProgressSync`: Bool
+    var `syncBookOrbitAnnotationsToKobo`: Bool
+    var `storeSync`: Bool
+}
+
+struct UpdateKoboSyncSettingsRequest: Codable, Sendable, Equatable {
+    var `readingThreshold`: Double?
+    var `finishedThreshold`: Double?
+    var `convertToKepub`: Bool?
+    var `forceEnableHyphenation`: Bool?
+    var `kepubConversionLimitMb`: Double?
+    var `twoWayProgressSync`: Bool?
+    var `syncBookOrbitAnnotationsToKobo`: Bool?
+    var `storeSync`: Bool?
+}
+
+struct CreateKoboDeviceRequest: Codable, Sendable, Equatable {
+    var `name`: String
+}
+
+struct RenameKoboDeviceRequest: Codable, Sendable, Equatable {
+    var `name`: String
+}
+
+struct KoboSyncHistoryEntry: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `deviceId`: Int?
+    var `deviceName`: String?
+    var `event`: String
+    var `status`: String
+    var `counts`: [String: KoboSyncHistoryEntryCountsValue?]
+    var `durationMs`: Int
+    var `errorClass`: String?
+    var `error`: String?
+    var `createdAt`: String
+}
+
+enum KoboSyncHistoryEntryCountsValue: Codable, Sendable, Equatable {
+    case boolean(Bool)
+    case string(String)
+    case number(Double)
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(Bool.self) { self = .boolean(value); return }
+        if let value = try? container.decode(String.self) { self = .string(value); return }
+        if let value = try? container.decode(Double.self) { self = .number(value); return }
+        throw DecodingError.typeMismatch(Self.self, .init(codingPath: decoder.codingPath, debugDescription: "Invalid filter value"))
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .boolean(let value): try container.encode(value)
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        }
+    }
+}
+
+struct BookKoboState: Codable, Sendable, Equatable {
+    var `eligibleForKoboSync`: Bool
+    var `syncCollections`: [String]
+    var `readingState`: BookKoboReadingState?
+    var `snapshots`: [BookKoboSnapshotState]
+}
+
+struct BookKoboReadingState: Codable, Sendable, Equatable {
+    var `status`: String?
+    var `progressPercent`: Double?
+    var `createdAtKobo`: String?
+    var `lastModifiedKobo`: String?
+    var `priorityTimestamp`: String?
+    var `updatedAt`: String
+}
+
+struct BookKoboSnapshotState: Codable, Sendable, Equatable {
+    var `deviceId`: Int
+    var `deviceName`: String
+    var `snapshotId`: Double
+    var `snapshotUpdatedAt`: String
+    var `inSnapshot`: Bool
+    var `synced`: Bool?
+    var `pendingDelete`: Bool?
+    var `isNew`: Bool?
+    var `removedByDevice`: Bool?
+    var `fileHash`: String?
+    var `metadataHash`: String?
+}
+
+struct EmailProvider: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `userId`: Int?
+    var `name`: String
+    var `host`: String
+    var `port`: Int
+    var `username`: String?
+    var `fromName`: String?
+    var `fromAddress`: String?
+    var `auth`: Bool
+    var `ssl`: Bool
+    var `startTls`: Bool
+    var `tlsRejectUnauthorized`: Bool
+    var `isDefault`: Bool
+    var `isShared`: Bool
+    var `isSystemProvider`: Bool
+    var `hasPassword`: Bool
+    var `createdAt`: String
+}
+
+struct EmailRecipient: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `userId`: Int
+    var `name`: String
+    var `email`: String
+    var `isDefault`: Bool
+    var `deviceType`: String?
+    var `preferredFormat`: String?
+    var `defaultTemplateId`: Int?
+    var `createdAt`: String
+}
+
+struct EmailPreferences: Codable, Sendable, Equatable {
+    var `userId`: Int
+    var `defaultProviderId`: Int?
+    var `defaultRecipientId`: Int?
+    var `defaultTemplateId`: Int?
+}
+
+struct EmailSendLogEntry: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `userId`: Int
+    var `bookId`: Int?
+    var `bookFileId`: Int?
+    var `providerId`: Int?
+    var `templateId`: Int?
+    var `toEmail`: String
+    var `toName`: String?
+    var `subject`: String?
+    var `status`: String
+    var `attemptCount`: Int
+    var `errorMessage`: String?
+    var `nextRetryAt`: String?
+    var `sentAt`: String?
+    var `createdAt`: String
+}
+
+struct CreateEmailProviderPayload: Codable, Sendable, Equatable {
+    var `name`: String
+    var `host`: String
+    var `port`: Int
+    var `username`: String?
+    var `password`: String?
+    var `fromName`: String?
+    var `fromAddress`: String?
+    var `auth`: Bool
+    var `ssl`: Bool
+    var `startTls`: Bool
+    var `tlsRejectUnauthorized`: Bool
+}
+
+struct CreateEmailRecipientPayload: Codable, Sendable, Equatable {
+    var `name`: String
+    var `email`: String
+    var `deviceType`: String?
+    var `preferredFormat`: String?
+    var `defaultTemplateId`: Int?
+}
+
+struct UpdateEmailPreferencesPayload: Codable, Sendable, Equatable {
+    var `defaultProviderId`: Int?
+    var `defaultRecipientId`: Int?
+    var `defaultTemplateId`: Int?
+}
+
+struct EmailSelectedBookSendPayload: Codable, Sendable, Equatable {
+    var `bookIds`: [Int]
+    var `recipientIds`: [Int]
+    var `fileId`: Int
+    var `providerId`: Int?
+    var `templateId`: Int?
+}
+
+struct EmailSendAcceptedResponse: Codable, Sendable, Equatable {
+    var `queued`: Int
+    var `logIds`: [Int]
+}
+
+struct EmailProviderTestResponse: Codable, Sendable, Equatable {
+    var `success`: Bool
+    var `error`: String?
+}
+
+struct ValidateHardcoverTokenPayload: Codable, Sendable, Equatable {
+    var `token`: String?
+}
+
+struct PreviewHardcoverImportPayload: Codable, Sendable, Equatable {
+    var `afterId`: Int?
+}
+
+struct HardcoverSettings: Codable, Sendable, Equatable {
+    var `tokenConfigured`: Bool
+    var `enabled`: Bool
+    var `effectiveEnabled`: Bool
+    var `disabledReason`: String?
+    var `bookSyncMode`: String
+    var `autoSyncOnStatusChange`: Bool
+    var `autoSyncOnProgressUpdate`: Bool
+    var `autoSyncOnRatingChange`: Bool
+    var `privacySettingId`: Int
+    var `lastSyncedAt`: String?
+}
+
+struct UpsertHardcoverSettingsPayload: Codable, Sendable, Equatable {
+    var `apiToken`: String?
+    var `enabled`: Bool?
+    var `bookSyncMode`: String?
+    var `autoSyncOnStatusChange`: Bool?
+    var `autoSyncOnProgressUpdate`: Bool?
+    var `autoSyncOnRatingChange`: Bool?
+    var `privacySettingId`: Int?
+}
+
+struct HardcoverTokenValidationResult: Codable, Sendable, Equatable {
+    var `valid`: Bool
+    var `hardcoverUsername`: String?
+}
+
+struct HardcoverSyncPendingSummary: Codable, Sendable, Equatable {
+    var `totalBooks`: Int
+    var `pendingBooks`: Int
+}
+
+struct HardcoverBookSyncState: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `syncOverride`: String?
+    var `syncEnabled`: Bool
+    var `canSyncNow`: Bool
+    var `effectiveReason`: String?
+    var `lastSyncedAt`: String?
+    var `syncError`: String?
+}
+
+struct UpdateHardcoverBookSyncPayload: Codable, Sendable, Equatable {
+    var `syncEnabled`: Bool
+}
+
+struct HardcoverBookSyncNowResult: Codable, Sendable, Equatable {
+    var `result`: String
+    var `state`: HardcoverBookSyncState
+}
+
+struct HardcoverActiveSyncStatus: Codable, Sendable, Equatable {
+    var `runId`: Int
+    var `syncedBooks`: Int
+    var `totalBooks`: Int
+    var `status`: String
+}
+
+struct HardcoverSyncOutcome: Codable, Sendable, Equatable {
+    var `processedBooks`: Int
+    var `failedBooks`: Int
+    var `skippedBooks`: Int
+    var `startedAt`: String
+    var `finishedAt`: String?
+    var `error`: String?
+    var `runId`: Int
+    var `syncedBooks`: Int
+    var `totalBooks`: Int
+    var `status`: String
+}
+
+struct HardcoverStartSyncResult: Codable, Sendable, Equatable {
+    var `runId`: Int
+}
+
+struct HardcoverImportPreviewRow: Codable, Sendable, Equatable {
+    var `hardcoverUserBookId`: Int
+    var `hardcoverBookId`: Int
+    var `hardcoverEditionId`: Int?
+    var `hardcoverReadId`: Int?
+    var `hardcoverTitle`: String?
+    var `hardcoverAuthors`: [String]
+    var `hardcoverStatusId`: Int
+    var `hardcoverStatusLabel`: String
+    var `importedStatus`: String?
+    var `importedStartedAt`: String?
+    var `importedFinishedAt`: String?
+    var `importedProgressPercent`: Double?
+    var `hardcoverReads`: [HardcoverImportPreviewRowHardcoverReadsItem]?
+    var `localBookId`: Int?
+    var `localPrimaryFileId`: Int?
+    var `localTitle`: String?
+    var `localAuthors`: [String]
+    var `localReadStatus`: String?
+    var `localProgressPercent`: Double?
+    var `matchMethod`: String?
+    var `confidence`: Double?
+    var `outcome`: String
+    var `reason`: String
+    var `progressOutcome`: String
+    var `progressReason`: String
+}
+
+struct HardcoverImportPreviewRowHardcoverReadsItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `startedAt`: String?
+    var `finishedAt`: String?
+}
+
+struct HardcoverImportSummary: Codable, Sendable, Equatable {
+    var `totalHardcoverBooks`: Int
+    var `matchedBooks`: Int
+    var `willUpdate`: Int
+    var `needsReview`: Int
+    var `conflicts`: Int
+    var `unmatched`: Int
+    var `skipped`: Int
+    var `progressWillUpdate`: Int
+    var `progressConflicts`: Int
+    var `progressSkipped`: Int
+}
+
+struct HardcoverImportPreview: Codable, Sendable, Equatable {
+    var `summary`: HardcoverImportSummary
+    var `rows`: [HardcoverImportPreviewRow]
+    var `nextCursor`: Int?
+    var `truncated`: Bool?
+    var `limit`: Int?
+}
+
+struct ApplyHardcoverImportPayload: Codable, Sendable, Equatable {
+    var `hardcoverUserBookIds`: [Int]?
+    var `importProgress`: Bool?
+    var `afterId`: Int?
+}
+
+struct HardcoverImportApplyResult: Codable, Sendable, Equatable {
+    var `applied`: Int
+    var `progressApplied`: Int
+    var `progressFailed`: Int?
+    var `failed`: Int
+    var `nextCursor`: Int?
+    var `truncated`: Bool?
+    var `limit`: Int?
+    var `totalHardcoverBooks`: Int
+    var `matchedBooks`: Int
+    var `willUpdate`: Int
+    var `needsReview`: Int
+    var `conflicts`: Int
+    var `unmatched`: Int
+    var `skipped`: Int
+    var `progressWillUpdate`: Int
+    var `progressConflicts`: Int
+    var `progressSkipped`: Int
+}
+
+struct HardcoverEdition: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `title`: String?
+    var `format`: String
+    var `pages`: Int?
+    var `isbn10`: String?
+    var `isbn13`: String?
+    var `publisher`: String?
+    var `language`: String?
+    var `publishedDate`: String?
+    var `coverUrl`: String?
+}
+
+struct HardcoverLinkedBook: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `title`: String?
+    var `authorName`: String?
+    var `hardcoverBookId`: Int?
+    var `hardcoverEditionId`: Int?
+    var `matchMethod`: String?
+    var `matchError`: String?
+}
+
+struct HardcoverLinkedBooksResult: Codable, Sendable, Equatable {
+    var `books`: [HardcoverLinkedBook]
+    var `truncated`: Bool
+}
+
+struct HardcoverEditionsResult: Codable, Sendable, Equatable {
+    var `editions`: [HardcoverEdition]
+    var `truncated`: Bool
+}
+
+struct SetHardcoverEditionPayload: Codable, Sendable, Equatable {
+    var `editionId`: Int
+}
+
+struct SetHardcoverEditionResult: Codable, Sendable, Equatable {
+    var `success`: Bool
+}
+
+struct ReadwiseSettings: Codable, Sendable, Equatable {
+    var `tokenConfigured`: Bool
+    var `enabled`: Bool
+    var `effectiveEnabled`: Bool
+    var `disabledReason`: String?
+    var `lastSyncedAt`: String?
+}
+
+struct UpsertReadwiseSettingsPayload: Codable, Sendable, Equatable {
+    var `apiToken`: String?
+    var `enabled`: Bool?
+    var `includeExistingHighlights`: Bool?
+}
+
+struct ReadwiseTokenValidationResult: Codable, Sendable, Equatable {
+    var `valid`: Bool
+    var `message`: String?
+}
+
+struct ReadwiseSyncStatus: Codable, Sendable, Equatable {
+    var `state`: String
+    var `exportedHighlights`: Int
+    var `pendingHighlights`: Int
+    var `startedAt`: String?
+    var `finishedAt`: String?
+    var `error`: String?
+    var `receivedBookIds`: [Int]
+}
+
+struct StorygraphSettings: Codable, Sendable, Equatable {
+    var `cookiesConfigured`: Bool
+    var `enabled`: Bool
+    var `effectiveEnabled`: Bool
+    var `disabledReason`: String?
+    var `bookSyncMode`: String
+    var `autoSyncOnStatusChange`: Bool
+    var `autoSyncOnProgressUpdate`: Bool
+    var `lastSyncedAt`: String?
+}
+
+struct UpsertStorygraphSettingsPayload: Codable, Sendable, Equatable {
+    var `sessionCookie`: String?
+    var `rememberToken`: String?
+    var `enabled`: Bool?
+    var `bookSyncMode`: String?
+    var `autoSyncOnStatusChange`: Bool?
+    var `autoSyncOnProgressUpdate`: Bool?
+}
+
+struct StorygraphCookieValidationResult: Codable, Sendable, Equatable {
+    var `valid`: Bool
+}
+
+struct StorygraphSyncPendingSummary: Codable, Sendable, Equatable {
+    var `totalBooks`: Int
+    var `pendingBooks`: Int
+}
+
+struct StorygraphBookSyncState: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `syncOverride`: String?
+    var `syncEnabled`: Bool
+    var `canSyncNow`: Bool
+    var `effectiveReason`: String?
+    var `lastSyncedAt`: String?
+    var `syncError`: String?
+}
+
+struct UpdateStorygraphBookSyncPayload: Codable, Sendable, Equatable {
+    var `syncEnabled`: Bool
+}
+
+struct StorygraphBookSyncNowResult: Codable, Sendable, Equatable {
+    var `result`: String
+    var `state`: StorygraphBookSyncState
+}
+
+struct StorygraphActiveSyncStatus: Codable, Sendable, Equatable {
+    var `runId`: Int
+    var `syncedBooks`: Int
+    var `skippedBooks`: Int
+    var `failedBooks`: Int
+    var `processedBooks`: Int
+    var `totalBooks`: Int
+    var `status`: String
+}
+
+struct StorygraphSyncFailure: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `title`: String
+    var `authorName`: String?
+    var `syncError`: String
+    var `lastAttemptAt`: String?
+}
+
+struct StorygraphEdition: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `title`: String
+    var `format`: String
+    var `pages`: Int?
+    var `isAudio`: Bool
+    var `language`: String?
+    var `isbn`: String?
+    var `publisher`: String?
+    var `publicationDate`: String?
+    var `coverUrl`: String?
+}
+
+struct StorygraphLinkedBook: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `title`: String?
+    var `authorName`: String?
+    var `storygraphBookId`: String?
+    var `matchMethod`: String?
+    var `matchError`: String?
+}
+
+struct StorygraphLinkResult: Codable, Sendable, Equatable {
+    var `success`: Bool
+    var `storygraphBookId`: String?
+    var `title`: String?
+}
+
+struct StorygraphLinkedBooksPage: Codable, Sendable, Equatable {
+    var `items`: [StorygraphLinkedBook]
+    var `nextCursor`: Int?
+}
+
+struct StorygraphSyncStartResult: Codable, Sendable, Equatable {
+    var `runId`: Int
+}
+
+struct StorygraphActionResult: Codable, Sendable, Equatable {
+    var `success`: Bool
+}
+
+struct StorygraphRematchResult: Codable, Sendable, Equatable {
+    var `result`: String
+}
+
+struct StorygraphLinkPayload: Codable, Sendable, Equatable {
+    var `input`: String
+}
+
+struct StorygraphEditionPayload: Codable, Sendable, Equatable {
+    var `editionId`: String
+}
+
 struct NativeAnnotationItem: Codable, Sendable, Equatable, Identifiable {
     var `clientId`: String? = nil
     var `kind`: String
@@ -383,6 +1618,7 @@ struct UserSettings: Codable, Sendable, Equatable {
     var `syncReaderPreferences`: Bool?
     var `timezone`: String?
     var `seriesCollapsePreferences`: SeriesCollapsePreferences?
+    var `achievementPreferences`: UserSettingsAchievementPreferences?
 }
 
 struct DashboardConfig: Codable, Sendable, Equatable {
@@ -421,6 +1657,10 @@ struct SeriesCollapsePreferences: Codable, Sendable, Equatable {
     var `collections`: [String: Bool]
     var `smartScopes`: [String: Bool]?
     var `authorPages`: Bool?
+}
+
+struct UserSettingsAchievementPreferences: Codable, Sendable, Equatable {
+    var `enabled`: Bool?
 }
 
 struct NativeCredentials: Codable, Sendable, Equatable {
@@ -674,7 +1914,6 @@ struct BookCommunityRating: Codable, Sendable, Equatable {
 }
 
 struct BookDetailProviderIds: Codable, Sendable, Equatable {
-    var `kobo`: String?
     var `google`: String?
     var `goodreads`: String?
     var `amazon`: String?
@@ -686,6 +1925,7 @@ struct BookDetailProviderIds: Codable, Sendable, Equatable {
     var `librofm`: String?
     var `comicvine`: String?
     var `ranobedb`: String?
+    var `kobo`: String?
     var `lubimyczytac`: String?
     var `aladin`: String?
 }
@@ -957,6 +2197,7 @@ struct BookCollection: Codable, Sendable, Equatable, Identifiable {
     var `isOwner`: Bool
     var `bookCount`: Int
     var `memberCount`: Int?
+    var `syncToKobo`: Bool
 }
 
 struct CollectionPageQuery: Codable, Sendable, Equatable {
@@ -978,8 +2219,8 @@ struct CreateCollectionPayload: Codable, Sendable, Equatable {
 }
 
 struct UpdateCollectionPayload: Codable, Sendable, Equatable {
-    var `name`: String?
     var `description`: String?
+    var `name`: String?
     var `icon`: String?
     var `isPublic`: Bool?
     var `syncToKobo`: Bool?
@@ -2220,10 +3461,12 @@ struct SetBookReadingStatusPayload: Encodable, Sendable, Equatable {
     var `status`: String?
     var `startedAt`: FieldUpdate<String>?
     var `finishedAt`: FieldUpdate<String>?
+    var `baseStatusUpdatedAt`: FieldUpdate<String>?
 }
 
 struct UpdateBookPersonalNotePayload: Encodable, Sendable, Equatable {
     var `note`: FieldUpdate<String>?
+    var `baseNote`: FieldUpdate<String>?
 }
 
 struct UpdateBookFilePayload: Encodable, Sendable, Equatable {
@@ -2321,6 +3564,34 @@ struct NativeTtsVoiceSettings: Codable, Sendable, Equatable {
     var `useServer`: Bool?
 }
 
+struct SharedReadingInsightsPreviewDetail: Codable, Sendable, Equatable {
+    var `summary`: SharedReadingInsightsSummary
+    var `detail`: SharedReadingInsightsDetail
+}
+
+enum ReadingInsightsPreview: Codable, Sendable, Equatable {
+    case settings(ReadingInsightsSharingSettings)
+    case summary(SharedReadingInsightsSummary)
+    case detailed(SharedReadingInsightsPreviewDetail)
+
+    private enum CodingKeys: String, CodingKey { case summary, periodDays }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if container.contains(.summary) { self = .detailed(try SharedReadingInsightsPreviewDetail(from: decoder)) }
+        else if container.contains(.periodDays) { self = .summary(try SharedReadingInsightsSummary(from: decoder)) }
+        else { self = .settings(try ReadingInsightsSharingSettings(from: decoder)) }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        switch self {
+        case .settings(let value): try value.encode(to: encoder)
+        case .summary(let value): try value.encode(to: encoder)
+        case .detailed(let value): try value.encode(to: encoder)
+        }
+    }
+}
+
 struct UserDashboardSettingsResponse: Codable, Sendable, Equatable {
     var `settings`: UserSettings
 }
@@ -2375,7 +3646,7 @@ enum EPUBThemeVocabulary {
 }
 
 enum BookFileVocabulary {
-    static let formats: [String] = ["pdf", "epub", "fb2", "cbz", "cb7", "mobi", "azw3", "azw", "m4b", "m4a", "mp3", "flac", "kepub", "cbr", "opus", "ogg"]
+    static let formats: [String] = ["epub", "fb2", "pdf", "cbz", "cb7", "mobi", "azw3", "azw", "m4b", "m4a", "mp3", "flac", "kepub", "cbr", "opus", "ogg"]
 }
 
 enum AudiobookVocabulary {
@@ -2401,7 +3672,7 @@ enum ReaderLayoutBounds {
 enum MetadataVocabulary {
     static let coverProviders: [String] = ["duckduckgo", "itunes", "audiobookcovers", "all"]
     static let lockFields: [String] = ["title", "subtitle", "authors", "description", "publisher", "publishedYear", "language", "pageCount", "seriesName", "seriesIndex", "isbn13", "isbn10", "genres", "tags", "rating", "communityRating", "narrators", "durationSeconds", "abridged", "googleBooksId", "goodreadsId", "amazonId", "hardcoverId", "hardcoverEditionId", "openLibraryId", "itunesId", "audibleId", "librofmId", "koboId", "comicvineId", "ranobedbId", "lubimyczytacId", "aladinId", "comicIssueNumber", "comicVolumeName", "comicStoryArcs", "comicPencillers", "comicInkers", "comicColorists", "comicLetterers", "comicCoverArtists", "comicCharacters", "comicTeams", "comicLocations", "cover", "audioCover"]
-    static let providers: [String] = ["kobo", "google", "goodreads", "amazon", "hardcover", "openLibrary", "itunes", "audible", "audnexus", "librofm", "comicvine", "ranobedb", "lubimyczytac", "aladin"]
+    static let providers: [String] = ["google", "goodreads", "amazon", "hardcover", "openLibrary", "itunes", "audible", "audnexus", "librofm", "comicvine", "ranobedb", "kobo", "lubimyczytac", "aladin"]
     static let statusEvent = "provider-status"
 }
 
@@ -2470,7 +3741,7 @@ enum FilterVocabulary {
     ]
     static let ratingProviders: [String] = ["google", "goodreads", "amazon", "hardcover", "openLibrary", "itunes", "audible", "ranobedb", "any"]
     static let readStatuses: [String] = ["unread", "want_to_read", "reading", "on_hold", "rereading", "read", "skimmed", "abandoned"]
-    static let formats: [String] = ["pdf", "epub", "fb2", "cbz", "cb7", "mobi", "azw3", "azw", "m4b", "m4a", "mp3", "flac", "kepub", "cbr", "opus", "ogg"]
+    static let formats: [String] = ["epub", "fb2", "pdf", "cbz", "cb7", "mobi", "azw3", "azw", "m4b", "m4a", "mp3", "flac", "kepub", "cbr", "opus", "ogg"]
 }
 
 enum NativeViewBackupVocabulary {

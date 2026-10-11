@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { Permission } from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
 import { ReadingAttemptService } from '../user-book-status/reading-attempt.service';
 import {
@@ -29,12 +31,12 @@ export class ReadingAttemptController {
     return this.attempts.createHistorical(user.id, bookId, dto);
   }
 
-  /**
-   * Takes no permission beyond book access, like every other route here. All five are scoped by
-   * `user.id`, so they touch nothing but the caller's own reading history; gating only this one and
-   * the delete left the controller contradicting itself, since an attempt could be created and
-   * edited without the permission but not started or removed.
-   */
+  @Get(':attemptId')
+  async getOne(@Param('bookId', ParseIntPipe) bookId: number, @Param('attemptId', ParseIntPipe) attemptId: number, @CurrentUser() user: RequestUser) {
+    await this.books.verifyBookAccess(bookId, user);
+    return this.attempts.findOne(user.id, bookId, attemptId);
+  }
+
   @Post('start-reread')
   async startReread(@Param('bookId', ParseIntPipe) bookId: number, @Body() dto: StartRereadDto, @CurrentUser() user: RequestUser) {
     await this.books.verifyBookAccess(bookId, user);
@@ -55,6 +57,7 @@ export class ReadingAttemptController {
 
   @Delete(':attemptId')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission(Permission.AnnotationManageOwn)
   async delete(@Param('bookId', ParseIntPipe) bookId: number, @Param('attemptId', ParseIntPipe) attemptId: number, @CurrentUser() user: RequestUser) {
     await this.books.verifyBookAccess(bookId, user);
     await this.attempts.delete(user.id, bookId, attemptId);

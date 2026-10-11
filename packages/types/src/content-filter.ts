@@ -40,3 +40,23 @@ export function isContentFilterEmpty(filters: ContentFilterRules): boolean {
     filters.excludeGenreIds.length === 0
   );
 }
+
+export interface SetContentFiltersRequest {
+  includeTagIds?: number[];
+  excludeTagIds?: number[];
+  includeGenreIds?: number[];
+  excludeGenreIds?: number[];
+  seeOwnRequestedBooks?: boolean;
+}
+
+export interface UserRestrictionTarget {
+  id: number;
+  username: string;
+  name: string;
+  isSuperuser: boolean;
+}
+
+export interface UserRestrictionTargetPage {
+  users: UserRestrictionTarget[];
+  total: number;
+}

@@ -55,6 +55,12 @@ final class AudioPlaybackModel {
     "\(Self.clock(positionSeconds)) / \(Self.clock(durationSeconds, rounding: .toNearestOrAwayFromZero))"
   }
 
+  var readingActivityEvidence: NativeReadingPlaybackEvidence {
+    NativeReadingPlaybackEvidence(
+      isPlaying: isPlaying && player?.timeControlStatus == .playing,
+      positionSeconds: player?.currentTime().seconds, rate: playbackSpeed)
+  }
+
   var deliveryLabel: String {
     guard let loader else { return "No audio ranges loaded" }
     return

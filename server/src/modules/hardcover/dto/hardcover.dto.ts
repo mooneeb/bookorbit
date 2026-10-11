@@ -1,6 +1,11 @@
-import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
-import type { ApplyHardcoverImportPayload, SetHardcoverEditionPayload, UpdateHardcoverBookSyncPayload } from '@bookorbit/types';
+import type {
+  ApplyHardcoverImportPayload,
+  PreviewHardcoverImportPayload,
+  SetHardcoverEditionPayload,
+  UpdateHardcoverBookSyncPayload,
+} from '@bookorbit/types';
 
 export class UpsertHardcoverSettingsDto {
   @IsOptional()
@@ -52,11 +57,19 @@ export class SetHardcoverEditionDto implements SetHardcoverEditionPayload {
   editionId!: number;
 }
 
-export class ApplyHardcoverImportDto implements ApplyHardcoverImportPayload {
+export class PreviewHardcoverImportDto implements PreviewHardcoverImportPayload {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(2_147_483_647)
+  afterId?: number;
+}
+
+export class ApplyHardcoverImportDto extends PreviewHardcoverImportDto implements ApplyHardcoverImportPayload {
   @IsOptional()
   @IsArray()
   @ArrayUnique()
-  @ArrayMaxSize(10000)
+  @ArrayMaxSize(100)
   @IsInt({ each: true })
   @Min(1, { each: true })
   hardcoverUserBookIds?: number[];

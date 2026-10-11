@@ -3,6 +3,10 @@ import type { ReadingSessionSource } from "./reading-session";
 export const READING_INSIGHTS_SHARING_LEVELS = ["private", "summary", "detailed"] as const;
 export type ReadingInsightsSharingLevel = (typeof READING_INSIGHTS_SHARING_LEVELS)[number];
 
+export interface UpdateReadingInsightsSharingRequest {
+  sharingLevel: ReadingInsightsSharingLevel;
+}
+
 export interface ReadingInsightsSharingSettings {
   sharingLevel: ReadingInsightsSharingLevel;
   consentedAt: string | null;

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, max, min, notLike, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
@@ -7,6 +7,7 @@ import type {
   BookReadingSessionListResponse,
   BookReadingSessionStats,
   BookReadingSourceSlice,
+  NativeReadingSessionContext,
   ReadingSessionSource,
   ReadingSessionType,
 } from '@bookorbit/types';
@@ -22,6 +23,7 @@ import { resolveTimeZone, toDateKeyInTimeZone } from '../../common/utils/timezon
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import { bookFiles, books, readingSessionSyncCursors, readingSessions, userReadingDailyStats } from '../../db/schema';
+import { readingSessionDeletions } from '../../db/schema/reading-session-deletions';
 
 type Db = NodePgDatabase<typeof schema>;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -64,7 +66,7 @@ export type SaveReadingSessionResult =
   | { kind: 'superseded'; addedSeconds: number }
   | {
       kind: 'skipped';
-      reason: 'duration_below_minimum' | 'book_file_not_found' | 'duplicate_session_id';
+      reason: 'duration_below_minimum' | 'book_file_not_found' | 'duplicate_session_id' | 'deleted_session_id';
     };
 
 export type RecordCumulativeReadingSessionResult =
@@ -114,6 +116,22 @@ export interface InsertManualSessionParams {
 export class ReadingSessionRepository {
   constructor(@Inject(DB) private readonly db: Db) {}
 
+  async sessionContext(userId: number, bookId: number): Promise<NativeReadingSessionContext> {
+    const [attempt] = await this.db
+      .select({ id: schema.readingAttempts.id })
+      .from(schema.readingAttempts)
+      .where(
+        and(
+          eq(schema.readingAttempts.userId, userId),
+          eq(schema.readingAttempts.bookId, bookId),
+          isNull(schema.readingAttempts.outcome),
+          isNull(schema.readingAttempts.deletedAt),
+        ),
+      )
+      .limit(1);
+    return { bookId, attemptId: attempt?.id ?? null };
+  }
+
   async saveSession(
     userId: number,
     bookFileId: number,
@@ -127,8 +145,9 @@ export class ReadingSessionRepository {
     timeZone = 'UTC',
     sync?: ReadingSessionSyncOptions,
     sessionType: 'read' | 'tts' | 'listen' = 'read',
+    capturedAttemptId?: number | null,
   ): Promise<SaveReadingSessionResult> {
-    if (durationSeconds < MIN_READING_SESSION_SECONDS) {
+    if (durationSeconds < MIN_READING_SESSION_SECONDS && capturedAttemptId == null) {
       return { kind: 'skipped', reason: 'duration_below_minimum' };
     }
 
@@ -146,6 +165,29 @@ export class ReadingSessionRepository {
     const { bookId, libraryId } = fileRow;
 
     return this.db.transaction(async (tx): Promise<SaveReadingSessionResult> => {
+      await this.lockClientSession(tx, userId, sessionId);
+      const [deleted] = await tx
+        .select({ sessionId: readingSessionDeletions.sessionId })
+        .from(readingSessionDeletions)
+        .where(and(eq(readingSessionDeletions.userId, userId), eq(readingSessionDeletions.sessionId, sessionId)))
+        .limit(1);
+      if (deleted) return { kind: 'skipped', reason: 'deleted_session_id' };
+      if (capturedAttemptId != null) {
+        const [attempt] = await tx
+          .select({ id: schema.readingAttempts.id })
+          .from(schema.readingAttempts)
+          .where(
+            and(
+              eq(schema.readingAttempts.id, capturedAttemptId),
+              eq(schema.readingAttempts.userId, userId),
+              eq(schema.readingAttempts.bookId, bookId),
+              isNull(schema.readingAttempts.deletedAt),
+            ),
+          )
+          .limit(1);
+        if (!attempt) throw new ForbiddenException('Reading attempt is unavailable for this session');
+      }
+      if (durationSeconds < MIN_READING_SESSION_SECONDS) return { kind: 'skipped', reason: 'duration_below_minimum' };
       if (sync) await this.lockSyncSource(tx, userId, bookId, sync.sourceDeviceKey);
 
       const inserted = await tx
@@ -154,7 +196,10 @@ export class ReadingSessionRepository {
           userId,
           bookFileId,
           bookId,
-          attemptId: sql`(select id from reading_attempts where user_id = ${userId} and book_id = ${bookId} and outcome is null and deleted_at is null limit 1)`,
+          attemptId:
+            capturedAttemptId === undefined
+              ? sql`(select id from reading_attempts where user_id = ${userId} and book_id = ${bookId} and outcome is null and deleted_at is null limit 1)`
+              : capturedAttemptId,
           sessionId,
           source,
           sourceDeviceKey: sync?.sourceDeviceKey ?? null,
@@ -188,29 +233,34 @@ export class ReadingSessionRepository {
             id: readingSessions.id,
             durationSeconds: readingSessions.durationSeconds,
             progressDelta: readingSessions.progressDelta,
+            bookFileId: readingSessions.bookFileId,
+            source: readingSessions.source,
+            sessionType: readingSessions.sessionType,
+            startedAt: readingSessions.startedAt,
+            endedAt: readingSessions.endedAt,
+            attemptId: readingSessions.attemptId,
           })
           .from(readingSessions)
           .where(and(eq(readingSessions.userId, userId), eq(readingSessions.sessionId, sessionId)))
           .limit(1);
 
-        if (!existing || durationSeconds <= existing.durationSeconds) {
+        if (
+          existing &&
+          (existing.bookFileId !== bookFileId ||
+            existing.source !== source ||
+            existing.sessionType !== sessionType ||
+            existing.startedAt.getTime() !== startedAt.getTime() ||
+            (capturedAttemptId !== undefined && existing.attemptId !== capturedAttemptId))
+        ) {
+          throw new BadRequestException('Reading session identity belongs to different activity');
+        }
+        if (!existing || durationSeconds <= existing.durationSeconds || endedAt < existing.endedAt) {
           result = { kind: 'skipped', reason: 'duplicate_session_id' };
         } else {
           const addedSeconds = durationSeconds - existing.durationSeconds;
-          const addedProgress = progressDelta === null ? null : progressDelta - (existing.progressDelta ?? 0);
-
           await tx.update(readingSessions).set({ endedAt, durationSeconds, progressDelta, endProgress }).where(eq(readingSessions.id, existing.id));
-
-          // Daily stats accumulate, so only add the portion beyond the checkpoint.
-          await this.upsertDailyStats(tx, {
-            userId,
-            libraryId,
-            startedAt,
-            endedAt,
-            durationSeconds: addedSeconds,
-            progressDelta: addedProgress,
-            timeZone,
-          });
+          const affectedDays = getReadingSessionDayKeys({ startedAt, endedAt, durationSeconds, progressDelta }, timeZone);
+          await this.recomputeDailyStats(tx, userId, libraryId, affectedDays, timeZone);
 
           result = { kind: 'superseded', addedSeconds };
         }
@@ -375,6 +425,31 @@ export class ReadingSessionRepository {
     const { userId, bookId, libraryId, bookFileId, sessionId, startedAt, endedAt, durationSeconds, progressDelta, endProgress, timeZone } = params;
 
     return this.db.transaction(async (tx) => {
+      await this.lockClientSession(tx, userId, sessionId);
+      const [deleted] = await tx
+        .select({ sessionId: readingSessionDeletions.sessionId })
+        .from(readingSessionDeletions)
+        .where(and(eq(readingSessionDeletions.userId, userId), eq(readingSessionDeletions.sessionId, sessionId)))
+        .limit(1);
+      if (deleted) throw new BadRequestException('This reading session was deleted; create a new entry explicitly');
+      const [existing] = await tx
+        .select()
+        .from(readingSessions)
+        .where(and(eq(readingSessions.userId, userId), eq(readingSessions.sessionId, sessionId)))
+        .limit(1);
+      if (existing) {
+        if (
+          existing.bookId !== bookId ||
+          existing.bookFileId !== bookFileId ||
+          existing.source !== 'manual' ||
+          existing.startedAt.getTime() !== startedAt.getTime() ||
+          existing.durationSeconds !== durationSeconds ||
+          existing.endProgress !== endProgress
+        ) {
+          throw new BadRequestException('Reading session identity belongs to a different manual entry');
+        }
+        return { id: existing.id, attemptId: existing.attemptId ?? null };
+      }
       const [inserted] = await tx
         .insert(readingSessions)
         .values({
@@ -634,9 +709,17 @@ export class ReadingSessionRepository {
 
   async deleteSessionByBook(userId: number, bookId: number, sessionId: number, timeZone = 'UTC'): Promise<{ found: boolean }> {
     return this.db.transaction(async (tx) => {
+      const [identity] = await tx
+        .select({ sessionId: readingSessions.sessionId })
+        .from(readingSessions)
+        .where(and(eq(readingSessions.id, sessionId), eq(readingSessions.userId, userId), eq(readingSessions.bookId, bookId)))
+        .limit(1);
+      if (!identity) return { found: false };
+      await this.lockClientSession(tx, userId, identity.sessionId);
       const [row] = await tx
         .select({
           id: readingSessions.id,
+          clientSessionId: readingSessions.sessionId,
           startedAt: readingSessions.startedAt,
           endedAt: readingSessions.endedAt,
           durationSeconds: readingSessions.durationSeconds,
@@ -653,7 +736,8 @@ export class ReadingSessionRepository {
       const { startedAt, endedAt, durationSeconds, progressDelta, libraryId } = row;
       const affectedDays = getReadingSessionDayKeys({ startedAt, endedAt, durationSeconds, progressDelta: progressDelta ?? null }, timeZone);
 
-      await tx.delete(readingSessions).where(eq(readingSessions.id, sessionId));
+      await tx.insert(readingSessionDeletions).values({ userId, bookId, sessionId: row.clientSessionId }).onConflictDoNothing();
+      await tx.delete(readingSessions).where(and(eq(readingSessions.id, sessionId), eq(readingSessions.userId, userId)));
 
       await this.recomputeDailyStats(tx, userId, libraryId, affectedDays, timeZone);
 
@@ -889,6 +973,10 @@ export class ReadingSessionRepository {
 
   private async lockDailyStats(tx: Tx, userId: number, libraryId: number): Promise<void> {
     await tx.execute(sql`select pg_advisory_xact_lock(${userId}::int, ${libraryId}::int)`);
+  }
+
+  private async lockClientSession(tx: Tx, userId: number, sessionId: string): Promise<void> {
+    await tx.execute(sql`select pg_advisory_xact_lock(${userId}::int, hashtext(${`reading-session:${sessionId}`})::int)`);
   }
 
   private async insertDailyStatsSegments(

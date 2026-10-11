@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RequestUser } from '../../common/types/request-user';
 import { BookService } from '../book/book.service';
-import { ReadingSessionRepository, type ReadingSessionSyncOptions, type SaveReadingSessionResult } from './reading-session.repository';
+import { ReadingSessionRepository } from './reading-session.repository';
 import { ReadingSessionService } from './reading-session.service';
-import { EMPTY_CONTENT_FILTER_RULES, type ReadingSessionSource } from '@bookorbit/types';
+import { EMPTY_CONTENT_FILTER_RULES } from '@bookorbit/types';
 
 function makeUser(overrides?: Partial<RequestUser>): RequestUser {
   return {
@@ -28,25 +28,7 @@ function makeUser(overrides?: Partial<RequestUser>): RequestUser {
 }
 
 const mockRepo = {
-  saveSession:
-    vi.fn<
-      (
-        ...args: [
-          number,
-          number,
-          string,
-          Date,
-          Date,
-          number,
-          number | null,
-          number | null,
-          ReadingSessionSource,
-          string,
-          ReadingSessionSyncOptions | undefined,
-          'read' | 'tts' | 'listen',
-        ]
-      ) => Promise<SaveReadingSessionResult>
-    >(),
+  saveSession: vi.fn<ReadingSessionRepository['saveSession']>(),
 };
 
 const mockBookService = {
@@ -100,6 +82,7 @@ describe('ReadingSessionService', () => {
       'UTC',
       undefined,
       'read',
+      undefined,
     );
     expect(mockUserStatistics.invalidateUser).toHaveBeenCalledWith(12);
   });
@@ -131,6 +114,7 @@ describe('ReadingSessionService', () => {
       'UTC',
       undefined,
       'read',
+      undefined,
     );
   });
 
@@ -162,6 +146,38 @@ describe('ReadingSessionService', () => {
       'UTC',
       undefined,
       'read',
+      undefined,
+    );
+  });
+
+  it.each([null, 42])('forwards captured attempt attribution %s without replacing it', async (attemptId) => {
+    await service.save(
+      42,
+      {
+        sessionId: 'captured-session',
+        startedAt: '2026-04-15T10:00:00.000Z',
+        endedAt: '2026-04-15T10:01:00.000Z',
+        durationSeconds: 60,
+        attemptId,
+      },
+      makeUser({ id: 33 }),
+      'ios',
+    );
+
+    expect(mockRepo.saveSession).toHaveBeenCalledWith(
+      33,
+      42,
+      'captured-session',
+      new Date('2026-04-15T10:00:00.000Z'),
+      new Date('2026-04-15T10:01:00.000Z'),
+      60,
+      null,
+      null,
+      'ios',
+      'UTC',
+      undefined,
+      'read',
+      attemptId,
     );
   });
 

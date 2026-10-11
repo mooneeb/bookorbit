@@ -216,7 +216,7 @@ describe('KoboSyncController', () => {
     await controller.librarySync({ deviceId: 9, deviceToken: 'token-9' } as never, { id: 21 } as never, req as never, reply as never);
 
     expect(settingsService.getSettings).not.toHaveBeenCalled();
-    expect(syncService.getDelta).toHaveBeenCalledWith(21, 9, 'token-9', 'http://kobo.local:3000');
+    expect(syncService.getDelta).toHaveBeenCalledWith(21, 9, 'token-9', 'http://kobo.local:3000', undefined);
     expect(historyService.recordSuccess).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 21,

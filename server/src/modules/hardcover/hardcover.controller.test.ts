@@ -205,9 +205,10 @@ describe('HardcoverController', () => {
 
   it('previewImport delegates to service', async () => {
     mockImportService.previewImport.mockResolvedValue({ summary: { willUpdate: 1 }, rows: [] });
-    const result = await makeController().previewImport(mockUser as any);
+    const dto = { afterId: 1000 };
+    const result = await makeController().previewImport(mockUser as any, dto);
     expect(result).toEqual({ summary: { willUpdate: 1 }, rows: [] });
-    expect(mockImportService.previewImport).toHaveBeenCalledWith(mockUser);
+    expect(mockImportService.previewImport).toHaveBeenCalledWith(mockUser, dto);
   });
 
   it('applyImport delegates to service', async () => {

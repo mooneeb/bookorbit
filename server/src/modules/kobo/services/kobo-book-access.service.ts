@@ -1,5 +1,5 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../../db/db.module';
@@ -8,6 +8,7 @@ import { buildContentFilterClauses } from '../../../common/utils/content-filter-
 import { ContentFilterRepository } from '../../user/content-filter.repository';
 
 type Db = NodePgDatabase<typeof schema>;
+const MAX_BOOK_ACCESS_BATCH = 100;
 
 @Injectable()
 export class KoboBookAccessService {
@@ -57,5 +58,42 @@ export class KoboBookAccessService {
         if (!filtered) throw new ForbiddenException('No access to this book');
       }
     }
+  }
+
+  async assertBooksAccessible(userId: number, bookIds: number[]): Promise<number[]> {
+    if (bookIds.length > MAX_BOOK_ACCESS_BATCH || bookIds.some((id) => !Number.isInteger(id) || id <= 0 || id > 2_147_483_647)) {
+      throw new BadRequestException('Kobo reading-state batches require at most 100 valid book IDs');
+    }
+    const uniqueBookIds = [...new Set(bookIds)];
+    if (uniqueBookIds.length === 0) return [];
+
+    const books = await this.db
+      .select({ id: schema.books.id, libraryId: schema.books.libraryId })
+      .from(schema.books)
+      .where(inArray(schema.books.id, uniqueBookIds));
+    if (books.length === 0) return [];
+    const accessibleLibraryIds = await this.getAccessibleLibraryIds(userId);
+    if (accessibleLibraryIds === null) return books.map((book) => book.id);
+    const libraryIds = new Set(accessibleLibraryIds);
+    if (books.some((book) => !libraryIds.has(book.libraryId))) throw new ForbiddenException('No access to this book');
+
+    const contentFilters = await this.contentFilterRepository.findByUserId(userId);
+    const filterClauses = buildContentFilterClauses(contentFilters, this.db);
+    if (filterClauses.length > 0) {
+      const allowed = await this.db
+        .select({ id: schema.books.id })
+        .from(schema.books)
+        .where(
+          and(
+            inArray(
+              schema.books.id,
+              books.map((book) => book.id),
+            ),
+            ...filterClauses,
+          ),
+        );
+      if (allowed.length !== books.length) throw new ForbiddenException('No access to this book');
+    }
+    return books.map((book) => book.id);
   }
 }

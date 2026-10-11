@@ -1,0 +1,257 @@
+{
+  "ticket": "IPAD-E04",
+  "issue": 5,
+  "status": "implementation-in-progress",
+  "acceptanceLedger": "docs/ipad/e04-acceptance-ledger.md",
+  "command": "pnpm ipad:test:reading-sharing",
+  "focusedCommand": "pnpm ipad:test:reading-sharing --case=A01",
+  "contractCommand": "pnpm ipad:contracts:check",
+  "harness": {
+    "entrypoint": "scripts/ipad/run-harness.mjs --reading-sharing --ui --web",
+    "core": "isolated real NestJS HTTP server, migrated PostgreSQL and temporary content",
+    "native": "BookOrbit production app driven by XCUIAutomation",
+    "browserConfig": "scripts/ipad/e04-web.config.mjs",
+    "externalSubstitution": "loopback device/catalog/provider/SMTP protocol receivers and controlled faults",
+    "artifacts": "test-results/ipad/<runId>"
+  },
+  "cases": {
+    "A01": {
+      "criterion": "native reading record, synchronized sessions, statistics, goals and achievements",
+      "qaStep": 1,
+      "httpFiles": [
+        "scripts/ipad/reading-record-http.test.mjs",
+        "scripts/ipad/reading-statistics-http.test.mjs",
+        "scripts/ipad/personal-record-concurrency-http.test.mjs",
+        "scripts/ipad/session-attribution-http.test.mjs",
+        "scripts/ipad/reading-attempt-retry-http.test.mjs",
+        "scripts/ipad/activity-media-artifact.test.mjs"
+      ],
+      "native": [
+        "BookOrbitUITests/ReadingRecordJourneyTests/testIPADE04A01NativeReadingRecordAndHistory",
+        "BookOrbitUITests/ReadingStatisticsJourneyTests/testIPADE04A01StatisticsChartsGoalAndAchievements",
+        "BookOrbitUITests/ReadingStatisticsJourneyTests/testIPADE04A01StatisticsFailureRetryAndIsolation",
+        "BookOrbitUITests/NativeReadingActivityRecoveryJourneyTests/testIPADE04A01ListeningPauseAndBackgroundPlaybackAccounting",
+        "BookOrbitUITests/NativeReadingActivityRecoveryJourneyTests/testIPADE04A01EPUBSpeechSuppressesOrdinaryReadingTime",
+        "BookOrbitUITests/NativeReadingActivityRecoveryJourneyTests/testIPADE04A01RecordedNarrationSuppressesOrdinaryReadingTime",
+        "BookOrbitUITests/NativeReadingActivityRecoveryJourneyTests/testIPADE04A01OfflineReadingRetainsHistoricalAttemptAfterRestart",
+        "BookOrbitUITests/NativeReadingActivityRecoveryJourneyTests/testIPADE04A01OfflineUnknownAttemptAndAccountSwitchRemainIsolated",
+        "BookOrbitUITests/ReadingAttemptOutboxJourneyTests/testIPADE04A01HistoryCreateOfflineRestartAndReconnectOnce",
+        "BookOrbitUITests/ReadingAttemptOutboxJourneyTests/testIPADE04A01HistoryEditRestartsAndPreservesConcurrentWebChange",
+        "BookOrbitUITests/ReadingAttemptOutboxJourneyTests/testIPADE04A01HistoryDeletedTargetRemainsRecoveryAfterRestart",
+        "BookOrbitUITests/ReadingAttemptOutboxJourneyTests/testIPADE04A01HistoryCommittedCreateAndEditLostReceiptsRetryOnce",
+        "BookOrbitUITests/PersonalReadingRecoveryJourneyTests/testIPADE04A01PersonalField409RecoveryRetainsDraftUntilExplicitReplacement",
+        "BookOrbitUITests/PersonalReadingRecoveryJourneyTests/testIPADE04A01RetainedDeletedAttemptActivityExportsAndStaysAccountScoped"
+      ],
+      "browser": ["IPAD-E04-A01-web-record-and-statistics"],
+      "assertions": [
+        "status, rating and personal note persist",
+        "reader checkpoints attribute native reading/listening sessions",
+        "retries and reconnect do not duplicate or resurrect deleted sessions",
+        "worked-example totals, history, charts, goals and achievements agree across clients"
+      ],
+      "residual": ["integrated human walkthrough"],
+      "httpTestIds": [
+        "IPAD-E04-A01-HTTP: cumulative native reading survives retries and committed deletion",
+        "IPAD-E04-A01-HTTP: a manual session has retry-safe identity and does not change actual activity source",
+        "IPAD-E04-A01-statistics: real saved sessions feed duration, native attribution, completion and earned achievements",
+        "IPAD-E04-A01-goal: preference changes refresh cached goal and achievement availability immediately without changing activity",
+        "IPAD-E04-A01-statistics-isolation: unauthenticated and unrelated readers cannot observe the worked example",
+        "IPAD-E04-A01-CONFLICT-NOTE: stale offline note preserves the web note",
+        "IPAD-E04-A01-CONFLICT-RATING-STATUS: stale writes preserve the web rating, status and history",
+        "IPAD-E04-A01-CONDITIONAL-COMPATIBILITY: matching conditional writes and legacy web writes succeed",
+        "IPAD-E04-A01-ATTEMPT-ATTRIBUTION: captured offline sessions keep historical attempts, unknown stays unassigned, and legacy clients retain save-time behavior",
+        "IPAD-E04-A01-HISTORY-RETRY: lost create receipt, stale edit, ownership and deletion preserve history",
+        "E04 activity media: actual decodable sixty-second audio and EPUB narration, long continuous text and immutable reuse",
+        "IPAD-E04-A01-Media-HTTP: five isolated readers discover and fetch real long media, restricted scope cannot download"
+      ]
+    },
+    "A02": {
+      "criterion": "privacy and content restrictions scope permitted shared insights and artifacts",
+      "qaStep": 2,
+      "httpFiles": [
+        "scripts/ipad/e04-privacy-http.test.mjs",
+        "scripts/ipad/koreader-content-policy-http.test.mjs"
+      ],
+      "native": [
+        "BookOrbitUITests/ReadingSharingCompositionUITests/testIPADE04A02NativeDestinationsHonorPermissions",
+        "BookOrbitUITests/ReadingPrivacyJourneyTests/testIPADE04A02PrivacyRestrictionsAndSharedInsightHandoff"
+      ],
+      "browser": ["IPAD-E04-A02-web-privacy-insights"],
+      "assertions": [
+        "private sharing denies other authenticated users",
+        "summary excludes record detail",
+        "detailed sharing remains library/content scoped",
+        "content-restricted books, highlights and delivered artifacts are excluded",
+        "accessible controls reflect permissions"
+      ],
+      "residual": ["integrated human walkthrough"],
+      "httpTestIds": [
+        "IPAD-E04-A02-HTTP: shared insights exclude restricted books, private annotations and source artifacts, and revoke existing sessions",
+        "IPAD-E04-A02/A03: known KOReader hashes enforce content policy for progress, exchange and linking",
+        "excluded known hash cannot read or mutate progress; same-library allowed hash works",
+        "excluded annotation and bookmark imports/exports reveal no records and preserve stored state",
+        "plugin matching and automatic linking cannot reveal excluded books"
+      ],
+      "focusedNative": [
+        "BookOrbitUITests/ReadingPrivacyJourneyTests/testIPADE04A02PrivateSaveVisibleOutcome",
+        "BookOrbitUITests/ReadingPrivacyJourneyTests/testIPADE04A02PrivateSaveCanonicalState",
+        "BookOrbitUITests/ReadingPrivacyJourneyTests/testIPADE04A02PrivateSaveVisibleFailureRecovery",
+        "BookOrbitUITests/ReadingPrivacyJourneyTests/testIPADE04A02FirstTimePreviewRestrictionsAndSharedInsightHandoff"
+      ],
+      "focusedNativePrerequisite": "The three isolated Save gates use disposable authenticated subjects. The first-time continuation consumes the already executed native owner setup and requires its retained private/null state; select it after the isolated gates pass. These methods are excluded from the default fresh-run native set."
+    },
+    "A03": {
+      "criterion": "device/catalog/mail configuration, subscription and selected-book delivery",
+      "qaStep": 3,
+      "httpFiles": [
+        "scripts/ipad/catalog-delivery-http.test.mjs",
+        "scripts/ipad/kobo-delivery-http.test.mjs",
+        "scripts/ipad/email-delivery-http.test.mjs",
+        "scripts/ipad/koreader-content-policy-http.test.mjs",
+        "scripts/ipad/kobo-bounded-sync-http.test.mjs",
+        "scripts/ipad/kobo-page-ack-http.test.mjs",
+        "scripts/ipad/kobo-populated-state-http.test.mjs",
+        "scripts/ipad/kobo-scope-permissions-http.test.mjs"
+      ],
+      "native": [
+        "BookOrbitUITests/EmailDeliveryJourneyTests/testIPADE04A03NativeMailSettingsSelectedFileAndReceiver",
+        "BookOrbitUITests/EmailDeliveryJourneyTests/testIPADE04A03RestrictedEmailControlsHidden",
+        "BookOrbitUITests/KoboDeliveryJourneyTests/testIPADE04A03KoboCredentialsSubscriptionsSelectedDeliveryAndRetry",
+        "BookOrbitUITests/CatalogJourneyTests/testIPADE04A03NativeCatalogAccountsScopesAndSelectedBook",
+        "BookOrbitUITests/CatalogJourneyTests/testIPADE04A03KOReaderSetupAndMatching"
+      ],
+      "browser": ["IPAD-E04-A03-web-delivery-settings-outcomes"],
+      "focusedNative": [
+        "BookOrbitUITests/EmailDeliveryJourneyTests/testIPADE04A03NativeRetainedDefaultsSaveFeedback",
+        "BookOrbitUITests/EmailDeliveryJourneyTests/testIPADE04A03NativeRetainedSelectedPDFDeliveryAndRetry"
+      ],
+      "focusedNativePrerequisite": "Literal provider and recipient created by the failed original native setup; these retained repair selectors are selected explicitly and are excluded from the default fresh-run native set.",
+      "assertions": [
+        "native credential/settings workflows",
+        "collection and scope subscriptions",
+        "selected-book delivery",
+        "independent protocol catalog/message/file inspection",
+        "eligible content, ownership, progress/annotation exchange and job failure/retry status"
+      ],
+      "residual": [
+        "physical reader firmware and actual reading",
+        "live mail/catalog endpoint compatibility",
+        "integrated human walkthrough"
+      ],
+      "httpTestIds": [
+        "IPAD-E04-A03/A04: scoped authenticated catalogs deliver current PDF ink/deletions and permitted exchange",
+        "IPAD-E04-A03 Kobo subscriptions require permission while ordinary owned collection edits remain available",
+        "IPAD-E04-A04 Kobo redelivery contains published source ink and its committed deletion with current revision",
+        "IPAD-E04-A03/A04-email: selected current PDF reaches SMTP receiver with visible source ink and committed deletion; owned jobs and retry remain truthful",
+        "IPAD-E04-A02/A03: known KOReader hashes enforce content policy for progress, exchange and linking",
+        "excluded known hash cannot read or mutate progress; same-library allowed hash works",
+        "excluded annotation and bookmark imports/exports reveal no records and preserve stored state",
+        "plugin matching and automatic linking cannot reveal excluded books",
+        "IPAD-E04-QA03 Kobo catalog batches, interrupted tag stream and retry converge in a 50,000-book library",
+        "IPAD-E04-A03 Kobo interrupted page retry, exact token acknowledgment, reordered cursor and device isolation",
+        "IPAD-E04-A04 Kobo pending page survives server restart and resumes current PDF revision with complete tags",
+        "IPAD-E04-QA03-POPULATED Kobo fifty-book state page preserves bookmarks and real CFI mapping with bounded reads",
+        "IPAD-E04-A03 smart-scope Kobo changes require permission and ordinary rename preserves subscription",
+        "IPAD-E04-A03 permitted owner can toggle Kobo subscription and private non-owner is denied"
+      ]
+    },
+    "A04": {
+      "criterion": "current source PDF ink and deletion survive redelivery",
+      "qaStep": 4,
+      "httpFiles": [
+        "scripts/ipad/catalog-delivery-http.test.mjs",
+        "scripts/ipad/kobo-delivery-http.test.mjs",
+        "scripts/ipad/email-delivery-http.test.mjs",
+        "scripts/ipad/kobo-page-ack-http.test.mjs"
+      ],
+      "native": [
+        "BookOrbitUITests/KoboDeliveryJourneyTests/testIPADE04A04NativeSourceInkCreateDeleteKoboRedelivery",
+        "BookOrbitUITests/CatalogJourneyTests/testIPADE04A04NativePublishedPDFInkRedeliversForWebDeletion"
+      ],
+      "browser": ["IPAD-E04-A04-web-current-pdf-redelivery"],
+      "assertions": [
+        "native/web source ink publication",
+        "redelivered bytes carry expected current revision",
+        "PDF appearance independently confirms marks and deletion",
+        "catalog/mail/device route avoids stale cache bytes",
+        "permitted progress/annotation exchange"
+      ],
+      "residual": [
+        "physical reader PDF rendering and compatibility",
+        "real Pencil input/pressure/timing for downstream marks",
+        "integrated human walkthrough"
+      ],
+      "httpTestIds": [
+        "IPAD-E04-A03/A04: scoped authenticated catalogs deliver current PDF ink/deletions and permitted exchange",
+        "IPAD-E04-A03 Kobo subscriptions require permission while ordinary owned collection edits remain available",
+        "IPAD-E04-A04 Kobo redelivery contains published source ink and its committed deletion with current revision",
+        "IPAD-E04-A03/A04-email: selected current PDF reaches SMTP receiver with visible source ink and committed deletion; owned jobs and retry remain truthful",
+        "IPAD-E04-A03 Kobo interrupted page retry, exact token acknowledgment, reordered cursor and device isolation",
+        "IPAD-E04-A04 Kobo pending page survives server restart and resumes current PDF revision with complete tags"
+      ]
+    },
+    "A05": {
+      "criterion": "external reading service mapping/import/export/sync and recovery",
+      "qaStep": 5,
+      "httpFiles": [
+        "scripts/ipad/e04-hardcover-http.test.mjs",
+        "scripts/ipad/e04-readwise-http.test.mjs",
+        "scripts/ipad/storygraph-http.test.mjs",
+        "scripts/ipad/hardcover-import-http.test.mjs",
+        "scripts/ipad/e04-hardcover-search-error-http.test.mjs"
+      ],
+      "native": [
+        "BookOrbitUITests/ReadwiseJourneyTests/testIPADE04QA5ReadwiseNativeExportAuthRecoveryAndReceivedHighlights",
+        "BookOrbitUITests/StoryGraphJourneyTests/testIPADE04A05StoryGraphConnectionMappingAndRetry",
+        "BookOrbitUITests/StoryGraphJourneyTests/testIPADE04A05StoryGraphRestrictedControls",
+        "BookOrbitUITests/HardcoverJourneyTests/testIPADE04A05HardcoverNativeSettingsMappingFailureRetryAndReconnect",
+        "BookOrbitUITests/HardcoverImportJourneyTests/testIPADE04QA5HardcoverNativeImportPreviewApplyRetryAndPages"
+      ],
+      "browser": ["IPAD-E04-A05-web-external-settings-outcomes"],
+      "assertions": [
+        "Hardcover, Readwise and StoryGraph native configuration",
+        "supported bounded mapping/import/export/sync",
+        "received eligible records/highlights match intended data",
+        "timeout/auth/retry/reconnect/missed-event outcomes are truthful",
+        "no duplicates or private-resource leakage"
+      ],
+      "residual": [
+        "credentialed live-service smoke checks for each service used",
+        "integrated human walkthrough"
+      ],
+      "httpTestIds": [
+        "IPAD-E04-A05-HC-HTTP: eligible reading records, mapping and verified provider outcomes",
+        "IPAD-E04-A05-HC-SETTINGS-permission-credential-isolation",
+        "IPAD-E04-A05-HC-SCOPE-own-selected-record-and-private-note-excluded",
+        "IPAD-E04-A05-HC-FAILURE-verified-receipt-auth-timeout-rate-retry",
+        "IPAD-E04-QA5-Readwise-http: real authenticated export, receipts, retry, auth recovery, isolation and bounded batches",
+        "IPAD-E04-QA5-RW01-contract-permission-and-mapping",
+        "IPAD-E04-QA5-RW05-revoked-library-access-excludes-retained-private-highlights",
+        "IPAD-E04-QA5-RW02-incomplete-receipts-timeouts-and-idempotent-retry",
+        "IPAD-E04-QA5-RW03-auth-rejection-and-reconnect-resume",
+        "IPAD-E04-QA5-RW04-bounded-server-batching-without-native-fanout",
+        "IPAD-E04-A05-StoryGraph-HTTP-PERMISSION: anonymous 401 and restricted permission 403",
+        "IPAD-E04-A05-StoryGraph-HTTP-SCOPE: permitted account has an empty page and inaccessible books stay hidden with 404",
+        "IPAD-E04-A05-StoryGraph-HTTP-PROVIDER: owner export privacy, confirmed outcomes, auth and retry recovery, durable missed events and exclusion",
+        "IPAD-E04-QA5-HCI-HTTP: bounded real import preview, apply, persistence, retry and provider failure",
+        "IPAD-E04-QA5-HCI01-HTTP-contract-permission-and-cursor",
+        "IPAD-E04-QA5-HCI02-HTTP-apply-retry-and-owned-history",
+        "IPAD-E04-QA5-HCI03-HTTP-provider-failure-does-not-report-success",
+        "IPAD-E04-A05-HC-SEARCH-HTTP: payload failure persists failed job and retry verifies one record"
+      ]
+    }
+  },
+  "profiles": [
+    "pro13-portrait-light",
+    "pro11-landscape-dark",
+    "pro11-portrait-large",
+    "pro13-narrow-dark"
+  ],
+  "visualGate": {
+    "baselines": "human review and approval required before comparisons can pass",
+    "autoAccept": false,
+    "agentReview": "open actual native and browser screenshots and record review tied to test ID, state, profile and path",
+    "nativeNarrowWindow": "simctl does not size native windows; full-window counterpart runs and actual supported narrow-window review remains required"
+  },
+  "completionRule": "empty native/http entries, unimplemented or skipped tests, unreviewed baselines, absent required artifacts, failing assertions, and residual human/physical checks do not count as passing acceptance coverage; functional checkpoints or genuine domain handoffs inside audit-failed selectors do not make the whole selector or criterion pass"
+}

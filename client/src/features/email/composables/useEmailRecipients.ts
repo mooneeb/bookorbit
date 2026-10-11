@@ -1,17 +1,8 @@
 import { ref } from 'vue'
 import { api } from '@/lib/api'
 
-export interface EmailRecipient {
-  id: number
-  userId: number
-  name: string
-  email: string
-  isDefault: boolean
-  deviceType: string | null
-  preferredFormat: string | null
-  defaultTemplateId: number | null
-  createdAt: string
-}
+import type { EmailRecipient } from '@bookorbit/types'
+export type { EmailRecipient } from '@bookorbit/types'
 
 export interface EmailRecipientForm {
   name: string

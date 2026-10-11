@@ -1,4 +1,5 @@
 import { bookFiles, readingSessionSyncCursors, readingSessions, userReadingDailyStats } from '../../db/schema';
+import { readingSessionDeletions } from '../../db/schema/reading-session-deletions';
 import { ReadingSessionRepository, type RecordCumulativeReadingSessionParams } from './reading-session.repository';
 
 function makeLimitChain(rows: unknown[]) {
@@ -199,7 +200,15 @@ describe('ReadingSessionRepository measured-session reconciliation', () => {
         }),
       }),
     };
-    const txSelect = vi.fn().mockReturnValueOnce(estimateSelect).mockReturnValueOnce(survivingSelect);
+    const tombstoneChain = makeLimitChain([]);
+    const txSelect = vi.fn((fields: Record<string, unknown>) => ({
+      from: vi.fn((table: unknown) => {
+        if (table === readingSessionDeletions) return { where: tombstoneChain.where };
+        if (table === readingSessions && 'id' in fields) return estimateSelect.from(table);
+        if (table === readingSessions) return survivingSelect.from(table);
+        throw new Error('Unexpected table in select');
+      }),
+    }));
 
     const sessionValues = vi.fn().mockReturnValue({
       onConflictDoNothing: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 21 }]) }),
@@ -232,6 +241,7 @@ describe('ReadingSessionRepository measured-session reconciliation', () => {
     ).resolves.toEqual({ kind: 'saved' });
 
     expect(transaction).toHaveBeenCalledOnce();
+    expect(tombstoneChain.limit).toHaveBeenCalledWith(1);
     expect(sessionValues).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'measured-event', sourceDeviceKey: '30' }));
     expect(deleteFn).toHaveBeenCalledWith(readingSessions);
     expect(dailyValues).toHaveBeenLastCalledWith([

@@ -113,7 +113,12 @@ export class KoreaderAnnotationExchangeService {
 
       const accessibleLibraryIds = await this.koreaderRepo.getAccessibleLibraryIds(user.id);
       const hashes = [...new Set(dto.books.map((book) => book.hash.toLowerCase()))];
-      const matches = await this.koreaderRepo.resolveBookFilesByHashes(hashes, accessibleLibraryIds, user.id);
+      const matches = await this.koreaderRepo.resolveBookFilesByHashes(
+        hashes,
+        accessibleLibraryIds,
+        user.id,
+        user.isSuperuser ? undefined : user.contentFilters,
+      );
       const deviceClockOffsetMs = this.deviceClockOffsetMs(dto.deviceTime);
       const timeZone = resolveTimeZone((user.settings as { timezone?: unknown } | undefined)?.timezone, 'UTC');
 
@@ -151,7 +156,12 @@ export class KoreaderAnnotationExchangeService {
     try {
       const accessibleLibraryIds = await this.koreaderRepo.getAccessibleLibraryIds(user.id);
       const hashes = [...new Set(dto.books.map((book) => book.hash.toLowerCase()))];
-      const matches = await this.koreaderRepo.resolveBookFilesByHashes(hashes, accessibleLibraryIds, user.id);
+      const matches = await this.koreaderRepo.resolveBookFilesByHashes(
+        hashes,
+        accessibleLibraryIds,
+        user.id,
+        user.isSuperuser ? undefined : user.contentFilters,
+      );
 
       const results: { hash: string; acked: number }[] = [];
       const unmatched: string[] = [];

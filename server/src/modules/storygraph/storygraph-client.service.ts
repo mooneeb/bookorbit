@@ -1,14 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import type { ConfigType } from '@nestjs/config';
 import * as cheerio from 'cheerio';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
-import {
-  STORYGRAPH_BASE_URL,
-  STORYGRAPH_MAX_RETRIES,
-  STORYGRAPH_REMEMBER_COOKIE_NAME,
-  STORYGRAPH_REQUEST_TIMEOUT_MS,
-  STORYGRAPH_SESSION_COOKIE_NAME,
-} from './storygraph.constants';
+import { appConfig } from '../../config/config';
+import { STORYGRAPH_MAX_RETRIES, STORYGRAPH_REMEMBER_COOKIE_NAME, STORYGRAPH_SESSION_COOKIE_NAME } from './storygraph.constants';
 import { StorygraphQueueService } from './storygraph-queue.service';
 import { StorygraphRepository } from './storygraph.repository';
 
@@ -32,6 +28,7 @@ export class StorygraphClientService {
   constructor(
     private readonly queue: StorygraphQueueService,
     private readonly repo: StorygraphRepository,
+    @Inject(appConfig.KEY) private readonly config: ConfigType<typeof appConfig>,
   ) {}
 
   async get(userId: number, cookies: StorygraphCookies, path: string): Promise<StorygraphResponse> {
@@ -65,7 +62,10 @@ export class StorygraphClientService {
     const startedAt = Date.now();
     await this.queue.throttle(userId);
 
-    const url = path.startsWith('http') ? path : `${STORYGRAPH_BASE_URL}${path}`;
+    const url = new URL(path.startsWith('http') ? path : `${this.config.storygraphBaseUrl.replace(/\/$/, '')}${path}`);
+    if (url.origin !== new URL(this.config.storygraphBaseUrl).origin) {
+      throw new BadRequestException('StoryGraph request origin is invalid');
+    }
     const headers: Record<string, string> = {
       'User-Agent': USER_AGENT,
       Cookie: this.buildCookieHeader(cookies),
@@ -82,7 +82,13 @@ export class StorygraphClientService {
 
     let response: Response;
     try {
-      response = await fetch(url, { method, headers, body, redirect: 'follow', signal: AbortSignal.timeout(STORYGRAPH_REQUEST_TIMEOUT_MS) });
+      response = await fetch(url.href, {
+        method,
+        headers,
+        body,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(this.config.storygraphRequestTimeoutMs),
+      });
     } catch (err) {
       const errorClass = err instanceof Error ? err.constructor.name : 'UnknownError';
       const error = sanitizeLogValue(err instanceof Error ? err.message : String(err));
@@ -92,7 +98,7 @@ export class StorygraphClientService {
       throw err;
     }
 
-    if ((response.status === 429 || response.status >= 500) && attempt < STORYGRAPH_MAX_RETRIES) {
+    if (method === 'GET' && (response.status === 429 || response.status >= 500) && attempt < STORYGRAPH_MAX_RETRIES) {
       const backoffMs = Math.pow(2, attempt + 1) * 1000;
       this.logger.warn(
         `[storygraph.client_request] [end] userId=${userId} attempt=${attempt} durationMs=${Date.now() - startedAt} status=${response.status} retryable=true backoffMs=${backoffMs} - retrying`,
@@ -101,19 +107,50 @@ export class StorygraphClientService {
       return this.executeWithRetry(userId, cookies, path, method, post, attempt + 1);
     }
 
-    await this.persistRotatedSessionCookie(userId, response);
+    await this.persistRotatedSessionCookie(userId, cookies, response);
 
-    const html = await response.text();
-    const redirectedToSignIn = response.url.includes('/users/sign_in') || response.url.includes('/users/sign-in');
+    const location = response.headers.get?.('location');
+    const destination = location ? new URL(location, url) : null;
+    if (destination && destination.origin !== url.origin) throw new BadRequestException('storygraph_redirect_not_allowed');
+    const html = await this.readBoundedHtml(response);
+    const target = destination?.pathname ?? response.url;
+    const redirectedToSignIn = target.includes('/users/sign_in') || target.includes('/users/sign-in');
 
     return { status: response.status, html, redirectedToSignIn };
   }
 
-  private async persistRotatedSessionCookie(userId: number, response: Response): Promise<void> {
+  private async readBoundedHtml(response: Response): Promise<string> {
+    const limit = 2 * 1024 * 1024;
+    if (!response.body) {
+      const html = await response.text();
+      if (Buffer.byteLength(html) > limit) throw new BadRequestException('storygraph_response_too_large');
+      return html;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let html = '';
+    let bytes = 0;
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        bytes += chunk.value.byteLength;
+        if (bytes > limit) throw new BadRequestException('storygraph_response_too_large');
+        html += decoder.decode(chunk.value, { stream: true });
+      }
+      return html + decoder.decode();
+    } finally {
+      await reader.cancel();
+      reader.releaseLock();
+    }
+  }
+
+  private async persistRotatedSessionCookie(userId: number, cookies: StorygraphCookies, response: Response): Promise<void> {
     const setCookieHeaders = response.headers.getSetCookie?.() ?? [];
     for (const cookie of setCookieHeaders) {
       const match = new RegExp(`${STORYGRAPH_SESSION_COOKIE_NAME}=([^;]+)`).exec(cookie);
       if (match?.[1]) {
+        cookies.sessionCookie = match[1];
         const startedAt = Date.now();
         await this.repo.updateSessionCookie(userId, match[1]).catch((err) => {
           const errorClass = err instanceof Error ? err.constructor.name : 'Error';

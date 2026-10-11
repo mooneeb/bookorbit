@@ -11,7 +11,7 @@ import { useHardcoverSettings } from '../composables/useHardcoverSettings'
 const { t } = useI18n()
 
 const { settings } = useHardcoverSettings()
-const { preview, result, previewing, applying, error, loadPreview, applyPreview, clearImport } = useHardcoverImport()
+const { preview, result, previewing, applying, error, nextCursor, loadPreview, loadNextPage, applyPreview, clearImport } = useHardcoverImport()
 
 const reviewOpen = ref(false)
 const importProgress = ref(true)
@@ -55,11 +55,20 @@ const resultLabel = computed(() => {
   if (!result.value) return null
   const progress =
     result.value.progressApplied > 0 ? `, ${t('hardcover.import.result.progressUpdated', { count: result.value.progressApplied })}` : ''
-  return t('hardcover.import.result.summary', { applied: result.value.applied, progress, failed: result.value.failed })
+  return t('hardcover.import.result.summary', {
+    applied: result.value.applied,
+    progress,
+    failed: result.value.failed + (result.value.progressFailed ?? 0),
+  })
 })
 
 async function handlePreview(): Promise<void> {
   await loadPreview()
+  if (preview.value) reviewOpen.value = true
+}
+
+async function handleNextPage(): Promise<void> {
+  await loadNextPage()
   if (preview.value) reviewOpen.value = true
 }
 
@@ -107,6 +116,7 @@ async function applyRows(hardcoverUserBookIds?: number[]): Promise<void> {
           <CheckCircle2 class="size-3.5" />
           {{ resultLabel }}
         </p>
+        <p v-if="preview" class="mt-1 text-xs text-muted-foreground">{{ t('hardcover.import.pageLimit', { count: preview.rows.length }) }}</p>
         <p v-if="error" class="mt-1 flex items-center gap-1 text-xs text-destructive">
           <AlertCircle class="size-3.5" />
           {{ error }}
@@ -114,6 +124,9 @@ async function applyRows(hardcoverUserBookIds?: number[]): Promise<void> {
       </div>
 
       <div class="flex shrink-0 flex-wrap justify-end gap-2">
+        <Button v-if="nextCursor !== null" variant="outline" size="sm" type="button" :disabled="previewing || applying" @click="handleNextPage">
+          {{ t('hardcover.import.nextPage') }}
+        </Button>
         <Button variant="outline" size="sm" v-if="preview" type="button" :disabled="previewing || applying" @click="handleClear">
           <XCircle class="size-3.5" />
           {{ t('hardcover.import.clear') }}

@@ -1,6 +1,7 @@
+import type { SetContentFiltersRequest } from '@bookorbit/types';
 import { IsArray, IsBoolean, IsInt, IsOptional } from 'class-validator';
 
-export class SetContentFiltersDto {
+export class SetContentFiltersDto implements SetContentFiltersRequest {
   @IsOptional()
   @IsArray()
   @IsInt({ each: true })

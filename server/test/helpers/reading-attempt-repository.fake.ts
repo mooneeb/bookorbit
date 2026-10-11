@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 import type { ReadStatus } from '@bookorbit/types';
 import { readingAttempts } from '../../src/db/schema';
+import type { ReadingAttemptRepository } from '../../src/modules/user-book-status/reading-attempt.repository';
 
 type Row = typeof readingAttempts.$inferSelect;
 
@@ -8,7 +9,8 @@ export function makeFakeRepo() {
   const rows: Row[] = [];
   let nextId = 1;
   const transactionContext = {};
-  const statuses = new Map<string, { status: ReadStatus; source: string; startedAt: Date | null; finishedAt: Date | null }>();
+  let transactionQueue = Promise.resolve();
+  const statuses = new Map<string, { status: ReadStatus; source: string; startedAt: Date | null; finishedAt: Date | null; updatedAt: Date }>();
   const projections: Array<{
     status: ReadStatus;
     source: 'manual' | 'auto';
@@ -37,7 +39,28 @@ export function makeFakeRepo() {
   }
 
   const repo = {
-    transaction: vi.fn((callback: (tx: object) => Promise<unknown>) => callback(transactionContext)),
+    transaction: vi.fn((callback: (tx: object) => Promise<unknown>) => {
+      const pending = transactionQueue.then(async () => {
+        const previousRows = rows.map((row) => ({ ...row }));
+        const previousStatuses = new Map([...statuses].map(([key, status]) => [key, { ...status }]));
+        const previousProjections = projections.map((projection) => ({ ...projection }));
+        try {
+          return await callback(transactionContext);
+        } catch (error) {
+          rows.splice(0, rows.length, ...previousRows);
+          statuses.clear();
+          for (const [key, status] of previousStatuses) statuses.set(key, status);
+          projections.splice(0, projections.length, ...previousProjections);
+          throw error;
+        }
+      });
+      transactionQueue = pending.then(
+        () => {},
+        () => {},
+      );
+      return pending;
+    }),
+    lockBook: vi.fn(() => Promise.resolve()),
     findActive: vi.fn((_tx: object, userId: number, bookId: number) =>
       Promise.resolve(rows.find((row) => row.userId === userId && row.bookId === bookId && row.outcome === null && row.deletedAt === null)),
     ),
@@ -85,6 +108,14 @@ export function makeFakeRepo() {
         return repo.create(_tx, { ...values, endedOn: null, outcome: null });
       },
     ),
+    createIdentified: vi.fn((_tx: object, values: Parameters<ReadingAttemptRepository['create']>[1]) => {
+      if (
+        rows.some((row) => row.userId === values.userId && row.externalProvider === values.externalProvider && row.externalId === values.externalId)
+      ) {
+        return Promise.resolve(null);
+      }
+      return repo.create(_tx, values);
+    }),
     update: vi.fn((_tx: object, userId: number, bookId: number, id: number, patch: Partial<Row>) => {
       const row = rows.find((item) => item.id === id && item.userId === userId && item.bookId === bookId && item.deletedAt === null);
       if (!row) return Promise.resolve(null);
@@ -94,8 +125,9 @@ export function makeFakeRepo() {
     }),
     project: vi.fn((_tx: object, userId: number, bookId: number, projection: (typeof projections)[number]) => {
       projections.push(projection);
-      statuses.set(`${userId}:${bookId}`, projection);
-      return Promise.resolve();
+      const row = { ...projection, updatedAt: new Date('2026-07-12T12:00:00.000Z') };
+      statuses.set(`${userId}:${bookId}`, row);
+      return Promise.resolve(row);
     }),
     findStatus: vi.fn((_tx: object, userId: number, bookId: number) => Promise.resolve(statuses.get(`${userId}:${bookId}`) ?? null)),
     findByExternal: vi.fn((_tx: object, userId: number, provider: string, externalId: string) =>
@@ -104,6 +136,10 @@ export function makeFakeRepo() {
     findOwned: vi.fn((userId: number, bookId: number, id: number) =>
       Promise.resolve(rows.find((row) => row.id === id && row.userId === userId && row.bookId === bookId && row.deletedAt === null)),
     ),
+    findDetail: vi.fn((userId: number, bookId: number, id: number) => {
+      const row = rows.find((item) => item.id === id && item.userId === userId && item.bookId === bookId && item.deletedAt === null);
+      return Promise.resolve(row ? { ...row, totalSessions: 0, totalSeconds: 0 } : null);
+    }),
     softDelete: vi.fn((userId: number, bookId: number, id: number) => {
       const row = rows.find((item) => item.id === id && item.userId === userId && item.bookId === bookId && item.deletedAt === null);
       if (!row) return Promise.resolve(false);

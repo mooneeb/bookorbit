@@ -22,6 +22,12 @@ final class NativeRecordedAudioController {
     return value.isFinite ? min(duration, max(0, value)) : 0
   }
 
+  var readingActivityEvidence: NativeReadingPlaybackEvidence {
+    NativeReadingPlaybackEvidence(
+      isPlaying: isPlaying && player?.timeControlStatus == .playing,
+      positionSeconds: elapsed, rate: rate)
+  }
+
   func prepare(
     api: BookOrbitAPI, bookID: Int, fileID: Int,
     clip: EpubMediaOverlayClip, session: UUID, offset: Double

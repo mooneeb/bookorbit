@@ -136,6 +136,11 @@ struct AudiobookReaderView: View {
       }
       .navigationTitle("Audiobook")
     }
+    .readingActivity(
+      api: model.engine.api, fileID: model.engine.currentAsset?.fileId ?? model.engine.fileID,
+      type: "listen", progress: readingActivityProgress, active: model.engine.isPlaying,
+      playback: { model.engine.readingActivityEvidence }
+    )
     .interactiveDismissDisabled()
     .task { await model.open() }
     .onDisappear {
@@ -171,6 +176,13 @@ struct AudiobookReaderView: View {
     } message: {
       Text(model.closeWarning ?? "Retry Save progress to confirm your listening position.")
     }
+  }
+
+  private var readingActivityProgress: Double? {
+    guard let manifest = model.engine.manifest, manifest.totalDurationMs > 0,
+      let position = model.bookmarkPosition
+    else { return nil }
+    return min(100, max(0, Double(position.milliseconds) / Double(manifest.totalDurationMs) * 100))
   }
 
   private func promptPositionReset() {

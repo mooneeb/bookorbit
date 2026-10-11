@@ -6,6 +6,7 @@ import { IS_PUBLIC_KEY } from '../../common/decorators/public.decorator';
 import { PERMISSION_KEY } from '../../common/decorators/require-permission.decorator';
 import { KoreaderAuthGuard } from './koreader-auth.guard';
 import { KoreaderController } from './koreader.controller';
+import type { KoreaderSaveProgressDto } from './dto/koreader-progress.dto';
 
 function makeController() {
   const koreaderService = {
@@ -74,12 +75,22 @@ describe('KoreaderController', () => {
 
     expect(controller.authenticateKoreader('reader')).toEqual({ authorized: 'OK', username: 'reader' });
 
-    const progressDto = { document: 'abc', percentage: 0.5 } as never;
+    const progressDto = { document: 'abc', percentage: 0.5 } satisfies KoreaderSaveProgressDto;
     await controller.saveProgress(user, progressDto);
     expect(koreaderService.saveProgress).toHaveBeenCalledWith(user, progressDto);
 
     await expect(controller.getProgress(user, 'abc')).resolves.toEqual({ document: 'abc', percentage: 0.5 });
-    expect(koreaderService.getProgress).toHaveBeenCalledWith(7, 'abc');
+    expect(koreaderService.getProgress).toHaveBeenCalledWith(7, 'abc', undefined);
+  });
+
+  it.each([false, true])('forwards caller content restrictions when reading kosync progress (superuser=%s)', async (isSuperuser) => {
+    const { controller, koreaderService } = makeController();
+    const contentFilters = { includeTagIds: [2], excludeTagIds: [3], includeGenreIds: [], excludeGenreIds: [4] };
+    const user = { id: 7, isSuperuser, contentFilters };
+
+    await controller.getProgress(user as never, 'abc');
+
+    expect(koreaderService.getProgress).toHaveBeenCalledExactlyOnceWith(7, 'abc', isSuperuser ? undefined : contentFilters);
   });
 
   it('returns an empty object when no progress is found for a document', async () => {

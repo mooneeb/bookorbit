@@ -7,6 +7,8 @@ import type { NewHighlightRow } from './readwise.repository';
 
 const mockRepo = {
   findSettings: vi.fn(),
+  claimSync: vi.fn(),
+  countPendingHighlights: vi.fn(),
   userHasReadwiseSyncPermission: vi.fn(),
   findNewHighlights: vi.fn(),
   upsertSettings: vi.fn(),
@@ -44,7 +46,9 @@ describe('ReadwiseSyncService', () => {
     // resetAllMocks (not clearAllMocks) so any unconsumed mock*Once queue is dropped between tests.
     vi.resetAllMocks();
     mockRepo.userHasReadwiseSyncPermission.mockResolvedValue(true);
-    mockClient.createHighlights.mockResolvedValue(undefined);
+    mockClient.createHighlights.mockResolvedValue([101]);
+    mockRepo.claimSync.mockImplementation(() => mockRepo.findSettings());
+    mockRepo.countPendingHighlights.mockResolvedValue(0);
     mockRepo.upsertSettings.mockResolvedValue(undefined);
   });
 
@@ -153,7 +157,7 @@ describe('ReadwiseSyncService', () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings());
       mockRepo.findNewHighlights.mockResolvedValueOnce([makeRow({ annotationId: 3 }), makeRow({ annotationId: 7 })]).mockResolvedValueOnce([]);
       await makeService().flush(1);
-      expect(mockRepo.upsertSettings).toHaveBeenCalledTimes(1);
+      expect(mockRepo.upsertSettings).toHaveBeenCalledTimes(2);
       const data = mockRepo.upsertSettings.mock.calls[0][1];
       expect(data.lastSyncedAnnotationId).toBe(7);
       expect(data.lastSyncedAt).toBeInstanceOf(Date);
@@ -169,7 +173,7 @@ describe('ReadwiseSyncService', () => {
       // Second fetch uses the watermark advanced from the first full batch.
       expect(mockRepo.findNewHighlights.mock.calls[1][1]).toBe(READWISE_BATCH_SIZE);
       expect(mockClient.createHighlights).toHaveBeenCalledTimes(2);
-      expect(mockRepo.upsertSettings).toHaveBeenCalledTimes(2);
+      expect(mockRepo.upsertSettings).toHaveBeenCalledTimes(3);
       expect(mockRepo.upsertSettings.mock.calls[1][1].lastSyncedAnnotationId).toBe(READWISE_BATCH_SIZE + 5);
     });
 
@@ -178,7 +182,7 @@ describe('ReadwiseSyncService', () => {
       mockRepo.findNewHighlights.mockResolvedValueOnce([]);
       await makeService().flush(1);
       expect(mockClient.createHighlights).not.toHaveBeenCalled();
-      expect(mockRepo.upsertSettings).not.toHaveBeenCalled();
+      expect(mockRepo.upsertSettings.mock.calls.some((c) => 'lastSyncedAnnotationId' in c[1])).toBe(false);
     });
   });
 
@@ -188,7 +192,7 @@ describe('ReadwiseSyncService', () => {
       mockRepo.findNewHighlights.mockResolvedValueOnce([makeRow({ annotationId: 9 })]);
       mockClient.createHighlights.mockRejectedValueOnce(new Error('boom'));
       await expect(makeService().flush(1)).rejects.toThrow('boom');
-      expect(mockRepo.upsertSettings).not.toHaveBeenCalled();
+      expect(mockRepo.upsertSettings.mock.calls.some((c) => 'lastSyncedAnnotationId' in c[1])).toBe(false);
       expect(mockRepo.findNewHighlights).toHaveBeenCalledTimes(1);
     });
 
@@ -198,7 +202,10 @@ describe('ReadwiseSyncService', () => {
       mockClient.createHighlights.mockRejectedValueOnce(new ReadwiseUnauthorizedError());
       await makeService().flush(1);
       expect(mockRepo.upsertSettings).toHaveBeenCalledTimes(1);
-      expect(mockRepo.upsertSettings).toHaveBeenCalledWith(1, { disabledReason: 'invalid_token', enabled: false });
+      expect(mockRepo.upsertSettings).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ disabledReason: 'invalid_token', enabled: false, syncState: 'failed' }),
+      );
       // no watermark advance
       const calledWithWatermark = mockRepo.upsertSettings.mock.calls.some((c) => 'lastSyncedAnnotationId' in c[1]);
       expect(calledWithWatermark).toBe(false);

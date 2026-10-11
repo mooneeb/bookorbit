@@ -6,6 +6,7 @@ import { DB } from '../../../db';
 import * as schema from '../../../db/schema';
 
 type Db = NodePgDatabase<typeof schema>;
+export type KoboIdentityQueryExecutor = Pick<Db, 'select' | 'insert'>;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const LEGACY_ENTITLEMENT_RE = /^\d+$/;
@@ -27,29 +28,34 @@ export class KoboBookIdentityService {
     return identities.get(bookId)!;
   }
 
-  async ensureForBooks(userId: number, bookIds: number[], needsLegacyNumericRemoval: boolean): Promise<Map<number, KoboBookIdentity>> {
+  async ensureForBooks(
+    userId: number,
+    bookIds: number[],
+    needsLegacyNumericRemoval: boolean,
+    executor: KoboIdentityQueryExecutor = this.db,
+  ): Promise<Map<number, KoboBookIdentity>> {
     const uniqueBookIds = [...new Set(bookIds)];
     if (uniqueBookIds.length === 0) return new Map();
 
-    let identities = await this.findByBookIds(userId, uniqueBookIds);
+    let identities = await this.findByBookIds(userId, uniqueBookIds, executor);
     const missingBookIds = uniqueBookIds.filter((bookId) => !identities.has(bookId));
 
     if (missingBookIds.length > 0) {
-      await this.db
+      await executor
         .insert(schema.koboBookEntitlements)
         .values(missingBookIds.map((bookId) => ({ userId, bookId, needsLegacyNumericRemoval })))
         .onConflictDoNothing();
-      identities = await this.findByBookIds(userId, uniqueBookIds);
+      identities = await this.findByBookIds(userId, uniqueBookIds, executor);
     }
 
     return identities;
   }
 
-  async findByBookIds(userId: number, bookIds: number[]): Promise<Map<number, KoboBookIdentity>> {
+  async findByBookIds(userId: number, bookIds: number[], executor: KoboIdentityQueryExecutor = this.db): Promise<Map<number, KoboBookIdentity>> {
     const uniqueBookIds = [...new Set(bookIds)];
     if (uniqueBookIds.length === 0) return new Map();
 
-    const rows = await this.db
+    const rows = await executor
       .select({
         bookId: schema.koboBookEntitlements.bookId,
         entitlementId: schema.koboBookEntitlements.entitlementId,

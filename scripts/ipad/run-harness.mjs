@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { constants, createWriteStream } from "node:fs";
-import { lstat, mkdir, open, opendir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { copyFile, lstat, mkdir, open, opendir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +11,27 @@ import { createCoverFixture } from "./cover-fixture.mjs";
 import { annotationProfile } from "./annotation-matrix.mjs";
 import { compareNativeAnnotationVisuals } from "./annotation-visual.mjs";
 import { waitForNativeOfflineReady } from "./combined-coordination.mjs";
+import { readingSharingSelection, assertReadingSharingCoverage } from "./e04-selection.mjs";
+import { startE04Receivers } from "./e04-receivers.mjs";
+import { compareNativeReadingSharingVisuals } from "./e04-visual.mjs";
 
+const readingSharingProof = process.argv.includes("--reading-sharing");
+const readingSharingCase = readingSharingProof ? process.argv.find((argument) => argument.startsWith("--case="))?.slice(7) : undefined;
+const readingSharing = readingSharingProof ? await readingSharingSelection(readingSharingCase) : undefined;
+if (process.argv.includes("--list-reading-sharing")) {
+  if (!readingSharingProof) throw new Error("--list-reading-sharing requires --reading-sharing");
+  console.log(JSON.stringify(readingSharing, null, 2));
+  process.exit(0);
+}
+const apiPort = readingSharingProof ? 16502 : 16482;
+const webPort = readingSharingProof ? 16504 : 16484;
+const defaultNativeName = readingSharingProof ? "BookOrbit E04 Test iPad" : "BookOrbit Test iPad";
+const nativeDestination = process.env.IPAD_TEST_DESTINATION ?? `platform=iOS Simulator,name=${defaultNativeName}`;
+const functionalOnly = readingSharingProof && process.argv.includes("--functional-only");
+const existingServer = process.argv.find((argument) => argument.startsWith("--existing-server="))?.slice(18);
+if (existingServer && (!readingSharingProof || process.argv.includes("--serve"))) {
+  throw new Error("--existing-server requires --reading-sharing and attaches to an already retained E04 server");
+}
 const startedAt = Date.now();
 process.on("uncaughtExceptionMonitor", (error) => {
   console.error(
@@ -25,16 +45,25 @@ const { Client } = require("pg");
 const databaseName = `bookorbit_ipad_${process.pid}_e2e`;
 const databaseURL = `postgres://bookorbit:bookorbit@localhost:5432/${databaseName}`;
 const runID = `run-${process.pid}-${Date.now()}`;
-const artifactsRoot = `${root}/test-results/ipad/${runID}`;
+const resumeArtifacts = readingSharingProof && process.argv.includes("--resume-artifacts");
+const artifactsRoot = `${root}/test-results/ipad/${resumeArtifacts ? "e04-resume/" : ""}${runID}`;
 let commandNumber = 0;
 const annotationsProof = process.argv.includes("--annotations");
 const annotationVisualProfile = annotationProfile(process.argv.find((argument) => argument.startsWith("--profile="))?.slice(10));
 const nativeVisualProfile = annotationProfile(annotationVisualProfile.nativeProfile ?? annotationVisualProfile.name);
 const nativeOnly = process.argv.includes("--native-only");
-if (nativeOnly && (!annotationsProof || !process.argv.includes("--ui") || process.argv.includes("--web"))) {
-  throw new Error("--native-only requires --annotations --ui and runs a focused native seam");
+const preparedNativeBuild = process.argv.find((argument) => argument.startsWith("--prepared-native-build="))?.slice(24);
+const incrementalNativeBuild = process.argv.includes("--incremental-native-build");
+if (nativeOnly && ((!annotationsProof && !readingSharingProof) || !process.argv.includes("--ui") || process.argv.includes("--web"))) {
+  throw new Error("--native-only requires --annotations or --reading-sharing with --ui and runs a focused native seam");
 }
-const annotationCase = process.argv.find((argument) => argument.startsWith("--case="))?.slice(7);
+if (preparedNativeBuild && (!readingSharingProof || !nativeOnly || !existingServer || !process.env.IPAD_TEST_ONLY)) {
+  throw new Error("--prepared-native-build requires a retained E04 native-only run with exact IPAD_TEST_ONLY selectors");
+}
+if (incrementalNativeBuild && !preparedNativeBuild) {
+  throw new Error("--incremental-native-build requires prior actual profile evidence through --prepared-native-build");
+}
+const annotationCase = readingSharingProof ? undefined : process.argv.find((argument) => argument.startsWith("--case="))?.slice(7);
 const combinedRecovery = annotationsProof && annotationCase === "QA456";
 const qa5BrowserOnly = process.argv.includes("--qa5-browser-only");
 if (
@@ -143,7 +172,7 @@ const combinedNativePreparationBudgetMs = 180_000;
 const combinedNativeExecutionAllowanceMs = 900_000;
 const combinedNativeExecutionBudgetMs = combinedNativeExecutionAllowanceMs + 60_000;
 const combinedNativeEvidenceBudgetMs = 120_000;
-const combinedFaultPort = isolatedNative ? 16585 + (process.pid % 1000) : 16485;
+const combinedFaultPort = readingSharingProof ? 16505 : isolatedNative ? 16585 + (process.pid % 1000) : 16485;
 if (process.argv.includes("--list-journey")) {
   if (!isolatedNative) throw new Error("--list-journey requires --case=QA456, --recorded-layout, --pdf-handoff or --pdf-recovery");
   if (recordedLayout || pdfHandoff || pdfRecovery) {
@@ -170,6 +199,8 @@ const metadataProof = process.argv.includes("--metadata-proof");
 const metadataClearsProof = process.argv.includes("--metadata-clears-proof");
 const coverProof = process.argv.includes("--cover-proof");
 const readerProof = process.argv.includes("--reader-proof");
+if (readingSharingProof && [annotationsProof, readerProof, crossClient, metadataProof, metadataClearsProof, coverProof, progressOnly].some(Boolean))
+  throw new Error("E04 runs independently of earlier ticket journeys");
 if (annotationsProof && (readerProof || process.argv.includes("--cross-client"))) {
   throw new Error("Annotation acceptance uses the production app in its own focused run");
 }
@@ -179,7 +210,13 @@ const organizationProof = process.argv.includes("--organization-proof");
 const pdfReader = process.argv.includes("--pdf-reader");
 const inspectWeb = process.argv.includes("--inspect-web");
 if (inspectWeb && !process.argv.includes("--web")) throw new Error("Browser inspection requires --web");
-const nativeScheme = readerProof ? "BookOrbitReaderProof" : annotationsProof ? "BookOrbitAnnotations" : "BookOrbit";
+const nativeScheme = readingSharingProof
+  ? "BookOrbitReadingSharing"
+  : readerProof
+    ? "BookOrbitReaderProof"
+    : annotationsProof
+      ? "BookOrbitAnnotations"
+      : "BookOrbit";
 const nativeTestBundle = readerProof ? "BookOrbitReaderProofUITests" : "BookOrbitUITests";
 if (readerProof && (!process.argv.includes("--ui") || crossClient)) {
   throw new Error("Reader proof requires --ui and runs separately from the production cross-client gate");
@@ -209,16 +246,45 @@ let nativeTests =
         : pdfRecovery
           ? [pdfRecoveryNative]
           : process.env.IPAD_TEST_ONLY?.split(",")) ??
-  (annotationsProof ? ["BookOrbitUITests/AnnotationJourneyTests", "BookOrbitUITests/AnnotationHubJourneyTests"] : []);
+  (readingSharingProof
+    ? readingSharing.native
+    : annotationsProof
+      ? ["BookOrbitUITests/AnnotationJourneyTests", "BookOrbitUITests/AnnotationHubJourneyTests"]
+      : []);
 if (nativeTests.some((name) => !new RegExp(`^${nativeTestBundle}/[A-Za-z_]\\w*(?:/[A-Za-z_]\\w*)?$`).test(name))) {
   throw new Error(`IPAD_TEST_ONLY must contain comma-separated ${nativeTestBundle} classes or methods`);
+}
+if (preparedNativeBuild && nativeTests.some((name) => name.split("/").length !== 3)) {
+  throw new Error("Prepared E04 runs require exact method selectors rather than entire test classes");
 }
 const env = {
   ...process.env,
   DATABASE_URL: databaseURL,
   E2E_DATABASE_URL: databaseURL,
   NODE_ENV: "test",
-  APP_URL: "http://localhost:16484",
+  APP_URL: `http://localhost:${webPort}`,
+  IPAD_E04: readingSharingProof ? "1" : "0",
+  IPAD_E04_PROOF: readingSharingProof ? "1" : "0",
+  IPAD_E04_API_PORT: String(apiPort),
+  IPAD_E04_API_URL: `http://127.0.0.1:${apiPort}/api/v1`,
+  IPAD_E04_HTTP_BASE: `http://127.0.0.1:${apiPort}/api/v1`,
+  IPAD_E04_BASE_URL: `http://127.0.0.1:${apiPort}`,
+  IPAD_E04_SERVER_URL: `http://127.0.0.1:${apiPort}`,
+  IPAD_E04_NATIVE_SERVER_URL: `http://127.0.0.1:${apiPort}`,
+  IPAD_E04_CASE: readingSharingCase ?? "",
+  IPAD_E04_PROFILE: annotationVisualProfile.name,
+  IPAD_E04_FAULT_URL: `http://127.0.0.1:${combinedFaultPort}`,
+  IPAD_E04_ARTIFACTS_DIR: artifactsRoot,
+  IPAD_E04_RESTART_DIRECTORY: `${artifactsRoot}/core-restart`,
+  IPAD_KOBO_QUERY_OBSERVER: `${artifactsRoot}/kobo-query-observer.json`,
+  IPAD_KOBO_SCALE_FIXTURE: readingSharingProof ? "1" : "0",
+  IPAD_E04_ACTIVITY_FIXTURES: readingSharingProof ? "1" : "0",
+  IPAD_HARNESS_REPOSITORY_ROOT: root,
+  IPAD_E04_NATIVE_STATE_FILE: `${artifactsRoot}/native-state.json`,
+  IPAD_E04_EXPECT_NATIVE: readingSharingProof && process.argv.includes("--ui") ? "1" : "0",
+  IPAD_E04_FUNCTIONAL_ONLY: functionalOnly ? "1" : "0",
+  IPAD_WEB_URL: `http://localhost:${webPort}`,
+  IPAD_READING_RECORD_API_URL: `http://127.0.0.1:${apiPort}/api/v1`,
   IPAD_TEST_RUN: runID,
   IPAD_ANNOTATIONS_PROOF: annotationsProof ? "1" : "0",
   IPAD_QA5_BROWSER_ONLY: qa5BrowserOnly ? "1" : "0",
@@ -231,7 +297,7 @@ const env = {
   IPAD_ANNOTATION_CASE: annotationCase ?? "",
   IPAD_ANNOTATION_FAULT_URL: `http://127.0.0.1:${combinedFaultPort}`,
   TEST_RUNNER_IPAD_ANNOTATION_FAULT_URL: `http://127.0.0.1:${combinedFaultPort}`,
-  TEST_RUNNER_IPAD_ANNOTATION_SERVER_URL: "http://127.0.0.1:16482",
+  TEST_RUNNER_IPAD_ANNOTATION_SERVER_URL: `http://127.0.0.1:${apiPort}`,
   IPAD_E02_PROFILE: annotationVisualProfile.name,
   IPAD_E02_CONCURRENT_NATIVE: annotationConcurrent ? "1" : "0",
   IPAD_E02_EXPECT_NATIVE:
@@ -248,7 +314,9 @@ const env = {
   IPAD_COMIC_PROOF: comicProof ? "1" : "0",
   IPAD_ORGANIZATION_PROOF: organizationProof ? "1" : "0",
   IPAD_PDF_READER: pdfReader ? "1" : "0",
-  ...(epubProof || annotationsProof ? { IPAD_READER_PROOF_EPUB: `${root}/test-results/ipad/${runID}/reader-fixture/reader-proof.epub` } : {}),
+  ...(epubProof || annotationsProof || readingSharingProof
+    ? { IPAD_READER_PROOF_EPUB: `${root}/test-results/ipad/${runID}/reader-fixture/reader-proof.epub` }
+    : {}),
   JWT_SECRET: randomBytes(32).toString("hex"),
   SETUP_BOOTSTRAP_TOKEN: "",
   NATIVE_REDIRECT_URI: "bookorbit://oauth2-callback",
@@ -333,7 +401,88 @@ async function publicExportDirectory(deviceID) {
   return directory;
 }
 
-async function collectNativeFiles(directory, artifacts, requireRecovery) {
+async function nativeBuildBinaries() {
+  const products = join(root, "ipad/DerivedDataE04/Build/Products/Debug-iphonesimulator");
+  const binaries = [];
+  for (const filename of [
+    "BookOrbit.app/BookOrbit",
+    "BookOrbit.app/BookOrbit.debug.dylib",
+    "BookOrbitUITests-Runner.app/PlugIns/BookOrbitUITests.xctest/BookOrbitUITests",
+  ]) {
+    const path = join(products, filename);
+    const information = await lstat(path);
+    if (!information.isFile() || information.isSymbolicLink() || information.size > 128 * 1024 * 1024)
+      throw new Error("Native build evidence requires bounded regular production app and test binaries");
+    binaries.push({
+      filename,
+      bytes: information.size,
+      modifiedAt: information.mtimeMs,
+      sha256: createHash("sha256")
+        .update(await readFile(path))
+        .digest("hex"),
+    });
+  }
+  return binaries;
+}
+
+async function validatePreparedNativeBuild(deviceID) {
+  const source = await realpath(preparedNativeBuild);
+  if (
+    !/^run-\d+-\d+$/.test(basename(source)) ||
+    ![join(root, "test-results/ipad"), join(root, "test-results/ipad/e04-resume")].includes(dirname(source))
+  )
+    throw new Error("Prepared native evidence must belong to a completed harness run in this checkout");
+  const summary = JSON.parse(await readFile(join(source, "profile-summary.json"), "utf8"));
+  const profile = JSON.parse(await readFile(join(source, "native-profile.json"), "utf8"));
+  if (
+    summary.totalTestCount !== 1 ||
+    summary.passedTests !== 1 ||
+    summary.failedTests !== 0 ||
+    summary.skippedTests !== 0 ||
+    summary.expectedFailures !== 0 ||
+    !Number.isFinite(summary.finishTime) ||
+    profile.deviceID !== deviceID ||
+    profile.appliedProfile !== nativeVisualProfile.name ||
+    profile.reduceMotion?.verified !== true ||
+    profile.reduceMotion.expected !== (nativeVisualProfile.reducedMotion === "reduce")
+  )
+    throw new Error("Prepared native build requires a passed system-profile preflight on this device and profile");
+  const binaries = await nativeBuildBinaries();
+  const provenance = await readFile(join(source, "native-build-provenance.json"), "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
+    });
+  if (!incrementalNativeBuild) {
+    if (provenance?.compiledAt) {
+      if (
+        binaries.some(
+          (binary) =>
+            !provenance.binaries?.some(
+              (record) => record.filename === binary.filename && record.bytes === binary.bytes && record.sha256 === binary.sha256,
+            ),
+        )
+      )
+        throw new Error("Prepared native binaries differ from their successful incremental build evidence");
+    } else if (binaries.some((binary) => binary.modifiedAt > summary.finishTime * 1000)) {
+      throw new Error("Prepared native binaries changed after their successful profile execution");
+    }
+  }
+  return {
+    source,
+    profile,
+    binaries,
+    compiledAt: provenance?.compiledAt,
+    buildEvidence: provenance?.buildEvidence,
+    profileEvidence: isAbsolute(profile.profileEvidence ?? "") ? profile.profileEvidence : join(source, "profile.xcresult"),
+    workingTreeEditsAfterProfileIncluded: Boolean(provenance?.compiledAt),
+    workingTreeEditsAfterBuildIncluded: false,
+    profilePreflight: "reused prior actual passing profile",
+  };
+}
+
+async function collectNativeFiles(directory, artifacts, requireRecovery, requirePlugin = false) {
   const collectionStartedAt = Date.now();
   console.log(`[ipad.ui_exports] [start] runId=${runID} requireRecovery=${requireRecovery} - collecting public Files exports`);
   const destination = join(artifacts, "native-files");
@@ -344,10 +493,13 @@ async function collectNativeFiles(directory, artifacts, requireRecovery) {
   for await (const entry of await opendir(directory)) {
     if (++examined > 256) throw new Error("Public Documents export scan exceeded 256 entries");
     const sourcePDF = /^Deleted source A06-[A-Fa-f0-9-]+\.pdf$/.test(entry.name);
+    const pluginZIP = entry.name === "bookorbit.koplugin.zip";
     if (
       !sourcePDF &&
+      !pluginZIP &&
       !/^RecoveryUI-[A-Fa-f0-9-]+-recovery\.json$/.test(entry.name) &&
       !/^A05-qa456-(?:before|after)-[A-Fa-f0-9-]+\.json$/.test(entry.name) &&
+      !/^BookOrbit reading recovery.*\.json$/.test(entry.name) &&
       !/^BookOrbit annotations.*\.json$/.test(entry.name)
     )
       continue;
@@ -381,6 +533,11 @@ async function collectNativeFiles(directory, artifacts, requireRecovery) {
     if (sourcePDF) {
       if (bytes.subarray(0, 5).toString("ascii") !== "%PDF-") throw new Error("Native retained source export must contain PDF bytes");
       record.identity = "retained-source-pdf";
+    } else if (pluginZIP) {
+      if (!bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])))
+        throw new Error("Native KOReader plugin export must contain ZIP bytes");
+      record.identity = "koreader-plugin-zip";
+      record.fixtureCredentialsIncluded = true;
     } else {
       const value = JSON.parse(bytes.toString("utf8"));
       record.identity = value.id ?? value.format ?? null;
@@ -390,9 +547,62 @@ async function collectNativeFiles(directory, artifacts, requireRecovery) {
   await writeFile(join(destination, "manifest.json"), JSON.stringify(manifest, null, 2));
   if (requireRecovery && !manifest.some((record) => /^RecoveryUI-/.test(record.filename)))
     throw new Error("Passing recovery journey must save its actual JSON export in public Documents");
+  if (requirePlugin && !manifest.some((record) => record.identity === "koreader-plugin-zip"))
+    throw new Error("Passing KOReader setup journey must save its actual plugin ZIP in public Documents");
   console.log(
     `[ipad.ui_exports] [end] runId=${runID} durationMs=${Date.now() - collectionStartedAt} files=${manifest.length} bytes=${totalBytes} - public Files exports collected`,
   );
+}
+
+async function captureEmailNativeEvidence(artifacts, phase) {
+  const login = await fetch(`${env.IPAD_E04_API_URL}/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "ipad-owner", password: "IpadFixture123", clientKind: "native", deviceLabel: "E04 email artifact inspection" }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!login.ok) throw new Error("Native email artifact inspection requires fixture authentication");
+  const { accessToken, refreshToken } = await login.json();
+  async function boundedArtifact(response, filename, maximum) {
+    if (!response.ok) throw new Error(`Native email artifact request failed: ${response.status}`);
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of response.body) {
+      size += chunk.length;
+      if (size > maximum) throw new Error("Native email evidence exceeded its bounded artifact size");
+      chunks.push(chunk);
+    }
+    const bytes = Buffer.concat(chunks);
+    await writeFile(join(artifacts, filename), bytes);
+    return { filename, bytes: size, sha256: createHash("sha256").update(bytes).digest("hex") };
+  }
+  const source = await boundedArtifact(
+    await fetch(`${env.IPAD_E04_API_URL}/books/files/1/serve`, {
+      headers: { authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(30_000),
+    }),
+    `email-native-source-${phase}.pdf`,
+    20 * 1024 * 1024,
+  );
+  const records = { phase, capturedAt: new Date().toISOString(), fileId: 1, source };
+  if (phase === "after") {
+    records.receivedMessages = await boundedArtifact(
+      await fetch(`${env.IPAD_E04_SMTP_HTTP_URL}/messages`, { signal: AbortSignal.timeout(30_000) }),
+      "email-native-received-messages.json",
+      32 * 1024 * 1024,
+    );
+    const before = JSON.parse(await readFile(join(artifacts, "email-native-evidence-before.json"), "utf8"));
+    records.sourceUnchangedDuringJourney = before.source.sha256 === source.sha256;
+    if (!records.sourceUnchangedDuringJourney) throw new Error("Source PDF changed during the exclusive native email evidence lane");
+  }
+  await writeFile(join(artifacts, `email-native-evidence-${phase}.json`), `${JSON.stringify(records, null, 2)}\n`);
+  const logout = await fetch(`${env.IPAD_E04_API_URL}/auth/logout`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!logout.ok) throw new Error("Native email artifact inspection logout failed");
 }
 
 const children = new Set();
@@ -427,17 +637,105 @@ process.once("SIGTERM", requestStop);
 let server;
 let web;
 let stopFaultProxy;
+let externalReceivers;
+let readingSharingVisuals = [];
+let readingSharingHTTP;
+let readingSharingBrowser;
+let restartMonitor;
+let restartMonitoringStopped = false;
+let restartFailure;
+async function runReadingSharingHTTP() {
+  const output = await command(process.execPath, ["--test", "--test-reporter=tap", "--test-concurrency=1", ...readingSharing.httpFiles], {
+    capture: true,
+  });
+  const count = (name) => Number(output.match(new RegExp(`^# ${name} (\\d+)$`, "m"))?.[1]);
+  readingSharingHTTP = {
+    tests: count("tests"),
+    passed: count("pass"),
+    failed: count("fail"),
+    skipped: count("skipped"),
+    cancelled: count("cancelled"),
+    files: readingSharing.httpFiles,
+  };
+  await writeFile(`${artifactsRoot}/http-summary.json`, `${JSON.stringify(readingSharingHTTP, null, 2)}\n`);
+  if (
+    !(readingSharingHTTP.tests > 0) ||
+    readingSharingHTTP.tests !== readingSharingHTTP.passed ||
+    readingSharingHTTP.failed !== 0 ||
+    readingSharingHTTP.skipped !== 0 ||
+    readingSharingHTTP.cancelled !== 0
+  )
+    throw new Error("E04 HTTP coverage requires executed passing tests with no skips or cancellations");
+}
+async function startCore({ restart = false } = {}) {
+  const fixture = restart ? JSON.parse(await readFile(join(artifactsRoot, "e04-fixture.json"), "utf8")) : undefined;
+  const args = [
+    ...(readingSharingProof ? ["--import", join(root, "scripts/ipad/kobo-query-observer.mjs")] : []),
+    join(root, "server/dist-ipad/test/ipad/harness.js"),
+  ];
+  server = launch(process.execPath, args, {
+    cwd: join(root, "server"),
+    env: { ...env, IPAD_E04_RESTART: restart ? "1" : "0", ...(restart ? { IPAD_HARNESS_CONTENT_DIR: fixture.contentDirectory } : {}) },
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  server.stdout.pipe(createWriteStream(`${artifactsRoot}/server.log`, { flags: restart ? "a" : "w" }));
+  await new Promise((resolve, reject) => {
+    let tail = "";
+    const timeout = setTimeout(() => reject(new Error("iPad harness did not start within 120 seconds")), 120_000);
+    server.once("error", reject);
+    server.once("exit", (code) => {
+      clearTimeout(timeout);
+      reject(new Error(`iPad harness exited (${code})`));
+    });
+    server.stdout.on("data", (chunk) => {
+      process.stdout.write(chunk);
+      tail = (tail + chunk.toString()).slice(-1024);
+      if (tail.includes("localhost server ready")) {
+        clearTimeout(timeout);
+        resolve();
+      }
+    });
+  });
+}
+
+async function retainE04Core() {
+  await mkdir(env.IPAD_E04_RESTART_DIRECTORY, { recursive: true });
+  let completed;
+  while (!interrupted && !restartMonitoringStopped) {
+    let request;
+    try {
+      const bytes = await readFile(join(env.IPAD_E04_RESTART_DIRECTORY, "request.json"));
+      if (bytes.length > 256) throw new Error("Core restart request exceeded its bounded size");
+      request = JSON.parse(bytes.toString("utf8"));
+      if (!/^[a-f0-9-]{36}$/i.test(request.requestId)) throw new Error("Core restart request must have a UUID identity");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    if (request && request.requestId !== completed) {
+      const restartingAt = Date.now();
+      console.log(`[ipad.core_restart] [start] runId=${runID} - restarting the retained core with its existing database and fixture`);
+      await stop(server);
+      await startCore({ restart: true });
+      completed = request.requestId;
+      const temporary = join(env.IPAD_E04_RESTART_DIRECTORY, "ready.tmp");
+      await writeFile(temporary, `${JSON.stringify({ requestId: completed, ready: true })}\n`);
+      await rename(temporary, join(env.IPAD_E04_RESTART_DIRECTORY, "ready.json"));
+      console.log(`[ipad.core_restart] [end] runId=${runID} durationMs=${Date.now() - restartingAt} ready=true - retained core restarted`);
+    }
+    await Promise.race([interrupt, new Promise((resolve) => setTimeout(resolve, 120))]);
+  }
+}
 async function startWeb() {
   if (web) return;
-  web = launch("pnpm", ["--filter", "client", "exec", "vite", "preview", "--host", "127.0.0.1", "--port", "16484", "--strictPort"], {
-    env: { ...env, BOOKORBIT_API_TARGET: "http://localhost:16482" },
+  web = launch("pnpm", ["--filter", "client", "exec", "vite", "preview", "--host", "127.0.0.1", "--port", String(webPort), "--strictPort"], {
+    env: { ...env, BOOKORBIT_API_TARGET: `http://localhost:${apiPort}` },
     stdio: "inherit",
   });
   const deadline = Date.now() + 30_000;
   while (true) {
     if (web.exitCode !== null) throw new Error("iPad web server exited before becoming ready");
     try {
-      if ((await fetch("http://localhost:16484", { signal: AbortSignal.timeout(1000) })).ok) break;
+      if ((await fetch(`http://localhost:${webPort}`, { signal: AbortSignal.timeout(1000) })).ok) break;
     } catch {}
     if (Date.now() >= deadline) throw new Error("iPad web server did not become ready");
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -488,14 +786,19 @@ async function stop(child) {
   return stopped;
 }
 async function cleanup() {
+  restartMonitoringStopped = true;
   await stopFaultProxy?.();
+  await externalReceivers?.close();
   const stopped = await Promise.allSettled([...children].map(stop));
-  const client = new Client({ connectionString: "postgres://bookorbit:bookorbit@localhost:5432/postgres" });
-  await client.connect();
-  try {
-    await client.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
-  } finally {
-    await client.end();
+  await restartMonitor;
+  if (!existingServer) {
+    const client = new Client({ connectionString: "postgres://bookorbit:bookorbit@localhost:5432/postgres" });
+    await client.connect();
+    try {
+      await client.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
+    } finally {
+      await client.end();
+    }
   }
   const failures = stopped.filter((result) => result.status === "rejected");
   if (failures.length)
@@ -514,7 +817,7 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
     if (remaining <= 0) throw new Error("QA456 native phase exceeded its owning deadline");
     return command(cmd, args, { ...options, timeoutMs: Math.min(options.timeoutMs ?? remaining, remaining) });
   }
-  const nativeLock = "/tmp/bookorbit-ipad-xcode.lock";
+  const nativeLock = readingSharingProof ? "/tmp/bookorbit-ipad-e04-xcode.lock" : "/tmp/bookorbit-ipad-xcode.lock";
   try {
     await mkdir(nativeLock);
   } catch (error) {
@@ -525,20 +828,21 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
   await writeFile(`${nativeLock}/owner.json`, JSON.stringify({ pid: process.pid, runID, root }));
   console.log(`[ipad.ui] [start] runId=${runID} filtered=${Boolean(process.env.IPAD_TEST_ONLY)} - native verification starting`);
   try {
-    const artifacts = `${root}/test-results/ipad/${runID}`;
+    const artifacts = artifactsRoot;
     await mkdir(artifacts, { recursive: true });
     const devices = JSON.parse(await nativeCommand("xcrun", ["simctl", "list", "devices", "available", "--json"], { capture: true }));
     const explicitID = process.env.IPAD_TEST_DESTINATION?.match(/(?:^|,)id=([A-Fa-f0-9-]+)/)?.[1];
-    const explicitName = process.env.IPAD_TEST_DESTINATION?.match(/(?:^|,)name=([^,]+)/)?.[1] ?? "BookOrbit Test iPad";
+    const explicitName = process.env.IPAD_TEST_DESTINATION?.match(/(?:^|,)name=([^,]+)/)?.[1] ?? defaultNativeName;
     const matches = Object.values(devices.devices)
       .flat()
       .filter((device) => (explicitID ? device.udid === explicitID : device.name === explicitName));
     if (matches.length !== 1) throw new Error("Select exactly one available test simulator with IPAD_TEST_DESTINATION");
     const selectedDevice = matches[0];
+    const prepared = preparedNativeBuild ? await validatePreparedNativeBuild(selectedDevice.udid) : undefined;
     currentNativeDeviceID = selectedDevice.udid;
     if (selectedDevice.state === "Shutdown") await nativeCommand("xcrun", ["simctl", "boot", selectedDevice.udid]);
     await nativeCommand("xcrun", ["simctl", "bootstatus", selectedDevice.udid, "-b"]);
-    if (annotationsProof) {
+    if (annotationsProof || readingSharingProof) {
       const size = nativeVisualProfile.nativeDevice.includes("11") ? "11-inch" : "13-inch";
       if (!selectedDevice.deviceTypeIdentifier?.includes(size)) throw new Error(`Native profile requires an actual ${size} iPad simulator`);
       const contentSize =
@@ -573,8 +877,17 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
           2,
         ),
       );
+      if (prepared) {
+        const record = JSON.parse(await readFile(`${artifacts}/native-profile.json`, "utf8"));
+        record.reduceMotion.verified = true;
+        record.profileEvidence = prepared.profileEvidence;
+        record.preparedBuildSource = prepared.source;
+        await writeFile(`${artifacts}/native-profile.json`, JSON.stringify(record, null, 2));
+        await copyFile(join(prepared.source, "profile-summary.json"), `${artifacts}/profile-summary.json`);
+        await writeFile(`${artifacts}/native-build-provenance.json`, JSON.stringify(prepared, null, 2));
+      }
     }
-    if (!readerProof && !annotationsProof) {
+    if (!readerProof && !annotationsProof && !readingSharingProof) {
       const destination = process.env.IPAD_TEST_DESTINATION;
       const device = destination?.match(/(?:^|,)id=([A-Fa-f0-9-]+)/)?.[1] ?? "BookOrbit Test iPad";
       await nativeCommand("xcrun", [
@@ -585,14 +898,14 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
         `${env.IPAD_COVER_FIXTURE_DIR}/ebook-large-selected.png`,
       ]);
     }
-    if (annotationsProof) {
+    if (annotationsProof || readingSharingProof) {
       const device = selectedDevice.udid;
       let installed = false;
       try {
         await nativeCommand("xcrun", ["simctl", "get_app_container", device, "com.mooneeb.bookorbit.private", "data"], { capture: true });
         installed = true;
       } catch {}
-      if (installed && !isolatedNative) await nativeCommand("xcrun", ["simctl", "uninstall", device, "com.mooneeb.bookorbit.private"]);
+      if (installed && !isolatedNative && !prepared) await nativeCommand("xcrun", ["simctl", "uninstall", device, "com.mooneeb.bookorbit.private"]);
       await nativeCommand("xcrun", [
         "simctl",
         "status_bar",
@@ -612,7 +925,7 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
         "100",
       ]);
     }
-    await nativeCommand("xcodegen", ["generate", "--spec", "ipad/project.yml"]);
+    if (!prepared || incrementalNativeBuild) await nativeCommand("xcodegen", ["generate", "--spec", "ipad/project.yml"]);
     if (annotationsProof && !isolatedNative && !process.env.IPAD_TEST_ONLY) {
       nativeTests = [];
       for (const file of await readdir(`${root}/ipad/UITests`)) {
@@ -630,8 +943,17 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
     let nativeFailure;
     let exportedArtifactDirectory;
     let nativeJourneyStarted = false;
+    let emailEvidenceStarted = false;
     const nativeEnvironment = {
       ...env,
+      ...Object.fromEntries(
+        Object.entries(env)
+          .filter(([key]) => key.startsWith("IPAD_E04_"))
+          .map(([key, value]) => [`TEST_RUNNER_${key}`, value]),
+      ),
+      TEST_RUNNER_IPAD_E04: env.IPAD_E04,
+      IPAD_E04_PROFILE: nativeVisualProfile.name,
+      TEST_RUNNER_IPAD_E04_PROFILE: nativeVisualProfile.name,
       IPAD_E02_PROFILE: nativeVisualProfile.name,
       TEST_RUNNER_IPAD_E02_CRITICAL_ONLY: env.IPAD_E02_CRITICAL_ONLY ?? "0",
     };
@@ -641,19 +963,37 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
         "ipad/BookOrbit.xcodeproj",
         "-scheme",
         nativeScheme,
-        ...(annotationsProof ? ["-testPlan", "AnnotationAcceptance", "-only-test-configuration", nativeVisualProfile.name] : []),
+        ...(annotationsProof || readingSharingProof
+          ? [
+              "-testPlan",
+              readingSharingProof ? "ReadingSharingAcceptance" : "AnnotationAcceptance",
+              "-only-test-configuration",
+              nativeVisualProfile.name,
+            ]
+          : []),
         "-parallel-testing-enabled",
         "NO",
+        ...(readingSharingProof ? ["-jobs", "2"] : []),
         "-collect-test-diagnostics",
         "never",
         "-destination",
-        process.env.IPAD_TEST_DESTINATION ?? "platform=iOS Simulator,name=BookOrbit Test iPad",
+        nativeDestination,
         "-derivedDataPath",
-        "ipad/DerivedData",
+        readingSharingProof ? "ipad/DerivedDataE04" : "ipad/DerivedData",
         "CODE_SIGNING_ALLOWED=YES",
         "CODE_SIGN_IDENTITY=-",
       ];
-      if (annotationsProof && !isolatedNative) {
+      if (incrementalNativeBuild) {
+        await nativeCommand("xcodebuild", ["build-for-testing", ...commonArguments, "-resultBundlePath", `${artifacts}/build.xcresult`], {
+          env: nativeEnvironment,
+        });
+        prepared.binaries = await nativeBuildBinaries();
+        prepared.compiledAt = new Date().toISOString();
+        prepared.workingTreeEditsAfterProfileIncluded = true;
+        prepared.buildEvidence = join(artifacts, "build.xcresult");
+        await writeFile(`${artifacts}/native-build-provenance.json`, JSON.stringify(prepared, null, 2));
+      }
+      if ((annotationsProof || readingSharingProof) && !isolatedNative && !prepared) {
         const preflight = "BookOrbitUITests/AnnotationProfilePerformanceTests/testIPADE02A01ApplySystemProfile";
         await nativeCommand(
           "xcodebuild",
@@ -682,9 +1022,11 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
         nativeTests = nativeTests.filter((name) => name !== preflight);
         if (!nativeTests.length)
           throw new Error("Profile preflight completed; select an acceptance journey or performance method for native verification");
-        exportedArtifactDirectory = await publicExportDirectory(selectedDevice.udid);
-        nativeEnvironment.IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
-        nativeEnvironment.TEST_RUNNER_IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
+        if (annotationsProof) {
+          exportedArtifactDirectory = await publicExportDirectory(selectedDevice.udid);
+          nativeEnvironment.IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
+          nativeEnvironment.TEST_RUNNER_IPAD_E02_EXPORTED_ARTIFACT_DIRECTORY = exportedArtifactDirectory;
+        }
         await nativeCommand("xcrun", [
           "xcresulttool",
           "export",
@@ -709,6 +1051,17 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
         }
       }
       nativeJourneyStarted = true;
+      const emailEvidence =
+        readingSharingProof &&
+        [
+          "BookOrbitUITests/EmailDeliveryJourneyTests/testIPADE04A03NativeMailSettingsSelectedFileAndReceiver",
+          "BookOrbitUITests/EmailDeliveryJourneyTests/testIPADE04A03NativeRetainedSelectedPDFDeliveryAndRetry",
+          "BookOrbitUITests/EmailDeliveryJourneyTests/testIPADE04A03NativeSameRunSelectedPDFDeliveryAndRetry",
+        ].some((name) => nativeTests.includes(name));
+      if (emailEvidence) {
+        await captureEmailNativeEvidence(artifacts, "before");
+        emailEvidenceStarted = true;
+      }
       if (combinedRecovery) {
         nativeCommandDeadline = Date.now() + combinedNativeExecutionBudgetMs;
         onExecutionStart?.(nativeCommandDeadline);
@@ -716,7 +1069,7 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
       await nativeCommand(
         "xcodebuild",
         [
-          annotationsProof ? "test-without-building" : "test",
+          annotationsProof || readingSharingProof ? "test-without-building" : "test",
           ...commonArguments,
           "-resultBundlePath",
           `${artifacts}/native.xcresult`,
@@ -736,16 +1089,32 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
       nativeFailure = error;
       onFailure?.(error);
     }
-    if (combinedRecovery) nativeCommandDeadline = Date.now() + combinedNativeEvidenceBudgetMs;
-    if ((exportedArtifactDirectory || combinedRecovery || pdfRecovery) && nativeJourneyStarted) {
+    if (emailEvidenceStarted && !interrupted) {
       try {
-        if (combinedRecovery || pdfRecovery) exportedArtifactDirectory = await publicExportDirectory(selectedDevice.udid);
+        await captureEmailNativeEvidence(artifacts, "after");
+      } catch (error) {
+        console.error(
+          `[ipad.ui_email_evidence] [fail] runId=${runID} durationMs=${Date.now() - startedAt} errorClass=${error.name} error="${sanitizeLogValue(error.message)}" - native email evidence capture failed`,
+        );
+        nativeFailure ??= error;
+      }
+    }
+    if (combinedRecovery) nativeCommandDeadline = Date.now() + combinedNativeEvidenceBudgetMs;
+    if ((exportedArtifactDirectory || combinedRecovery || pdfRecovery || readingSharingProof) && nativeJourneyStarted) {
+      try {
+        if (combinedRecovery || pdfRecovery || readingSharingProof) exportedArtifactDirectory = await publicExportDirectory(selectedDevice.udid);
         const recoverySelected = nativeTests.some(
           (name) =>
             name === "BookOrbitUITests/RecoveryDraftJourneyTests" ||
             name === "BookOrbitUITests/RecoveryDraftJourneyTests/testIPADE02A06RecoveryDraftExportAndExplicitReattachmentPreserveDeletedOriginal",
         );
-        await collectNativeFiles(exportedArtifactDirectory, artifacts, recoverySelected && !nativeFailure && !interrupted);
+        const pluginSelected = nativeTests.includes("BookOrbitUITests/CatalogJourneyTests/testIPADE04A03KOReaderSetupAndMatching");
+        await collectNativeFiles(
+          exportedArtifactDirectory,
+          artifacts,
+          recoverySelected && !nativeFailure && !interrupted,
+          pluginSelected && !nativeFailure && !interrupted,
+        );
       } catch (error) {
         console.error(
           `[ipad.ui_exports] [fail] runId=${runID} durationMs=${Date.now() - startedAt} errorClass=${error.name} error="${sanitizeLogValue(error.message)}" - public Files artifact collection failed`,
@@ -768,9 +1137,11 @@ async function runNativeTests({ onExecutionStart, onFailure } = {}) {
         );
         await writeFile(`${artifacts}/native-attachments.log`, exported);
         if (annotationsProof && !isolatedNative) await compareNativeAnnotationVisuals(artifacts, nativeVisualProfile.name);
+        if (readingSharingProof) readingSharingVisuals = await compareNativeReadingSharingVisuals(artifacts, nativeVisualProfile.name);
         const summary = JSON.parse(summaryText);
         if (
           summary.totalTestCount < 1 ||
+          (readingSharingProof && nativeTests.every((name) => name.split("/").length === 3) && summary.totalTestCount !== nativeTests.length) ||
           (isolatedNative && summary.totalTestCount !== 1) ||
           summary.failedTests !== 0 ||
           summary.skippedTests !== 0 ||
@@ -837,38 +1208,103 @@ try {
   await mkdir(artifactsRoot, { recursive: true });
   await writeFile(
     `${artifactsRoot}/environment.json`,
-    `${JSON.stringify({ runID, node: process.version, nativeScheme, profile: annotationVisualProfile, destination: process.env.IPAD_TEST_DESTINATION ?? "platform=iOS Simulator,name=BookOrbit Test iPad", fixtureDate: "2026-10-05T00:00:00Z", apiURL: "http://localhost:16482/api/v1", webURL: "http://localhost:16484", annotationCase: pdfRecovery ? "pdf-recovery" : pdfHandoff ? "pdf-handoff" : recordedLayout ? "recorded-layout" : (annotationCase ?? "all"), nativeInputSubstitution: annotationsProof ? "debug-only deterministic Pencil/Scribble boundary" : null }, null, 2)}\n`,
+    `${JSON.stringify({ runID, node: process.version, nativeScheme, profile: annotationVisualProfile, destination: nativeDestination, fixtureDate: readingSharingProof ? null : "2026-10-05T00:00:00Z", clock: readingSharingProof ? "actual system UTC with fixture date recorded in e04-fixture.json" : "existing E02 fixture", acceptanceCase: readingSharingCase ?? null, apiURL: `http://localhost:${apiPort}/api/v1`, webURL: `http://localhost:${webPort}`, ticket: readingSharingProof ? "IPAD-E04" : "IPAD-E02", annotationCase: pdfRecovery ? "pdf-recovery" : pdfHandoff ? "pdf-handoff" : recordedLayout ? "recorded-layout" : (annotationCase ?? "all"), nativeInputSubstitution: annotationsProof ? "debug-only deterministic Pencil/Scribble boundary" : readingSharingProof && nativeTests.some((name) => name.includes("A04")) ? "debug-only deterministic Pencil boundary" : null }, null, 2)}\n`,
   );
-  await createCoverFixture(env.IPAD_COVER_FIXTURE_DIR);
-  if (epubProof || annotationsProof) {
-    await command(process.execPath, ["scripts/ipad/reader-fixture.mjs", `${root}/test-results/ipad/${runID}/reader-fixture`]);
-  }
-  await command("pnpm", ["ipad:contracts:check"]);
-  await command("pnpm", ["--filter", "@bookorbit/types", "build"]);
-  await command("pnpm", ["--filter", "@bookorbit/plugin-api", "build"]);
-  if (process.argv.includes("--web")) await command("pnpm", ["--filter", "client", "build-only"]);
-  await command("pnpm", ["--filter", "server", "e2e:db:prepare"]);
-  await command("pnpm", ["--filter", "server", "db:migrate"]);
-  await command("pnpm", ["--filter", "server", "exec", "tsc", "-p", "tsconfig.ipad.json"]);
-  server = launch(process.execPath, ["server/dist-ipad/test/ipad/harness.js"], { stdio: ["ignore", "pipe", "inherit"] });
-  server.stdout.pipe(createWriteStream(`${artifactsRoot}/server.log`));
-  await new Promise((resolve, reject) => {
-    let tail = "";
-    const timeout = setTimeout(() => reject(new Error("iPad harness did not start within 120 seconds")), 120_000);
-    server.once("error", reject);
-    server.once("exit", (code) => {
-      clearTimeout(timeout);
-      reject(new Error(`iPad harness exited (${code})`));
-    });
-    server.stdout.on("data", (chunk) => {
-      process.stdout.write(chunk);
-      tail = (tail + chunk.toString()).slice(-1024);
-      if (tail.includes("localhost server ready")) {
-        clearTimeout(timeout);
-        resolve();
+  if (readingSharingProof) {
+    await writeFile(`${artifactsRoot}/acceptance-selection.json`, `${JSON.stringify(readingSharing, null, 2)}\n`);
+    if (!process.argv.includes("--serve")) {
+      const surfaces = [
+        ...(!nativeOnly ? ["http"] : []),
+        ...(process.argv.includes("--ui") ? ["native"] : []),
+        ...(process.argv.includes("--web") ? ["browser"] : []),
+      ];
+      assertReadingSharingCoverage(readingSharing, surfaces);
+      for (const file of !nativeOnly ? readingSharing.httpFiles : []) await lstat(join(root, file));
+    }
+    if (existingServer) {
+      const directory = await realpath(existingServer);
+      if (!directory.startsWith(`${root}test-results/ipad/`)) throw new Error("Retained E04 server must belong to this checkout's test results");
+      const receiverEnvironment = JSON.parse(await readFile(join(directory, "receiver-environment.json"), "utf8"));
+      const keys = [
+        "IPAD_TEST_HARDCOVER_GRAPHQL_URL",
+        "IPAD_TEST_HARDCOVER_TIMEOUT_MS",
+        "IPAD_TEST_READWISE_BASE_URL",
+        "IPAD_TEST_READWISE_TIMEOUT_MS",
+        "IPAD_TEST_STORYGRAPH_BASE_URL",
+        "IPAD_TEST_STORYGRAPH_TIMEOUT_MS",
+        "IPAD_E04_RECEIVER_URL",
+        "IPAD_E04_SMTP_PORT",
+        "IPAD_E04_SMTP_HTTP_URL",
+      ];
+      for (const key of keys) {
+        const value = receiverEnvironment[key];
+        if (typeof value !== "string") throw new Error(`Retained E04 receiver is missing ${key}`);
+        if (key.endsWith("URL")) {
+          const url = new URL(value);
+          if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || url.username || url.password)
+            throw new Error("Retained receivers must use unauthenticated loopback HTTP");
+        } else if (!/^\d+$/.test(value)) throw new Error("Retained receiver numeric settings must be decimal integers");
+        env[key] = value;
       }
+      for (const url of [`${env.IPAD_E04_API_URL}/auth/login-options`, `${env.IPAD_E04_RECEIVER_URL}/native-handoffs`]) {
+        if (!(await fetch(url, { signal: AbortSignal.timeout(5000) })).ok) throw new Error("Retained E04 surfaces are unavailable");
+      }
+      await copyFile(join(directory, "e04-fixture.json"), join(artifactsRoot, "e04-fixture.json"));
+      env.IPAD_E04_RESTART_DIRECTORY = join(directory, "core-restart");
+      env.IPAD_KOBO_QUERY_OBSERVER = join(directory, "kobo-query-observer.json");
+      await writeFile(
+        `${artifactsRoot}/retained-server.json`,
+        `${JSON.stringify({ source: directory, apiURL: env.IPAD_E04_BASE_URL, cleanupOwnership: "attached run owns only its native/browser/fault processes" }, null, 2)}\n`,
+      );
+      await writeFile(`${artifactsRoot}/receiver-environment.json`, `${JSON.stringify(receiverEnvironment, null, 2)}\n`);
+    } else {
+      externalReceivers = await startE04Receivers({ artifactDirectory: `${artifactsRoot}/receivers` });
+      Object.assign(env, externalReceivers.env);
+      await writeFile(`${artifactsRoot}/receiver-environment.json`, `${JSON.stringify(externalReceivers.env, null, 2)}\n`);
+    }
+  }
+  if (!existingServer) {
+    await createCoverFixture(env.IPAD_COVER_FIXTURE_DIR);
+    if (epubProof || annotationsProof || readingSharingProof) {
+      const prepared = readingSharingProof && process.env.IPAD_E04_PREPARED_READER_FIXTURE;
+      if (prepared) {
+        const fixtureDirectory = await realpath(prepared);
+        if (!fixtureDirectory.startsWith(`${root}test-results/ipad/`))
+          throw new Error("Prepared E04 reader fixture must belong to this checkout's test results");
+        const destination = `${artifactsRoot}/reader-fixture`;
+        await mkdir(destination, { recursive: true });
+        const records = [];
+        for (const name of ["reader-proof.epub", "recorded-narration.m4a", "recorded-narration-inspection.json"]) {
+          const source = join(fixtureDirectory, name);
+          const information = await lstat(source);
+          if (!information.isFile() || information.isSymbolicLink()) throw new Error("Prepared E04 fixture must contain regular artifact files");
+          const bytes = await readFile(source);
+          records.push({ name, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") });
+          await copyFile(source, join(destination, name));
+        }
+        await writeFile(`${artifactsRoot}/prepared-reader-fixture.json`, `${JSON.stringify({ source: fixtureDirectory, records }, null, 2)}\n`);
+      } else {
+        await command(process.execPath, ["scripts/ipad/reader-fixture.mjs", `${root}/test-results/ipad/${runID}/reader-fixture`]);
+      }
+    }
+    await command("pnpm", ["ipad:contracts:check"]);
+    await command("pnpm", ["--filter", "@bookorbit/types", "build"]);
+    await command("pnpm", ["--filter", "@bookorbit/plugin-api", "build"]);
+    if (process.argv.includes("--web")) await command("pnpm", ["--filter", "client", "build-only"]);
+    await command("pnpm", ["--filter", "server", "e2e:db:prepare"]);
+    await command("pnpm", ["--filter", "server", "db:migrate"]);
+    await command("pnpm", ["--filter", "server", "exec", "tsc", "-p", "tsconfig.ipad.json"]);
+    await startCore();
+  } else {
+    await command("pnpm", ["ipad:contracts:check"]);
+    if (process.argv.includes("--web")) await command("pnpm", ["--filter", "client", "build-only"]);
+  }
+  if (readingSharingProof && !existingServer) {
+    restartMonitor = retainE04Core().catch((error) => {
+      restartFailure = error;
+      requestStop();
     });
-  });
+  }
   if (annotationsProof) {
     stopFaultProxy = await startFaultProxy({
       port: combinedFaultPort,
@@ -887,10 +1323,11 @@ try {
     console.log(`[ipad.harness_serve] [start] runId=${runID} - retaining isolated test surfaces`);
     if (process.argv.includes("--web")) await startWeb();
     console.log(
-      `[ipad.harness_serve] [end] runId=${runID} apiPort=16482 durationMs=${Date.now() - servingAt} web=${Boolean(web)} ready=true - isolated test surfaces retained until interruption`,
+      `[ipad.harness_serve] [end] runId=${runID} apiPort=${apiPort} durationMs=${Date.now() - servingAt} web=${Boolean(web)} ready=true - isolated test surfaces retained until interruption`,
     );
     await interrupt;
   } else {
+    if (readingSharingProof && !nativeOnly) await runReadingSharingHTTP();
     if (annotationsProof && !nativeOnly && !combinedRecovery && !qa5BrowserOnly) {
       await command(process.execPath, [
         "--test",
@@ -908,11 +1345,24 @@ try {
         "scripts/ipad/source-pdf-cache-http.test.mjs",
       ]);
     }
-    if (!progressOnly && !annotationsProof) await command(process.execPath, ["--test", "scripts/ipad/http.test.mjs"]);
+    if (!progressOnly && !annotationsProof && !readingSharingProof) await command(process.execPath, ["--test", "scripts/ipad/http.test.mjs"]);
     if (organizationProof || crossClient) await command(process.execPath, ["--test", "scripts/ipad/organization-http.test.mjs"]);
-    if (!annotationsProof) await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);
+    if (!annotationsProof && !readingSharingProof) await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);
     if (comicProof) await command(process.execPath, ["--test", "scripts/ipad/comic-http.test.mjs"]);
-    if (process.argv.includes("--ui") && !stopFaultProxy) stopFaultProxy = await startFaultProxy({ port: combinedFaultPort });
+    if (process.argv.includes("--ui") && !stopFaultProxy) {
+      stopFaultProxy = await startFaultProxy({
+        port: combinedFaultPort,
+        upstreamPort: apiPort,
+        ...(readingSharingProof
+          ? {
+              currentDocuments: async () => {
+                if (!currentNativeDeviceID) throw new Error("Native device has not been selected");
+                return publicExportDirectory(currentNativeDeviceID);
+              },
+            }
+          : {}),
+      });
+    }
     if (annotationConcurrent) {
       await startWeb();
       const outcomes = combinedRecovery
@@ -930,6 +1380,16 @@ try {
       await runAdditionalAnnotationBrowserTests();
     }
     if (process.argv.includes("--ui") && !annotationConcurrent) await runNativeTests();
+    if (readingSharingProof && (process.argv.includes("--ui") || process.argv.includes("--web"))) {
+      const response = await fetch(`${env.IPAD_E04_RECEIVER_URL}/native-handoffs`, { signal: AbortSignal.timeout(5000) });
+      if (!response.ok) throw new Error("Native E04 handoff receiver could not be read");
+      const handoffs = await response.json();
+      if (process.argv.includes("--web")) {
+        for (const caseID of readingSharing.caseIDs)
+          if (!handoffs[caseID]) throw new Error(`Native IPAD-E04-${caseID} did not submit an expected-state handoff`);
+      }
+      await writeFile(env.IPAD_E04_NATIVE_STATE_FILE, `${JSON.stringify(handoffs, null, 2)}\n`);
+    }
     if (process.argv.includes("--web") && !annotationConcurrent) {
       await startWeb();
       if (inspectWeb) {
@@ -940,13 +1400,50 @@ try {
           `[ipad.browser_inspection] [end] runId=${runID} durationMs=${Date.now() - inspectionAt} closed=true - retained browser inspection finished`,
         );
       } else {
-        await command("pnpm", ["exec", "playwright", "test", "--config", "scripts/ipad/playwright.config.mjs"], {
-          ...(qa5BrowserOnly ? { timeoutMs: 150_000 } : {}),
-        });
+        await command(
+          "pnpm",
+          ["exec", "playwright", "test", "--config", readingSharingProof ? "scripts/ipad/e04-web.config.mjs" : "scripts/ipad/playwright.config.mjs"],
+          {
+            ...(qa5BrowserOnly ? { timeoutMs: 150_000 } : {}),
+          },
+        );
+        if (readingSharingProof) {
+          const summary = JSON.parse(await readFile(`${artifactsRoot}/e04-browser-summary.json`, "utf8"));
+          readingSharingBrowser = summary.stats;
+          if (
+            summary.stats.expected !== readingSharing.browser.length ||
+            summary.stats.skipped !== 0 ||
+            summary.stats.unexpected !== 0 ||
+            summary.stats.flaky !== 0
+          )
+            throw new Error("E04 browser coverage requires every selected test to pass without skips, retries or failures");
+        }
         await runAdditionalAnnotationBrowserTests();
       }
     }
   }
+  if (readingSharingProof && !process.argv.includes("--serve")) {
+    const pending = readingSharingVisuals.filter((report) => report.status === "pending-human-baseline");
+    const result = {
+      ticket: "IPAD-E04",
+      runID,
+      cases: readingSharing.caseIDs,
+      functionalOnly,
+      focusedNativeSelectors: process.env.IPAD_TEST_ONLY?.split(",") ?? null,
+      reusedServer: existingServer ?? null,
+      http: readingSharingHTTP ?? null,
+      browser: readingSharingBrowser ?? null,
+      nativeVisuals: readingSharingVisuals.length,
+      pendingHumanBaselines: pending.length,
+      integratedHumanWalkthrough: "outstanding",
+      physicalAndLiveServiceChecks: "outstanding",
+      acceptanceComplete: false,
+    };
+    await writeFile(`${artifactsRoot}/acceptance-result.json`, `${JSON.stringify(result, null, 2)}\n`);
+    if (!functionalOnly && pending.length)
+      throw new Error(`Native E04 visual gate has ${pending.length} screenshots awaiting human-reviewed baselines`);
+  }
+  if (restartFailure) throw restartFailure;
 } finally {
   await cleanup();
 }

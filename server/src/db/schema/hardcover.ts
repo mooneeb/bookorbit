@@ -62,3 +62,23 @@ export type HardcoverUserSetting = typeof hardcoverUserSettings.$inferSelect;
 export type NewHardcoverUserSetting = typeof hardcoverUserSettings.$inferInsert;
 export type HardcoverBookState = typeof hardcoverBookState.$inferSelect;
 export type NewHardcoverBookState = typeof hardcoverBookState.$inferInsert;
+
+export const hardcoverSyncRuns = pgTable(
+  'hardcover_sync_runs',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    status: varchar('status', { length: 20 }).notNull().default('running'),
+    totalBooks: integer('total_books').notNull().default(0),
+    processedBooks: integer('processed_books').notNull().default(0),
+    syncedBooks: integer('synced_books').notNull().default(0),
+    failedBooks: integer('failed_books').notNull().default(0),
+    skippedBooks: integer('skipped_books').notNull().default(0),
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [index('hardcover_sync_runs_user_id_idx').on(t.userId, t.id)],
+);

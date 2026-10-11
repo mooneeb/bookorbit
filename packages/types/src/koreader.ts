@@ -416,3 +416,17 @@ export interface KoreaderCatalogReadStatusResult {
 export interface KoreaderCatalogRatingResult {
   rating: number | null;
 }
+
+export interface KoreaderFileNamingPattern {
+  pattern: string;
+}
+
+export interface UpdateKoreaderDeviceFilePatternPayload {
+  pattern: string;
+  seriesPattern: string;
+  standalonePattern: string;
+}
+
+export interface UpdateKoreaderDevicePayload {
+  retired: boolean;
+}

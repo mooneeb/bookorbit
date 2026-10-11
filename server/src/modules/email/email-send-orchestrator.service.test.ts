@@ -157,6 +157,7 @@ describe('EmailSendOrchestrator', () => {
       const result = await orchestrator.send(dto, mockUser);
 
       expect(result.queued).toBe(1);
+      expect(result.logIds).toEqual([mockLogEntry.id]);
       expect(providerResolver.resolve).toHaveBeenCalledWith(mockUser, 300);
       expect(sendLogService.create).toHaveBeenCalled();
       expect(bookAccessService.assertUserCanAccessBooks).toHaveBeenCalledWith([1], mockUser);
@@ -182,6 +183,7 @@ describe('EmailSendOrchestrator', () => {
       const result = await orchestrator.send(dto, mockUser);
 
       expect(result.queued).toBe(1);
+      expect(result.logIds).toEqual([mockLogEntry.id]);
       expect(groupService.expandOwnedGroupToRecipientIds).toHaveBeenCalledWith(5, mockUser);
       expect(recipientService.getOwnedByIds).toHaveBeenCalledWith([10], mockUser);
     });
@@ -235,6 +237,7 @@ describe('EmailSendOrchestrator', () => {
       const result = await orchestrator.quickSend(1, mockUser);
 
       expect(result.queued).toBe(1);
+      expect(result.logIds).toEqual([mockLogEntry.id]);
       expect(bookAccessService.assertUserCanAccessBook).toHaveBeenCalledWith(1, mockUser);
       expect(recipientService.getOwnedById).toHaveBeenCalledWith(10, mockUser);
     });
@@ -262,6 +265,7 @@ describe('EmailSendOrchestrator', () => {
       const result = await orchestrator.resend(400, mockUser);
 
       expect(result.queued).toBe(1);
+      expect(result.logIds).toEqual([mockLogEntry.id]);
       expect(bookAccessService.assertUserCanAccessBook).toHaveBeenCalledWith(1, mockUser);
       expect(sendLogService.create).toHaveBeenCalledWith(
         expect.objectContaining({

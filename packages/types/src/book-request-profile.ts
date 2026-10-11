@@ -78,7 +78,7 @@ export interface ReleaseTier {
 export type ReleaseProfiles = Record<BookRequestMediaKind, ReleaseTier[]>;
 
 export function emptyReleaseProfiles(): ReleaseProfiles {
-  return Object.fromEntries(BOOK_REQUEST_MEDIA_KINDS.map((kind) => [kind, []])) as ReleaseProfiles;
+  return Object.fromEntries(BOOK_REQUEST_MEDIA_KINDS.map((kind) => [kind, [] as ReleaseTier[]])) as ReleaseProfiles;
 }
 
 /**

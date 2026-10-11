@@ -1,0 +1,1 @@
+ALTER TABLE "kobo_device_library_snapshots" ADD COLUMN "pending_page" jsonb;

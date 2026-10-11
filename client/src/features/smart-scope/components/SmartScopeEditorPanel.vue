@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { Permission } from '@bookorbit/types'
+import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useI18n } from 'vue-i18n'
 import { X, Zap } from '@lucide/vue'
 import { api } from '@/lib/api'
@@ -10,6 +12,8 @@ import BookSortBuilder from '@/features/book/components/BookSortBuilder.vue'
 import IconPicker from '@/components/IconPicker.vue'
 
 const { t } = useI18n()
+const { hasPermission } = usePermissions()
+const canSyncToKobo = computed(() => hasPermission(Permission.KoboSync))
 
 const TEMPLATES: { id: string; build: () => GroupRule }[] = [
   {
@@ -124,6 +128,7 @@ function toggleIsPublic() {
 }
 
 function toggleSyncToKobo() {
+  if (!canSyncToKobo.value) return
   draftSyncToKobo.value = !draftSyncToKobo.value
 }
 
@@ -146,7 +151,7 @@ async function save() {
       filter: hasCompleteRules(draftFilter.value) ? draftFilter.value : undefined,
       defaultSort: draftSort.value,
       isPublic: draftIsPublic.value,
-      syncToKobo: draftSyncToKobo.value,
+      ...(canSyncToKobo.value ? { syncToKobo: draftSyncToKobo.value } : {}),
     })
     emit('saved')
     emit('close')
@@ -156,12 +161,15 @@ async function save() {
     saving.value = false
   }
 }
+function close() {
+  emit('close')
+}
 </script>
 
 <template>
   <Teleport to="body">
     <Transition name="smartScope-fade">
-      <div v-if="open" class="fixed inset-0 z-40 bg-scrim" @click="emit('close')" />
+      <div v-if="open" class="fixed inset-0 z-40 bg-scrim" @click="close" />
     </Transition>
 
     <Transition name="smartScope-slide">
@@ -184,7 +192,7 @@ async function save() {
               <template v-else>{{ t('smartScope.editorPanel.bookCount', { count: previewCount ?? 0 }) }}</template>
             </span>
             <button
-              @click="emit('close')"
+              @click="close"
               class="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <X :size="16" />
@@ -234,7 +242,7 @@ async function save() {
               </button>
             </div>
 
-            <div class="flex items-center justify-between py-1">
+            <div v-if="canSyncToKobo" class="flex items-center justify-between py-1">
               <div>
                 <p class="text-sm font-medium text-foreground">{{ t('smartScope.syncToKobo') }}</p>
                 <p class="text-xs text-muted-foreground mt-0.5">{{ t('smartScope.syncToKoboHint') }}</p>
@@ -311,10 +319,7 @@ async function save() {
           <p v-if="saveError" class="text-xs text-destructive">{{ saveError }}</p>
           <div v-else class="flex-1" />
           <div class="flex items-center gap-2 shrink-0">
-            <button
-              @click="emit('close')"
-              class="h-10 px-5 rounded-lg border border-input bg-card text-sm text-foreground hover:bg-muted transition-colors"
-            >
+            <button @click="close" class="h-10 px-5 rounded-lg border border-input bg-card text-sm text-foreground hover:bg-muted transition-colors">
               {{ t('common.cancel') }}
             </button>
             <button

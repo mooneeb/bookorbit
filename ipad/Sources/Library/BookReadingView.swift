@@ -5,6 +5,7 @@ struct BookReadingView: View {
   let acknowledged: (BookDetail) -> Void
   let saved: (BookDetail) -> Void
   @State private var model: BookReadingModel
+  @State private var isReviewingHistory = false
   @FocusState private var noteIsFocused: Bool
   @Environment(\.dismiss) private var dismiss
 
@@ -25,10 +26,23 @@ struct BookReadingView: View {
         ScrollView {
           VStack(alignment: .leading, spacing: 24) {
             if let draft = model.draft {
-              BookReadingFields(draft: draft, noteFocus: $noteIsFocused)
+              BookReadingFields(draft: draft, noteFocus: $noteIsFocused, canRate: model.canRate)
             } else if model.isLoading {
               ProgressView("Loading your reading details…")
             }
+            if let message = model.message {
+              Text(message).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("bookReadingSyncState")
+            }
+            if let recovery = model.recoveryReason {
+              Text(recovery).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("bookReadingRecovery")
+              Button("Review current server record") {
+                Task { await model.reviewCurrentRecord() }
+              }.frame(minHeight: 44).accessibilityIdentifier("bookReadingReviewRecovery")
+            }
+            Button("Reading sessions and history") { isReviewingHistory = true }
+              .frame(minHeight: 44).accessibilityIdentifier("bookReadingOpenHistory")
             if let error = model.error {
               Text(error).fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("bookReadingError")
@@ -65,7 +79,8 @@ struct BookReadingView: View {
             .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
         }
         .disabled(
-          model.isSaving || model.draft?.hasChanges != true || model.draft?.validationError != nil
+          model.isSaving || (model.draft?.hasChanges != true && !model.hasPending)
+            || model.draft?.validationError != nil || model.recoveryReason != nil
         )
         .accessibilityIdentifier("bookReadingSave")
       }.padding(.horizontal)
@@ -73,6 +88,14 @@ struct BookReadingView: View {
     .font(.body).buttonStyle(BookReadingActionButtonStyle()).foregroundStyle(Color(uiColor: .label))
     .background(Color(uiColor: .systemBackground)).interactiveDismissDisabled(model.isSaving)
     .task { await model.load() }
+    .onChange(of: model.draft?.status) { model.preserveDraft() }
+    .onChange(of: model.draft?.started) { model.preserveDraft() }
+    .onChange(of: model.draft?.finished) { model.preserveDraft() }
+    .onChange(of: model.draft?.note) { model.preserveDraft() }
+    .onChange(of: model.draft?.rating) { model.preserveDraft() }
+    .sheet(isPresented: $isReviewingHistory) {
+      BookReadingHistoryView(api: model.api, book: model.book)
+    }
   }
 
   private func revealNote(using scroll: ScrollViewProxy) {
@@ -95,10 +118,19 @@ private struct BookReadingActionButtonStyle: ButtonStyle {
 private struct BookReadingFields: View {
   @Bindable var draft: BookReadingDraft
   let noteFocus: FocusState<Bool>.Binding
+  let canRate: Bool
 
   var body: some View {
     VStack(alignment: .leading, spacing: 24) {
       Text("These details belong to your account.").fixedSize(horizontal: false, vertical: true)
+      if canRate {
+        Picker("Your rating", selection: $draft.rating) {
+          Text("No rating").tag(nil as Double?)
+          ForEach(1...5, id: \.self) { stars in
+            Text("\(stars) \(stars == 1 ? "star" : "stars")").tag(Double(stars) as Double?)
+          }
+        }.accessibilityIdentifier("bookReadingRating")
+      }
       Picker("Reading status", selection: $draft.status) {
         ForEach(BookReadingVocabulary.statuses, id: \.self) { value in
           Text(BookReadingDraft.label(value)).tag(value)

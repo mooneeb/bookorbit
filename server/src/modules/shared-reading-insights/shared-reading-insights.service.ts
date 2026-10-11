@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type {
   ReadingInsightsAccessHistoryPage,
   ReadingInsightsPreview,
@@ -12,6 +12,7 @@ import type {
 } from '@bookorbit/types';
 import { AuditAction, AuditResource } from '@bookorbit/types';
 
+import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import type { RequestUser } from '../../common/types/request-user';
 import { AuditService } from '../audit/audit.service';
 import { SharedReadingInsightsRepository } from './shared-reading-insights.repository';
@@ -20,6 +21,7 @@ const VIEW_SESSION_TTL_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class SharedReadingInsightsService {
+  private readonly logger = new Logger(SharedReadingInsightsService.name);
   constructor(
     private readonly repository: SharedReadingInsightsRepository,
     private readonly auditService: AuditService,
@@ -32,46 +34,79 @@ export class SharedReadingInsightsService {
   }
 
   async updateMySettings(user: RequestUser, sharingLevel: ReadingInsightsSharingLevel): Promise<ReadingInsightsSharingSettings> {
-    const consentedAt = sharingLevel === 'private' ? null : new Date();
-    const row = await this.repository.updateSharingSettings(user.id, sharingLevel, consentedAt);
-    if (!row) throw new NotFoundException('User not found');
-    await this.auditService.record({
-      userId: user.id,
-      actorUsername: user.username,
-      action: AuditAction.ReadingInsightsSharingUpdate,
-      resource: AuditResource.ReadingInsightsProfile,
-      resourceId: user.id,
-      description: `User updated reading insights sharing to '${sharingLevel}'`,
-      meta: { sharingLevel },
-    });
-    return this.mapSettings(row);
+    const started = Date.now();
+    this.logger.log(`[reading_insights.update_sharing] [start] userId=${user.id} sharingLevel=${sharingLevel} - sharing preference started`);
+    try {
+      const consentedAt = sharingLevel === 'private' ? null : new Date();
+      const row = await this.repository.updateSharingSettings(user.id, sharingLevel, consentedAt);
+      if (!row) throw new NotFoundException('User not found');
+      await this.auditService.record({
+        userId: user.id,
+        actorUsername: user.username,
+        action: AuditAction.ReadingInsightsSharingUpdate,
+        resource: AuditResource.ReadingInsightsProfile,
+        resourceId: user.id,
+        description: `User updated reading insights sharing to '${sharingLevel}'`,
+        meta: { sharingLevel },
+      });
+      this.logger.log(
+        `[reading_insights.update_sharing] [end] userId=${user.id} sharingLevel=${sharingLevel} durationMs=${Date.now() - started} consentGranted=${sharingLevel !== 'private'} sessionsRevoked=${sharingLevel === 'private'} - sharing preference completed`,
+      );
+      return this.mapSettings(row);
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'UnknownError';
+      const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
+      this.logger.error(
+        `[reading_insights.update_sharing] [fail] userId=${user.id} sharingLevel=${sharingLevel} durationMs=${Date.now() - started} errorClass=${errorClass} error="${message}" - sharing preference failed`,
+      );
+      throw error;
+    }
   }
 
   async createViewSession(viewer: RequestUser, subjectUserId: number): Promise<SharedReadingInsightsViewSession> {
-    const subject = await this.repository.getSharingSettings(subjectUserId);
-    if (!subject) throw new NotFoundException('User not found');
-    if (subject.readingInsightsSharingLevel === 'private') {
-      throw new ForbiddenException({ message: 'This user is not sharing reading insights', errorCode: 'READING_INSIGHTS_PRIVATE' });
+    const started = Date.now();
+    this.logger.log(
+      `[reading_insights.create_view] [start] viewerUserId=${viewer.id} subjectUserId=${subjectUserId} - shared insight access started`,
+    );
+    try {
+      const subject = await this.repository.getSharingSettings(subjectUserId);
+      if (!subject) throw new NotFoundException('User not found');
+      if (subject.readingInsightsSharingLevel === 'private') {
+        throw new ForbiddenException({ message: 'This user is not sharing reading insights', errorCode: 'READING_INSIGHTS_PRIVATE' });
+      }
+      const id = randomUUID();
+      const expiresAt = new Date(Date.now() + VIEW_SESSION_TTL_MS);
+      const created = await this.repository.createViewSession({
+        id,
+        viewerUserId: viewer.id,
+        subjectUserId,
+        sharingLevel: subject.readingInsightsSharingLevel,
+        expiresAt,
+      });
+      if (created === false) {
+        throw new ForbiddenException({ message: 'Sharing consent changed. Open the profile again.', errorCode: 'READING_INSIGHTS_CONSENT_CHANGED' });
+      }
+      await this.auditService.record({
+        userId: viewer.id,
+        actorUsername: viewer.username,
+        action: AuditAction.ReadingInsightsProfileView,
+        resource: AuditResource.ReadingInsightsProfile,
+        resourceId: subjectUserId,
+        description: `Viewed shared reading insights for user #${subjectUserId}`,
+        meta: { subjectUserId, sharingLevel: subject.readingInsightsSharingLevel, viewSessionId: id },
+      });
+      this.logger.log(
+        `[reading_insights.create_view] [end] viewerUserId=${viewer.id} subjectUserId=${subjectUserId} durationMs=${Date.now() - started} created=true sharingLevel=${subject.readingInsightsSharingLevel} - shared insight access completed`,
+      );
+      return { viewSessionId: id, sharingLevel: subject.readingInsightsSharingLevel, expiresAt: expiresAt.toISOString() };
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'UnknownError';
+      const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
+      this.logger.error(
+        `[reading_insights.create_view] [fail] viewerUserId=${viewer.id} subjectUserId=${subjectUserId} durationMs=${Date.now() - started} errorClass=${errorClass} error="${message}" - shared insight access failed`,
+      );
+      throw error;
     }
-    const id = randomUUID();
-    const expiresAt = new Date(Date.now() + VIEW_SESSION_TTL_MS);
-    await this.repository.createViewSession({
-      id,
-      viewerUserId: viewer.id,
-      subjectUserId,
-      sharingLevel: subject.readingInsightsSharingLevel,
-      expiresAt,
-    });
-    await this.auditService.record({
-      userId: viewer.id,
-      actorUsername: viewer.username,
-      action: AuditAction.ReadingInsightsProfileView,
-      resource: AuditResource.ReadingInsightsProfile,
-      resourceId: subjectUserId,
-      description: `Viewed shared reading insights for user #${subjectUserId}`,
-      meta: { subjectUserId, sharingLevel: subject.readingInsightsSharingLevel, viewSessionId: id },
-    });
-    return { viewSessionId: id, sharingLevel: subject.readingInsightsSharingLevel, expiresAt: expiresAt.toISOString() };
   }
 
   async getSharedSummary(
@@ -81,7 +116,7 @@ export class SharedReadingInsightsService {
     days: number,
   ): Promise<SharedReadingInsightsSummary> {
     const sharingLevel = await this.authorizeView(viewer.id, subjectUserId, viewSessionId, 'summary');
-    return this.buildSummary(subjectUserId, days, sharingLevel);
+    return this.buildSummary(subjectUserId, days, sharingLevel, viewer);
   }
 
   async getSharedDetail(
@@ -91,7 +126,7 @@ export class SharedReadingInsightsService {
     days: number,
   ): Promise<SharedReadingInsightsDetail> {
     await this.authorizeView(viewer.id, subjectUserId, viewSessionId, 'detailed');
-    return this.buildDetail(subjectUserId, days);
+    return this.buildDetail(subjectUserId, days, viewer);
   }
 
   async getMyPreview(userId: number, days: number): Promise<ReadingInsightsPreview> {
@@ -145,8 +180,13 @@ export class SharedReadingInsightsService {
     return effectiveLevel;
   }
 
-  private async buildSummary(userId: number, days: number, sharingLevel: 'summary' | 'detailed'): Promise<SharedReadingInsightsSummary> {
-    const data = await this.repository.getSummary(userId, days);
+  private async buildSummary(
+    userId: number,
+    days: number,
+    sharingLevel: 'summary' | 'detailed',
+    viewer?: RequestUser,
+  ): Promise<SharedReadingInsightsSummary> {
+    const data = await this.repository.getSummary(userId, days, viewer);
     return {
       sharingLevel,
       periodDays: days,
@@ -162,8 +202,8 @@ export class SharedReadingInsightsService {
     };
   }
 
-  private async buildDetail(userId: number, days: number): Promise<SharedReadingInsightsDetail> {
-    const data = await this.repository.getDetail(userId, days);
+  private async buildDetail(userId: number, days: number, viewer?: RequestUser): Promise<SharedReadingInsightsDetail> {
+    const data = await this.repository.getDetail(userId, days, viewer);
     const mapBooks = (items: typeof data.topBooks) =>
       items.map((item) => ({
         ...item,

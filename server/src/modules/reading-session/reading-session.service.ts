@@ -12,6 +12,7 @@ import { UserStatisticsService } from '../user-statistics/user-statistics.servic
 import type { CreateManualReadingSessionDto } from './dto/create-manual-reading-session.dto';
 import type { ListBookReadingSessionsDto } from './dto/list-book-reading-sessions.dto';
 import type { SaveReadingSessionDto } from './dto/save-reading-session.dto';
+import type { ReadingSessionContextDto } from './dto/reading-session-context.dto';
 import {
   ReadingSessionRepository,
   type ReadingSessionSyncOptions,
@@ -34,6 +35,11 @@ export class ReadingSessionService {
     return resolveTimeZone((user.settings as { timezone?: unknown } | undefined)?.timezone, 'UTC');
   }
 
+  async sessionContext(fileId: number, user: RequestUser): Promise<ReadingSessionContextDto> {
+    const file = await this.bookService.verifyFileAccess(fileId, user);
+    return this.repo.sessionContext(user.id, file.bookId);
+  }
+
   async save(
     fileId: number,
     dto: SaveReadingSessionDto,
@@ -43,8 +49,9 @@ export class ReadingSessionService {
   ): Promise<void> {
     const event = 'reading_session.save';
     const startedAtMs = Date.now();
+    const logSessionId = sanitizeLogValue(dto.sessionId);
     this.logger.log(
-      `[${event}] [start] fileId=${fileId} userId=${user.id} sessionId=${dto.sessionId} clientDurationSeconds=${dto.durationSeconds} - reading session save started`,
+      `[${event}] [start] fileId=${fileId} userId=${user.id} sessionId=${logSessionId} clientDurationSeconds=${dto.durationSeconds} - reading session save started`,
     );
 
     try {
@@ -60,6 +67,9 @@ export class ReadingSessionService {
       }
 
       const wallClockSeconds = Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000);
+      if (['web', 'ios', 'watchos', 'android'].includes(source) && wallClockSeconds > 86400) {
+        throw new BadRequestException('Client reading sessions must span no more than one day');
+      }
 
       // Client sends active reading time (excludes idle/hidden periods); cap it at the wall-clock
       // span to prevent the client from reporting more time than physically elapsed.
@@ -77,13 +87,13 @@ export class ReadingSessionService {
         source,
         this.resolveUserTimeZone(user),
       ] as const;
-      const result = await this.repo.saveSession(...saveArgs, sync, dto.sessionType ?? 'read');
+      const result = await this.repo.saveSession(...saveArgs, sync, dto.sessionType ?? 'read', dto.attemptId);
 
       this.logger.log(
-        `[${event}] [end] fileId=${fileId} userId=${user.id} sessionId=${dto.sessionId} durationMs=${Date.now() - startedAtMs} outcome=${result.kind}${result.kind === 'skipped' ? ` reason=${result.reason}` : ''} - reading session save completed`,
+        `[${event}] [end] fileId=${fileId} userId=${user.id} sessionId=${logSessionId} durationMs=${Date.now() - startedAtMs} outcome=${result.kind}${result.kind === 'skipped' ? ` reason=${result.reason}` : ''} - reading session save completed`,
       );
 
-      if (result.kind === 'saved') {
+      if (result.kind === 'saved' || result.kind === 'superseded') {
         this.userStatistics.invalidateUser(user.id);
         const meaningfulActivity = durationSeconds >= 300 || (dto.progressDelta ?? 0) >= 1;
         if (meaningfulActivity && file && dto.endProgress != null) {
@@ -94,11 +104,12 @@ export class ReadingSessionService {
             meaningfulActivity: true,
           });
         }
+        const contributedSeconds = result.kind === 'superseded' ? result.addedSeconds : durationSeconds;
         this.achievementEvents.emit(ACHIEVEMENT_EVENT_READING_SESSION_SAVED, {
           userId: user.id,
           bookFileId: fileId,
-          durationSeconds,
-          startedAt,
+          durationSeconds: contributedSeconds,
+          startedAt: result.kind === 'superseded' ? new Date(endedAt.getTime() - contributedSeconds * 1000) : startedAt,
           endedAt,
           progressDelta: dto.progressDelta ?? null,
           endProgress: dto.endProgress ?? null,
@@ -110,7 +121,7 @@ export class ReadingSessionService {
       const errorClass = error instanceof Error ? error.constructor.name : 'UnknownError';
       const errorMessage = sanitizeLogValue(error instanceof Error ? error.message : 'unknown error');
       this.logger.warn(
-        `[${event}] [fail] fileId=${fileId} userId=${user.id} sessionId=${dto.sessionId} durationMs=${Date.now() - startedAtMs} errorClass=${errorClass} error="${errorMessage}" - reading session save failed`,
+        `[${event}] [fail] fileId=${fileId} userId=${user.id} sessionId=${logSessionId} durationMs=${Date.now() - startedAtMs} errorClass=${errorClass} error="${errorMessage}" - reading session save failed`,
       );
       throw error;
     }
@@ -189,7 +200,7 @@ export class ReadingSessionService {
         bookId,
         libraryId: context.libraryId,
         bookFileId,
-        sessionId: `manual:${randomUUID()}`,
+        sessionId: `manual:${dto.clientId ?? randomUUID()}`,
         startedAt,
         endedAt,
         durationSeconds,

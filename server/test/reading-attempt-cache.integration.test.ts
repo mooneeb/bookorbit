@@ -235,11 +235,23 @@ describe('Reading attempt cache integration', () => {
     expect(countCompletedBooks).toHaveBeenCalledOnce();
   });
 
-  it('invalidates committed history even when rebuilding its status projection fails', async () => {
+  it('keeps history and cached results unchanged when its projection transaction fails', async () => {
     await expectCount(0);
-    fake.repo.project.mockRejectedValueOnce(new Error('Projection failed'));
+    expect((await statistics.getActivityOverview(user, {})).goal.completedBooks).toBe(0);
+    const project = fake.repo.project.getMockImplementation()!;
+    fake.repo.project.mockImplementationOnce(async (tx, userId, bookId, projection) => {
+      await project(tx, userId, bookId, projection);
+      throw new Error('Projection failed');
+    });
     await expect(service.createHistorical(1, 10, { endedOn: '2026-01-15', outcome: 'completed' })).rejects.toThrow('Projection failed');
-    await expectCount(1);
+    expect(fake.rows).toHaveLength(0);
+    expect(fake.projections).toHaveLength(0);
+    expect(await fake.repo.findStatus(fake.transactionContext, 1, 10)).toBeNull();
+    expect(listener).not.toHaveBeenCalled();
+    await expectCount(0);
+    expect((await statistics.getActivityOverview(user, {})).goal.completedBooks).toBe(0);
+    expect(countCompletedBooks).toHaveBeenCalledOnce();
+    expect(module.get(UserStatisticsRepository).getActivityCompletionTimeline).toHaveBeenCalledOnce();
   });
 
   it.each(['bookorbit', 'kobo', 'koreader'] as const)('refreshes currently-reading immediately on a projection-only %s resume', async (origin) => {
@@ -419,8 +431,26 @@ describe('Reading attempt cache integration', () => {
     await expect(service.createHistorical(1, 10, { endedOn: '2026-01-15', outcome: 'completed' })).resolves.toMatchObject({ endedOn: '2026-01-15' });
     await expectCount(1);
     expect((await statistics.getActivityOverview(user, {})).goal.completedBooks).toBe(1);
-    fake.repo.project.mockRejectedValueOnce(new Error('Projection failed'));
+    const committed = await service.findOne(1, 10, fake.rows[0].id);
+    const projection = await fake.repo.findStatus(fake.transactionContext, 1, 10);
+    const projectionCount = fake.projections.length;
+    listener.mockClear();
+    const project = fake.repo.project.getMockImplementation()!;
+    fake.repo.project.mockImplementationOnce(async (tx, userId, bookId, projection) => {
+      await project(tx, userId, bookId, projection);
+      throw new Error('Projection failed');
+    });
     await expect(service.update(1, 10, fake.rows[0].id, { endedOn: '2025-12-15' })).rejects.toThrow('Projection failed');
+    expect(await service.findOne(1, 10, committed.id)).toEqual(committed);
+    expect(await fake.repo.findStatus(fake.transactionContext, 1, 10)).toEqual(projection);
+    expect(fake.projections).toHaveLength(projectionCount);
+    expect(listener).not.toHaveBeenCalled();
+    await expectCount(1);
+    expect((await statistics.getActivityOverview(user, {})).goal.completedBooks).toBe(1);
+    expect(countCompletedBooks).toHaveBeenCalledTimes(2);
+    expect(module.get(UserStatisticsRepository).getActivityCompletionTimeline).toHaveBeenCalledTimes(2);
+    await expect(service.update(1, 10, committed.id, { endedOn: '2025-12-15' })).resolves.toMatchObject({ endedOn: '2025-12-15' });
+    expect(listener).toHaveBeenCalledExactlyOnceWith({ userId: 1 });
     await expectCount(0);
     expect((await statistics.getActivityOverview(user, {})).goal.completedBooks).toBe(0);
     warn.mockRestore();
