@@ -121,18 +121,23 @@ struct EmailBookDeliveryView: View {
 
   init(
     api: BookOrbitAPI, user: AuthUser, bookID: Int, bookTitle: String, files: [BookDetailFile],
-    initialFileID: Int? = nil
+    initialFileID: Int? = nil, preparedModel: EmailBookDeliveryModel? = nil
   ) {
     self.bookTitle = bookTitle
-    self.files = files.filter {
+    self.files = Self.supportedFiles(files)
+    let fileID =
+      self.files.first(where: { $0.id == initialFileID })?.id ?? self.files.first?.id ?? 0
+    _model = State(
+      initialValue: preparedModel
+        ?? EmailBookDeliveryModel(api: api, user: user, bookID: bookID, fileID: fileID))
+  }
+
+  static func supportedFiles(_ files: [BookDetailFile]) -> [BookDetailFile] {
+    files.filter {
       ["content", "primary"].contains($0.role)
         && !["mp3", "m4a", "m4b", "aac", "ogg", "flac", "wav", "opus"].contains(
           ($0.format ?? "").lowercased())
     }
-    let fileID =
-      self.files.first(where: { $0.id == initialFileID })?.id ?? self.files.first?.id ?? 0
-    _model = State(
-      initialValue: EmailBookDeliveryModel(api: api, user: user, bookID: bookID, fileID: fileID))
   }
   var body: some View {
     NavigationStack {
@@ -186,7 +191,7 @@ struct EmailBookDeliveryView: View {
           Button("Done", action: dismiss.callAsFunction)
         }
       }
-      .task { await model.load() }
+      .task { if !model.loaded { await model.load() } }
       .task(id: model.queuedIDs) { await model.track() }
       .sheet(isPresented: $showingSettings, onDismiss: reload) {
         EmailSettingsView(api: model.api, user: model.user)

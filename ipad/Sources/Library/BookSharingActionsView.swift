@@ -8,11 +8,26 @@ struct BookSharingActionsView: View {
   @State private var user: AuthUser?
   @State private var userNamespace: String?
   @State private var isLoadingUser = true
+  @State private var emailPreparation: Task<Void, Never>?
+  @State private var emailPreparationID: UUID?
+  @State private var requestedEmail: Destination?
+  @State private var emailPreparationError: String?
 
   var body: some View {
     Section {
       if let user, user.id == userID, permitsSharing(user) {
         actions(user)
+          .disabled(emailPreparationID != nil)
+        if emailPreparationID != nil {
+          ProgressView(String(localized: "Preparing email delivery"))
+          Button(String(localized: "Cancel"), action: cancelEmailPreparation)
+            .accessibilityIdentifier("cancelEmailPreparation")
+        }
+        if let emailPreparationError {
+          Text(emailPreparationError).accessibilityIdentifier("emailPreparationError")
+          Button(String(localized: "Try again"), action: retryEmailPreparation)
+            .accessibilityIdentifier("retryEmailPreparation")
+        }
       } else if isLoadingUser {
         ProgressView(String(localized: "Loading sharing permissions"))
       } else {
@@ -20,11 +35,12 @@ struct BookSharingActionsView: View {
       }
     } header: {
       Text(String(localized: "Share and deliver"))
-        .task(id: userID) {
+        .task(id: "\(ObjectIdentifier(api)):\(userID)") {
           guard userID > 0,
             let authenticated = try? await api.authenticatedUser(), authenticated.id == userID,
             let namespace = try? await api.imageNamespace()
           else {
+            cancelEmailPreparation()
             user = nil
             userNamespace = nil
             selection = nil
@@ -32,13 +48,16 @@ struct BookSharingActionsView: View {
             return
           }
           guard user != authenticated || userNamespace != namespace else { return }
+          cancelEmailPreparation()
           selection = nil
           user = authenticated
           userNamespace = namespace
           isLoadingUser = false
         }
     }
-    .onChange(of: book.id) { selection = nil }
+    .onChange(of: book.id) { discardEmailPreparation() }
+    .onChange(of: userID) { discardEmailPreparation() }
+    .onChange(of: ObjectIdentifier(api)) { discardEmailPreparation() }
   }
 
   @ViewBuilder static func destinationView(
@@ -54,7 +73,7 @@ struct BookSharingActionsView: View {
     case .email(let fileID):
       EmailBookDeliveryView(
         api: api, user: user, bookID: book.id, bookTitle: book.title ?? "Book",
-        files: book.files, initialFileID: fileID)
+        files: book.files, initialFileID: fileID, preparedModel: selection.emailModel)
     case .hardcover:
       NativeDismissibleFeatureView(identifier: "hardcoverBookDone") {
         HardcoverBookView(api: api, bookID: book.id, title: book.title ?? "Book")
@@ -106,13 +125,61 @@ struct BookSharingActionsView: View {
 
   private func select(_ destination: Destination, user: AuthUser) {
     guard user.id == userID else { return }
-    selection = Selection(user: user, bookID: book.id, destination: destination)
+    if case .email(let requestedFileID) = destination {
+      guard user.hasPermission(.emailSend), emailPreparationID == nil,
+        let namespace = userNamespace
+      else { return }
+      let files = EmailBookDeliveryView.supportedFiles(book.files)
+      let fileID = files.first(where: { $0.id == requestedFileID })?.id ?? files.first?.id ?? 0
+      let model = EmailBookDeliveryModel(api: api, user: user, bookID: book.id, fileID: fileID)
+      let attempt = UUID()
+      emailPreparationID = attempt
+      requestedEmail = destination
+      emailPreparationError = nil
+      emailPreparation = Task {
+        await model.load()
+        guard !Task.isCancelled, emailPreparationID == attempt else { return }
+        let authenticated = try? await api.authenticatedUser()
+        let currentNamespace = try? await api.imageNamespace()
+        guard !Task.isCancelled, emailPreparationID == attempt else { return }
+        emailPreparationID = nil
+        emailPreparation = nil
+        guard authenticated == user, currentNamespace == namespace else { return }
+        guard model.loaded else {
+          emailPreparationError = model.error ?? "Could not prepare email delivery."
+          return
+        }
+        selection = Selection(
+          user: user, bookID: book.id, destination: destination, emailModel: model)
+      }
+    } else {
+      selection = Selection(user: user, bookID: book.id, destination: destination)
+    }
+  }
+
+  private func cancelEmailPreparation() {
+    emailPreparation?.cancel()
+    emailPreparation = nil
+    emailPreparationID = nil
+    emailPreparationError = nil
+  }
+
+  private func discardEmailPreparation() {
+    cancelEmailPreparation()
+    requestedEmail = nil
+    selection = nil
+  }
+
+  private func retryEmailPreparation() {
+    guard let requestedEmail, let user, user.id == userID else { return }
+    select(requestedEmail, user: user)
   }
 
   struct Selection: Identifiable {
     let user: AuthUser
     let bookID: Int
     let destination: Destination
+    var emailModel: EmailBookDeliveryModel? = nil
 
     var id: String { "\(user.id).\(bookID).\(destination.id)" }
   }
