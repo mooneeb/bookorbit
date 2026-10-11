@@ -5,7 +5,23 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { assertE03VisualGate, compareE03Visual, missingE03Coverage } from "./e03-visual.mjs";
+import { assertE03VisualGate, compareE03Visual, e03CaptureGeometryIssue, missingE03Coverage } from "./e03-visual.mjs";
+
+test("E03 capture geometry rejects portrait landscape labels and unrecorded narrow bounds", () => {
+  assert.equal(e03CaptureGeometryIssue("pro13-portrait-light", "native", [2064, 2752]), null);
+  assert.match(e03CaptureGeometryIssue("pro11-landscape-dark", "native", [1668, 2388]), /orientation is portrait/);
+  assert.match(e03CaptureGeometryIssue("pro11-landscape-dark", "native", [2388, 1000]), /aspect ratio/);
+  assert.match(e03CaptureGeometryIssue("pro13-narrow-dark", "native", [1200, 2048]), /recorded actual window bounds/);
+  assert.equal(e03CaptureGeometryIssue("pro13-narrow-dark", "native", [1200, 2048], { windowBounds: { width: 600, height: 1024 } }), null);
+  assert.match(e03CaptureGeometryIssue("pro11-landscape-dark", "web", [834, 1194]), /browser bounds/);
+  const manifest = { matrixCoverage: [{ profile: "pro11-landscape-dark", states: [{ surface: "native", name: "IPAD-E03-A01-reader" }] }] };
+  assert.equal(
+    missingE03Coverage(manifest, [
+      { surface: "native", profile: "pro11-landscape-dark", testId: "IPAD-E03-A01", state: "reader", geometryVerified: false },
+    ]).length,
+    1,
+  );
+});
 
 const require = createRequire(new URL("../../server/package.json", import.meta.url));
 const sharp = require("sharp");

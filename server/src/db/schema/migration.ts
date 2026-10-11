@@ -207,6 +207,60 @@ export const migrationPlanBookMatches = pgTable(
   ],
 );
 
+export const migrationPlanSourceBooks = pgTable(
+  'migration_plan_source_books',
+  {
+    id: serial('id').primaryKey(),
+    artifactId: integer('artifact_id').notNull(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    sourceBookId: text('source_book_id').notNull(),
+    title: text('title'),
+    author: text('author'),
+    filePath: text('file_path'),
+    targetBookId: integer('target_book_id'),
+    strategy: varchar('strategy', { length: 32 }),
+    unresolvedReason: text('unresolved_reason'),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.artifactId, t.userId],
+      foreignColumns: [migrationPlanArtifacts.id, migrationPlanArtifacts.createdByUserId],
+      name: 'migration_plan_source_books_artifact_owner_fk',
+    }).onDelete('cascade'),
+    uniqueIndex('migration_plan_source_books_source_uidx').on(t.artifactId, t.userId, t.sourceBookId),
+    index('migration_plan_source_books_target_idx').on(t.artifactId, t.userId, t.targetBookId),
+  ],
+);
+
+export const migrationPlanPreviewCounts = pgTable(
+  'migration_plan_preview_counts',
+  {
+    id: serial('id').primaryKey(),
+    artifactId: integer('artifact_id').notNull(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    sourceBookId: text('source_book_id').notNull(),
+    sourceUserId: text('source_user_id').notNull(),
+    statuses: integer('statuses').notNull().default(0),
+    fileProgress: integer('file_progress').notNull().default(0),
+    readingSessions: integer('reading_sessions').notNull().default(0),
+    bookmarks: integer('bookmarks').notNull().default(0),
+    annotations: integer('annotations').notNull().default(0),
+    shelves: integer('shelves').notNull().default(0),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.artifactId, t.userId],
+      foreignColumns: [migrationPlanArtifacts.id, migrationPlanArtifacts.createdByUserId],
+      name: 'migration_plan_preview_counts_artifact_owner_fk',
+    }).onDelete('cascade'),
+    uniqueIndex('migration_plan_preview_counts_source_uidx').on(t.artifactId, t.userId, t.sourceBookId, t.sourceUserId),
+  ],
+);
+
 export const migrationRunBatchCheckpoints = pgTable(
   'migration_run_batch_checkpoints',
   {

@@ -108,6 +108,51 @@ struct MaintenanceView: View {
         .toolbar { Button("Cancel") { model.repair = nil } }
       }
     }
+    .sheet(
+      item: Binding(
+        get: { model.cleanupCategory.map { CoverCleanupSelection(category: $0) } },
+        set: { if $0 == nil { model.cleanupCategory = nil } }
+      )
+    ) { selection in
+      NavigationStack {
+        Form {
+          Section("Cleanup preview") {
+            if selection.category == "broken-covers" {
+              Text("Clear broken cover references for \(model.coverCleanupCount) listed books.")
+              Text("Book records and reading data will be preserved.")
+            } else {
+              Text(
+                "Remove \(model.coverCleanupCount) listed cover folders belonging to deleted books."
+              )
+              Text("The cover files in these folders will be permanently deleted.")
+            }
+            Text(
+              "Only the reviewed entries will be sent. The server checks each entry again before cleanup."
+            )
+          }
+          if let error = model.error {
+            Section("Cleanup needs attention") {
+              Text(error).foregroundStyle(.red)
+                .accessibilityIdentifier("maintenanceCleanupError")
+              Text("Retry this reviewed pass, or cancel and review cover cleanup again.")
+            }
+          }
+          if model.isBusy {
+            ProgressView("Applying cover cleanup")
+            Button("Stop", role: .cancel, action: model.cancel)
+          }
+          Button("Apply cover cleanup", role: .destructive, action: model.applyCoverCleanup)
+            .disabled(model.isBusy || !model.canApplyCoverCleanup)
+            .accessibilityIdentifier("maintenanceApplyCleanup")
+        }
+        .navigationTitle("Review cover cleanup")
+        .toolbar {
+          Button("Cancel") { model.cleanupCategory = nil }
+            .disabled(model.isBusy)
+        }
+        .interactiveDismissDisabled(model.isBusy)
+      }
+    }
   }
 
   private var duplicateSections: some View {
@@ -230,12 +275,15 @@ struct MaintenanceView: View {
         }
       }
       Section("Cover cleanup preview") {
+        Text(
+          "Run Check covers first. Review up to 40 entries per category, then review again after cleanup for the next pass."
+        )
         Button("Review cover cleanup", action: model.reviewCoverCleanup).disabled(model.isBusy)
           .accessibilityIdentifier("maintenanceReviewCleanup")
         ForEach(model.brokenCovers, id: \.id) { cover in Text(cover.title ?? "Untitled") }
         if model.canCleanBrokenCovers, !model.brokenCovers.isEmpty {
           Button("Clear listed broken cover references", role: .destructive) {
-            model.cleanupCategory = "broken-covers"
+            model.previewCoverCleanup(category: "broken-covers")
           }
           .disabled(model.isBusy).accessibilityIdentifier("maintenanceCleanBrokenCovers")
         }
@@ -244,7 +292,7 @@ struct MaintenanceView: View {
         }
         if model.canCleanOrphanedCovers, !model.orphanedCovers.isEmpty {
           Button("Remove listed orphaned cover folders", role: .destructive) {
-            model.cleanupCategory = "orphaned-covers"
+            model.previewCoverCleanup(category: "orphaned-covers")
           }
           .disabled(model.isBusy).accessibilityIdentifier("maintenanceCleanOrphanedCovers")
         }
@@ -270,4 +318,9 @@ private struct MergeSelection: Identifiable {
 private struct RepairSelection: Identifiable {
   let preview: MissingFileRepairPreview
   var id: Int { preview.fileId }
+}
+
+private struct CoverCleanupSelection: Identifiable {
+  let category: String
+  var id: String { category }
 }

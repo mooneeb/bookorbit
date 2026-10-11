@@ -198,7 +198,7 @@ export class CustomMetadataService {
     bookId: number,
     libraryId: number,
     values: CustomMetadataValueDto[],
-    executor?: Parameters<CustomMetadataRepository['upsertValue']>[3],
+    executor?: Parameters<CustomMetadataRepository['writeValuesForBooks']>[2],
   ) {
     return this.updateManyBookValues([{ id: bookId, libraryId }], values, executor);
   }
@@ -206,7 +206,7 @@ export class CustomMetadataService {
   async updateManyBookValues(
     books: ReadonlyArray<{ id: number; libraryId: number }>,
     values: CustomMetadataValueDto[],
-    executor?: Parameters<CustomMetadataRepository['upsertValue']>[3],
+    executor?: Parameters<CustomMetadataRepository['writeValuesForBooks']>[2],
   ) {
     if (values.length === 0) return;
     for (const libraryId of new Set(books.map((book) => book.libraryId))) {
@@ -215,17 +215,14 @@ export class CustomMetadataService {
       const prepared = values.map((item) => {
         const field = fieldById.get(item.fieldId);
         if (!field) throw new BadRequestException(`Custom metadata field ${item.fieldId} is not enabled for this book`);
-        return { field, normalized: normalizeValue(field.type, item.value) };
+        const normalized = normalizeValue(field.type, item.value);
+        return { fieldId: field.id, value: normalized === null ? null : columnsForValue(field.type, normalized) };
       });
-      for (const book of books.filter((book) => book.libraryId === libraryId)) {
-        for (const { field, normalized } of prepared) {
-          if (normalized === null) {
-            await this.repository.deleteValue(book.id, field.id, executor);
-          } else {
-            await this.repository.upsertValue(book.id, field.id, columnsForValue(field.type, normalized), executor);
-          }
-        }
-      }
+      await this.repository.writeValuesForBooks(
+        books.filter((book) => book.libraryId === libraryId).map((book) => book.id),
+        prepared,
+        executor,
+      );
     }
   }
 

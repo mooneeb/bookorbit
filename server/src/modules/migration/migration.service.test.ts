@@ -16,6 +16,7 @@ const noopEncryption = {
 
 function createService(overrides: Partial<Record<string, unknown>> = {}): MigrationService {
   const repo = {
+    planningStore: vi.fn().mockReturnValue({}),
     findSourceById: vi.fn(() =>
       Promise.resolve({
         id: 1,

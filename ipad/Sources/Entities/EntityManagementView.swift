@@ -84,6 +84,18 @@ struct EntityManagementView: View {
       if let outcome = model.bulkOutcome {
         Text(outcome).padding().accessibilityIdentifier("entityBulkOutcome")
       }
+      if !model.pendingFileOperations.isEmpty || model.fileUpdateMessage != nil {
+        VStack(alignment: .leading, spacing: 8) {
+          if !model.pendingFileOperations.isEmpty {
+            Text("Entity merge file updates are pending. Database changes are saved.")
+            Button("Retry file updates") { Task { await model.retryFileUpdates() } }
+              .disabled(model.retryingFileUpdates)
+              .accessibilityIdentifier("entityRetryFileUpdates")
+          }
+          if let message = model.fileUpdateMessage { Text(message).font(.footnote) }
+        }
+        .padding()
+      }
       List(model.items) { item in
         HStack {
           Button {
@@ -165,6 +177,7 @@ struct EntityManagementView: View {
     }
     .disabled(model.busy)
     .onChange(of: model.kind) {
+      model.clearFileUpdateRecovery()
       model.search = ""
       model.selection = []
       model.bulkOutcome = nil

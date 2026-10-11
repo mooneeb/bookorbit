@@ -106,11 +106,13 @@ export function sanitizePlanPreview(raw: unknown): unknown {
 function sanitizeDuplicatePreview(raw: unknown): unknown {
   const row = asRecord(raw);
   const sourceBookIds = Array.isArray(row.sourceBookIds) ? row.sourceBookIds : [];
+  const storedTotal = asRecord(row.candidatePagination).total;
+  const total = typeof storedTotal === 'number' ? storedTotal : sourceBookIds.length;
   const preview = { ...row };
   for (const field of ['sourceBookIds', 'sourceCandidates', 'matches', 'strategies']) {
     if (Array.isArray(row[field])) preview[field] = row[field].slice(0, 40);
   }
-  return { ...preview, candidatePagination: { total: sourceBookIds.length, limit: 40, nextOffset: sourceBookIds.length > 40 ? 40 : null } };
+  return { ...preview, candidatePagination: { total, limit: 40, nextOffset: total > 40 ? 40 : null } };
 }
 
 export function sanitizeRunForApi(run: MigrationRun): ApiMigrationRun {

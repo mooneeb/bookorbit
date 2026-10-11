@@ -241,6 +241,41 @@ try {
       };
       await save();
     }
+    if (process.argv.includes("--apply")) {
+      for (const fixture of checkpoint.fixtures) {
+        if (fixture.appliedRunId) continue;
+        const config = fixture.config;
+        const source = await request("migration/sources", token, {
+          type: config.type,
+          name: `${config.name} browser preparation`,
+          connectionConfig: config.connectionConfig,
+        });
+        const profile = await request("migration/profiles", token, {
+          sourceId: source.id,
+          name: `${config.name} browser preparation`,
+          userMappings: [{ sourceUserId: config.sourceUserId, targetUserId: owner.user.id }],
+          pathMappings: [{ sourcePrefix: config.sourcePrefix, targetPrefix: config.targetPrefix }],
+        });
+        const plan = await request("migration/plans/dry-run", token, { profileId: profile.id });
+        assert.equal(plan.summary.matchedBooks, config.expectedTotal);
+        const run = await request("migration/runs/live", token, { planArtifactId: plan.id });
+        const deadline = Date.now() + 180_000;
+        let completed = false;
+        while (Date.now() < deadline) {
+          const progress = await request(`migration/runs/${run.id}/progress`, token);
+          assert.notEqual(progress.run.state, "failed", progress.run.errorMessage);
+          if (progress.run.state === "completed") {
+            assert.equal(progress.totals.failed, 0);
+            completed = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1_000));
+        }
+        assert.ok(completed, `Browser preparation migration ${run.id} did not complete`);
+        fixture.appliedRunId = run.id;
+        await save();
+      }
+    }
     const configs = checkpoint.fixtures.map((fixture) => fixture.config);
     assert.equal(configs.length, 5);
     assert.ok(configs.every(Boolean));

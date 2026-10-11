@@ -39,7 +39,46 @@ struct MigrationView: View {
                 ForEach($model.duplicates) { $duplicate in
                   Picker("Source for book \(duplicate.id)", selection: $duplicate.selected) {
                     Text("Choose source").tag("")
+                    if !duplicate.selected.isEmpty,
+                      !duplicate.candidates.contains(duplicate.selected)
+                    {
+                      Text("Selected source \(duplicate.selected)").tag(duplicate.selected)
+                    }
                     ForEach(duplicate.candidates, id: \.self) { Text($0).tag($0) }
+                  }.disabled(model.busy)
+                  Text(
+                    pageRange(
+                      offset: duplicate.offset, count: duplicate.candidates.count,
+                      total: duplicate.total)
+                  )
+                  .accessibilityIdentifier("migrationCandidateRange\(duplicate.id)")
+                  if duplicate.loading { ProgressView("Loading source candidates") }
+                  if let error = duplicate.error {
+                    Text(error).foregroundStyle(.secondary)
+                    Button("Retry source candidates") {
+                      Task {
+                        await model.loadCandidates(
+                          targetBookID: duplicate.id, offset: duplicate.requestedOffset)
+                      }
+                    }.disabled(model.busy)
+                  }
+                  HStack {
+                    Button("Previous sources") {
+                      Task {
+                        await model.loadCandidates(
+                          targetBookID: duplicate.id,
+                          offset: max(0, duplicate.offset - duplicate.limit))
+                      }
+                    }.disabled(duplicate.offset == 0 || model.busy)
+                      .accessibilityIdentifier("migrationPreviousCandidates\(duplicate.id)")
+                    Button("Next sources") {
+                      if let offset = duplicate.nextOffset {
+                        Task {
+                          await model.loadCandidates(targetBookID: duplicate.id, offset: offset)
+                        }
+                      }
+                    }.disabled(duplicate.nextOffset == nil || model.busy)
+                      .accessibilityIdentifier("migrationNextCandidates\(duplicate.id)")
                   }
                 }
                 Button("Resolve duplicate matches", action: resolve).accessibilityIdentifier(
@@ -124,32 +163,68 @@ struct MigrationView: View {
         "Imported \(report.totals.imported), skipped \(report.totals.skipped), unresolved \(report.totals.unresolved), failed \(report.totals.failed)"
       )
       .accessibilityIdentifier("migrationReportSummary")
-      ForEach(Array(report.details.matchedBooks.enumerated()), id: \.offset) { _, match in
-        NavigationLink {
-          BookDetailView(
-            api: model.api, bookID: match.targetBookId,
-            canEditMetadata: model.user.hasPermission(.libraryEditMetadata),
-            canRead: model.user.hasPermission(.libraryDownload), userID: model.user.id)
-        } label: {
-          VStack(alignment: .leading) {
-            Text(match.targetTitle ?? "Book \(match.targetBookId)")
-            Text("Matched by \(match.strategy)").font(.caption).foregroundStyle(.secondary)
-          }
-        }.accessibilityIdentifier("migrationBook\(match.targetBookId)")
+      Picker("Report section", selection: $model.reportKind) {
+        Text("Matched books").tag("matched")
+        Text("Unresolved books").tag("unresolved")
+        Text("Duplicate matches").tag("duplicate")
+        Text("Users").tag("users")
+      }.disabled(model.busy || model.reportLoading)
+        .accessibilityIdentifier("migrationReportKind")
+        .onChange(of: model.reportKind, reportKindChanged)
+      if model.reportLoading { ProgressView("Loading report details") }
+      if let error = model.reportError {
+        Text(error).foregroundStyle(.secondary)
+        Button("Retry report details", action: reloadReport).disabled(model.busy)
       }
-      ForEach(Array(report.details.unresolvedBooks.enumerated()), id: \.offset) { _, row in
-        VStack(alignment: .leading) {
-          Text(row.title ?? row.sourceBookId)
-          Text(row.reason).font(.caption).foregroundStyle(.secondary)
+      if let page = model.reportPage, page.kind == model.reportKind, page.runId == report.run.id {
+        LabeledContent(
+          "Report items shown",
+          value: pageRange(offset: page.offset, count: page.items.count, total: page.total)
+        )
+        .accessibilityIdentifier("migrationReportRange")
+        ForEach(Array(page.items.enumerated()), id: \.offset) { _, row in
+          if page.kind == "matched", case .number(let target) = row["targetBookId"] {
+            NavigationLink {
+              BookDetailView(
+                api: model.api, bookID: Int(target),
+                canEditMetadata: model.user.hasPermission(.libraryEditMetadata),
+                canRead: model.user.hasPermission(.libraryDownload), userID: model.user.id)
+            } label: {
+              reportRow(row)
+            }.accessibilityIdentifier("migrationBook\(Int(target))")
+          } else {
+            reportRow(row).accessibilityIdentifier("migrationReportItem")
+          }
+        }
+        HStack {
+          Button("Previous report items", action: previousReport).disabled(
+            page.offset == 0 || model.busy || model.reportLoading
+          )
+          .accessibilityIdentifier("migrationPreviousReport")
+          Button("Next report items", action: nextReport).disabled(
+            page.nextOffset == nil || model.busy || model.reportLoading
+          )
+          .accessibilityIdentifier("migrationNextReport")
         }
       }
-      DisclosureGroup("Browse all matched books") { matchPreview }
     }.accessibilityIdentifier("migrationReport")
   }
 
   @ViewBuilder
   private var matchPreview: some View {
-    if let page = model.matchPage {
+    Picker("Preview section", selection: $model.previewKind) {
+      Text("Matched books").tag("matched")
+      Text("Unresolved books").tag("unresolved")
+      Text("Duplicate matches").tag("duplicate")
+    }.disabled(model.busy)
+      .accessibilityIdentifier("migrationPreviewKind")
+      .onChange(of: model.previewKind, previewKindChanged)
+    if model.matchLoading { ProgressView("Loading preview") }
+    if let error = model.matchError {
+      Text(error).foregroundStyle(.secondary)
+      Button("Retry preview", action: reloadMatches).disabled(model.busy)
+    }
+    if let page = model.matchPage, page.kind == model.previewKind {
       LabeledContent("Matches shown") {
         Text(
           page.items.isEmpty
@@ -282,7 +357,44 @@ struct MigrationView: View {
     if case .string(let source) = row["sourceBookId"] { parts.append("Source \(source)") }
     if case .number(let target) = row["targetBookId"] { parts.append("Book \(Int(target))") }
     if case .string(let strategy) = row["strategy"] { parts.append(strategy) }
+    if case .string(let reason) = row["reason"] { parts.append(reason) }
     return parts.joined(separator: ": ")
+  }
+  private func pageRange(offset: Int, count: Int, total: Int) -> String {
+    count == 0 ? "0 of \(total)" : "\(offset + 1)-\(offset + count) of \(total)"
+  }
+  private func reportString(_ key: String, in row: [String: JSONValue]) -> String? {
+    if case .string(let value) = row[key] { return value }
+    return nil
+  }
+  private func reportRow(_ row: [String: JSONValue]) -> some View {
+    VStack(alignment: .leading) {
+      Text(
+        reportString("targetTitle", in: row) ?? reportString("title", in: row)
+          ?? reportString("username", in: row) ?? matchDescription(row))
+      if let reason = reportString("reason", in: row) {
+        Text(reason).font(.caption).foregroundStyle(.secondary)
+      } else if let strategy = reportString("strategy", in: row) {
+        Text("Matched by \(strategy)").font(.caption).foregroundStyle(.secondary)
+      }
+    }
+  }
+  private func previewKindChanged() { Task { await model.loadMatches() } }
+  private func reportKindChanged() { Task { await model.loadReport() } }
+  private func reloadMatches() {
+    Task { await model.loadMatches(offset: model.matchRequestedOffset) }
+  }
+  private func reloadReport() {
+    Task { await model.loadReport(offset: model.reportRequestedOffset) }
+  }
+  private func previousReport() {
+    Task {
+      await model.loadReport(
+        offset: max(0, (model.reportPage?.offset ?? 0) - (model.reportPage?.limit ?? 40)))
+    }
+  }
+  private func nextReport() {
+    if let offset = model.reportPage?.nextOffset { Task { await model.loadReport(offset: offset) } }
   }
   private func nextMatches() {
     if let offset = model.matchPage?.nextOffset { Task { await model.loadMatches(offset: offset) } }

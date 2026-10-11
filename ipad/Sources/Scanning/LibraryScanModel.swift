@@ -23,7 +23,6 @@ final class LibraryScanModel {
   var cron = ""
   var allowedFormats = ""
   var exclusions = ""
-  var organizationMode = "book_per_file"
   var bookSearch = ""
 
   init(api: BookOrbitAPI, libraryID: Int, userID: Int) {
@@ -38,6 +37,13 @@ final class LibraryScanModel {
       !$0.isEmpty
     }
   }
+  var organizationModeLabel: String {
+    switch configuration?.organizationMode {
+    case "book_per_file": "One book per file"
+    case "book_per_folder": "One book per folder"
+    default: configuration?.organizationMode ?? ""
+    }
+  }
   var canStart: Bool {
     !isBusy && statusVerified && retryBaseline == nil && configurationScanBaseline == nil
       && configuration != nil
@@ -50,7 +56,6 @@ final class LibraryScanModel {
       || cron != (configuration.autoScanCronExpression ?? "")
       || values(allowedFormats) != configuration.allowedFormats
       || values(exclusions) != configuration.excludePatterns
-      || organizationMode != configuration.organizationMode
   }
   var validConfiguration: Bool {
     !folderPaths.isEmpty && folderPaths.count <= 20
@@ -130,7 +135,9 @@ final class LibraryScanModel {
   }
 
   func save() async {
-    guard !isBusy, validConfiguration, retryBaseline == nil, progress?.status != "running" else {
+    guard let configuration, !isBusy, validConfiguration, retryBaseline == nil,
+      progress?.status != "running"
+    else {
       return
     }
     isBusy = true
@@ -141,8 +148,8 @@ final class LibraryScanModel {
         request: ScanConfigurationRequest(
           folders: folderPaths, watch: watch, autoScanCronExpression: cron.isEmpty ? nil : cron,
           allowedFormats: values(allowedFormats), excludePatterns: values(exclusions),
-          organizationMode: organizationMode))
-      configuration = result
+          organizationMode: configuration.organizationMode))
+      self.configuration = result
       apply(result)
       preview = nil
       configurationScanBaseline = history.first?.id ?? 0
@@ -223,6 +230,5 @@ final class LibraryScanModel {
     cron = value.autoScanCronExpression ?? ""
     allowedFormats = value.allowedFormats.joined(separator: "\n")
     exclusions = value.excludePatterns.joined(separator: "\n")
-    organizationMode = value.organizationMode
   }
 }

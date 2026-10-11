@@ -10,6 +10,7 @@ import type {
   DuplicateScanResponse,
   DuplicateScanStatus,
   EntityInfo,
+  EntityFileWriteRecovery,
   EntityType,
   MergeResult,
   RenameResult,
@@ -183,5 +184,17 @@ export async function refreshDuplicates(entityType: EntityType, params?: { minSi
 export async function getEntityInfo(entityType: EntityType, entityId: number | string): Promise<EntityInfo> {
   const res = await api(`${BASE}/${entityType}/info/${entityId}`)
   if (!res.ok) throw new Error(`Failed to get ${entityType} info`)
+  return res.json()
+}
+
+export async function listFileWriteRecovery(entityType: EntityType): Promise<{ operationId: string }[]> {
+  const res = await api(`${BASE}/${entityType}/file-updates`)
+  if (!res.ok) throw new Error('Failed to load pending file updates')
+  return res.json()
+}
+
+export async function retryFileWrites(entityType: EntityType, operationId: string): Promise<EntityFileWriteRecovery> {
+  const res = await api(`${BASE}/${entityType}/file-updates/${operationId}/retry`, { method: 'POST' })
+  if (!res.ok) throw new Error('Failed to retry file updates')
   return res.json()
 }

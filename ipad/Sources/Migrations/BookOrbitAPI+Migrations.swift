@@ -45,4 +45,20 @@ extension BookOrbitAPI {
       "migration/runs/\(runID)/report", byteLimit: 8 * 1024 * 1024, session: session,
       expectedStatus: 200)
   }
+
+  func migrationCandidates(planID: Int, targetBookID: Int, offset: Int, session: UUID) async throws
+    -> MigrationDuplicateCandidatePageApi
+  {
+    try await boundedJSON(
+      "migration/plans/\(planID)/duplicates/\(targetBookID)/candidates?offset=\(offset)&limit=40",
+      session: session, expectedStatus: 200)
+  }
+
+  func migrationReportPage(runID: Int, kind: String, offset: Int, session: UUID) async throws
+    -> MigrationReportPageApi
+  {
+    try await boundedJSON(
+      "migration/runs/\(runID)/report/details?kind=\(kind)&offset=\(offset)&limit=40",
+      session: session, expectedStatus: 200)
+  }
 }

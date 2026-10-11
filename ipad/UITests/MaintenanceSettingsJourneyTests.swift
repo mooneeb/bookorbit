@@ -53,6 +53,7 @@ final class MaintenanceSettingsJourneyTests: XCTestCase {
     XCTAssertEqual(XCTWaiter.wait(for: [completed], timeout: 120), .completed)
     capture("IPAD-E03-A05-achievement-outcome")
     app.terminate()
+    E03ProfileSupport.configure(app)
     app.launch()
     XCTAssertTrue(app.buttons["maintenanceSettingsEntry"].waitForExistence(timeout: 30))
     app.buttons["maintenanceSettingsEntry"].tap()
@@ -88,9 +89,9 @@ final class MaintenanceSettingsJourneyTests: XCTestCase {
 
   @MainActor
   private func signIn(username: String) -> XCUIApplication {
-    XCUIDevice.shared.orientation = .portrait
     let app = XCUIApplication()
     app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+    E03ProfileSupport.configure(app)
     app.launch()
     if !app.textFields["serverURL"].waitForExistence(timeout: 5) {
       if app.buttons["signOut"].exists { app.buttons["signOut"].tap() }
@@ -122,9 +123,6 @@ final class MaintenanceSettingsJourneyTests: XCTestCase {
 
   @MainActor
   private func capture(_ name: String) {
-    let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-    attachment.name = name
-    attachment.lifetime = .keepAlways
-    add(attachment)
+    E03ProfileSupport.capture(name, test: self)
   }
 }

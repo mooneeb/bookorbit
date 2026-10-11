@@ -16,6 +16,26 @@ export async function compareE03Visual(options) {
   return compareReviewedVisual({ baselineRoot, ...options });
 }
 
+export function e03CaptureGeometryIssue(profile, surface, [width, height], metadata = {}) {
+  const config = annotationProfile(profile);
+  if (!(width > 0 && height > 0)) return "Captured image bounds are missing";
+  if (surface === "web")
+    return width === config.viewport.width && height === config.viewport.height ? null : "Captured browser bounds differ from the requested viewport";
+  const bounds = metadata.windowBounds;
+  if (config.window === "narrow" && !(bounds?.width > 0 && bounds?.height > 0))
+    return "A narrow native profile requires recorded actual window bounds";
+  const actual = bounds ?? { width, height };
+  const orientation = width > height ? "landscape" : width < height ? "portrait" : "square";
+  if (config.window === "full" && orientation !== config.orientation)
+    return `Captured native orientation is ${orientation}; requested ${config.orientation}`;
+  const requestedRatio = config.viewport.width / config.viewport.height;
+  if (Math.abs(actual.width / actual.height / requestedRatio - 1) > 0.02)
+    return "Captured native window aspect ratio differs from the requested bounds";
+  if (bounds && Math.abs(width / height / (bounds.width / bounds.height) - 1) > 0.02)
+    return "Captured image aspect ratio differs from recorded native window bounds";
+  return null;
+}
+
 export function assertE03VisualGate(reports) {
   assert.ok(reports.length > 0, "E03 visual gate requires captured meaningful states");
   const blocked = reports.filter((report) => report.status !== "passed");
@@ -50,11 +70,19 @@ async function compareCaptures(captures, outputDir) {
       profile: capture.profile,
       metadata: capture,
     });
+    const geometryIssue = e03CaptureGeometryIssue(capture.profile, capture.surface, report.actualDimensions, capture);
+    capture.geometryVerified = !geometryIssue;
+    capture.actualOrientation = report.actualDimensions[0] > report.actualDimensions[1] ? "landscape" : "portrait";
+    if (geometryIssue) {
+      report.status = "failed-profile-geometry";
+      report.reason = geometryIssue;
+    }
     if (capture.inspection?.sha256 && capture.inspection.sha256 !== report.actualSha256) {
       report.status = "failed-inspection-checksum";
       report.reason = "The image changed after recorded agent inspection";
     }
-    if (capture.evidenceOnly && report.status !== "failed-inspection-checksum") report.status = "evidence-only";
+    if (capture.evidenceOnly && !geometryIssue && report.status !== "failed-inspection-checksum") report.status = "evidence-only";
+    await writeFile(join(dirname(report.actual), `${capture.testId}-${capture.state}-review.json`), `${JSON.stringify(report, null, 2)}\n`);
     reports.push(report);
   }
   return reports;
@@ -157,6 +185,7 @@ export function missingE03Coverage(manifest, captures) {
         !captures.some(
           (capture) =>
             !capture.evidenceOnly &&
+            capture.geometryVerified !== false &&
             capture.surface === state.surface &&
             capture.profile === check.profile &&
             matchesScreenshot(state.name, capture.screenshotName ?? `${capture.testId}-${capture.state}`),
@@ -183,7 +212,7 @@ async function writeGallery(report, outputDir) {
 <h2>${escapeHTML(entry.testId)}: ${escapeHTML(entry.state)}</h2>
 <p><strong>${escapeHTML(entry.status)}</strong> | ${escapeHTML(entry.surface)} | ${escapeHTML(config.name)}</p>
 <p>${escapeHTML(capture.testIdentifier ?? capture.testTitle ?? "Test identity not recorded")}</p>
-<p>${escapeHTML(JSON.stringify({ viewport: capture.viewport, actualPixels: entry.actualDimensions, device: capture.deviceName, orientation: config.orientation, window: config.window, theme: config.colorScheme, textSize: config.dynamicType, reduceMotion: config.reducedMotion }))}</p>
+<p>${escapeHTML(JSON.stringify({ viewport: capture.viewport, actualPixels: entry.actualDimensions, actualWindowBounds: capture.windowBounds, device: capture.deviceName, requestedOrientation: config.orientation, actualOrientation: capture.actualOrientation, geometryVerified: capture.geometryVerified, window: config.window, theme: config.colorScheme, textSize: config.dynamicType, reduceMotion: config.reducedMotion }))}</p>
 <p>Configuration evidence: ${escapeHTML(capture.profileVerification ?? "not recorded")}</p>
 <p>Runtime pins: ${escapeHTML(JSON.stringify(capture.runtimePins ?? "not recorded"))}</p>
 ${capture.functionalResult ? `<p>Functional summary: <a href="${escapeHTML(link(resolve(root, capture.functionalResult.summaryPath)))}">${escapeHTML(JSON.stringify(capture.functionalResult))}</a></p>` : ""}

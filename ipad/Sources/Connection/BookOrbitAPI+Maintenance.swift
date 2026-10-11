@@ -53,10 +53,10 @@ extension BookOrbitAPI {
   }
 
   func renameBooks(
-    libraryID: Int, bookIDs: [Int],
+    libraryID: Int, bookIDs: [Int], previewToken: String,
     onEvent: @Sendable @escaping (BulkRenameProgressEvent) async throws -> Void
   ) async throws {
-    let request = BulkRenameExecuteRequest(includeBookIds: bookIDs)
+    let request = BulkRenameExecuteRequest(previewToken: previewToken, includeBookIds: bookIDs)
     try await eventStream(
       "libraries/\(libraryID)/bulk-rename/execute",
       body: JSONEncoder().encode(request), onEvent: onEvent)

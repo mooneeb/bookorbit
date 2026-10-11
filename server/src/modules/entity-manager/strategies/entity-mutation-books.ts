@@ -8,7 +8,7 @@ import { and, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import * as schema from '../../../db/schema';
-import { books } from '../../../db/schema';
+import { books, entityFileWrites, entityFileWriteBooks } from '../../../db/schema';
 import { buildEntityBookScopeClauses } from './entity-book-scope';
 import type { EntityBookScope, EntityMutationBooks, StrategyAffectedBooks } from './entity-strategy.interface';
 
@@ -48,6 +48,15 @@ export async function mutateEntityBooks(
       const affectedBookCount = count.rows[0]?.count ?? 0;
       if (!input.onBooksChanged && affectedBookCount > PAGE_SIZE)
         throw new InternalServerErrorException('Bulk entity edits require a book change processor');
+      if (input.fileWriteRecovery) {
+        await tx.insert(entityFileWrites).values({
+          id: input.fileWriteRecovery.operationId,
+          userId: input.fileWriteRecovery.userId,
+          entityType: input.fileWriteRecovery.entityType,
+        });
+        await tx.execute(sql`INSERT INTO ${entityFileWriteBooks} (operation_id, book_id)
+          SELECT ${input.fileWriteRecovery.operationId}::uuid, book_id FROM entity_mutation_books`);
+      }
       await mutate(tx);
       let cursor = 0;
       const affectedBookIds: number[] = [];

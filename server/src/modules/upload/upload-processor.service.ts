@@ -168,7 +168,7 @@ export class UploadProcessorService {
     libraryId: number,
     libraryFolderId: number,
     files: UnitBookFileInput[],
-    options: { dockFileId?: number } = {},
+    options: { dockFileId?: number; initializeMetadata?: (bookIds: number[], executor: Tx) => Promise<void> } = {},
   ): Promise<UnitBookRecords> {
     if (files.length === 0) throw new InternalServerErrorException('Cannot create a book from an empty unit');
 
@@ -204,6 +204,8 @@ export class UploadProcessorService {
         const replaced = await this.reselectPrimaryFile(tx, joined);
         if (replaced) replacedPrimaries.push(replaced);
       }
+
+      await options.initializeMetadata?.(createdBookIds, tx);
 
       if (options.dockFileId !== undefined) {
         await tx

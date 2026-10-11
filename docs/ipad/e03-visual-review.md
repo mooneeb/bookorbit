@@ -36,6 +36,8 @@ The gallery renders each image and its individual findings. The QA reports retai
 
 The native harness uses `pro13-landscape-dark-large` at 1366 x 1024 as the full-window counterpart for the narrow profile. That run cannot satisfy `pro13-narrow-dark` native coverage. `simctl` cannot size the app window. Narrow native captures require an actual supported window, recorded bounds and system assertions. Browser emulation is not a substitute. State-specific native rotations also need their actual geometry recorded alongside the requested profile.
 
+The E03 comparator now checks actual PNG bounds before accepting a profile label. Browser bounds must equal the requested viewport. Full-window native captures must match the requested orientation and window aspect ratio within 2 percent to allow device pixel scaling. Narrow native captures require `windowBounds` with actual width and height in the capture inventory, with matching image/window aspect ratios. A portrait capture labelled as a landscape profile fails with `failed-profile-geometry` and cannot satisfy matrix coverage. The gallery displays requested and actual orientation separately. These geometry checks do not establish theme, Dynamic Type or Reduce Motion.
+
 The existing catalog is a minimum gate. Browser acquisition file selection/Dock review, new browser administration/configuration panes, and any remaining acceptance interaction without an authored snapshot need implementation and capture; a complete catalog comparison cannot establish those missing behaviors. A03 currently has no browser/native image evidence. The native restricted-role startup proof now has one inspected capture and an actual summary with 1 pass, 0 failures and 0 skips. Native acquisition, requests, migration, selected edit/export, entities and maintenance journey captures remain missing.
 
 ## Commands and artifacts
@@ -74,6 +76,8 @@ Native `IPAD-E03-*` attachments and authored browser PNGs are compared at the ex
 
 For future browser profile execution, source the private retained runtime first, then use one worker and zero retries:
 
+Prepare and keep a fresh provider holder alive using the explicit sequence in the [E03 test plan](e03-test-plan.md#commands), then source its `native-fixtures.env` before this direct command. For browser-only work, its `--apply` phase supplies the imported HTTP fixture outcomes expected by A03. Historical provider configuration and HTTP-suite artifact directories do not establish live provider readiness.
+
 ```sh
 IPAD_TEST_RUN=e03-visual-pro11-landscape-dark \
 IPAD_E03_PROFILE=pro11-landscape-dark \
@@ -110,7 +114,7 @@ The gate rejects absent, agent-only, duplicate or incomplete approvals, changed 
 
 ## Visible assertions, accessibility and performance
 
-Visible behavior is exercised by the named native methods and real browser tests in the manifest and acceptance plan. A01, A03, A04 and maintenance native methods contain authored accessibility audits; their presence is not an executed audit pass. Audit subsets differ: acquisition reviews hit regions and descriptions, while migration additionally includes contrast. Request and entity journeys do not yet contain equivalent audits. Reach and audit every required key screen; document failures and remaining coverage instead of treating a screenshot as an audit.
+Visible behavior is exercised by the named native methods and real browser tests in the manifest and acceptance plan. A01, A03, A04 and maintenance native methods contain authored accessibility audits; their presence is not an executed audit pass. Audit subsets differ: acquisition reviews hit regions and descriptions, while migration additionally includes contrast. Request list/detail/release, source/client forms, entity directory/rename preview/component-page journeys now contain equivalent authored audits. They remain unexecuted. Reach and audit every required key screen; document failures and remaining coverage instead of treating a screenshot as an audit.
 
 The frozen-build helper can run a single existing method and its authored audit after the serial slot is released:
 
@@ -123,7 +127,7 @@ bash test-results/ipad/e03-builder-handoff/test-without-building.sh \
 
 Do not run this helper while native restoration or another simulator journey owns `/tmp/bookorbit-ipad-xcode.lock`. It sets portrait-light appearance/content size only; it does not establish the other matrix profiles.
 
-Existing XCTest measurements are reusable regression checks, with the following established absolute budgets recorded in [E02 performance evidence](e02-web-acceptance.md#system-profiles-and-performance). Their old results are not E03 results, and E03-specific acquisition/migration/maintenance metrics and human-reviewed budgets remain missing.
+Existing XCTest measurements are reusable regression checks, with the following established absolute budgets recorded in [E02 performance evidence](e02-web-acceptance.md#system-profiles-and-performance). Their old results are not E03 results, and E03-specific acquisition, request, migration and bounded maintenance navigation methods are now authored in `E03AcceptancePerformanceTests`, and are discovered by the E03 harness. Native execution and human-reviewed budgets remain pending.
 
 | Existing `AnnotationProfilePerformanceTests` method | Established absolute budget | Measured interval                                          |
 | --------------------------------------------------- | --------------------------- | ---------------------------------------------------------- |
@@ -144,3 +148,11 @@ bash test-results/ipad/e03-builder-handoff/test-without-building.sh \
 No performance or native audit command was run for this gallery work. The host load previously exceeded 900 during native startup; measurements there cannot establish useful E03 timing. Record a quiet environment, OS/runtime/device and source pins, actual 50,000-book fixture, clock boundaries and complete sample outcomes. A human must review E03 budgets before those measurements can gate E03 completion. Source-only thresholds and old passing E02 samples cannot supply that approval.
 
 Physical iPad narrow-window behavior, animation feel, VoiceOver, Files providers, live integrations and the integrated A01 through A05 human walkthrough remain pending. The gallery and comparator implementation do not close issue #4.
+
+### Newly authored E03 native checks
+
+`MaintenanceJourneyTests/testIPADE03A05MergePreviewApplyAndReadableFileRepair` now seeds reading data through public APIs, applies merge and repair through native controls, reopens native private notes, passage notes and logical reader progress, and checks the merged source ink overlay. It drives selected native file rename, reopens the renamed PDF, and compares downloaded current PDF bytes. Repaired and renamed ink retain the replacement PDF's exact bytes; the merged ink is also asserted as a native accessibility image and a PDF Ink annotation. These are authored assertions, not executed preservation evidence.
+
+`E03AcceptancePerformanceTests` contains `testIPADE03A01LaunchToUsableLibraryPerformance`, `testIPADE03A01AcquisitionReviewNavigationPerformance`, `testIPADE03A02RequestListNavigationPerformance`, `testIPADE03A03MigrationReviewNavigationPerformance`, and `testIPADE03A05BoundedMaintenancePreviewPerformance`. The proposed budgets are 8 seconds for launch and 5 seconds for each navigation interval. They are **PENDING_HUMAN_REVIEW**, are recorded with OS, processor count, physical memory, profile, native bounds and timing samples, and are not enforced as approved acceptance thresholds. XCTest records clock metrics, launch metrics for launch, one warmup and two measured iterations. These methods measure reachable navigation and a bounded maintenance page; they do not establish full import, migration execution or large-library scan completion performance.
+
+`E03ProfileSupport` selects orientation from the requested E03 profile and checks actual native app and screenshot dimensions before attachment. Acquisition review titles are stable; upload-session, dock and book IDs retain their separate identities. All added methods remain unexecuted while `E03_NATIVE_READY=0`. Human visual approval, integrated walkthrough, physical iPad/Pencil, VoiceOver, dictation, Scribble and simulator-excluded device checks retain their existing explicit boundaries.

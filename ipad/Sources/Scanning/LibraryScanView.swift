@@ -39,10 +39,11 @@ struct LibraryScanView: View {
             "scanWatchFolders")
           TextField("Automatic scan cron expression", text: $model.cron).autocorrectionDisabled()
             .textInputAutocapitalization(.never).accessibilityIdentifier("scanCronExpression")
-          Picker("Organization", selection: $model.organizationMode) {
-            Text("One book per file").tag("book_per_file")
-            Text("One book per folder").tag("book_per_folder")
-          }.accessibilityIdentifier("scanOrganization")
+          LabeledContent("Organization", value: model.organizationModeLabel)
+            .accessibilityIdentifier("scanOrganization")
+          Text(
+            "Organization is fixed when a library is created. Create a new library to use a different mode."
+          ).font(.caption).foregroundStyle(.secondary)
           TextField(
             "Allowed formats, one per line. Empty allows all", text: $model.allowedFormats,
             axis: .vertical

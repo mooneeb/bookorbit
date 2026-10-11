@@ -20,6 +20,14 @@ final class MigrationModel {
   var duplicates: [MigrationDuplicateChoice] = []
   var matchPage: MigrationPlanPageApi?
   var previewKind = "matched"
+  var matchLoading = false
+  var matchError: String?
+  var matchRequestedOffset = 0
+  var reportPage: MigrationReportPageApi?
+  var reportKind = "matched"
+  var reportLoading = false
+  var reportError: String?
+  var reportRequestedOffset = 0
   var busy = false
   var message: String?
   var denied = false
@@ -99,6 +107,7 @@ final class MigrationModel {
       self.plan = nil
       self.run = nil
       self.report = nil
+      self.reportPage = nil
       self.progress = nil
       self.userMappings = []
       self.pathMappings = []
@@ -181,6 +190,7 @@ final class MigrationModel {
       else { throw ConnectionError.invalidResponse }
       self.runRevision += 1
       self.report = nil
+      self.reportPage = nil
       self.progress = nil
       do { self.run = try await self.api.migrationRun(planID: plan.id, session: session) } catch {
         try await self.restore()
@@ -198,6 +208,7 @@ final class MigrationModel {
       self.runRevision += 1
       if action == "retry" {
         self.report = nil
+        self.reportPage = nil
         self.progress = nil
       }
       self.run = try await self.read("migration/runs/\(run.id)/\(action)", method: "POST")
@@ -236,6 +247,9 @@ final class MigrationModel {
     progress = value
     report = currentReport
     run = value.run
+    if currentReport != nil, reportPage?.runId != runID {
+      try await loadReportPage(offset: 0)
+    }
   }
 
   private func receiveDuplicates() {
@@ -247,12 +261,55 @@ final class MigrationModel {
       guard case .object(let fields) = row, case .number(let id) = fields["targetBookId"],
         case .array(let sourceIDs) = fields["sourceBookIds"]
       else { return nil }
+      let candidates = sourceIDs.compactMap { value -> String? in
+        if case .string(let id) = value { return id }
+        return nil
+      }
+      let cursor: [String: JSONValue]
+      if case .object(let value) = fields["candidatePagination"] {
+        cursor = value
+      } else {
+        cursor = [:]
+      }
+      let total: Int
+      if case .number(let value) = cursor["total"] {
+        total = Int(value)
+      } else {
+        total = candidates.count
+      }
+      let nextOffset: Int?
+      if case .number(let value) = cursor["nextOffset"] {
+        nextOffset = Int(value)
+      } else {
+        nextOffset = nil
+      }
       return MigrationDuplicateChoice(
-        id: Int(id),
-        candidates: sourceIDs.compactMap {
-          if case .string(let id) = $0 { return id }
-          return nil
-        })
+        id: Int(id), candidates: candidates, total: total, nextOffset: nextOffset)
+    }
+  }
+
+  func loadCandidates(targetBookID: Int, offset: Int) async {
+    await perform {
+      guard let plan = self.plan, let session = self.session,
+        let index = self.duplicates.firstIndex(where: { $0.id == targetBookID })
+      else { throw ConnectionError.invalidResponse }
+      self.duplicates[index].loading = true
+      self.duplicates[index].requestedOffset = max(0, offset)
+      self.duplicates[index].error = nil
+      defer { self.duplicates[index].loading = false }
+      do {
+        let page = try await self.api.migrationCandidates(
+          planID: plan.id, targetBookID: targetBookID, offset: max(0, offset), session: session)
+        try await self.checkSession()
+        self.duplicates[index].candidates = page.items.map(\.sourceBookId)
+        self.duplicates[index].offset = page.offset
+        self.duplicates[index].limit = page.limit
+        self.duplicates[index].total = page.total
+        self.duplicates[index].nextOffset = page.nextOffset
+      } catch {
+        self.duplicates[index].error = error.localizedDescription
+        throw error
+      }
     }
   }
 
@@ -299,6 +356,7 @@ final class MigrationModel {
     pathMappings = []
     duplicates = []
     report = nil
+    reportPage = nil
     progress = nil
     matchPage = nil
     message =
@@ -310,8 +368,40 @@ final class MigrationModel {
   }
   private func loadMatchPage(offset: Int) async throws {
     guard let plan else { return }
-    matchPage = try await read(
-      "migration/plans/\(plan.id)/matches?kind=\(previewKind)&offset=\(offset)&limit=40")
+    if matchPage?.kind != previewKind { matchPage = nil }
+    matchLoading = true
+    matchRequestedOffset = max(0, offset)
+    matchError = nil
+    defer { matchLoading = false }
+    do {
+      matchPage = try await read(
+        "migration/plans/\(plan.id)/matches?kind=\(previewKind)&offset=\(max(0, offset))&limit=40")
+    } catch {
+      matchError = error.localizedDescription
+      throw error
+    }
+  }
+
+  func loadReport(offset: Int = 0) async {
+    await perform { try await self.loadReportPage(offset: offset) }
+  }
+
+  private func loadReportPage(offset: Int) async throws {
+    guard let run, run.state != "running", let session else { return }
+    if reportPage?.kind != reportKind { reportPage = nil }
+    reportLoading = true
+    reportRequestedOffset = max(0, offset)
+    reportError = nil
+    defer { reportLoading = false }
+    do {
+      let page = try await api.migrationReportPage(
+        runID: run.id, kind: reportKind, offset: max(0, offset), session: session)
+      try await checkSession()
+      reportPage = page
+    } catch {
+      reportError = error.localizedDescription
+      throw error
+    }
   }
 
   func detach() {

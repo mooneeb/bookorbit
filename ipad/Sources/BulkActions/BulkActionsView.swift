@@ -2,12 +2,14 @@ import SwiftUI
 
 struct BulkActionsView: View {
   @State private var model: BulkActionsModel
+  let user: AuthUser
   let completed: () -> Void
   @Environment(\.dismiss) private var dismiss
   @FocusState private var valueFocused: Bool
 
   init(api: BookOrbitAPI, user: AuthUser, bookIDs: [Int], completed: @escaping () -> Void) {
     _model = State(initialValue: BulkActionsModel(api: api, user: user, bookIDs: bookIDs))
+    self.user = user
     self.completed = completed
   }
 
@@ -20,14 +22,13 @@ struct BulkActionsView: View {
           Text(
             "Books are edited in batches of 25. After an interruption, review current values before retrying."
           )
-          Picker("Action", selection: $model.action) {
-            if model.canEdit { Text("Edit metadata").tag(BulkActionsModel.Action.edit) }
-            if model.canExport {
-              ForEach([BulkActionsModel.Action.content, .json, .csv], id: \.self) {
+          if !model.availableActions.isEmpty {
+            Picker("Action", selection: $model.action) {
+              ForEach(model.availableActions, id: \.self) {
                 Text($0.rawValue).tag($0)
               }
-            }
-          }.accessibilityIdentifier("bulkAction").disabled(model.isBusy)
+            }.accessibilityIdentifier("bulkAction").disabled(model.isBusy)
+          }
         }
         if model.action == .edit && model.canEdit {
           Section("Edit") {
@@ -75,7 +76,7 @@ struct BulkActionsView: View {
             "bulkDenied")
         } else {
           Section {
-            Button("Preview selected batch", action: prepare).disabled(model.isBusy)
+            Button("Preview selected batch", action: prepare).disabled(!model.canPrepare)
               .accessibilityIdentifier("previewBulkActions")
           }
         }
@@ -143,7 +144,11 @@ struct BulkActionsView: View {
         BookFileDeliveryView(presentation: $0, completed: model.delivered)
       }
       .interactiveDismissDisabled(model.isBusy)
-      .task { await model.load() }
+      .task {
+        model.configure(user: user)
+        await model.load()
+      }
+      .onChange(of: user) { model.configure(user: user) }
       .onDisappear(perform: model.close)
       .onChange(of: model.action) { model.invalidatePreview() }
       .onChange(of: model.field) { model.invalidatePreview() }

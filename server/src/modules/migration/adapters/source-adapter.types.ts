@@ -117,6 +117,7 @@ export interface SourceReadingSession {
 }
 
 export interface SourceBookmark {
+  sourceItemId?: string | null;
   sourceUserId: string;
   sourceBookId: string;
   sourceFileId?: string | null;
@@ -128,6 +129,7 @@ export interface SourceBookmark {
 }
 
 export interface SourceAnnotation {
+  sourceItemId?: string | null;
   sourceUserId: string;
   sourceBookId: string;
   cfi: string;

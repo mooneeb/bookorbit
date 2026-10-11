@@ -62,6 +62,36 @@ export function useEntityManager() {
   const selectionAnchorSelected = ref(false)
 
   // Operation state
+  const pendingFileUpdates = ref<{ operationId: string }[]>([])
+  const fileUpdateError = ref<string | null>(null)
+  const retryingFileUpdates = ref(false)
+
+  async function fetchPendingFileUpdates(): Promise<void> {
+    try {
+      pendingFileUpdates.value = await entityManagerApi.listFileWriteRecovery(entityType.value)
+      fileUpdateError.value = null
+    } catch (err) {
+      fileUpdateError.value = err instanceof Error ? err.message : 'Failed to load file updates'
+    }
+  }
+
+  async function retryPendingFileUpdates(): Promise<void> {
+    const operation = pendingFileUpdates.value[0]
+    if (!operation) return
+    retryingFileUpdates.value = true
+    try {
+      const result = await entityManagerApi.retryFileWrites(entityType.value, operation.operationId)
+      fileUpdateError.value = result.pendingBookCount
+        ? `${result.pendingBookCount} file updates remain. Retry to continue; check write settings for skipped files.`
+        : null
+      pendingFileUpdates.value = await entityManagerApi.listFileWriteRecovery(entityType.value)
+    } catch (err) {
+      fileUpdateError.value = err instanceof Error ? err.message : 'Failed to retry file updates'
+    } finally {
+      retryingFileUpdates.value = false
+    }
+  }
+
   const operationLoading = ref(false)
   const operationError = ref<string | null>(null)
 
@@ -258,6 +288,7 @@ export function useEntityManager() {
         ? { targetValue: targetId as string, sourceValues: sourceIds as string[], writeFiles }
         : { targetEntityId: targetId as number, sourceEntityIds: sourceIds as number[], writeFiles }
       await entityManagerApi.mergeEntities(entityType.value, payload)
+      await fetchPendingFileUpdates()
     } catch (err) {
       operationError.value = err instanceof Error ? err.message : 'Merge failed'
       throw err
@@ -549,6 +580,11 @@ export function useEntityManager() {
     operationLoading,
     operationError,
     mergeEntities,
+    pendingFileUpdates,
+    fileUpdateError,
+    retryingFileUpdates,
+    fetchPendingFileUpdates,
+    retryPendingFileUpdates,
     renameEntity,
     deleteEntity,
     bulkDeleteEntities,

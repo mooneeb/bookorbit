@@ -247,6 +247,7 @@ export interface BulkRenamePreviewItem {
 }
 
 export interface BulkRenamePreviewPage {
+  previewToken: string;
   items: BulkRenamePreviewItem[];
   total: number;
   totalByStatus: Record<BulkRenameStatus, number>;
@@ -268,6 +269,7 @@ export interface BulkRenamePreviewPage {
  * renames every candidate.
  */
 export interface BulkRenameExecuteRequest {
+  previewToken: string;
   excludeBookIds?: number[];
   includeBookIds?: number[];
 }

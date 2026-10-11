@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -7,39 +8,51 @@ import type { BulkRenamePreviewItem, BulkRenamePreviewPage, BulkRenameStatus } f
 
 export interface IndexedRenameItem extends BulkRenamePreviewItem {
   targetFolder: string | null;
+  inputVersion: string;
 }
 
 export class BulkRenamePreviewStore {
   readonly createdAt = Date.now();
+  readonly token = randomUUID();
 
   private constructor(
     private readonly directory: string,
     private readonly db: DatabaseSync,
     readonly pattern: string,
+    readonly settingsVersion: string,
   ) {}
 
-  static async create(pattern: string): Promise<BulkRenamePreviewStore> {
+  static async create(pattern: string, settingsVersion: string): Promise<BulkRenamePreviewStore> {
     const directory = await mkdtemp(join(tmpdir(), 'bookorbit-rename-'));
     const db = new DatabaseSync(join(directory, 'preview.sqlite'));
     db.exec(`
       PRAGMA cache_size = -2048;
       PRAGMA temp_store = FILE;
       CREATE TABLE items (bookId INTEGER PRIMARY KEY, title TEXT NOT NULL, currentPath TEXT NOT NULL,
-        newPath TEXT, status TEXT NOT NULL, reason TEXT, targetFolder TEXT);
+        newPath TEXT, status TEXT NOT NULL, reason TEXT, targetFolder TEXT, inputVersion TEXT NOT NULL);
       CREATE INDEX items_status ON items(status, bookId);
       CREATE INDEX items_folder ON items(targetFolder);
       CREATE TABLE targets (path TEXT NOT NULL, bookId INTEGER NOT NULL, PRIMARY KEY(path, bookId));
     `);
-    return new BulkRenamePreviewStore(directory, db, pattern);
+    return new BulkRenamePreviewStore(directory, db, pattern, settingsVersion);
   }
 
   addBatch(items: IndexedRenameItem[], targets: { path: string; bookId: number }[]): void {
-    const insertItem = this.db.prepare('INSERT INTO items VALUES (?, ?, ?, ?, ?, ?, ?)');
+    const insertItem = this.db.prepare('INSERT INTO items VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
     const insertTarget = this.db.prepare('INSERT OR IGNORE INTO targets VALUES (?, ?)');
     this.db.exec('BEGIN');
     try {
       for (const item of items) {
-        insertItem.run(item.bookId, item.title, item.currentPath, item.newPath, item.status, item.reason ?? null, item.targetFolder);
+        insertItem.run(
+          item.bookId,
+          item.title,
+          item.currentPath,
+          item.newPath,
+          item.status,
+          item.reason ?? null,
+          item.targetFolder,
+          item.inputVersion,
+        );
       }
       for (const target of targets) insertTarget.run(target.path.toLowerCase(), target.bookId);
       this.db.exec('COMMIT');
@@ -96,16 +109,16 @@ export class BulkRenamePreviewStore {
     for (const row of this.db.prepare('SELECT status, COUNT(*) AS total FROM items GROUP BY status').all()) {
       totalByStatus[row.status as BulkRenameStatus] = row.total as number;
     }
-    return { items: rows.map((row) => this.toItem(row)), total: count.total, totalByStatus, pattern: this.pattern };
+    return { previewToken: this.token, items: rows.map((row) => this.toItem(row)), total: count.total, totalByStatus, pattern: this.pattern };
   }
 
-  candidateBatch(afterBookId: number, limit: number): BulkRenamePreviewItem[] {
+  candidateBatch(afterBookId: number, limit: number): (BulkRenamePreviewItem & { inputVersion: string })[] {
     return this.db
       .prepare(
-        "SELECT bookId, title, currentPath, newPath, status, reason FROM items WHERE status = 'will_rename' AND bookId > ? ORDER BY bookId LIMIT ?",
+        "SELECT bookId, title, currentPath, newPath, status, reason, inputVersion FROM items WHERE status = 'will_rename' AND bookId > ? ORDER BY bookId LIMIT ?",
       )
       .all(afterBookId, limit)
-      .map((row) => this.toItem(row));
+      .map((row) => ({ ...this.toItem(row), inputVersion: row.inputVersion as string }));
   }
 
   private toItem(row: Record<string, unknown>): BulkRenamePreviewItem {

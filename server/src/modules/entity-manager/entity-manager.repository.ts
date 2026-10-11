@@ -1,11 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import type { ClusterEntity, DismissedPairInfo, EntityType, FirstClassEntityType } from '@bookorbit/types';
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
-import { books, dismissedDuplicatePairs, dismissedInlineDuplicatePairs } from '../../db/schema';
+import { books, entityFileWrites, entityFileWriteBooks, dismissedDuplicatePairs, dismissedInlineDuplicatePairs } from '../../db/schema';
 import { buildEntityBookScopeClauses } from './strategies/entity-book-scope';
 import { ENTITY_DUPLICATE_TABLES, scopedBookCondition, scopedEntityCondition } from './entity-duplicate-query';
 import type { EntityBookScope } from './strategies/entity-strategy.interface';
@@ -15,6 +15,58 @@ type Db = NodePgDatabase<typeof schema>;
 @Injectable()
 export class EntityManagerRepository {
   constructor(@Inject(DB) private readonly db: Db) {}
+
+  async listFileWriteRecovery(userId: number, entityType: EntityType) {
+    return this.db
+      .select({ operationId: entityFileWrites.id })
+      .from(entityFileWrites)
+      .where(and(eq(entityFileWrites.userId, userId), eq(entityFileWrites.entityType, entityType)))
+      .orderBy(entityFileWrites.createdAt)
+      .limit(20);
+  }
+
+  async resumeFileWrites(operationId: string, userId: number, entityType: EntityType, write: (ids: number[]) => Promise<number[]>) {
+    return this.db.transaction(async (tx) => {
+      const lock = await tx.execute<{ acquired: boolean }>(sql`SELECT pg_try_advisory_xact_lock(hashtext(${operationId})) AS acquired`);
+      if (!lock.rows[0]?.acquired) throw new ConflictException('File updates are already running');
+      const [receipt] = await tx
+        .select()
+        .from(entityFileWrites)
+        .where(and(eq(entityFileWrites.id, operationId), eq(entityFileWrites.userId, userId), eq(entityFileWrites.entityType, entityType)))
+        .limit(1);
+      if (!receipt) throw new NotFoundException('File update operation not found');
+      const rows = await tx
+        .select({ bookId: entityFileWriteBooks.bookId })
+        .from(entityFileWriteBooks)
+        .where(eq(entityFileWriteBooks.operationId, operationId))
+        .orderBy(sql`${entityFileWriteBooks.attemptedAt} ASC NULLS FIRST`, entityFileWriteBooks.bookId)
+        .limit(50);
+      const completed = await write(rows.map((row) => row.bookId));
+      if (rows.length)
+        await tx
+          .update(entityFileWriteBooks)
+          .set({ attemptedAt: new Date() })
+          .where(
+            and(
+              eq(entityFileWriteBooks.operationId, operationId),
+              inArray(
+                entityFileWriteBooks.bookId,
+                rows.map((row) => row.bookId),
+              ),
+            ),
+          );
+      if (completed.length)
+        await tx
+          .delete(entityFileWriteBooks)
+          .where(and(eq(entityFileWriteBooks.operationId, operationId), inArray(entityFileWriteBooks.bookId, completed)));
+      const remaining = await tx.execute<{ count: number }>(
+        sql`SELECT count(*)::int AS count FROM ${entityFileWriteBooks} WHERE operation_id = ${operationId}::uuid`,
+      );
+      const pendingBookCount = remaining.rows[0]?.count ?? 0;
+      if (!pendingBookCount) await tx.delete(entityFileWrites).where(eq(entityFileWrites.id, operationId));
+      return { operationId, pendingBookCount, processed: rows.length, completed: completed.length };
+    });
+  }
 
   async filterBookIdsByScope(bookIds: number[], scope: EntityBookScope): Promise<number[]> {
     if (bookIds.length === 0 || scope.libraryIds.length === 0) return [];

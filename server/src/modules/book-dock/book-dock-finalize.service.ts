@@ -423,22 +423,24 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     overrideMap: Map<number, FinalizeOverrideEntry>,
     userId: number,
     isSuperuser: boolean,
+    managedRequest?: { requestId: number; userId: number },
   ): Promise<BookDockFinalizeFileResult> {
     const prepared = await this.prepareFinalizeBatch([row], defaultLibraryId, defaultFolderId, overrideMap, userId, isSuperuser);
     const analysis = prepared.analyses[0];
     if (!analysis) {
       return { fileId: row.id, fileName: row.fileName, success: false, message: 'Finalization target could not be resolved' };
     }
-    return this.finalizePreparedCandidate(analysis, prepared.existingDestinations, userId);
+    return this.finalizePreparedCandidate(analysis, prepared.existingDestinations, userId, managedRequest);
   }
 
   private async finalizePreparedCandidate(
     analysis: FinalizeCandidateAnalysis,
     existingDestinations: Map<string, number>,
     userId: number,
+    managedRequest?: { requestId: number; userId: number },
   ): Promise<BookDockFinalizeFileResult> {
     if (this.finalizations && this.publication) {
-      return this.finalizations.locked(4104, analysis.fileId, () => this.finalizeDurably(analysis, existingDestinations, userId));
+      return this.finalizations.locked(4104, analysis.fileId, () => this.finalizeDurably(analysis, existingDestinations, userId, managedRequest));
     }
     const previous = this.filingLocks.get(analysis.fileId) ?? Promise.resolve();
     let release!: () => void;
@@ -489,9 +491,23 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     analysis: FinalizeCandidateAnalysis,
     destinations: Map<string, number>,
     userId: number,
+    managedRequest?: { requestId: number; userId: number },
   ): Promise<BookDockFinalizeFileResult> {
     const existing = await this.finalizations!.find(analysis.fileId);
-    if (existing) return this.resumeFinalization(existing);
+    if (existing) {
+      if (managedRequest && !existing.intent.managedRequest && existing.state !== 'completed') {
+        if (
+          existing.userId !== managedRequest.userId ||
+          existing.intent.row.uploadedBy !== managedRequest.userId ||
+          existing.libraryId !== analysis.library?.id ||
+          existing.intent.folderId !== analysis.folder?.id
+        )
+          throw new ForbiddenException('Managed request does not match the original finalization');
+        existing.intent = { ...existing.intent, managedRequest };
+        await this.finalizations!.update(analysis.fileId, { intent: existing.intent });
+      }
+      return this.resumeFinalization(existing);
+    }
     const classified = await this.classifyDestination(analysis, destinations);
     if (classified.status !== 'ready') return this.analysisToFileResult(classified);
     if (!classified.placement || !classified.folder || !classified.library || !classified.destPath || !classified.format)
@@ -511,6 +527,7 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
       const publication = await this.publication!.prepare(classified.placement, classified.folder.path, analysis.fileId);
       const intent: BookDockFinalizeIntent = {
         row: classified.row,
+        managedRequest,
         libraryId: classified.library.id,
         folderId: classified.folder.id,
         root: classified.folder.path,
@@ -537,14 +554,26 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     const { intent } = journal;
     try {
       const user = await this.auth!.findActingUser(journal.userId);
-      if (
-        !user ||
-        (!user.isSuperuser && (!user.permissions.includes(Permission.BookDockAccess) || !user.permissions.includes(Permission.LibraryUpload)))
-      )
-        throw new ForbiddenException('Import owner no longer has permission to file books');
-      if (intent.row.uploadedBy !== user.id && !user.isSuperuser && !user.permissions.includes(Permission.ManageBookDock))
-        throw new ForbiddenException('Book Dock file belongs to another user');
-      await this.libraryService.verifyUserAccessLevel(user.id, journal.libraryId, user.isSuperuser, 'editor');
+      if (intent.managedRequest) {
+        if (
+          !user ||
+          user.id !== intent.managedRequest.userId ||
+          intent.row.uploadedBy !== user.id ||
+          !intent.row.autoFinalizeSuppressed ||
+          (!user.isSuperuser && !user.permissions.includes(Permission.BookRequestAccess))
+        )
+          throw new ForbiddenException('Request owner no longer has permission to receive books');
+        await this.libraryService.verifyUserAccessLevel(user.id, journal.libraryId, user.isSuperuser, 'viewer');
+      } else {
+        if (
+          !user ||
+          (!user.isSuperuser && (!user.permissions.includes(Permission.BookDockAccess) || !user.permissions.includes(Permission.LibraryUpload)))
+        )
+          throw new ForbiddenException('Import owner no longer has permission to file books');
+        if (intent.row.uploadedBy !== user.id && !user.isSuperuser && !user.permissions.includes(Permission.ManageBookDock))
+          throw new ForbiddenException('Book Dock file belongs to another user');
+        await this.libraryService.verifyUserAccessLevel(user.id, journal.libraryId, user.isSuperuser, 'editor');
+      }
       const [library, folder] = await Promise.all([
         this.findLibraryOrFail(intent.libraryId),
         this.findFolderOrFail(intent.folderId, intent.libraryId),
@@ -562,11 +591,12 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
           intent.format,
           intent.bookFolderPath,
           journal.fileId,
+          intent.row,
         );
         bookIds = written.bookIds;
         await this.checkpoint?.('committed', journal.fileId);
+        for (const bookId of written.createdBookIds) await this.applyCover(bookId, intent.row, bookId === bookIds[0]);
       }
-      for (const bookId of bookIds) await this.applyMetadata(bookId, intent.row, bookId === bookIds[0]);
       await this.checkpoint?.('metadata', journal.fileId);
       if (intent.row.uploadedBy) await this.uploadSessions?.recordDockFinalization(journal.fileId, intent.row.uploadedBy, bookIds[0]!);
       const result: BookDockFinalizeFileResult = {
@@ -969,6 +999,7 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     primaryFormat: string,
     bookFolderPath: string | undefined,
     dockFileId?: number,
+    metadataRow?: BookDockFileRow,
   ): Promise<UnitBookRecords> {
     if (placement.length === 0) throw new Error('Finalization placed no files');
 
@@ -992,7 +1023,13 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     }
 
     if (dockFileId === undefined) return this.processor.createUnitBookRecords(library.id, folder.id, files);
-    return this.processor.createUnitBookRecords(library.id, folder.id, files, { dockFileId });
+    return this.processor.createUnitBookRecords(library.id, folder.id, files, {
+      dockFileId,
+      initializeMetadata: async (bookIds, executor) => {
+        if (!metadataRow) return;
+        for (const bookId of bookIds) await this.applyMetadata(bookId, metadataRow, false, executor);
+      },
+    });
   }
 
   /** Never throws: it runs while the error that caused it is already on its way up. */
@@ -1186,11 +1223,23 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
    * Dock's auto-finalize metadata mode: that mode is an operator preference about unattended dock
    * files, and it does not govern a file another module vouched for.
    */
-  async finalizeManagedFile(fileId: number, override: { libraryId?: number; folderId?: number }): Promise<BookDockFinalizeFileResult> {
+  async finalizeManagedFile(
+    fileId: number,
+    override: { libraryId?: number; folderId?: number },
+    managedRequest: { requestId: number; userId: number },
+  ): Promise<BookDockFinalizeFileResult> {
     const row = await this.repo.findById(fileId);
     if (!row) {
       return { fileId, fileName: `book-dock-file-${fileId}`, success: false, message: 'Book Dock file not found' };
     }
+
+    if (
+      row.uploadedBy !== managedRequest.userId ||
+      !row.autoFinalizeSuppressed ||
+      !Number.isSafeInteger(managedRequest.requestId) ||
+      managedRequest.requestId <= 0
+    )
+      throw new ForbiddenException('Book Dock file does not belong to this managed request');
 
     const merged = mergeBookDockMetadata(row.embeddedMetadata, row.fetchedMetadata, row.selectedMetadata);
     const rowForFinalize = merged ? { ...row, selectedMetadata: merged } : row;
@@ -1200,7 +1249,7 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
       overrideMap.set(fileId, { libraryId: override.libraryId, folderId: override.folderId });
     }
 
-    const result = await this.finalizeFile(rowForFinalize, undefined, undefined, overrideMap, 0, true);
+    const result = await this.finalizeFile(rowForFinalize, undefined, undefined, overrideMap, managedRequest.userId, true, managedRequest);
     if (result.success) this.emitChange();
     return result;
   }
@@ -1370,9 +1419,8 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
    * The staged cover was read from the unit's primary file, so it fills only that file's medium on
    * the book that owns it. The other books of a loose-file unit get their own art from reconcile.
    */
-  private async applyMetadata(bookId: number, row: BookDockFileRow, ownsStagedCover = true): Promise<void> {
+  private async applyCover(bookId: number, row: BookDockFileRow, ownsStagedCover = true): Promise<void> {
     const meta = normalizeFinalizeMetadata(row.selectedMetadata ?? row.embeddedMetadata);
-    const audio = resolveAudioFinalizeFields(row.embeddedMetadata, row.selectedMetadata);
     let selectedCoverApplied = false;
 
     const medium = row.format && isAudioFormat(row.format) ? 'audio' : 'ebook';
@@ -1389,7 +1437,17 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
         this.logger.warn(`Failed to copy Book Dock cover to book ${bookId}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
+  }
 
+  private async applyMetadata(
+    bookId: number,
+    row: BookDockFileRow,
+    ownsStagedCover = true,
+    executor?: Parameters<Parameters<Db['transaction']>[0]>[0],
+  ): Promise<void> {
+    const meta = normalizeFinalizeMetadata(row.selectedMetadata ?? row.embeddedMetadata);
+    const audio = resolveAudioFinalizeFields(row.embeddedMetadata, row.selectedMetadata);
+    if (!executor) await this.applyCover(bookId, row, ownsStagedCover);
     const scalarFields = {
       title: meta.title ?? null,
       subtitle: meta.subtitle ?? null,
@@ -1419,45 +1477,52 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
       aladinId: meta.aladinId,
       updatedAt: new Date(),
     };
-    const patch = (await this.seriesIdentity?.resolveMetadataPatch(scalarFields)) ?? scalarFields;
+    const patch =
+      (executor
+        ? await this.seriesIdentity?.resolveMetadataPatch(scalarFields, executor)
+        : await this.seriesIdentity?.resolveMetadataPatch(scalarFields)) ?? scalarFields;
 
-    await this.db
+    await (executor ?? this.db)
       .update(bookMetadata)
       .set({ ...patch, ...buildAudioMetadataPatch(audio) })
       .where(eq(bookMetadata.bookId, bookId));
     if (meta.seriesMemberships !== undefined) {
-      await this.seriesMemberships?.replaceForBook(bookId, meta.seriesMemberships);
+      if (executor) await this.seriesMemberships?.replaceForBook(bookId, meta.seriesMemberships, executor);
+      else await this.seriesMemberships?.replaceForBook(bookId, meta.seriesMemberships);
     } else {
-      await this.seriesMemberships?.syncPrimaryFromMetadata(bookId);
+      if (executor) await this.seriesMemberships?.syncPrimaryFromMetadata(bookId, executor);
+      else await this.seriesMemberships?.syncPrimaryFromMetadata(bookId);
     }
 
     if (meta.communityRatings !== undefined) {
-      await this.bookReadService.replaceCommunityRatings(bookId, meta.communityRatings);
+      if (executor) await this.bookReadService.replaceCommunityRatings(bookId, meta.communityRatings, executor);
+      else await this.bookReadService.replaceCommunityRatings(bookId, meta.communityRatings);
     }
 
     if (meta.comicMetadata) {
-      await this.metadataService.upsertComicMetadata(bookId, meta.comicMetadata);
+      if (executor) await this.metadataService.upsertComicMetadata(bookId, meta.comicMetadata, executor);
+      else await this.metadataService.upsertComicMetadata(bookId, meta.comicMetadata);
     }
 
     if (meta.authors.length > 0) {
-      await this.metadataService.replaceAuthors(
-        bookId,
-        meta.authors.map((name) => ({ name, sortName: null })),
-      );
+      const authors = meta.authors.map((name) => ({ name, sortName: null }));
+      if (executor) await this.metadataService.replaceAuthors(bookId, authors, { executor, emitEvent: false });
+      else await this.metadataService.replaceAuthors(bookId, authors);
     }
 
     if (meta.genres.length > 0) {
-      await this.metadataService.replaceGenres(bookId, meta.genres);
+      if (executor) await this.metadataService.replaceGenres(bookId, meta.genres, { executor });
+      else await this.metadataService.replaceGenres(bookId, meta.genres);
     }
 
     if (audio.narrators.length > 0) {
-      await this.metadataService.replaceNarrators(
-        bookId,
-        audio.narrators.map((name) => ({ name, sortName: null })),
-      );
+      const narrators = audio.narrators.map((name) => ({ name, sortName: null }));
+      if (executor) await this.metadataService.replaceNarrators(bookId, narrators, { executor });
+      else await this.metadataService.replaceNarrators(bookId, narrators);
     }
 
-    await this.metadataScoreService.calculateAndSave(bookId);
+    if (executor) await this.metadataScoreService.calculateAndSaveMany([bookId], executor);
+    else await this.metadataScoreService.calculateAndSave(bookId);
   }
 
   private async cleanupBookDockRecord(row: BookDockFileRow): Promise<void> {

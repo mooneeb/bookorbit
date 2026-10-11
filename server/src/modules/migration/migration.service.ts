@@ -91,6 +91,7 @@ export class MigrationService {
         profile,
         scopeOverride: dto.scopeOverride,
         actorUserId: userId,
+        planningStore: this.repo.planningStore(pending.id, userId),
         onSourceBatch: async (batch) => {
           for (const page of boundedSourceBatches(batch)) {
             await this.repo.appendPlanSourceBatch(pending.id, sourceBatches++, page.sourceData, page.bookOverlays);
@@ -117,14 +118,16 @@ export class MigrationService {
       const summary = {
         sourceBatches,
         generatedAt: planned.plan.generatedAt,
-        status: planned.plan.duplicateBookMatches.length > 0 ? 'blocked' : 'ready_for_live_run',
-        matchedBooks: planned.plan.matchedBooks.length,
-        unresolvedBooks: planned.plan.unresolvedBooks.length,
-        duplicateBookMatches: planned.plan.duplicateBookMatches.length,
-        unresolvedByReason: planned.plan.unresolvedBooks.reduce<Record<string, number>>((acc, row) => {
-          acc[row.reason] = (acc[row.reason] ?? 0) + 1;
-          return acc;
-        }, {}),
+        status: (planned.durableSummary?.duplicateBookMatches ?? planned.plan.duplicateBookMatches.length) > 0 ? 'blocked' : 'ready_for_live_run',
+        matchedBooks: planned.durableSummary?.matchedBooks ?? planned.plan.matchedBooks.length,
+        unresolvedBooks: planned.durableSummary?.unresolvedBooks ?? planned.plan.unresolvedBooks.length,
+        duplicateBookMatches: planned.durableSummary?.duplicateBookMatches ?? planned.plan.duplicateBookMatches.length,
+        unresolvedByReason:
+          planned.durableSummary?.unresolvedByReason ??
+          planned.plan.unresolvedBooks.reduce<Record<string, number>>((acc, row) => {
+            acc[row.reason] = (acc[row.reason] ?? 0) + 1;
+            return acc;
+          }, {}),
         mappedUsers: planned.plan.userPreview.length,
         perUserPreview: planned.plan.userPreview,
         artifactSizeBytes: {
@@ -134,17 +137,20 @@ export class MigrationService {
         },
       };
 
-      const artifact = await this.repo.updatePlanArtifact(pending.id, {
+      const artifactValues = {
         sourceSnapshotHash,
         profileHash,
         planHash,
         plan: planned.plan,
         sourceData: null,
         summary,
-      });
+      };
+      const artifact = planned.durableSummary
+        ? await this.repo.planningStore(pending.id, userId).finalize(artifactValues)
+        : await this.repo.updatePlanArtifact(pending.id, artifactValues);
       if (!artifact) throw new NotFoundException(`Migration plan artifact not found: ${pending.id}`);
       this.logger.log(
-        `[migration.dry_run] [end] profileId=${profile.id} userId=${userId} durationMs=${Date.now() - startMs} sourceBatches=${sourceBatches} matchedBooks=${planned.plan.matchedBooks.length} - dry-run planning completed`,
+        `[migration.dry_run] [end] profileId=${profile.id} userId=${userId} durationMs=${Date.now() - startMs} sourceBatches=${sourceBatches} matchedBooks=${summary.matchedBooks} - dry-run planning completed`,
       );
       return sanitizePlanArtifactWithDuplicateCandidates(artifact);
     } catch (error) {

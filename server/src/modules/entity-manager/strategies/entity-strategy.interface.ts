@@ -6,6 +6,7 @@ export type EntityMutationExecutor = Pick<NodePgDatabase<typeof schema>, 'execut
 export interface EntityMutationBooks {
   onBooksChanged?: (bookIds: number[], executor: EntityMutationExecutor) => Promise<void>;
   spoolBookIds?: boolean;
+  fileWriteRecovery?: { operationId: string; userId: number; entityType: EntityType };
 }
 export interface StrategyAffectedBooks {
   affectedBookIds: number[];

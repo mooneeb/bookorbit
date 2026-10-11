@@ -45,7 +45,7 @@ final class BulkActionsModel {
     }
   }
   let api: BookOrbitAPI
-  let user: AuthUser
+  private(set) var user: AuthUser
   let bookIDs: [Int]
   var action: Action = .edit
   var field: Field = .publisher
@@ -77,6 +77,7 @@ final class BulkActionsModel {
     self.api = api
     self.user = user
     self.bookIDs = Array(Set(bookIDs)).sorted()
+    reconcileAction()
   }
 
   var canEdit: Bool {
@@ -87,7 +88,13 @@ final class BulkActionsModel {
     user.hasPermission(.libraryDownload)
       && !user.permissions.contains(Permission.demoRestricted.rawValue)
   }
-  var canApply: Bool { !isBusy && (preview != nil || exportSummary != nil) && !needsReview }
+  var availableActions: [Action] {
+    Action.allCases.filter { $0 == .edit ? canEdit : canExport }
+  }
+  var canPrepare: Bool { !isBusy && availableActions.contains(action) }
+  var canApply: Bool {
+    canPrepare && (action == .edit ? preview != nil : exportSummary != nil) && !needsReview
+  }
   var isArray: Bool { [.authors, .genres, .tags, .narrators].contains(field) }
   private var journalURL: URL {
     let scope =
@@ -98,13 +105,14 @@ final class BulkActionsModel {
   }
 
   func load() async {
+    reconcileAction()
     isBusy = true
     defer { isBusy = false }
     do {
       session = try await api.authenticatedSessionGeneration()
       customFields = try await api.boundedJSON("custom-metadata/fields/active", session: session)
       customFieldID = customFields.first?.id
-      if FileManager.default.fileExists(atPath: journalURL.path) {
+      if canEdit && FileManager.default.fileExists(atPath: journalURL.path) {
         let recovery = try JSONDecoder().decode(
           BulkActionsRecovery.self, from: Data(contentsOf: journalURL))
         restore(recovery.request.fields)
@@ -114,9 +122,25 @@ final class BulkActionsModel {
           "An interrupted batch confirmed \(completedCount) of \(bookIDs.count) selected books. Additional work may have completed before the connection ended. Reload a preview to inspect current values before applying again."
       }
     } catch { message = error.localizedDescription }
+    reconcileAction()
+  }
+
+  func configure(user: AuthUser) {
+    guard self.user != user else { return }
+    self.user = user
+    cancel()
+    invalidatePreview()
+    reconcileAction()
+  }
+
+  private func reconcileAction() {
+    guard !availableActions.contains(action), let first = availableActions.first else { return }
+    action = first
+    invalidatePreview()
   }
 
   private func restore(_ fields: BulkMetadataEditFields) {
+    guard canEdit else { return }
     guard let data = try? JSONEncoder().encode(fields),
       let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
       let key = object.keys.sorted().first, let selected = Field(rawValue: key)
@@ -180,7 +204,7 @@ final class BulkActionsModel {
   }
 
   func prepare() {
-    guard !isBusy else { return }
+    guard canPrepare else { return }
     preview = nil
     exportSummary = nil
     message = nil

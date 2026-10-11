@@ -6,6 +6,7 @@ import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import { MigrationPlanMatchRepository } from './migration-plan-match.repository';
 import type { PlannedBookMatch } from './planner/planner.types';
+import { MigrationPlanningRepository } from './planner/migration-planning.repository';
 
 type Db = NodePgDatabase<typeof schema>;
 type MigrationRunState = 'draft' | 'preflight_failed' | 'dry_run_ready' | 'running' | 'failed' | 'completed';
@@ -27,6 +28,10 @@ function chunk<T>(items: T[], size: number): T[][] {
 @Injectable()
 export class MigrationRepository {
   constructor(@Inject(DB) private readonly db: Db) {}
+
+  planningStore(artifactId: number, userId: number) {
+    return new MigrationPlanningRepository(this.db, artifactId, userId);
+  }
 
   listSources(userId?: number) {
     return this.db

@@ -31,6 +31,23 @@ function makeService() {
   const candidates = new Map<EntityType, RawCandidatePair[]>();
   const setCandidates = (entityType: EntityType, pairs: RawCandidatePair[]) => candidates.set(entityType, pairs);
   const repo = {
+    resumeFileWrites: vi.fn(async (operationId: string, _userId: number, entityType: EntityType, write: (ids: number[]) => Promise<number[]>) => {
+      const result = await vi.mocked(strategies[entityType].merge).mock.results.at(-1)!.value;
+      let ids = [...new Set(result.affectedBookIds)] as number[];
+      if (result.affectedBookBatches) {
+        for await (const batch of result.affectedBookBatches()) {
+          ids = batch.slice(0, 50);
+          break;
+        }
+      }
+      const completed = await write(ids);
+      return {
+        operationId,
+        pendingBookCount: (result.affectedBookCount ?? ids.length) - completed.length,
+        processed: ids.length,
+        completed: completed.length,
+      };
+    }),
     filterBookIdsByScope: vi.fn().mockImplementation((ids: number[]) => Promise.resolve(ids)),
     getDismissedPairSet: vi.fn().mockResolvedValue(new Set<string>()),
     getInlineDismissedPairSet: vi.fn().mockResolvedValue(new Set<string>()),
@@ -55,7 +72,7 @@ function makeService() {
   };
 
   const fileWriteService = {
-    writeToFile: vi.fn().mockResolvedValue(undefined),
+    writeToFile: vi.fn().mockResolvedValue({ status: 'success' }),
     scheduleWrite: vi.fn(),
   };
   const metadataScoreService = {
@@ -95,6 +112,16 @@ function makeService() {
   const publisherStrategy = mockStrategy({ entityType: 'publisher', isInline: true });
   const languageStrategy = mockStrategy({ entityType: 'language', isInline: true });
   const seriesStrategy = mockStrategy({ entityType: 'series', isInline: false });
+
+  const strategies = {
+    author: authorStrategy,
+    genre: genreStrategy,
+    tag: tagStrategy,
+    narrator: narratorStrategy,
+    publisher: publisherStrategy,
+    language: languageStrategy,
+    series: seriesStrategy,
+  };
 
   const service = new EntityManagerService(
     repo as any,
@@ -690,6 +717,7 @@ describe('EntityManagerService', () => {
         await Promise.resolve();
         writing--;
         written++;
+        return { status: 'success' };
       });
       vi.mocked(strategies.author.merge).mockImplementation(async (input) => {
         await input.onBooksChanged!([1, 2], executor);
@@ -708,8 +736,8 @@ describe('EntityManagerService', () => {
 
       expect(result.affectedBookCount).toBe(1201);
       expect(metadataScoreService.calculateAndSaveMany).toHaveBeenCalledExactlyOnceWith([1, 2], executor);
-      expect(repo.filterBookIdsByScope).toHaveBeenCalledTimes(3);
-      expect(written).toBe(1201);
+      expect(repo.filterBookIdsByScope).toHaveBeenCalledTimes(1);
+      expect(written).toBe(50);
       expect(peakWriting).toBe(5);
       expect(fileWriteService.scheduleWrite).not.toHaveBeenCalled();
       expect(dispose).toHaveBeenCalledOnce();
@@ -757,7 +785,7 @@ describe('EntityManagerService', () => {
       expect(dispose).toHaveBeenCalledOnce();
     });
 
-    it('disposes captured book batches when a file write fails after commit', async () => {
+    it('retains pending books when a file write fails after commit', async () => {
       const { service, strategies, fileWriteService } = makeService();
       const dispose = vi.fn().mockResolvedValue(undefined);
       fileWriteService.writeToFile.mockRejectedValue(new Error('Write failed'));
@@ -769,7 +797,8 @@ describe('EntityManagerService', () => {
         },
         disposeAffectedBooks: dispose,
       });
-      await expect(service.merge('author', mockUser, 1, [2], true)).rejects.toThrow('Write failed');
+      const result = await service.merge('author', mockUser, 1, [2], true);
+      expect(result.fileWriteRecovery?.pendingBookCount).toBe(1);
       expect(dispose).toHaveBeenCalledOnce();
     });
 
@@ -802,15 +831,15 @@ describe('EntityManagerService', () => {
       expect(duplicateCompute.invalidateCandidatesForEntities).not.toHaveBeenCalled();
     });
 
-    it('schedules file writes when writeFiles is true', async () => {
+    it('writes the retained receipt when writeFiles is true', async () => {
       const { service, strategies, fileWriteService } = makeService();
       (strategies.genre.merge as any).mockResolvedValue({ affectedBookIds: [10, 20, 10] });
 
       await service.merge('genre', mockUser, 1, [2], true);
 
-      expect(fileWriteService.scheduleWrite).toHaveBeenCalledTimes(2);
-      expect(fileWriteService.scheduleWrite).toHaveBeenCalledWith(10, 'auto', 1);
-      expect(fileWriteService.scheduleWrite).toHaveBeenCalledWith(20, 'auto', 1);
+      expect(fileWriteService.writeToFile).toHaveBeenCalledTimes(2);
+      expect(fileWriteService.writeToFile).toHaveBeenCalledWith(10, 'auto', 1);
+      expect(fileWriteService.writeToFile).toHaveBeenCalledWith(20, 'auto', 1);
     });
 
     it('does not schedule file writes when writeFiles is false', async () => {

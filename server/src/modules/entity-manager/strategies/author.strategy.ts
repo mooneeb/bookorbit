@@ -229,7 +229,7 @@ export class AuthorStrategy implements EntityStrategy {
       this.db,
       input,
       scope,
-      this.selectMutationBooks(sourceIds, scope),
+      this.selectMergeMutationBooks(targetId, sourceIds, scope),
       async (tx) => {
         const authorRows = await tx
           .select({ id: authors.id, sortName: authors.sortName, description: authors.description, hasPhoto: authors.hasPhoto })
@@ -406,6 +406,17 @@ export class AuthorStrategy implements EntityStrategy {
     await this.authorImageStorage.deleteAuthorDir(input.entityId);
 
     return { ...result, originalName: entity.name, newEntities };
+  }
+
+  private selectMergeMutationBooks(targetId: number, sourceIds: number[], scope: EntityBookScope) {
+    return sql`SELECT DISTINCT ${bookAuthors.bookId} FROM ${bookAuthors}
+      JOIN ${books} ON ${books.id} = ${bookAuthors.bookId}
+      WHERE ${and(...buildEntityBookScopeClauses(this.db, scope))}
+        AND (${inArray(bookAuthors.authorId, sourceIds)} OR (
+          ${bookAuthors.authorId} = ${targetId}
+          AND EXISTS (SELECT 1 FROM ${authors} target WHERE target.id = ${targetId} AND COALESCE(target.sort_name, '') = '')
+          AND EXISTS (SELECT 1 FROM ${authors} source WHERE ${inArray(sql`source.id`, sourceIds)} AND COALESCE(source.sort_name, '') <> '')
+        ))`;
   }
 
   private selectMutationBooks(ids: number[], scope: EntityBookScope) {

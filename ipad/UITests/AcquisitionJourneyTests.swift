@@ -35,6 +35,7 @@ final class AcquisitionJourneyTests: XCTestCase {
     try await control("reset")
     let paused = try await object("uploads/\(sessionID)", token: token)
     XCTAssertEqual(paused["receivedBytes"] as? Int, offset)
+    E03ProfileSupport.configure(app)
     app.launch()
     tap("acquisitionEntry", app: app)
     tap("acquisitionResume", app: app)
@@ -48,7 +49,7 @@ final class AcquisitionJourneyTests: XCTestCase {
     let page = try await object(
       "book-dock/files?page=1&limit=20&search=\(query(filename))", token: token)
     XCTAssertEqual(page["total"] as? Int, 1)
-    let title = "Native upload reviewed \(UUID().uuidString)"
+    let title = "Native upload reviewed"
     try await review(app, title: title, dockID: dockID, destination: destination, token: token)
     try app.performAccessibilityAudit(for: [.hitRegion, .sufficientElementDescription])
     capture("IPAD-E03-A01-dock-review-preview")
@@ -83,7 +84,7 @@ final class AcquisitionJourneyTests: XCTestCase {
     XCTAssertEqual(repeated["total"] as? Int, 1)
     tap("scanReviewBookDock", app: app)
     tap("acquisitionDock\(dockID)", app: app)
-    let title = "Native scanned reviewed \(UUID().uuidString)"
+    let title = "Native scanned reviewed"
     try await review(app, title: title, dockID: dockID, destination: destination, token: token)
     capture("IPAD-E03-A01-scanned-dock-review-preview")
     finalizeAndRelaunch(app)
@@ -124,6 +125,7 @@ final class AcquisitionJourneyTests: XCTestCase {
     XCTAssertTrue(watching.waitForExistence(timeout: 10) || complete.waitForExistence(timeout: 10))
     capture("IPAD-E03-A01-durable-import-before-relaunch")
     app.terminate()
+    E03ProfileSupport.configure(app)
     app.launch()
     tap("acquisitionEntry", app: app)
     reveal(app.buttons["acquisitionRead"], app: app)
@@ -304,6 +306,7 @@ final class AcquisitionJourneyTests: XCTestCase {
   private func launch(username: String) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+    E03ProfileSupport.configure(app)
     app.launch()
     if app.buttons["signOut"].waitForExistence(timeout: 3) { app.buttons["signOut"].tap() }
     if app.buttons["Change server"].exists { app.buttons["Change server"].tap() }
@@ -372,9 +375,6 @@ final class AcquisitionJourneyTests: XCTestCase {
 
   @MainActor
   private func capture(_ name: String) {
-    let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-    attachment.name = name
-    attachment.lifetime = .keepAlways
-    add(attachment)
+    E03ProfileSupport.capture(name, test: self)
   }
 }

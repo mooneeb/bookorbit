@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { sanitizeLogValue } from '../../../common/utils/log-sanitize.utils';
 
@@ -16,6 +17,7 @@ import type {
   PlannedMigration,
   PlannedUserPreview,
   UserMapping,
+  MigrationPlanningStore,
 } from './planner.types';
 
 const MATCHING_PRIORITY = ['isbn', 'asin', 'file_hash', 'path_mapping', 'title_author'] as const;
@@ -34,6 +36,7 @@ export class MigrationPlannerService {
     scopeOverride?: Record<string, unknown>;
     actorUserId?: number;
     onSourceBatch?: (batch: SourceExportData) => Promise<void>;
+    planningStore?: MigrationPlanningStore;
   }): Promise<PlannerResult> {
     const { source, profile, scopeOverride } = params;
     const adapter = this.adapterRegistry.get(source.type);
@@ -45,6 +48,20 @@ export class MigrationPlannerService {
     const pathMappings = parsePathMappings(profile.pathMappings);
 
     const scope = { ...asRecord(profile.scope), ...(scopeOverride ?? {}) };
+
+    if (params.planningStore && params.onSourceBatch) {
+      return this.buildPersistedPlan({
+        ...params,
+        planningStore: params.planningStore,
+        onSourceBatch: params.onSourceBatch,
+        connectionConfig,
+        adapter,
+        snapshot,
+        userMappings,
+        pathMappings,
+        scope,
+      });
+    }
 
     const startMs = Date.now();
     this.logger.log(
@@ -113,6 +130,7 @@ export class MigrationPlannerService {
     );
 
     const plan: PlannedMigration = {
+      itemIdentityVersion: 2,
       generatedAt: new Date().toISOString(),
       snapshot,
       matchingPriority: [...MATCHING_PRIORITY],
@@ -134,6 +152,98 @@ export class MigrationPlannerService {
         duplicateBookMatches,
       },
     };
+  }
+
+  private async buildPersistedPlan(params: {
+    source: MigrationSource;
+    profile: MigrationProfile;
+    actorUserId?: number;
+    planningStore: MigrationPlanningStore;
+    onSourceBatch: (batch: SourceExportData) => Promise<void>;
+    connectionConfig: Parameters<ReturnType<SourceAdapterRegistry['get']>['snapshot']>[0];
+    adapter: ReturnType<SourceAdapterRegistry['get']>;
+    snapshot: PlannedMigration['snapshot'];
+    userMappings: UserMapping[];
+    pathMappings: PathMapping[];
+    scope: Record<string, unknown>;
+  }): Promise<PlannerResult> {
+    const startMs = Date.now();
+    const { source, profile, planningStore, adapter, connectionConfig, userMappings, pathMappings } = params;
+    const mappedUsers = new Map(
+      userMappings
+        .filter((row): row is UserMapping & { targetUserId: number } => row.targetUserId !== null)
+        .map((row) => [row.sourceUserId, row.targetUserId]),
+    );
+    const usernames = new Map<string, string>();
+    const matchingContentHash = createHash('sha256');
+    let batchCount = 0;
+    let sourceBookCount = 0;
+    this.logger.log(`[migration.plan] [start] sourceId=${source.id} profileId=${profile.id} streamed=true - migration planning started`);
+    try {
+      const batches = adapter.exportDataBatches
+        ? adapter.exportDataBatches(connectionConfig)
+        : singleSourceBatch(() => adapter.exportData(connectionConfig));
+      for await (const batch of batches) {
+        for (let offset = 0; offset < batch.books.length; offset += 100) {
+          const books = [...new Map(batch.books.slice(offset, offset + 100).map((book) => [book.sourceBookId, book])).values()];
+          const known = await planningStore.knownSourceBookIds(books.map((book) => book.sourceBookId));
+          const unseen = books.filter((book) => !known.has(book.sourceBookId));
+          if (unseen.length > 0) {
+            const matched = await this.matchingService.matchBooks(unseen, pathMappings, params.actorUserId);
+            matchingContentHash.update(JSON.stringify(matched));
+            await planningStore.appendCandidates(unseen, matched);
+            sourceBookCount += unseen.length;
+          }
+        }
+        for (const user of batch.users) if (mappedUsers.has(user.sourceUserId)) usernames.set(user.sourceUserId, user.username);
+        const counts = new Map<string, Map<string, PlannedUserPreview['counts']>>();
+        collectPreviewCounts(batch, mappedUsers, counts);
+        const rows = [...counts].flatMap(([sourceBookId, users]) =>
+          [...users].map(([sourceUserId, counts]) => ({ sourceBookId, sourceUserId, counts })),
+        );
+        for (let offset = 0; offset < rows.length; offset += 100) await planningStore.appendPreviewCounts(rows.slice(offset, offset + 100));
+        await params.onSourceBatch(batch);
+        batchCount++;
+        if (batchCount % 50 === 0)
+          this.logger.log(
+            `[migration.plan] [start] sourceId=${source.id} profileId=${profile.id} batches=${batchCount} sourceBooks=${sourceBookCount} - migration planning progress`,
+          );
+      }
+      const totals = await planningStore.totals();
+      const countsByUser = new Map(totals.users.map((row) => [row.sourceUserId, row.counts]));
+      const plan: PlannedMigration = {
+        itemIdentityVersion: 2,
+        matchingContentHash: matchingContentHash.digest('hex'),
+        generatedAt: new Date().toISOString(),
+        snapshot: params.snapshot,
+        matchingPriority: [...MATCHING_PRIORITY],
+        userMappings,
+        pathMappings,
+        scope: params.scope,
+        matchedBooks: [],
+        unresolvedBooks: [],
+        duplicateBookMatches: [],
+        userPreview: [...mappedUsers].map(([sourceUserId, targetUserId]) => ({
+          sourceUserId,
+          targetUserId,
+          username: usernames.get(sourceUserId) ?? sourceUserId,
+          counts: countsByUser.get(sourceUserId) ?? emptyPreviewCounts(),
+        })),
+      };
+      this.logger.log(
+        `[migration.plan] [end] sourceId=${source.id} profileId=${profile.id} durationMs=${Date.now() - startMs} batches=${batchCount} sourceBooks=${sourceBookCount} matched=${totals.summary.matchedBooks} unresolved=${totals.summary.unresolvedBooks} duplicates=${totals.summary.duplicateBookMatches} - migration planning completed`,
+      );
+      return {
+        plan,
+        durableSummary: totals.summary,
+        execution: { sourceData: emptySourceData(), matchedBooks: [], unresolvedBooks: [], duplicateBookMatches: [] },
+      };
+    } catch (error) {
+      this.logger.error(
+        `[migration.plan] [fail] sourceId=${source.id} profileId=${profile.id} durationMs=${Date.now() - startMs} errorClass=${error instanceof Error ? error.name : 'Unknown'} error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - migration planning failed`,
+      );
+      throw error;
+    }
   }
 }
 

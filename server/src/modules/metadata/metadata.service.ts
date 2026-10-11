@@ -513,12 +513,14 @@ export class MetadataService {
 
   // ── Genres ───────────────────────────────────────────────────────────────────
 
-  async replaceNarrators(bookId: number, narratorNames: { name: string; sortName: string | null }[]) {
-    await this.narratorService.replaceForBook(bookId, narratorNames);
+  async replaceNarrators(bookId: number, narratorNames: { name: string; sortName: string | null }[], options: RelationMutationOptions = {}) {
+    if (options.executor) await this.narratorService.replaceForBook(bookId, narratorNames, options);
+    else await this.narratorService.replaceForBook(bookId, narratorNames);
   }
 
-  async upsertComicMetadata(bookId: number, fields: ComicMetadataFields) {
-    await this.comicMetadataRepository.upsert(bookId, fields);
+  async upsertComicMetadata(bookId: number, fields: ComicMetadataFields, executor?: Parameters<ComicMetadataRepository['upsert']>[2]) {
+    if (executor) await this.comicMetadataRepository.upsert(bookId, fields, executor);
+    else await this.comicMetadataRepository.upsert(bookId, fields);
   }
 
   async replaceGenres(bookId: number, parsedGenres: string[], options: RelationMutationOptions = {}) {

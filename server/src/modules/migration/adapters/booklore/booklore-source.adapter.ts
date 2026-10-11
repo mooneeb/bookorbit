@@ -1030,6 +1030,7 @@ export class BookloreSourceAdapter implements SourceAdapter<BookloreConnectionCo
     if (!bookmarkTable) return [];
 
     const cols = await this.connector.listColumns(conn, bookmarkTable);
+    const itemIdCol = firstColumn(cols, ['id', 'uuid', 'client_id']);
     const userCol = firstColumn(cols, ['user_id', 'userid']);
     const bookCol = firstColumn(cols, ['book_id', 'bookid']);
     if (!userCol || !bookCol) return [];
@@ -1043,6 +1044,7 @@ export class BookloreSourceAdapter implements SourceAdapter<BookloreConnectionCo
 
     const sqlText = `
       SELECT
+        ${sqlString('b', itemIdCol, 'sourceItemId')},
         CAST(b.\`${userCol}\` AS CHAR) AS sourceUserId,
         CAST(b.\`${bookCol}\` AS CHAR) AS sourceBookId,
         ${bookFileCol ? `CAST(b.\`${bookFileCol}\` AS CHAR)` : 'NULL'} AS sourceFileId,
@@ -1058,6 +1060,7 @@ export class BookloreSourceAdapter implements SourceAdapter<BookloreConnectionCo
 
     return rows
       .map((row) => ({
+        sourceItemId: asString(row.sourceItemId),
         sourceUserId: asString(row.sourceUserId) ?? '',
         sourceBookId: asString(row.sourceBookId) ?? '',
         sourceFileId: asString(row.sourceFileId),
@@ -1074,6 +1077,7 @@ export class BookloreSourceAdapter implements SourceAdapter<BookloreConnectionCo
     if (!annotationsTable) return [];
 
     const cols = await this.connector.listColumns(conn, annotationsTable);
+    const itemIdCol = firstColumn(cols, ['id', 'uuid', 'client_id']);
     const userCol = firstColumn(cols, ['user_id', 'userid']);
     const bookCol = firstColumn(cols, ['book_id', 'bookid']);
     const cfiCol = firstColumn(cols, ['cfi', 'location']);
@@ -1090,6 +1094,7 @@ export class BookloreSourceAdapter implements SourceAdapter<BookloreConnectionCo
 
     const sqlText = `
       SELECT
+        ${sqlString('a', itemIdCol, 'sourceItemId')},
         CAST(a.\`${userCol}\` AS CHAR) AS sourceUserId,
         CAST(a.\`${bookCol}\` AS CHAR) AS sourceBookId,
         CAST(a.\`${cfiCol}\` AS CHAR) AS cfi,
@@ -1107,6 +1112,7 @@ export class BookloreSourceAdapter implements SourceAdapter<BookloreConnectionCo
 
     return rows
       .map((row) => ({
+        sourceItemId: asString(row.sourceItemId),
         sourceUserId: asString(row.sourceUserId) ?? '',
         sourceBookId: asString(row.sourceBookId) ?? '',
         cfi: asString(row.cfi) ?? '',

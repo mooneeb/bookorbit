@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy } from '@nestjs/common';
 import { dirname } from 'path';
 import { BulkRenamePreviewStore } from './bulk-rename-preview-store';
 
@@ -12,11 +12,12 @@ import { FileRenameRepository } from '../file-write/file-rename.repository';
 import { FileWatcherService } from '../scanner/file-watcher.service';
 import type { BulkRenameBookData } from '../file-write/bulk-rename.repository';
 import { BulkRenameRepository } from '../file-write/bulk-rename.repository';
-import { findSiblingOccupiedTarget, resolveBookFileTargets } from '../file-write/book-file-targets';
+import { bookRenameInputVersion, findSiblingOccupiedTarget, resolveBookFileTargets } from '../file-write/book-file-targets';
 
 const CACHE_TTL_MS = 60_000;
 
 interface BulkRenameStreamOptions {
+  previewToken: string;
   onProgress: (event: BulkRenameProgressEvent) => void;
   isCancelled: () => boolean;
   /** Books the reviewer skipped. Ids outside the candidate set are simply not present. */
@@ -120,14 +121,41 @@ export class BulkRenameService implements OnModuleDestroy {
     let candidateCount = 0;
     let selectedCount = 0;
     try {
-      this.invalidateCache(libraryId);
-      preview = await this.computeFullPreview(libraryId);
+      this.removeExpiredPreviews();
+      const cached = this.previewCache.get(libraryId);
+      if (!cached || cached.token !== options.previewToken) {
+        throw new ConflictException('Rename preview expired or changed. Review the preview again.');
+      }
+      preview = cached;
+      this.previewCache.delete(libraryId);
+      const pattern =
+        settings.fileNamingPattern ??
+        (settings.organizationMode === 'book_per_folder'
+          ? await this.appSettings.getUploadPatternBookPerFolder()
+          : await this.appSettings.getUploadPattern());
+      const sanitizeForCrossPlatform = await this.appSettings.isCrossPlatformPathSanitizationEnabled();
+      if (
+        preview.settingsVersion !== JSON.stringify([settings.fileNamingPattern, pattern ?? '', settings.organizationMode, sanitizeForCrossPlatform])
+      ) {
+        throw new ConflictException('Rename settings changed. Review the preview again.');
+      }
       let afterBookId = 0;
       while (true) {
         const batch = preview.candidateBatch(afterBookId, 250);
         if (!batch.length) break;
         candidateCount += batch.length;
-        selectedCount += batch.filter((item) => isSelected(item.bookId)).length;
+        const selected = batch.filter((item) => isSelected(item.bookId));
+        const books = await this.bulkRenameRepo.findBooksForLibraryIds(
+          libraryId,
+          selected.map((item) => item.bookId),
+        );
+        const versions = new Map(
+          books.map((book) => [book.bookId, bookRenameInputVersion({ ...book, pattern: pattern ?? '', sanitizeForCrossPlatform })]),
+        );
+        if (selected.some((item) => versions.get(item.bookId) !== item.inputVersion)) {
+          throw new ConflictException('Books changed after the rename preview. Review the preview again.');
+        }
+        selectedCount += selected.length;
         afterBookId = batch[batch.length - 1].bookId;
       }
       this.logger.log(
@@ -164,6 +192,7 @@ export class BulkRenameService implements OnModuleDestroy {
               currentPath: item.currentPath,
               targetPath: item.newPath!,
               preserveBook: true,
+              inputVersion: item.inputVersion,
             });
             if (result.status === 'success') succeeded++;
             else if (result.status === 'failed') failed++;
@@ -227,7 +256,10 @@ export class BulkRenameService implements OnModuleDestroy {
         ? await this.appSettings.getUploadPatternBookPerFolder()
         : await this.appSettings.getUploadPattern());
     const sanitizeForCrossPlatform = await this.appSettings.isCrossPlatformPathSanitizationEnabled();
-    const preview = await BulkRenamePreviewStore.create(pattern ?? '');
+    const preview = await BulkRenamePreviewStore.create(
+      pattern ?? '',
+      JSON.stringify([settings.fileNamingPattern, pattern ?? '', settings.organizationMode, sanitizeForCrossPlatform]),
+    );
     const upToBookId = await this.bulkRenameRepo.findLastBookId(libraryId);
     let afterBookId = 0;
     let bookCount = 0;
@@ -242,7 +274,7 @@ export class BulkRenameService implements OnModuleDestroy {
             settings.organizationMode === 'book_per_folder' && item.newPath && dirname(item.newPath) !== book.bookFolderPath
               ? dirname(item.newPath)
               : null;
-          return { ...item, targetFolder };
+          return { ...item, targetFolder, inputVersion: bookRenameInputVersion({ ...book, pattern: pattern ?? '', sanitizeForCrossPlatform }) };
         });
         const targets = books.flatMap((book) => {
           if (!pattern) return [];

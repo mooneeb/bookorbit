@@ -4,6 +4,7 @@ import { mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { test } from "node:test";
+import { assertLiveMergeResumeKeeper, loadMergeResumeFixture } from "./e03-merge-resume-preflight.mjs";
 
 const require = createRequire(new URL("../../server/package.json", import.meta.url));
 const { PDFDocument } = require("pdf-lib");
@@ -89,9 +90,7 @@ async function readerState(fixture, token) {
 }
 
 test("IPAD-E03-A05-rescan-resume: configured roots retain the completed merge, catalogue new bytes and release a deleted keeper", async () => {
-  const fixture = JSON.parse(await readFile(process.env.IPAD_MERGE_FIXTURE, "utf8"));
-  const probe = JSON.parse(await readFile(process.env.IPAD_MERGE_RESUME_PROBE, "utf8"));
-  assert.equal(probe.keeperBookId, fixture.targetBookId);
+  const { fixture, probe } = await loadMergeResumeFixture();
   const session = await json("auth/login", undefined, {
     username: "ipad-owner",
     password: "IpadFixture123",
@@ -102,6 +101,7 @@ test("IPAD-E03-A05-rescan-resume: configured roots retain the completed merge, c
   const scans = [];
   const artifactDirectory = process.env.IPAD_ARTIFACT_DIR ?? dirname(process.env.IPAD_MERGE_RESUME_PROBE);
   try {
+    await assertLiveMergeResumeKeeper(fixture, (bookId) => request(`books/${bookId}`, token));
     const library = await json(`libraries/${fixture.libraryId}`, token);
     const root = library.folders.find((folder) => folder.id === fixture.libraryFolderId && contains(folder.path, probe.newPath));
     assert.ok(root, "The containing configured root must match this merge receipt's libraryFolderId");

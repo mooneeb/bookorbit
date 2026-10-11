@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 
 import { BookDockService } from './book-dock.service';
 
@@ -34,7 +34,7 @@ function row(overrides?: Record<string, unknown>) {
   };
 }
 
-function makeService() {
+function makeService(finalizations?: { find: ReturnType<typeof vi.fn>; hasAcceptedForFileIds: ReturnType<typeof vi.fn> }) {
   const db = { select: vi.fn() };
   const repo = {
     findAll: vi.fn(),
@@ -81,6 +81,7 @@ function makeService() {
     watcherService as never,
     processingState as never,
     gateway as never,
+    finalizations as never,
   );
   return { service, db, repo, ingestService, finalizeService, watcherService, processingState, gateway };
 }
@@ -366,6 +367,29 @@ describe('BookDockService', () => {
     expect(repo.deleteById).toHaveBeenCalledWith(1);
     expect(repo.deleteByIds).toHaveBeenCalledWith([2]);
     expect(repo.findSelectionBatch).toHaveBeenCalledWith(expect.objectContaining({ readyToFile: true }));
+  });
+
+  it('checks accepted imports once per bounded discard batch before cleaning that batch', async () => {
+    const finalizations = {
+      find: vi.fn(),
+      hasAcceptedForFileIds: vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true),
+    };
+    const { service, repo } = makeService(finalizations);
+    const ids = Array.from({ length: 501 }, (_, index) => index + 1);
+    repo.findByIds.mockResolvedValueOnce(ids.slice(0, 500).map((id) => row({ id }))).mockResolvedValueOnce([row({ id: 501 })]);
+    const cleanup = vi.spyOn(service as any, 'cleanupFiles').mockResolvedValue(undefined);
+
+    await expect(service.bulkDiscard(ids, false, [], undefined, undefined, 1, false)).rejects.toBeInstanceOf(ConflictException);
+
+    expect(repo.findByIds).toHaveBeenNthCalledWith(1, ids.slice(0, 500), 1, false);
+    expect(repo.findByIds).toHaveBeenNthCalledWith(2, [501], 1, false);
+    expect(finalizations.hasAcceptedForFileIds).toHaveBeenCalledTimes(2);
+    expect(finalizations.hasAcceptedForFileIds).toHaveBeenNthCalledWith(1, ids.slice(0, 500));
+    expect(finalizations.hasAcceptedForFileIds).toHaveBeenNthCalledWith(2, [501]);
+    expect(finalizations.find).not.toHaveBeenCalled();
+    expect(cleanup).toHaveBeenCalledTimes(500);
+    expect(cleanup).not.toHaveBeenCalledWith(expect.objectContaining({ id: 501 }));
+    expect(repo.deleteByIds).toHaveBeenCalledExactlyOnceWith(ids.slice(0, 500));
   });
 
   it('proxies summary and statistics repository queries', async () => {

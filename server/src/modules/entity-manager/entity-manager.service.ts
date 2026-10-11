@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException, Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 
 import type {
@@ -311,6 +312,7 @@ export class EntityManagerService {
       }
       sourceIds.forEach((id) => this.assertIdentity(strategy, id));
       const libraryIds = await this.libraryService.findAccessibleLibraryIds(user);
+      const operationId = writeFiles ? randomUUID() : undefined;
       const result = await strategy.merge({
         targetId,
         sourceIds,
@@ -318,10 +320,12 @@ export class EntityManagerService {
         libraryIds,
         contentFilters: user.isSuperuser ? undefined : user.contentFilters,
         onBooksChanged: (bookIds, executor) => this.metadataScoreService.calculateAndSaveMany(bookIds, executor),
-        spoolBookIds: writeFiles,
+        spoolBookIds: false,
+        fileWriteRecovery: operationId ? { operationId, userId: user.id, entityType } : undefined,
       });
 
-      await this.finishMutation(result, user, writeFiles);
+      await this.finishMutation(result, user, false);
+      const fileWriteRecovery = operationId ? await this.resumeFileWrites(entityType, user, operationId) : undefined;
 
       const nonInlineSourceIds: number[] = [];
       for (const sourceId of sourceIds) {
@@ -347,6 +351,7 @@ export class EntityManagerService {
         affectedBookCount: result.affectedBookCount ?? result.affectedBookIds.length,
         imagePromoted: result.imagePromoted,
         fieldsResolved: result.fieldsResolved,
+        fileWriteRecovery,
       };
     } catch (err) {
       const error = logErrorFields(err);
@@ -723,6 +728,40 @@ export class EntityManagerService {
     }
 
     return reasons;
+  }
+
+  listFileWriteRecovery(entityType: EntityType, user: RequestUser) {
+    return this.repo.listFileWriteRecovery(user.id, entityType);
+  }
+
+  async resumeFileWrites(entityType: EntityType, user: RequestUser, operationId: string) {
+    const startedAt = Date.now();
+    this.logger.log(`[entity_manager.write_files] [start] userId=${user.id} operationId=${operationId} - file updates started`);
+    const result = await this.repo.resumeFileWrites(operationId, user.id, entityType, async (ids) => {
+      const libraryIds = await this.libraryService.findAccessibleLibraryIds(user);
+      const scopedIds = await this.repo.filterBookIdsByScope(ids, { libraryIds });
+      const completed: number[] = [];
+      for (let index = 0; index < scopedIds.length; index += 5) {
+        await Promise.all(
+          scopedIds.slice(index, index + 5).map(async (bookId) => {
+            try {
+              const outcome = await this.fileWriteService.writeToFile(bookId, 'auto', user.id);
+              if (outcome.status === 'success') completed.push(bookId);
+            } catch (err) {
+              const error = logErrorFields(err);
+              this.logger.warn(
+                `[entity_manager.write_files] [fail] userId=${user.id} operationId=${operationId} bookId=${bookId} durationMs=${Date.now() - startedAt} errorClass=${error.errorClass} error="${error.error}" - file update retained for retry`,
+              );
+            }
+          }),
+        );
+      }
+      return completed;
+    });
+    this.logger.log(
+      `[entity_manager.write_files] [end] userId=${user.id} operationId=${operationId} durationMs=${Date.now() - startedAt} completed=${result.completed} pending=${result.pendingBookCount} - file updates processed`,
+    );
+    return result;
   }
 
   private scheduleWrites(bookIds: number[], userId: number): void {

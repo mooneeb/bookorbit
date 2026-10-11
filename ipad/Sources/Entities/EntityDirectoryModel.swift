@@ -16,6 +16,51 @@ final class EntityDirectoryModel {
   var error: String?
   var selection: [BrowseEntityItem] = []
   var bulkOutcome: String?
+  private(set) var pendingFileOperations: [String] = []
+  private(set) var retryingFileUpdates = false
+  var fileUpdateMessage: String?
+
+  func clearFileUpdateRecovery() {
+    pendingFileOperations = []
+    fileUpdateMessage = nil
+  }
+
+  func loadPendingFileUpdates() async {
+    let requestedKind = kind
+    do {
+      let session = try await api.authenticatedSessionGeneration()
+      let receipts: [[String: String]] = try await api.boundedJSON(
+        "entity-manager/\(requestedKind.rawValue)/file-updates", session: session)
+      guard kind == requestedKind, !Task.isCancelled else { return }
+      pendingFileOperations = receipts.compactMap { $0["operationId"] }
+    } catch {
+      guard kind == requestedKind else { return }
+      fileUpdateMessage = error.localizedDescription
+    }
+  }
+
+  func retryFileUpdates() async {
+    guard let operationID = pendingFileOperations.first, !retryingFileUpdates else { return }
+    let requestedKind = kind
+    retryingFileUpdates = true
+    defer { retryingFileUpdates = false }
+    do {
+      let session = try await api.authenticatedSessionGeneration()
+      let result: EntityFileWriteRecovery = try await api.boundedJSON(
+        "entity-manager/\(requestedKind.rawValue)/file-updates/\(operationID)/retry",
+        method: "POST", session: session)
+      guard kind == requestedKind, !Task.isCancelled else { return }
+      fileUpdateMessage =
+        result.pendingBookCount > 0
+        ? "\(result.pendingBookCount) file updates remain. Retry to continue. Check write settings or access for skipped files."
+        : "File updates completed."
+      await loadPendingFileUpdates()
+    } catch {
+      guard kind == requestedKind else { return }
+      fileUpdateMessage = error.localizedDescription
+    }
+  }
+
   private var generation = UUID()
 
   init(api: BookOrbitAPI, kind: EntityKind = .author) {
@@ -105,6 +150,7 @@ final class EntityDirectoryModel {
       items = result.items
       total = result.total
       self.page = page
+      await loadPendingFileUpdates()
     } catch {
       guard generation == request, !Task.isCancelled else { return }
       self.error = error.localizedDescription

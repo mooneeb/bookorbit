@@ -55,6 +55,7 @@ watch(em.browseSearch, () => {
 watch(
   [em.mode, em.entityType],
   ([newMode]) => {
+    em.fetchPendingFileUpdates()
     if (newMode === 'browse') {
       em.fetchBrowse()
     } else if (newMode === 'duplicates') {
@@ -236,6 +237,21 @@ async function handleBulkDeleteConfirm(mode: 'soft' | 'hard' | 'inline', writeFi
 
 <template>
   <div class="flex flex-col h-full overflow-hidden">
+    <div
+      v-if="em.pendingFileUpdates.value.length || em.fileUpdateError.value"
+      class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm"
+    >
+      <span>Entity merge file updates are pending. Database changes are saved.</span>
+      <span v-if="em.fileUpdateError.value" class="text-destructive">{{ em.fileUpdateError.value }}</span>
+      <button
+        v-if="em.pendingFileUpdates.value.length"
+        class="rounded border border-border px-3 py-1"
+        :disabled="em.retryingFileUpdates.value"
+        @click="em.retryPendingFileUpdates"
+      >
+        Retry file updates
+      </button>
+    </div>
     <div class="flex flex-none flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border border-border bg-card px-2.5 py-2">
       <EntityTypeSelector v-model="em.entityType.value" />
       <span class="hidden h-5 w-px shrink-0 bg-border sm:block" aria-hidden="true" />

@@ -123,11 +123,12 @@ export class BookDockService {
         canManageAll,
       },
       async (rows) => {
-        for (const row of rows) await this.assertNotFinalizing(row.id);
+        const ids = rows.map((row) => row.id);
+        await this.assertNotFinalizing(ids);
         for (const row of rows) {
           await this.cleanupFiles(row);
         }
-        await this.repo.deleteByIds(rows.map((row) => row.id));
+        await this.repo.deleteByIds(ids);
       },
     );
   }
@@ -474,9 +475,9 @@ export class BookDockService {
     this.logger.warn(`[${event}] [fail] durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${errorMessage}" - ${message}`);
   }
 
-  private async assertNotFinalizing(id: number): Promise<void> {
-    if (await this.finalizations?.find(id))
-      throw new ConflictException('This book has an accepted import. Retry that import before changing or discarding it');
+  private async assertNotFinalizing(id: number | number[]): Promise<void> {
+    const accepted = Array.isArray(id) ? await this.finalizations?.hasAcceptedForFileIds(id) : await this.finalizations?.find(id);
+    if (accepted) throw new ConflictException('This book has an accepted import. Retry that import before changing or discarding it');
   }
 
   private async assertValidTarget(targetLibraryId?: number | null, targetFolderId?: number | null): Promise<void> {

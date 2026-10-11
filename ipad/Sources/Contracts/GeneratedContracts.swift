@@ -2359,6 +2359,14 @@ struct MergeResult: Codable, Sendable, Equatable {
     var `affectedBookCount`: Int
     var `imagePromoted`: Bool? = nil
     var `fieldsResolved`: [String]? = nil
+    var `fileWriteRecovery`: EntityFileWriteRecovery? = nil
+}
+
+struct EntityFileWriteRecovery: Codable, Sendable, Equatable {
+    var `operationId`: String
+    var `pendingBookCount`: Double
+    var `processed`: Int
+    var `completed`: Double
 }
 
 struct RenameResult: Codable, Sendable, Equatable {
@@ -2656,6 +2664,7 @@ struct BulkRenamePreviewItem: Codable, Sendable, Equatable {
 }
 
 struct BulkRenamePreviewPage: Codable, Sendable, Equatable {
+    var `previewToken`: String
     var `items`: [BulkRenamePreviewItem]
     var `total`: Int
     var `totalByStatus`: BulkRenamePreviewPageTotalByStatus
@@ -2671,6 +2680,7 @@ struct BulkRenamePreviewPageTotalByStatus: Codable, Sendable, Equatable {
 }
 
 struct BulkRenameExecuteRequest: Codable, Sendable, Equatable {
+    var `previewToken`: String
     var `excludeBookIds`: [Int]? = nil
     var `includeBookIds`: [Int]? = nil
 }

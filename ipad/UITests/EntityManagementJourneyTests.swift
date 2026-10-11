@@ -40,6 +40,7 @@ final class EntityManagementJourneyTests: XCTestCase {
     let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "entityRow"))
       .firstMatch
     XCTAssertTrue(row.waitForExistence(timeout: 15))
+    try E03ProfileSupport.audit(app)
     capture("IPAD-E03-A05-entities-directory")
     row.tap()
     XCTAssertTrue(app.staticTexts["entityAffectedCount"].waitForExistence(timeout: 10))
@@ -51,6 +52,7 @@ final class EntityManagementJourneyTests: XCTestCase {
     field.typeText("Entity fixture corrected")
     app.buttons["entityPreviewRename"].tap()
     XCTAssertTrue(app.alerts["Review entity change"].waitForExistence(timeout: 10))
+    try E03ProfileSupport.audit(app)
     capture("IPAD-E03-A05-entities-rename-preview")
     app.alerts.buttons["Cancel"].tap()
     XCTAssertTrue(app.buttons["entityPreviewRename"].exists)
@@ -140,6 +142,7 @@ final class EntityManagementJourneyTests: XCTestCase {
     XCTAssertLessThanOrEqual(
       app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "entityClusterMember"))
         .count, 10)
+    try E03ProfileSupport.audit(app)
     capture("IPAD-E03-A05-entities-component-page-1")
     app.buttons["entityClusterNext"].tap()
     XCTAssertTrue(
@@ -162,6 +165,7 @@ final class EntityManagementJourneyTests: XCTestCase {
   @MainActor
   private func launch(username: String) -> XCUIApplication {
     let app = XCUIApplication()
+    E03ProfileSupport.configure(app)
     app.launch()
     if app.buttons["signOut"].waitForExistence(timeout: 3) { app.buttons["signOut"].tap() }
     if app.buttons["Change server"].waitForExistence(timeout: 3) {
@@ -202,10 +206,8 @@ final class EntityManagementJourneyTests: XCTestCase {
     return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
   }
 
+  @MainActor
   private func capture(_ name: String) {
-    let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-    attachment.name = name
-    attachment.lifetime = .keepAlways
-    add(attachment)
+    E03ProfileSupport.capture(name, test: self)
   }
 }

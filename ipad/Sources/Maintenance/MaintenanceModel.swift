@@ -37,6 +37,7 @@ final class MaintenanceModel {
   private(set) var brokenCovers: [BrokenCoverEntry] = []
   private(set) var orphanedCovers: [OrphanedCoverDirEntry] = []
   var cleanupCategory: String?
+  private var renamePreviewToken: String?
   private var renameCompleted = false
   private var operation: Task<Void, Never>?
 
@@ -108,6 +109,7 @@ final class MaintenanceModel {
       case .rename:
         guard let libraryID else { return }
         let response = try await api.renamePreview(libraryID: libraryID, page: target)
+        renamePreviewToken = response.previewToken
         renames = response.items
         total = response.total
       case .missing:
@@ -154,11 +156,15 @@ final class MaintenanceModel {
   }
 
   func applyRename() {
-    guard canRename, let libraryID, !selectedBookIDs.isEmpty else { return }
+    guard canRename, let libraryID, let renamePreviewToken, !selectedBookIDs.isEmpty else {
+      return
+    }
     let ids = Array(selectedBookIDs).sorted()
     run {
       self.renameCompleted = false
-      try await self.api.renameBooks(libraryID: libraryID, bookIDs: ids) { event in
+      try await self.api.renameBooks(
+        libraryID: libraryID, bookIDs: ids, previewToken: renamePreviewToken
+      ) { event in
         await MainActor.run {
           if let done = event.done, done {
             self.renameCompleted = true
@@ -213,29 +219,68 @@ final class MaintenanceModel {
   }
   var canCleanOrphanedCovers: Bool { canRepair }
 
+  var coverCleanupCount: Int {
+    switch cleanupCategory {
+    case "broken-covers": brokenCovers.count
+    case "orphaned-covers": orphanedCovers.count
+    default: 0
+    }
+  }
+
+  var canApplyCoverCleanup: Bool {
+    guard (1...40).contains(coverCleanupCount) else { return false }
+    switch cleanupCategory {
+    case "broken-covers": return canCleanBrokenCovers
+    case "orphaned-covers": return canCleanOrphanedCovers
+    default: return false
+    }
+  }
+
+  func previewCoverCleanup(category: String) {
+    guard !isBusy else { return }
+    cleanupCategory = category
+    guard canApplyCoverCleanup else {
+      cleanupCategory = nil
+      return
+    }
+    error = nil
+  }
+
   func reviewCoverCleanup() {
     guard canDelete else { return }
     run {
-      self.brokenCovers = try await self.api.brokenCovers().items
+      self.cleanupCategory = nil
+      self.brokenCovers = []
+      self.orphanedCovers = []
+      self.progress = "Loading cover cleanup preview"
+      defer { self.progress = "" }
+      let broken = try await self.api.brokenCovers().items
+      var orphaned: [OrphanedCoverDirEntry] = []
       if self.canCleanOrphanedCovers {
-        self.orphanedCovers = try await self.api.orphanedCoverDirs().items
+        orphaned = try await self.api.orphanedCoverDirs().items
       }
+      self.brokenCovers = broken
+      self.orphanedCovers = orphaned
+      self.result =
+        "Review ready: \(broken.count) broken cover entries, \(orphaned.count) orphaned folders."
     }
   }
 
   func applyCoverCleanup() {
-    guard let category = cleanupCategory,
-      category == "broken-covers" ? canCleanBrokenCovers : canCleanOrphanedCovers
-    else { return }
+    guard !isBusy, canApplyCoverCleanup, let category = cleanupCategory else { return }
     let ids = category == "broken-covers" ? brokenCovers.map(\.id) : orphanedCovers.map(\.bookId)
-    guard !ids.isEmpty else { return }
     run {
+      self.progress = "Cleaning \(ids.count) reviewed cover entries"
+      defer { self.progress = "" }
       let outcome = try await self.api.cleanupMissingResources(category: category, bookIDs: ids)
       self.result =
-        "Cleaned \(outcome.cleaned), skipped \(outcome.skipped), \(outcome.remaining) remaining."
+        "Cleaned \(outcome.cleaned), skipped \(outcome.skipped), \(outcome.remaining) remaining. Review cover cleanup again for the next pass."
       self.cleanupCategory = nil
-      self.brokenCovers = []
-      self.orphanedCovers = []
+      if category == "broken-covers" {
+        self.brokenCovers = []
+      } else {
+        self.orphanedCovers = []
+      }
     }
   }
 

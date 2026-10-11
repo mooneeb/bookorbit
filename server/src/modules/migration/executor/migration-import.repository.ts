@@ -598,7 +598,10 @@ export class MigrationImportRepository {
     userIds: number[];
     bookIds: number[];
     sessionIdPrefix: string;
+    snapshotComplete?: boolean;
   }): Promise<void> {
+    const snapshotComplete = params.snapshotComplete !== false;
+    if (!snapshotComplete && params.items.length === 0) return;
     const targetUserIds = uniqueNumbers(params.userIds);
     const targetBookIds = uniqueNumbers(params.bookIds);
     if (targetUserIds.length === 0 || targetBookIds.length === 0) return;
@@ -614,30 +617,42 @@ export class MigrationImportRepository {
       progressDelta: number | null;
       libraryId: number;
     }> = [];
+    const sessionIdBatches = snapshotComplete ? [null] : chunk([...new Set(params.items.map((item) => item.sessionId))], BATCH_CHUNK_SIZE);
     for (const userBatch of chunk(targetUserIds, BATCH_CHUNK_SIZE)) {
-      existing.push(
-        ...(await this.db
-          .select({
-            id: schema.readingSessions.id,
-            userId: schema.readingSessions.userId,
-            bookId: schema.readingSessions.bookId,
-            sessionId: schema.readingSessions.sessionId,
-            startedAt: schema.readingSessions.startedAt,
-            endedAt: schema.readingSessions.endedAt,
-            durationSeconds: schema.readingSessions.durationSeconds,
-            progressDelta: schema.readingSessions.progressDelta,
-            libraryId: schema.books.libraryId,
-          })
-          .from(schema.readingSessions)
-          .innerJoin(schema.books, eq(schema.books.id, schema.readingSessions.bookId))
-          .where(and(inArray(schema.readingSessions.userId, userBatch), like(schema.readingSessions.sessionId, `${params.sessionIdPrefix}%`)))),
-      );
+      for (const sessionIds of sessionIdBatches) {
+        existing.push(
+          ...(await this.db
+            .select({
+              id: schema.readingSessions.id,
+              userId: schema.readingSessions.userId,
+              bookId: schema.readingSessions.bookId,
+              sessionId: schema.readingSessions.sessionId,
+              startedAt: schema.readingSessions.startedAt,
+              endedAt: schema.readingSessions.endedAt,
+              durationSeconds: schema.readingSessions.durationSeconds,
+              progressDelta: schema.readingSessions.progressDelta,
+              libraryId: schema.books.libraryId,
+            })
+            .from(schema.readingSessions)
+            .innerJoin(schema.books, eq(schema.books.id, schema.readingSessions.bookId))
+            .where(
+              and(
+                inArray(schema.readingSessions.userId, userBatch),
+                sessionIds
+                  ? inArray(schema.readingSessions.sessionId, sessionIds)
+                  : like(schema.readingSessions.sessionId, `${params.sessionIdPrefix}%`),
+              ),
+            )),
+        );
+      }
     }
 
     const desiredKeys = new Set(params.items.map((item) => `${item.userId}:${item.sessionId}`));
     const targetBookIdSet = new Set(targetBookIds);
     const relevantExisting = existing.filter((row) => targetBookIdSet.has(row.bookId) || desiredKeys.has(`${row.userId}:${row.sessionId}`));
-    const stale = relevantExisting.filter((row) => targetBookIdSet.has(row.bookId) && !desiredKeys.has(`${row.userId}:${row.sessionId}`));
+    const stale = snapshotComplete
+      ? relevantExisting.filter((row) => targetBookIdSet.has(row.bookId) && !desiredKeys.has(`${row.userId}:${row.sessionId}`))
+      : [];
     const timeZonesByUserId = await this.fetchTimeZonesByUserIds(targetUserIds);
     const affectedDaysByUserLibrary = new Map<string, { userId: number; libraryId: number; timeZone: string; days: Set<string> }>();
 
@@ -709,6 +724,7 @@ export class MigrationImportRepository {
             progressDelta: sql`excluded.progress_delta`,
             endProgress: sql`excluded.end_progress`,
           },
+          ...(snapshotComplete ? {} : { setWhere: sql`excluded.ended_at >= ${schema.readingSessions.endedAt}` }),
         });
     }
 

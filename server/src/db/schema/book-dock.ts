@@ -91,6 +91,7 @@ export type BookDockUnitFileRow = typeof bookDockUnitFiles.$inferSelect;
 export type NewBookDockUnitFileRow = typeof bookDockUnitFiles.$inferInsert;
 
 export interface BookDockFinalizeIntent {
+  managedRequest?: { requestId: number; userId: number };
   row: BookDockFileRow;
   libraryId: number;
   folderId: number;

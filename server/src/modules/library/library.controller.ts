@@ -349,6 +349,7 @@ export class LibraryController {
 
     try {
       const summary = await this.bulkRenameService.execute(libraryId, user.id, {
+        previewToken: body.previewToken,
         excludeBookIds: body.excludeBookIds,
         includeBookIds: body.includeBookIds,
         onProgress: writeEvent,

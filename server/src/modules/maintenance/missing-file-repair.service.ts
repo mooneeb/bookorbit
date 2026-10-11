@@ -9,6 +9,7 @@ import type { MissingFileRepairPreview, MissingFileRepairRequest, MissingFileRep
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import type { RequestUser } from '../../common/types/request-user';
+import { resolveSingleFileBookPath } from '../../common/utils/book-path.utils';
 import { computeFileHashFromHandle } from '../../common/utils/file-hash.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { LibraryService } from '../library/library.service';
@@ -26,10 +27,11 @@ export class MissingFileRepairService {
 
   private async context(input: MissingFileRepairRequest, user: RequestUser) {
     const [row] = await this.db
-      .select({ book: schema.books, file: schema.bookFiles, root: schema.libraryFolders.path })
+      .select({ book: schema.books, file: schema.bookFiles, root: schema.libraryFolders.path, organizationMode: schema.libraries.organizationMode })
       .from(schema.books)
       .innerJoin(schema.bookFiles, and(eq(schema.bookFiles.bookId, schema.books.id), eq(schema.bookFiles.id, input.fileId)))
       .innerJoin(schema.libraryFolders, eq(schema.libraryFolders.id, schema.books.libraryFolderId))
+      .innerJoin(schema.libraries, eq(schema.libraries.id, schema.books.libraryId))
       .where(eq(schema.books.id, input.bookId))
       .limit(1);
     if (!row) throw new NotFoundException('Book file not found');
@@ -127,13 +129,14 @@ export class MissingFileRepairService {
             .limit(2);
           const context = await this.context(input, user);
           const relPath = relative(context.root, checked.replacementPath);
-          if (files.length > 1 && dirname(relPath) !== row.folderPath)
+          const bookPath = resolveSingleFileBookPath(checked.replacementPath, context.root, context.organizationMode);
+          if (files.length > 1 && dirname(checked.replacementPath) !== row.folderPath)
             throw new ConflictException('Repair a multi-file book inside its existing folder');
           if (files.length === 1) {
             const occupiedFolder = await tx
               .select({ id: schema.books.id })
               .from(schema.books)
-              .where(and(eq(schema.books.libraryId, row.libraryId), eq(schema.books.folderPath, dirname(relPath))))
+              .where(and(eq(schema.books.libraryId, row.libraryId), eq(schema.books.folderPath, bookPath)))
               .limit(1);
             if (occupiedFolder.length && occupiedFolder[0].id !== row.id) throw new ConflictException('Replacement folder belongs to another book');
           }
@@ -158,7 +161,7 @@ export class MissingFileRepairService {
           if (!updated.length) throw new ConflictException('Book file changed. Preview again');
           await tx
             .update(schema.books)
-            .set({ status: 'present', ...(files.length === 1 ? { folderPath: dirname(relPath) } : {}), updatedAt: new Date() })
+            .set({ status: 'present', ...(files.length === 1 ? { folderPath: bookPath } : {}), updatedAt: new Date() })
             .where(eq(schema.books.id, row.id));
         });
       }

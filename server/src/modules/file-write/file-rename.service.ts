@@ -20,7 +20,7 @@ import type { BookFilePathUpdate, BookRenameData } from './file-rename.repositor
 import { FileRenameRepository } from './file-rename.repository';
 import { FileLockService, bookOperationLockKey } from './file-lock.service';
 import { buildPatternTokens } from '../../common/utils/pattern-tokens.utils';
-import { isSameWork, resolveBookFileTargets } from './book-file-targets';
+import { isSameWork, bookRenameInputVersion, resolveBookFileTargets } from './book-file-targets';
 
 const FILE_RENAME_EVENT = 'file.rename';
 const FILE_RENAME_ROLLBACK_EVENT = 'file.rename_rollback';
@@ -33,6 +33,7 @@ export interface BulkRenameExpectation {
   currentPath: string;
   targetPath: string;
   preserveBook: true;
+  inputVersion?: string;
 }
 
 type RenameBookFile = Awaited<ReturnType<FileRenameRepository['findAllBookFiles']>>[number];
@@ -174,7 +175,7 @@ export class FileRenameService implements OnModuleDestroy {
 
     const allFiles = await this.renameRepo.findAllBookFiles(bookId);
     // Shared with the bulk rename preview so the preview can never promise a rename this refuses.
-    const fileTargets = resolveBookFileTargets({
+    const targetInput = {
       primaryFileId: data.file.id,
       files: allFiles,
       metadata: data.metadata,
@@ -186,7 +187,11 @@ export class FileRenameService implements OnModuleDestroy {
       organizationMode: data.organizationMode,
       pattern,
       sanitizeForCrossPlatform,
-    });
+    };
+    if (expected?.inputVersion && expected.inputVersion !== bookRenameInputVersion(targetInput)) {
+      return this.logAndReturn(bookId, startedAt, { status: 'skipped', reason: 'rename preview changed' });
+    }
+    const fileTargets = resolveBookFileTargets(targetInput);
 
     const newAbsolutePath = fileTargets.get(data.file.id) ?? baseNewAbsolutePath;
     const newFolderPath = dirname(newAbsolutePath);

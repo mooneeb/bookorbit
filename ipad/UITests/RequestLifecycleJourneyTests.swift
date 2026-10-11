@@ -10,12 +10,14 @@ final class RequestLifecycleJourneyTests: XCTestCase {
     let app = login("ipad-owner")
     tap("openRequests", app)
     XCTAssertTrue(app.descendants(matching: .any)["requestsScreen"].waitForExistence(timeout: 10))
+    try E03ProfileSupport.audit(app)
     tap("requestNew", app)
     let title = "Native request cancellation fixture \(UUID().uuidString)"
     set("requestTitle", value: title, app)
     try chooseDestination(app)
     tap("requestCreate", app)
     XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 15))
+    try E03ProfileSupport.audit(app)
     capture("IPAD-E03-A02-request-created")
     tap("requestCancel", app)
     app.alerts.buttons["Cancel request"].tap()
@@ -77,6 +79,7 @@ final class RequestLifecycleJourneyTests: XCTestCase {
     try await control("reset=true")
     tap("requestReleaseSearch", app)
     XCTAssertTrue(app.buttons["requestGrab0"].waitForExistence(timeout: 20))
+    try E03ProfileSupport.audit(app)
     capture("IPAD-E03-A02-release-retry")
     tap("requestGrab0", app)
     let received = try await waitForRequest(
@@ -269,6 +272,7 @@ final class RequestLifecycleJourneyTests: XCTestCase {
   private func login(_ account: String) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+    E03ProfileSupport.configure(app)
     app.launch()
     if app.buttons["signOut"].waitForExistence(timeout: 3) { app.buttons["signOut"].tap() }
     if app.buttons["Change server"].exists { app.buttons["Change server"].tap() }
@@ -341,9 +345,6 @@ final class RequestLifecycleJourneyTests: XCTestCase {
 
   @MainActor
   private func capture(_ name: String) {
-    let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-    attachment.name = name
-    attachment.lifetime = .keepAlways
-    add(attachment)
+    E03ProfileSupport.capture(name, test: self)
   }
 }

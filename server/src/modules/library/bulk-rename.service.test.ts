@@ -87,6 +87,7 @@ describe('BulkRenameService', () => {
     findBooksPageForLibrary: vi.fn(),
     findLastBookId: vi.fn(),
     findLibrarySettings: vi.fn(),
+    findBooksForLibraryIds: vi.fn(),
   };
 
   const fileRenameRepo = {
@@ -115,6 +116,11 @@ describe('BulkRenameService', () => {
     resumeWatcher: vi.fn(),
   };
 
+  async function execute(libraryId: number, userId: number, options: Omit<Parameters<BulkRenameService['execute']>[2], 'previewToken'>) {
+    const previewToken = service.isRunning(libraryId) ? '' : (await service.getPreview(libraryId, 1, 50)).previewToken;
+    return service.execute(libraryId, userId, { ...options, previewToken });
+  }
+
   beforeEach(() => {
     vi.resetAllMocks();
 
@@ -122,6 +128,10 @@ describe('BulkRenameService', () => {
     bulkRenameRepo.findBooksPageForLibrary.mockImplementation(async (_libraryId: number, afterBookId: number, _lastBookId: number, limit: number) => {
       const books: BulkRenameBookData[] = await bulkRenameRepo.findAllBooksForLibrary(_libraryId);
       return books.filter((book) => book.bookId > afterBookId).slice(0, limit);
+    });
+    bulkRenameRepo.findBooksForLibraryIds.mockImplementation(async (libraryId: number, ids: number[]) => {
+      const books: BulkRenameBookData[] = await bulkRenameRepo.findAllBooksForLibrary(libraryId);
+      return books.filter((book) => ids.includes(book.bookId));
     });
     appSettings.isCrossPlatformPathSanitizationEnabled.mockResolvedValue(false);
     appSettings.getUploadPattern.mockResolvedValue('{authors}/{title}');
@@ -592,7 +602,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1), willRenameBook(2), willRenameBook(3)]);
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
-      const summary = await service.execute(1, 42, {
+      const summary = await execute(1, 42, {
         excludeBookIds: [2],
         onProgress: () => {},
         isCancelled: () => false,
@@ -609,7 +619,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1)]);
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
-      const summary = await service.execute(1, 42, {
+      const summary = await execute(1, 42, {
         excludeBookIds: [999],
         onProgress: () => {},
         isCancelled: () => false,
@@ -623,7 +633,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findLibrarySettings.mockResolvedValue(defaultSettings);
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1), willRenameBook(2)]);
 
-      const summary = await service.execute(1, 42, {
+      const summary = await execute(1, 42, {
         excludeBookIds: [1, 2],
         onProgress: () => {},
         isCancelled: () => false,
@@ -638,7 +648,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1), willRenameBook(2), willRenameBook(3)]);
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
-      const summary = await service.execute(1, 42, {
+      const summary = await execute(1, 42, {
         includeBookIds: [1, 3],
         onProgress: () => {},
         isCancelled: () => false,
@@ -652,7 +662,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findLibrarySettings.mockResolvedValue(defaultSettings);
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1), willRenameBook(2)]);
 
-      const summary = await service.execute(1, 42, {
+      const summary = await execute(1, 42, {
         includeBookIds: [],
         onProgress: () => {},
         isCancelled: () => false,
@@ -669,7 +679,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1), settled]);
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
-      const summary = await service.execute(1, 42, {
+      const summary = await execute(1, 42, {
         includeBookIds: [1, 2],
         onProgress: () => {},
         isCancelled: () => false,
@@ -693,7 +703,7 @@ describe('BulkRenameService', () => {
       });
 
       const events: any[] = [];
-      const summary = await service.execute(1, 42, {
+      const summary = await execute(1, 42, {
         onProgress: (e) => events.push(e),
         isCancelled: () => false,
       });
@@ -720,7 +730,7 @@ describe('BulkRenameService', () => {
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
       const events: any[] = [];
-      const summary = await service.execute(1, 42, {
+      const summary = await execute(1, 42, {
         onProgress: (e) => events.push(e),
         isCancelled: () => false,
       });
@@ -737,7 +747,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1)]);
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
-      await service.execute(1, 42, {
+      await execute(1, 42, {
         onProgress: () => {},
         isCancelled: () => false,
       });
@@ -751,7 +761,7 @@ describe('BulkRenameService', () => {
       const unchanged = makeBookData({ bookId: 1, title: 'Settled', absolutePath: '/library/Settled.epub' });
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([unchanged]);
 
-      const summary = await service.execute(1, 42, {
+      const summary = await execute(1, 42, {
         onProgress: () => {},
         isCancelled: () => false,
       });
@@ -771,7 +781,7 @@ describe('BulkRenameService', () => {
         return Promise.resolve({ status: 'success', durationMs: 10 });
       });
 
-      const summary = await service.execute(1, 42, {
+      const summary = await execute(1, 42, {
         onProgress: () => {},
         isCancelled: () => callCount >= 1,
       });
@@ -785,7 +795,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findLibrarySettings.mockResolvedValue(null);
 
       await expect(
-        service.execute(999, 42, {
+        execute(999, 42, {
           onProgress: () => {},
           isCancelled: () => false,
         }),
@@ -799,7 +809,7 @@ describe('BulkRenameService', () => {
       });
 
       await expect(
-        service.execute(1, 42, {
+        execute(1, 42, {
           onProgress: () => {},
           isCancelled: () => false,
         }),
@@ -818,7 +828,7 @@ describe('BulkRenameService', () => {
           }),
       );
 
-      const first = service.execute(1, 42, {
+      const first = execute(1, 42, {
         onProgress: () => {},
         isCancelled: () => false,
       });
@@ -826,7 +836,7 @@ describe('BulkRenameService', () => {
       await vi.waitFor(() => expect(resolveRename).toBeDefined());
 
       await expect(
-        service.execute(1, 42, {
+        execute(1, 42, {
           onProgress: () => {},
           isCancelled: () => false,
         }),
@@ -842,7 +852,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1)]);
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
-      await service.execute(1, 42, {
+      await execute(1, 42, {
         onProgress: () => {},
         isCancelled: () => false,
       });
@@ -859,7 +869,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1)]);
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
-      await service.execute(1, 42, {
+      await execute(1, 42, {
         onProgress: () => {},
         isCancelled: () => false,
       });
@@ -874,7 +884,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1)]);
       fileRenameService.performRename.mockRejectedValue(new Error('disk error'));
 
-      await service.execute(1, 42, {
+      await execute(1, 42, {
         onProgress: () => {},
         isCancelled: () => false,
       });
@@ -891,7 +901,7 @@ describe('BulkRenameService', () => {
       fileRenameService.performRename.mockResolvedValueOnce({ status: 'success', durationMs: 10 });
 
       const events: any[] = [];
-      const summary = await service.execute(1, 42, {
+      const summary = await execute(1, 42, {
         onProgress: (e) => events.push(e),
         isCancelled: () => false,
       });
@@ -908,7 +918,7 @@ describe('BulkRenameService', () => {
       fileRenameService.performRename.mockRejectedValue(new Error('disk error'));
 
       const events: any[] = [];
-      const summary = await service.execute(1, 42, {
+      const summary = await execute(1, 42, {
         onProgress: (e) => events.push(e),
         isCancelled: () => false,
       });
@@ -924,7 +934,7 @@ describe('BulkRenameService', () => {
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
       await expect(
-        service.execute(1, 42, {
+        execute(1, 42, {
           onProgress: () => {},
           isCancelled: () => {
             throw new Error('stream broke');
@@ -947,7 +957,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1)]);
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
-      await service.execute(1, 42, {
+      await execute(1, 42, {
         onProgress: () => {},
         isCancelled: () => false,
       });
@@ -965,7 +975,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1)]);
       fileRenameService.performRename.mockResolvedValue({ status: 'failed', reason: 'collision', durationMs: 5 });
 
-      await service.execute(1, 42, {
+      await execute(1, 42, {
         onProgress: () => {},
         isCancelled: () => false,
       });
@@ -985,7 +995,7 @@ describe('BulkRenameService', () => {
 
       expect(service.isRunning(1)).toBe(false);
 
-      const promise = service.execute(1, 42, {
+      const promise = execute(1, 42, {
         onProgress: () => {},
         isCancelled: () => false,
       });
@@ -1002,16 +1012,14 @@ describe('BulkRenameService', () => {
       await service.getPreview(1, 1, 50);
       expect(bulkRenameRepo.findBooksPageForLibrary).toHaveBeenCalledTimes(2);
 
-      // execute() recomputes the preview internally to derive the will_rename set (call #2),
-      // and clears the cache so the following getPreview recomputes again (call #3).
-      await service.execute(1, 42, {
+      await execute(1, 42, {
         onProgress: () => {},
         isCancelled: () => false,
       });
-      expect(bulkRenameRepo.findBooksPageForLibrary).toHaveBeenCalledTimes(4);
+      expect(bulkRenameRepo.findBooksPageForLibrary).toHaveBeenCalledTimes(2);
 
       await service.getPreview(1, 1, 50);
-      expect(bulkRenameRepo.findBooksPageForLibrary).toHaveBeenCalledTimes(6);
+      expect(bulkRenameRepo.findBooksPageForLibrary).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -1042,7 +1050,7 @@ describe('BulkRenameService', () => {
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
       const events: any[] = [];
-      await service.execute(1, 42, { onProgress: (e) => events.push(e), isCancelled: () => false });
+      await execute(1, 42, { onProgress: (e) => events.push(e), isCancelled: () => false });
 
       expect(events[0]).toEqual({ started: true, total: 3 });
       expect(fileRenameService.performRename).toHaveBeenCalledTimes(3);
@@ -1054,7 +1062,7 @@ describe('BulkRenameService', () => {
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
       const events: any[] = [];
-      await service.execute(1, 42, {
+      await execute(1, 42, {
         onProgress: (e) => events.push(e),
         isCancelled: () => false,
         excludeBookIds: [2],
@@ -1068,7 +1076,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1), willRenameBook(2)]);
 
       const events: any[] = [];
-      await service.execute(1, 42, {
+      await execute(1, 42, {
         onProgress: (e) => events.push(e),
         isCancelled: () => false,
         includeBookIds: [],
@@ -1089,7 +1097,7 @@ describe('BulkRenameService', () => {
         return true;
       });
 
-      await service.execute(1, 42, {
+      await execute(1, 42, {
         onProgress: (e) => order.push('started' in e ? 'started' : 'progress'),
         isCancelled: () => false,
       });
@@ -1102,7 +1110,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1), willRenameBook(2)]);
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
-      await service.execute(1, 42, { onProgress: () => {}, isCancelled: () => false });
+      await execute(1, 42, { onProgress: () => {}, isCancelled: () => false });
 
       expect(fileWatcherService.stopWatcher).not.toHaveBeenCalled();
       expect(fileWatcherService.startWatcher).not.toHaveBeenCalled();
@@ -1126,7 +1134,7 @@ describe('BulkRenameService', () => {
         return Promise.resolve({ status: 'success', durationMs: 10 });
       });
 
-      await service.execute(1, 42, { onProgress: () => {}, isCancelled: () => false });
+      await execute(1, 42, { onProgress: () => {}, isCancelled: () => false });
 
       expect(order).toEqual(['pause', 'rename', 'rename', 'rename', 'resume']);
     });
@@ -1138,7 +1146,7 @@ describe('BulkRenameService', () => {
       // No live watcher to pause, so there is nothing to put back.
       fileWatcherService.pauseWatcher.mockReturnValue(false);
 
-      await service.execute(1, 42, { onProgress: () => {}, isCancelled: () => false });
+      await execute(1, 42, { onProgress: () => {}, isCancelled: () => false });
 
       expect(fileWatcherService.resumeWatcher).not.toHaveBeenCalled();
     });
@@ -1148,10 +1156,10 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1)]);
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
-      await service.execute(1, 42, { onProgress: () => {}, isCancelled: () => false });
+      await execute(1, 42, { onProgress: () => {}, isCancelled: () => false });
 
       expect(service.isRunning(1)).toBe(false);
-      await expect(service.execute(1, 42, { onProgress: () => {}, isCancelled: () => false })).resolves.toBeDefined();
+      await expect(execute(1, 42, { onProgress: () => {}, isCancelled: () => false })).resolves.toBeDefined();
     });
 
     it('resumes the watcher and releases the lock when the run throws', async () => {
@@ -1159,7 +1167,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([willRenameBook(1)]);
 
       await expect(
-        service.execute(1, 42, {
+        execute(1, 42, {
           onProgress: () => {},
           isCancelled: () => {
             throw new Error('stream broke');
@@ -1175,7 +1183,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findLibrarySettings.mockResolvedValue(noWatchSettings);
       bulkRenameRepo.findAllBooksForLibrary.mockRejectedValue(new Error('database down'));
 
-      await expect(service.execute(1, 42, { onProgress: () => {}, isCancelled: () => false })).rejects.toThrow('database down');
+      await expect(execute(1, 42, { onProgress: () => {}, isCancelled: () => false })).rejects.toThrow('database down');
 
       // A preparation failure used to strand the lock, wedging the library as "already running".
       expect(service.isRunning(1)).toBe(false);
@@ -1189,7 +1197,7 @@ describe('BulkRenameService', () => {
         throw new Error('cannot pause watcher');
       });
 
-      await expect(service.execute(1, 42, { onProgress: () => {}, isCancelled: () => false })).rejects.toThrow('cannot pause watcher');
+      await expect(execute(1, 42, { onProgress: () => {}, isCancelled: () => false })).rejects.toThrow('cannot pause watcher');
 
       expect(service.isRunning(1)).toBe(false);
       // The watcher was never paused, so it must not be resumed, and nothing may have moved.
@@ -1263,7 +1271,7 @@ describe('BulkRenameService', () => {
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([makeMultiTrackAudiobook(1, 'Alpha', 5), makeMultiTrackAudiobook(2, 'Beta', 12)]);
 
       const events: any[] = [];
-      const summary = await service.execute(1, 42, { onProgress: (e) => events.push(e), isCancelled: () => false });
+      const summary = await execute(1, 42, { onProgress: (e) => events.push(e), isCancelled: () => false });
 
       // The old behaviour queued both and reported "renamed 0 of 2, 2 skipped".
       expect(events[0]).toEqual({ started: true, total: 0 });
@@ -1325,7 +1333,7 @@ describe('BulkRenameService', () => {
         }),
       ]);
 
-      const summary = await service.execute(1, 42, { onProgress: () => {}, isCancelled: () => false });
+      const summary = await execute(1, 42, { onProgress: () => {}, isCancelled: () => false });
 
       expect(summary.processed).toBe(0);
       expect(fileRenameService.performRename).not.toHaveBeenCalled();

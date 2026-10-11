@@ -827,6 +827,20 @@
       "when": 1791713334139,
       "tag": "0117_migration_plan_book_matches",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1791716212944,
+      "tag": "0118_entity_file_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1791716735197,
+      "tag": "0119_migration_plan_projections",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 
 import { AuditAction, type EntityType, INLINE_ENTITY_TYPES, Permission } from '@bookorbit/types';
 import { Auditable } from '../../common/decorators/auditable.decorator';
@@ -65,6 +65,22 @@ export class EntityManagerController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.service.refreshDuplicates(entityType, dto.minSimilarity, user);
+  }
+
+  @Get(':entityType/file-updates')
+  @RequirePermission(Permission.LibraryEditMetadata)
+  listFileWriteRecovery(@Param('entityType', EntityTypePipe) entityType: EntityType, @CurrentUser() user: RequestUser) {
+    return this.service.listFileWriteRecovery(entityType, user);
+  }
+
+  @Post(':entityType/file-updates/:operationId/retry')
+  @RequirePermission(Permission.LibraryEditMetadata)
+  retryFileWrites(
+    @Param('entityType', EntityTypePipe) entityType: EntityType,
+    @Param('operationId', ParseUUIDPipe) operationId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.service.resumeFileWrites(entityType, user, operationId);
   }
 
   @Post(':entityType/merge')

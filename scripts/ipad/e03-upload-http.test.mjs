@@ -46,8 +46,10 @@ test("IPAD-E03-A01-upload: interrupted chunks resume, metadata/destination revie
     const library = caps.libraries.find((item) => item.name === "Fixture library") ?? caps.libraries[0];
     assert.ok(library?.folders[0]);
     const id = crypto.randomUUID();
-    const filename = `Native upload ${id}.pdf`;
+    const filename = "Native upload.pdf";
     const document = await PDFDocument.create();
+    document.setTitle("Native upload");
+    document.setSubject(`E03 fixture ${id}`);
     const font = await document.embedFont(StandardFonts.Helvetica);
     document.addPage([300, 400]).drawText("Native upload reader handoff", { x: 20, y: 350, font });
     const bytes = await document.save();
@@ -80,7 +82,7 @@ test("IPAD-E03-A01-upload: interrupted chunks resume, metadata/destination revie
       const item = await json(`book-dock/files/${session.bookDockFileId}`, token);
       return item.status === "ready" ? item : null;
     });
-    const title = `Reviewed native ${id}`;
+    const title = "Reviewed native upload";
     await json(
       `book-dock/files/${dock.id}`,
       token,

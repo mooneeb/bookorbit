@@ -90,6 +90,7 @@ final class EntityEditModel {
       let session = try await api.authenticatedSessionGeneration()
       let path = "entity-manager/\(kind.rawValue)"
       let count: Int
+      var fileOutcome = writeFiles ? " File metadata writes were queued on the server." : ""
       switch operation {
       case .rename(let name):
         let request = EntityRenameRequest(
@@ -106,6 +107,12 @@ final class EntityEditModel {
         let result: MergeResult = try await api.boundedJSON(
           "\(path)/merge", method: "POST", body: JSONEncoder().encode(request), session: session)
         count = result.affectedBookCount
+        if let recovery = result.fileWriteRecovery {
+          fileOutcome =
+            recovery.pendingBookCount > 0
+            ? " \(recovery.pendingBookCount) file updates remain. Use Retry file updates in entity management to continue."
+            : " File metadata updates completed."
+        }
       case .remove(let mode):
         let request = EntityDeleteRequest(
           entityId: item.id.entityNumber, value: item.id.entityValue,
@@ -121,7 +128,7 @@ final class EntityEditModel {
         count = result.affectedBookCount
       }
       outcome =
-        "Updated \(count) books.\(writeFiles ? " File metadata writes were queued on the server." : "")"
+        "Updated \(count) books.\(fileOutcome)"
       completed = true
     } catch {
       self.error =

@@ -2448,3 +2448,131 @@ describe('BookDockFinalizeService', () => {
     expect(triggerSpy).toHaveBeenCalledWith(77);
   });
 });
+
+describe('Book Dock durable metadata replay', () => {
+  function recoveryHarness(existingBook = false) {
+    const harness = makeService();
+    const book = { title: existingBook ? 'Edited existing title' : '', authors: existingBook ? ['Edited existing author'] : ([] as string[]) };
+    const journal = {
+      fileId: 1,
+      userId: 7,
+      libraryId: 2,
+      state: 'placing',
+      bookIds: [] as number[],
+      result: null,
+      intent: {
+        row: makeRow({ selectedMetadata: { title: 'Staged title', authors: ['Staged author'] } }),
+        libraryId: 2,
+        folderId: 3,
+        root: '/library',
+        format: 'epub',
+        destPath: '/library/book.epub',
+        placement: [{ sourcePath: '/tmp/book.epub', destPath: '/library/book.epub', format: 'epub', role: 'content', sortOrder: null }],
+        publication: [],
+      },
+    };
+    const finalizations = {
+      find: vi.fn(() => Promise.resolve(structuredClone(journal))),
+      locked: vi.fn((_namespace, _id, operation) => operation()),
+      update: vi.fn((_fileId, patch) => Promise.resolve(Object.assign(journal, patch))),
+    };
+    const publication = { publish: vi.fn(), cleanup: vi.fn() };
+    let interruptedPhase: string | null = null;
+    const configure = (service: BookDockFinalizeService) => {
+      Object.assign(service, {
+        finalizations,
+        publication,
+        auth: { findActingUser: vi.fn(() => Promise.resolve({ id: 7, isSuperuser: true, permissions: [] })) },
+        checkpoint: vi.fn((phase: string) => {
+          if (phase !== interruptedPhase) return Promise.resolve();
+          interruptedPhase = null;
+          throw new Error('Simulated interruption');
+        }),
+      });
+      vi.spyOn(service as any, 'findLibraryOrFail').mockResolvedValue({ id: 2, organizationMode: 'book_per_file', fileWriteEnabled: false });
+      vi.spyOn(service as any, 'findFolderOrFail').mockResolvedValue({ id: 3, libraryId: 2, path: '/library' });
+    };
+    configure(harness.service);
+    const executor = {
+      update: vi.fn(() => ({
+        set: (patch: { title?: string }) => ({
+          where: () => {
+            if (patch.title !== undefined) book.title = patch.title;
+            return Promise.resolve();
+          },
+        }),
+      })),
+    };
+    harness.metadataService.replaceAuthors.mockImplementation((_bookId, authors) => {
+      book.authors = authors.map((author: { name: string }) => author.name);
+      return Promise.resolve();
+    });
+    Object.assign(harness.metadataScoreService, { calculateAndSaveMany: vi.fn() });
+    harness.processor.createUnitBookRecords.mockImplementation(async (_library, _folder, _files, options) => {
+      await options.initializeMetadata(existingBook ? [] : [101], executor);
+      journal.bookIds = [101];
+      journal.state = 'committed';
+      return { bookIds: [101], createdBookIds: existingBook ? [] : [101], attachedFileIds: existingBook ? [55] : [] };
+    });
+    const edit = () => {
+      book.title = 'New web title';
+      book.authors = ['New web author'];
+    };
+    const resume = () => harness.service.findFinalizationReceipt(1, 7, true);
+    const restart = () => {
+      const restarted = makeService().service;
+      configure(restarted);
+      harness.service = restarted;
+    };
+    mockStat.mockResolvedValue({ size: 100 } as never);
+    return {
+      ...harness,
+      book,
+      journal,
+      resume,
+      restart,
+      edit,
+      interrupt: (phase: string) => {
+        interruptedPhase = phase;
+      },
+    };
+  }
+
+  it('preserves title and authors edited after the metadata checkpoint and succeeds once', async () => {
+    const harness = recoveryHarness();
+    harness.interrupt('metadata');
+    expect(await harness.resume()).toMatchObject({ success: false });
+    expect(harness.book).toEqual({ title: 'Staged title', authors: ['Staged author'] });
+    harness.edit();
+    expect(await harness.resume()).toMatchObject({ success: true, bookId: 101 });
+    expect(await harness.resume()).toMatchObject({ success: true, bookId: 101 });
+    expect(harness.book).toEqual({ title: 'New web title', authors: ['New web author'] });
+    expect(harness.processor.createUnitBookRecords).toHaveBeenCalledTimes(1);
+    expect(harness.repo.deleteById).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves edits after identity commit across a service restart without creating another book', async () => {
+    const harness = recoveryHarness();
+    harness.interrupt('committed');
+    expect(await harness.resume()).toMatchObject({ success: false });
+    expect(harness.book).toEqual({ title: 'Staged title', authors: ['Staged author'] });
+    harness.edit();
+    harness.restart();
+    expect(await harness.resume()).toMatchObject({ success: true, bookId: 101 });
+    expect(harness.book).toEqual({ title: 'New web title', authors: ['New web author'] });
+    expect(harness.journal.bookIds).toEqual([101]);
+    expect(harness.processor.createUnitBookRecords).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves existing metadata when an attached format is interrupted and retried', async () => {
+    const harness = recoveryHarness(true);
+    harness.interrupt('metadata');
+    expect(await harness.resume()).toMatchObject({ success: false });
+    expect(harness.book).toEqual({ title: 'Edited existing title', authors: ['Edited existing author'] });
+    harness.edit();
+    expect(await harness.resume()).toMatchObject({ success: true, bookId: 101 });
+    expect(harness.book).toEqual({ title: 'New web title', authors: ['New web author'] });
+    expect(harness.processor.createUnitBookRecords).toHaveBeenCalledTimes(1);
+    expect(harness.metadataService.replaceAuthors).not.toHaveBeenCalled();
+  });
+});

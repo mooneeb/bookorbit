@@ -5,6 +5,7 @@ import { Injectable } from '@nestjs/common';
 import { isAudioFormat, isComicFormat, type ReadStatus, type ReadStatusSource } from '@bookorbit/types';
 
 import type {
+  SourceAnnotation,
   SourceBook,
   SourceBookFile,
   SourceBookmark,
@@ -128,7 +129,7 @@ export class UserStateImporter {
     private readonly readingAttemptEvents: ReadingAttemptEventsService,
   ) {}
 
-  async import(runId: number, planned: PlannerResult, ensureRunning: RunStateCheck): Promise<void> {
+  async import(runId: number, planned: PlannerResult, ensureRunning: RunStateCheck, readingSessionSnapshotComplete = true): Promise<void> {
     const sourceToTargetUser = new Map(
       planned.plan.userMappings
         .filter((mapping) => mapping.targetUserId !== null)
@@ -164,6 +165,7 @@ export class UserStateImporter {
       primaryFilesByBookId,
       targetFilesByBookId,
       ensureRunning,
+      readingSessionSnapshotComplete,
     );
     await this.importBookmarks(runId, planned, sourceToTargetUser, sourceToTargetBook, ensureRunning);
     await this.importAnnotations(runId, planned, sourceToTargetUser, sourceToTargetBook, ensureRunning);
@@ -405,6 +407,7 @@ export class UserStateImporter {
     primaryFilesByBookId: Map<number, number>,
     targetFilesByBookId: Map<number, Array<{ id: number; hash: string | null; absolutePath: string; format: string | null }>>,
     ensureRunning: RunStateCheck,
+    snapshotComplete: boolean,
   ): Promise<void> {
     const counters = emptyCounters();
     const rows = planned.execution.sourceData.readingSessions;
@@ -449,6 +452,7 @@ export class UserStateImporter {
         userIds: [...userMap.values()],
         bookIds: [...bookMap.values()],
         sessionIdPrefix,
+        ...(snapshotComplete ? {} : { snapshotComplete: false }),
       });
     });
     await this.repo.setRunMetric(runId, 'user_state', 'reading_sessions', counters);
@@ -491,7 +495,7 @@ export class UserStateImporter {
       }
 
       batch.push({
-        clientId: migrationItemIdentity(planned.plan.snapshot.sourceType, targetBookId, row),
+        clientId: migrationItemIdentity(planned.plan.snapshot.sourceType, 'bookmark', targetBookId, row, planned.plan.itemIdentityVersion),
         userId: targetUserId,
         bookId: targetBookId,
         title: truncateText(row.title ?? 'Imported bookmark', 500),
@@ -547,7 +551,7 @@ export class UserStateImporter {
       }
 
       batch.push({
-        clientId: migrationItemIdentity(planned.plan.snapshot.sourceType, targetBookId, row),
+        clientId: migrationItemIdentity(planned.plan.snapshot.sourceType, 'annotation', targetBookId, row, planned.plan.itemIdentityVersion),
         userId: targetUserId,
         bookId: targetBookId,
         cfi: truncateText(row.cfi ?? '', 2000),
@@ -990,11 +994,20 @@ function resolveTrackIndex(trackIndex: number, fileCount: number): number | null
 
 function migrationItemIdentity(
   sourceType: string,
+  itemType: 'bookmark' | 'annotation',
   targetBookId: number,
-  row: { sourceUserId: string; sourceBookId: string; cfi: string | null; createdAt: string | null; positionSeconds?: number | null },
+  row: SourceBookmark | SourceAnnotation,
+  identityVersion: 2 | undefined,
 ): string {
-  const hash = createHash('sha256')
-    .update(JSON.stringify([sourceType, targetBookId, row.sourceUserId, row.sourceBookId, row.cfi, row.createdAt, row.positionSeconds ?? null]))
-    .digest('hex');
+  const itemIdentity = row.sourceItemId
+    ? ['id', row.sourceItemId]
+    : 'text' in row
+      ? ['content', row.cfi, row.createdAt, row.text, row.note, row.color, row.style, row.chapterTitle]
+      : ['content', row.cfi, row.createdAt, row.sourceFileId ?? null, row.trackIndex ?? null, row.positionSeconds, row.title];
+  const identityParts =
+    identityVersion === 2
+      ? [sourceType, itemType, targetBookId, row.sourceUserId, row.sourceBookId, itemIdentity]
+      : [sourceType, targetBookId, row.sourceUserId, row.sourceBookId, row.cfi, row.createdAt, 'positionSeconds' in row ? row.positionSeconds : null];
+  const hash = createHash('sha256').update(JSON.stringify(identityParts)).digest('hex');
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }

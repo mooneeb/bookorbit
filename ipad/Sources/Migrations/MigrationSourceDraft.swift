@@ -77,6 +77,13 @@ struct MigrationSourceDraft {
 
 struct MigrationDuplicateChoice: Identifiable {
   let id: Int
-  let candidates: [String]
+  var candidates: [String]
+  var offset = 0
+  var requestedOffset = 0
+  var limit = 40
+  var total: Int
+  var nextOffset: Int?
+  var loading = false
+  var error: String?
   var selected = ""
 }

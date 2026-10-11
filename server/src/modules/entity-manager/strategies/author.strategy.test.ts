@@ -212,8 +212,10 @@ describe('AuthorStrategy', () => {
     ],
     ids: number[] = [10, 20],
     outside = false,
+    bookRows?: { id: number; authorIds: number[]; primaryAuthorSortName: string | null }[],
   ) {
     const dialect = new PgDialect();
+    const capturedIds = [...ids];
     const rows = input.map((row) => ({ sortName: null, description: null, hasPhoto: false, ...row }));
     const filter = (condition: SQL) => {
       const query = dialect.sqlToQuery(condition);
@@ -243,6 +245,10 @@ describe('AuthorStrategy', () => {
     const update = vi.fn().mockReturnValue({ set: updateSet });
     const deleteFrom = vi.fn((table) => ({
       where: vi.fn((condition: SQL) => {
+        if (getTableName(table) === 'book_authors' && bookRows) {
+          const sourceIds = dialect.sqlToQuery(condition).params;
+          for (const book of bookRows) book.authorIds = book.authorIds.filter((id) => !sourceIds.includes(id));
+        }
         if (getTableName(table) !== 'authors') return;
         const deleted = new Set(filter(condition));
         for (let index = rows.length - 1; index >= 0; index--) if (deleted.has(rows[index]!)) rows.splice(index, 1);
@@ -258,13 +264,55 @@ describe('AuthorStrategy', () => {
       const query = dialect.sqlToQuery(statement);
       if (query.sql.includes('scoped_relation')) return { rows: outside ? [{ outside: 1 }] : [] };
       if (query.sql.includes('AS outside')) return { rows: [{ outside: false }] };
-      if (query.sql.includes('count(*)::int AS count FROM entity_mutation_books')) return { rows: [{ count: ids.length }] };
+      if (bookRows && query.sql.includes('INSERT INTO entity_mutation_books')) {
+        const sourceCondition = query.sql.match(/"book_authors"\."author_id" in \(([^)]+)\)/i);
+        const sourceIds = [...(sourceCondition?.[1]?.matchAll(/\$(\d+)/g) ?? [])].map((match) => query.params[Number(match[1]) - 1]);
+        const targetCondition = query.sql.match(/"book_authors"\."author_id" = \$(\d+)/);
+        const targetId = targetCondition ? query.params[Number(targetCondition[1]) - 1] : undefined;
+        const target = rows.find((row) => row.id === targetId);
+        const promotesSortName = target && !target.sortName && rows.some((row) => sourceIds.includes(row.id) && row.sortName);
+        capturedIds.splice(
+          0,
+          capturedIds.length,
+          ...bookRows
+            .filter((book) => book.authorIds.some((id) => sourceIds.includes(id) || (promotesSortName && id === targetId)))
+            .map((book) => book.id),
+        );
+      }
+      if (bookRows && query.sql.includes('INSERT INTO book_authors')) {
+        for (const book of bookRows) {
+          if (capturedIds.includes(book.id) && book.authorIds.includes(1) && !book.authorIds.includes(2)) book.authorIds.push(2);
+        }
+      }
+      if (query.sql.includes('count(*)::int AS count FROM entity_mutation_books')) return { rows: [{ count: capturedIds.length }] };
       if (query.sql.includes('AS "bookId" FROM entity_mutation_books'))
-        return { rows: ids.filter((id) => id > Number(query.params[0])).map((bookId) => ({ bookId })) };
+        return { rows: capturedIds.filter((id) => id > Number(query.params[0])).map((bookId) => ({ bookId })) };
       return { rows: [] };
     });
     const db = { select, update, insert, delete: deleteFrom, execute };
-    const transaction = vi.fn(async (callback: (tx: typeof db) => Promise<unknown>) => callback(db));
+    const transaction = vi.fn(async (callback: (tx: typeof db) => Promise<unknown>) => {
+      const originalRows = structuredClone(rows);
+      const originalBooks = structuredClone(bookRows);
+      try {
+        return await callback(db);
+      } catch (error) {
+        rows.splice(0, rows.length, ...originalRows);
+        if (bookRows && originalBooks) bookRows.splice(0, bookRows.length, ...originalBooks);
+        throw error;
+      }
+    });
+    if (bookRows) {
+      vi.mocked(refreshPrimaryAuthorSortNamesForBookSelection).mockImplementationOnce((tx, selection) => {
+        expect(tx).toBe(db);
+        expect(dialect.sqlToQuery(selection).sql).toBe('SELECT book_id FROM entity_mutation_books');
+        for (const book of bookRows) {
+          if (!capturedIds.includes(book.id)) continue;
+          const author = rows.find((row) => row.id === book.authorIds[0]);
+          book.primaryAuthorSortName = author?.sortName ?? author?.name ?? null;
+        }
+        return Promise.resolve(bookRows.length);
+      });
+    }
     const image = { promoteImage: vi.fn().mockResolvedValue(false), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
     const enrichment = { schedule: vi.fn().mockResolvedValue(undefined) };
     return {
@@ -277,6 +325,7 @@ describe('AuthorStrategy', () => {
       deleteFrom,
       insertValues,
       execute,
+      bookRows,
     };
   }
 
@@ -315,6 +364,54 @@ describe('AuthorStrategy', () => {
       expect(result.fieldsResolved).toEqual([]);
       expect(fixture.rows[0]).toMatchObject({ id: 2, sortName: 'Target sort', description: 'Target description', hasPhoto: true });
       expect(fixture.image.promoteImage).not.toHaveBeenCalled();
+    });
+
+    function sortFixture(targetSortName: string | null) {
+      return mutationFixture(
+        [
+          { id: 1, name: 'Source', sortName: 'Source sort', description: 'Source description' },
+          { id: 2, name: 'Target', sortName: targetSortName },
+        ],
+        [],
+        false,
+        [
+          { id: 10, authorIds: [1], primaryAuthorSortName: 'Source sort' },
+          { id: 20, authorIds: [1, 2], primaryAuthorSortName: 'Source sort' },
+          { id: 30, authorIds: [2], primaryAuthorSortName: targetSortName ?? 'Target' },
+        ],
+      );
+    }
+
+    it('refreshes target-only books when a source sort name is promoted', async () => {
+      const fixture = sortFixture(null);
+      const onBooksChanged = vi.fn();
+      const result = await fixture.strategy.merge({ targetId: 2, sourceIds: [1], userId: 5, libraryIds: [7], onBooksChanged });
+      expect(fixture.bookRows?.map((book) => book.primaryAuthorSortName)).toEqual(['Source sort', 'Source sort', 'Source sort']);
+      expect(result.affectedBookCount).toBe(3);
+      expect(onBooksChanged).toHaveBeenCalledWith([10, 20, 30], expect.anything());
+      expect(fixture.rows[0]?.sortName).toBe('Source sort');
+    });
+
+    it('keeps a populated target sort name and updates source books without recapturing target-only books', async () => {
+      const fixture = sortFixture('Target sort');
+      const result = await fixture.strategy.merge({ targetId: 2, sourceIds: [1], userId: 5, libraryIds: [7] });
+      expect(fixture.bookRows?.map((book) => book.primaryAuthorSortName)).toEqual(['Target sort', 'Target sort', 'Target sort']);
+      expect(result.affectedBookIds).toEqual([10, 20]);
+      expect(result.fieldsResolved).not.toContain('sortName');
+      expect(fixture.rows[0]?.sortName).toBe('Target sort');
+    });
+
+    it('rolls back promoted fields and cached sort keys when book change processing fails', async () => {
+      const fixture = sortFixture(null);
+      const onBooksChanged = vi.fn().mockRejectedValue(new BadRequestException('Book change failed'));
+      await expect(fixture.strategy.merge({ targetId: 2, sourceIds: [1], userId: 5, libraryIds: [7], onBooksChanged })).rejects.toThrow(
+        'Book change failed',
+      );
+      expect(fixture.rows.find((row) => row.id === 2)).toMatchObject({ sortName: null, description: null });
+      expect(fixture.rows.some((row) => row.id === 1)).toBe(true);
+      expect(fixture.bookRows?.map((book) => book.primaryAuthorSortName)).toEqual(['Source sort', 'Source sort', 'Target']);
+      expect(fixture.image.promoteImage).not.toHaveBeenCalled();
+      expect(fixture.enrichment.schedule).not.toHaveBeenCalled();
     });
 
     it('promotes a missing photo, removes source directories, and schedules target enrichment', async () => {

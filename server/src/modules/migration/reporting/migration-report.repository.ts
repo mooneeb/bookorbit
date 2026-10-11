@@ -1,5 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { eq, sql, type SQL } from 'drizzle-orm';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../../db';
@@ -14,13 +14,13 @@ function arrayValue(value: SQL): SQL {
   return sql`CASE WHEN jsonb_typeof(${value}) = 'array' THEN ${value} ELSE '[]'::jsonb END`;
 }
 
-function arrayPage(value: SQL, offset: number, limit: number): SQL<unknown[]> {
+export function arrayPage(value: SQL, offset: number, limit: number): SQL<unknown[]> {
   const rows = arrayValue(value);
   return sql<unknown[]>`COALESCE((SELECT jsonb_agg(${rows}->i ORDER BY i)
     FROM generate_series(${offset}::integer, LEAST(${offset + limit - 1}::integer, jsonb_array_length(${rows}) - 1)) i), '[]'::jsonb)`;
 }
 
-function duplicatePreview(value: SQL, limit: number): SQL {
+export function duplicatePreview(value: SQL, limit: number): SQL {
   return sql`((${value}) - 'sourceBookIds' - 'strategies' - 'matches' - 'sourceCandidates') || jsonb_build_object(
     'sourceBookIds', ${arrayPage(sql`${value}->'sourceBookIds'`, 0, limit)},
     'strategies', ${arrayPage(sql`${value}->'strategies'`, 0, limit)},
@@ -89,7 +89,23 @@ export class MigrationReportRepository {
   }
 
   async sourceBooks(id: number, sourceBookIds: string[]) {
+    if (sourceBookIds.length > 100) throw new BadRequestException('Migration source metadata lookups support at most 100 books');
     if (sourceBookIds.length === 0) return new Map<string, { title: string | null; author: string | null; filePath: string | null }>();
+    const artifact = schema.migrationPlanArtifacts;
+    const [storage] = await this.db
+      .select({ userId: artifact.createdByUserId, indexed: sql<boolean>`COALESCE(${artifact.plan}->>'sourceBooksIndexed' = 'true', false)` })
+      .from(artifact)
+      .where(eq(artifact.id, id))
+      .limit(1);
+    if (storage?.indexed && storage.userId !== null) {
+      const t = schema.migrationPlanSourceBooks;
+      const rows = await this.db
+        .select({ sourceBookId: t.sourceBookId, title: t.title, author: t.author, filePath: t.filePath })
+        .from(t)
+        .where(and(eq(t.artifactId, id), eq(t.userId, storage.userId), inArray(t.sourceBookId, sourceBookIds)))
+        .limit(sourceBookIds.length);
+      return new Map(rows.map((row) => [row.sourceBookId, row]));
+    }
     const rows = await this.db.execute<{ sourceBookId: string; title: string | null; author: string | null; filePath: string | null }>(sql`
       SELECT DISTINCT ON (book->>'sourceBookId') book->>'sourceBookId' AS "sourceBookId",
         book->>'title' AS title, book->>'author' AS author, book->>'filePath' AS "filePath"

@@ -25,6 +25,7 @@ final class RequestAdministrationJourneyTests: XCTestCase {
     let resolvers = app.textFields["requestNetworkResolvers"]
     reveal(resolvers, in: app)
     fill(resolvers, "1.1.1.1,8.8.8.8")
+    try E03ProfileSupport.audit(app)
     capture("IPAD-E03-REQUEST-ADMIN-native-source-form")
     let sourceSave = app.buttons["requestSourceSave"]
     reveal(sourceSave, in: app)
@@ -59,6 +60,7 @@ final class RequestAdministrationJourneyTests: XCTestCase {
     app.swipeUp()
     fill(app.textFields["requestClientRemotePath"], "/downloads")
     fill(app.textFields["requestClientLocalPath"], "/tmp")
+    try E03ProfileSupport.audit(app)
     capture("IPAD-E03-REQUEST-ADMIN-native-client-form")
     let save = app.buttons["requestClientSave"]
     if !save.isHittable { app.swipeUp() }
@@ -270,6 +272,7 @@ final class RequestAdministrationJourneyTests: XCTestCase {
   private func launch(username: String) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+    E03ProfileSupport.configure(app)
     app.launch()
     if app.buttons["signOut"].exists { app.buttons["signOut"].tap() }
     if app.buttons["Change server"].exists { app.buttons["Change server"].tap() }
@@ -326,9 +329,6 @@ final class RequestAdministrationJourneyTests: XCTestCase {
 
   @MainActor
   private func capture(_ name: String) {
-    let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-    attachment.name = name
-    attachment.lifetime = .keepAlways
-    add(attachment)
+    E03ProfileSupport.capture(name, test: self)
   }
 }

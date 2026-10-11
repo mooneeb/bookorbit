@@ -103,6 +103,13 @@ export interface DuplicateScanStatus {
   progressPct: number | null;
 }
 
+export interface EntityFileWriteRecovery {
+  operationId: string;
+  pendingBookCount: number;
+  processed: number;
+  completed: number;
+}
+
 // Operation results
 export interface MergeResult {
   targetId: number | string;
@@ -110,6 +117,7 @@ export interface MergeResult {
   affectedBookCount: number;
   imagePromoted?: boolean;
   fieldsResolved?: string[];
+  fileWriteRecovery?: EntityFileWriteRecovery;
 }
 
 export interface RenameResult {

@@ -456,7 +456,10 @@ function signalGroup(child, signal) {
 function requestStop() {
   interrupted = true;
   resolveInterrupt();
-  for (const child of children) void stop(child);
+  for (const child of children) {
+    if (e03Proof && (child === server || child === migrationFixtureHolder)) continue;
+    void stop(child);
+  }
 }
 process.once("SIGINT", requestStop);
 process.once("SIGTERM", requestStop);
@@ -466,6 +469,42 @@ let web;
 let stopFaultProxy;
 let requestFixture;
 let responseProxy;
+let migrationFixtureHolder;
+let migrationFixtureReady = false;
+async function prepareE03MigrationFixtures() {
+  env.IPAD_MIGRATION_ARTIFACTS_ROOT = join(artifactsRoot, "migration-native");
+  migrationFixtureHolder = launch(
+    process.execPath,
+    ["scripts/ipad/e03-migration-retain.mjs", ...(!process.argv.includes("--ui") ? ["--apply"] : [])],
+    { stdio: "inherit" },
+  );
+  let startupError;
+  migrationFixtureHolder.once("error", (error) => {
+    startupError = error;
+  });
+  const deadline = Date.now() + 30 * 60_000;
+  const checkpointPath = join(env.IPAD_MIGRATION_ARTIFACTS_ROOT, "fixture-checkpoint.json");
+  while (Date.now() < deadline) {
+    if (interrupted) throw new Error("iPad harness interrupted during migration preparation");
+    if (startupError) throw startupError;
+    if (migrationFixtureHolder.exitCode !== null || migrationFixtureHolder.signalCode !== null)
+      throw new Error("Retained migration fixture holder exited before readiness");
+    try {
+      const checkpoint = JSON.parse(await readFile(checkpointPath, "utf8"));
+      if (checkpoint.status === "ready") {
+        const config = await readFile(join(env.IPAD_MIGRATION_ARTIFACTS_ROOT, "native-config.json"), "utf8");
+        env.IPAD_MIGRATION_NATIVE_CONFIG = config;
+        env.TEST_RUNNER_IPAD_MIGRATION_NATIVE_CONFIG = config;
+        migrationFixtureReady = true;
+        return;
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  throw new Error("Retained migration fixture preparation exceeded 30 minutes");
+}
 async function configureE03Fixtures() {
   const fixture = JSON.parse(await readFile(env.IPAD_E03_FIXTURE_FILE, "utf8"));
   const client = new Client({ connectionString: databaseURL });
@@ -725,6 +764,14 @@ async function stop(child) {
   return stopped;
 }
 async function cleanup() {
+  const fixtureFailures = [];
+  try {
+    await stop(migrationFixtureHolder);
+    if (migrationFixtureReady)
+      await execute(process.execPath, ["scripts/ipad/e03-migration-retain.mjs", "--cleanup"], { cwd: root, env, timeout: 120_000 });
+  } catch (error) {
+    fixtureFailures.push({ status: "rejected", reason: error });
+  }
   await requestFixture?.close();
   await responseProxy?.close();
   await stopFaultProxy?.();
@@ -737,7 +784,7 @@ async function cleanup() {
   } finally {
     await client.end();
   }
-  const failures = stopped.filter((result) => result.status === "rejected");
+  const failures = [...fixtureFailures, ...stopped.filter((result) => result.status === "rejected")];
   if (failures.length)
     throw new AggregateError(
       failures.map((result) => result.reason),
@@ -1230,7 +1277,10 @@ try {
         "scripts/ipad/source-pdf-cache-http.test.mjs",
       ]);
     }
-    if (e03Proof) await command(process.execPath, ["scripts/ipad/e03-runner.mjs", ...(e03Case ? [`--case=${e03Case}`] : [])]);
+    if (e03Proof) {
+      await command(process.execPath, ["scripts/ipad/e03-runner.mjs", ...(e03Case ? [`--case=${e03Case}`] : [])]);
+      if ((!e03Case || e03Case === "A03") && (process.argv.includes("--ui") || process.argv.includes("--web"))) await prepareE03MigrationFixtures();
+    }
     if (!progressOnly && !annotationsProof && !e03Proof) await command(process.execPath, ["--test", "scripts/ipad/http.test.mjs"]);
     if (organizationProof || crossClient) await command(process.execPath, ["--test", "scripts/ipad/organization-http.test.mjs"]);
     if (!annotationsProof && !e03Proof) await command(process.execPath, ["--test", "scripts/ipad/progress-http.test.mjs"]);

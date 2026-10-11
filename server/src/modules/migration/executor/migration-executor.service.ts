@@ -238,7 +238,7 @@ export class MigrationExecutorService {
           try {
             if (stage === 'shared_overlays') await this.sharedOverlays.import(runId, planned, ensureRunning);
             else if (stage === 'book_covers') await this.covers.import(runId, planned, this.appDataPath, sourceMediaRootPath, ensureRunning);
-            else await this.userState.import(runId, planned, ensureRunning);
+            else await this.userState.import(runId, planned, ensureRunning, false);
             await ensureRunning(true);
             const metrics = (await this.repo.listRunMetrics(runId)).filter((metric) => metric.stage === stage);
             const cumulative = new Map(totals.map((metric) => [metric.entityType, { ...metric }]));

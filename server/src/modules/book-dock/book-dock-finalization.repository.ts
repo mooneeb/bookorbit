@@ -25,6 +25,16 @@ export class BookDockFinalizationRepository {
     return row;
   }
 
+  async hasAcceptedForFileIds(fileIds: number[]): Promise<boolean> {
+    if (fileIds.length === 0) return false;
+    const [row] = await this.db
+      .select({ fileId: bookDockFinalizations.fileId })
+      .from(bookDockFinalizations)
+      .where(inArray(bookDockFinalizations.fileId, fileIds))
+      .limit(1);
+    return row !== undefined;
+  }
+
   async begin(fileId: number, userId: number, intent: BookDockFinalizeIntent) {
     const [row] = await this.db
       .insert(bookDockFinalizations)
