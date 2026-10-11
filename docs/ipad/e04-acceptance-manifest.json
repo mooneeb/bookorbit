@@ -253,5 +253,5 @@
     "agentReview": "open actual native and browser screenshots and record review tied to test ID, state, profile and path",
     "nativeNarrowWindow": "simctl does not size native windows; full-window counterpart runs and actual supported narrow-window review remains required"
   },
-  "completionRule": "empty native/http entries, unimplemented or skipped tests, unreviewed baselines, absent required artifacts, failing assertions, and residual human/physical checks do not count as passing acceptance coverage; functional checkpoints or genuine domain handoffs inside audit-failed selectors, discovery-only selection checks, intentionally failed cleanup controls, and blocked journeys excluded from a bounded run do not make the whole selector or criterion pass"
+  "completionRule": "empty native/http entries, unimplemented or skipped tests, unreviewed baselines, absent required artifacts, failing assertions, and residual human/physical checks do not count as passing acceptance coverage; source repairs or an implementation PR merge do not close remaining issue criteria; functional checkpoints or genuine domain handoffs inside audit-failed selectors, discovery-only selection checks, intentionally failed cleanup controls, and blocked journeys excluded from a bounded run do not make the whole selector or criterion pass"
 }
