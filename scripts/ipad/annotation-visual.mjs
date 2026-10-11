@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,16 +9,24 @@ import { annotationProfile } from "./annotation-matrix.mjs";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(new URL("../../server/package.json", import.meta.url));
 const sharp = require("sharp");
-const baselineRoot = join(root, "ipad/VisualBaselines/E02");
+const annotationBaselineRoot = join(root, "ipad/VisualBaselines/E02");
 
 export async function compareAnnotationVisual({ actualPath, outputDir, testId, state, surface, profile, metadata = {} }) {
   assert.match(testId, /^IPAD-E02-A0[1-7]$/);
+  return compareReviewedVisual({ actualPath, outputDir, testId, state, surface, profile, metadata, baselineRoot: annotationBaselineRoot });
+}
+
+export async function compareReviewedVisual({ actualPath, outputDir, testId, state, surface, profile, metadata = {}, baselineRoot }) {
+  assert.match(testId, /^IPAD-E0[23]-[A-Z0-9-]+$/);
   assert.match(state, /^[a-zA-Z0-9_-]+$/);
   assert.ok(["native", "web"].includes(surface));
   const config = annotationProfile(profile);
   await mkdir(outputDir, { recursive: true });
   const name = `${testId}-${state}`;
+  baselineRoot = resolve(baselineRoot);
+  await Promise.all(["expected", "diff"].map((kind) => rm(join(outputDir, `${name}-${kind}.png`), { force: true })));
   const actual = await readFile(actualPath);
+  const actualMetadata = await sharp(actual).metadata();
   const actualCopy = join(outputDir, `${name}-actual.png`);
   await writeFile(actualCopy, actual);
   let reviews;
@@ -30,9 +38,41 @@ export async function compareAnnotationVisual({ actualPath, outputDir, testId, s
   const baseline = reviews?.entries?.find(
     (entry) => entry.testId === testId && entry.state === state && entry.surface === surface && entry.profile === config.name,
   );
-  const report = { testId, state, surface, profile: config, actual: actualCopy, metadata, status: "pending-human-baseline" };
+  const report = {
+    testId,
+    state,
+    surface,
+    profile: config,
+    actual: actualCopy,
+    actualSha256: createHash("sha256").update(actual).digest("hex"),
+    actualDimensions: [actualMetadata.width, actualMetadata.height],
+    metadata,
+    status: "pending-human-baseline",
+  };
   if (baseline) {
-    assert.ok(baseline.reviewedBy && baseline.reviewedAt, "A visual baseline requires recorded human review");
+    try {
+      assert.ok(baseline.reviewedBy && baseline.reviewedAt, "A visual baseline requires recorded human review");
+      if (testId.startsWith("IPAD-E03")) {
+        assert.equal(baseline.reviewType, "human", "E03 baselines require explicit human review");
+        assert.ok(Number.isFinite(Date.parse(baseline.reviewedAt)), "A human review requires a valid date");
+        assert.ok(Number.isInteger(baseline.pixelThreshold), "E03 pixel threshold requires human review");
+        assert.ok(Number.isFinite(baseline.maxChangedPixelRatio), "E03 changed-pixel budget requires human review");
+        assert.ok(typeof baseline.budgetReason === "string" && baseline.budgetReason.trim(), "E03 tolerance requires a human review rationale");
+        assert.equal(
+          reviews.entries.filter(
+            (entry) => entry.testId === testId && entry.state === state && entry.surface === surface && entry.profile === config.name,
+          ).length,
+          1,
+          "A screenshot must have exactly one baseline review",
+        );
+      }
+    } catch (error) {
+      if (!testId.startsWith("IPAD-E03")) throw error;
+      report.status = "failed-baseline-review";
+      report.reason = error.message;
+      await writeFile(join(outputDir, `${name}-review.json`), `${JSON.stringify(report, null, 2)}\n`);
+      return report;
+    }
     assert.match(baseline.file, /^[a-zA-Z0-9_./-]+\.png$/);
     const expectedPath = resolve(baselineRoot, baseline.file);
     assert.ok(expectedPath.startsWith(`${baselineRoot}/`), "Baseline must stay within its review directory");
@@ -48,6 +88,30 @@ export async function compareAnnotationVisual({ actualPath, outputDir, testId, s
       report.status = "failed-dimensions";
       report.actualDimensions = [width, height];
       report.expectedDimensions = [expectedPixels.info.width, expectedPixels.info.height];
+      const diffWidth = Math.max(width, expectedPixels.info.width);
+      const diffHeight = Math.max(height, expectedPixels.info.height);
+      const diff = Buffer.alloc(diffWidth * diffHeight * 4);
+      for (let y = 0; y < diffHeight; y++) {
+        for (let x = 0; x < diffWidth; x++) {
+          const offset = (y * diffWidth + x) * 4;
+          const actualOffset = (y * width + x) * 4;
+          const expectedOffset = (y * expectedPixels.info.width + x) * 4;
+          const inActual = x < width && y < height;
+          const inExpected = x < expectedPixels.info.width && y < expectedPixels.info.height;
+          const differs =
+            !inActual ||
+            !inExpected ||
+            [0, 1, 2, 3].some((channel) => actualPixels.data[actualOffset + channel] !== expectedPixels.data[expectedOffset + channel]);
+          diff[offset] = differs ? 255 : actualPixels.data[actualOffset];
+          diff[offset + 1] = differs ? 0 : actualPixels.data[actualOffset + 1];
+          diff[offset + 2] = differs ? 255 : actualPixels.data[actualOffset + 2];
+          diff[offset + 3] = 255;
+        }
+      }
+      report.diff = join(outputDir, `${name}-diff.png`);
+      await sharp(diff, { raw: { width: diffWidth, height: diffHeight, channels: 4 } })
+        .png()
+        .toFile(report.diff);
     } else {
       const diff = Buffer.alloc(width * height * 4);
       const masks = baseline.masks ?? [];
@@ -88,6 +152,9 @@ export async function compareAnnotationVisual({ actualPath, outputDir, testId, s
         .png()
         .toFile(report.diff);
       report.changedPixelRatio = changed / compared;
+      report.pixelThreshold = threshold;
+      report.changedPixels = changed;
+      report.comparedPixels = compared;
       report.maxChangedPixelRatio = ratioBudget;
       report.status = report.changedPixelRatio <= ratioBudget ? "passed" : "failed-pixels";
     }

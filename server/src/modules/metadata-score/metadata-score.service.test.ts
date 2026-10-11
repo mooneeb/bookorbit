@@ -46,6 +46,8 @@ function makeService() {
   const repo = {
     loadScoreData: vi.fn(),
     loadScoreDataPage: vi.fn(),
+    loadScoreDataMany: vi.fn(),
+    updateMetadataScores: vi.fn(),
     updateMetadataScore: vi.fn(),
   };
   const scorer = {
@@ -157,16 +159,53 @@ describe('MetadataScoreService', () => {
 
   it('recalculates unique books in bulk with one weights lookup', async () => {
     const { service, repo, scorer, appSettings } = makeService();
-    repo.loadScoreData.mockResolvedValue({ title: 'Book' });
+    repo.loadScoreDataMany.mockResolvedValue([
+      { bookId: 3, data: { title: 'Book' } },
+      { bookId: 5, data: { title: 'Book' } },
+    ]);
     appSettings.getMetadataScoreWeights.mockResolvedValue(makeWeights());
     scorer.compute.mockReturnValue(75);
 
     await service.calculateAndSaveMany([3, 5, 3, 0]);
 
     expect(appSettings.getMetadataScoreWeights).toHaveBeenCalledTimes(1);
-    expect(repo.loadScoreData).toHaveBeenCalledTimes(2);
-    expect(repo.updateMetadataScore).toHaveBeenCalledWith(3, 75);
-    expect(repo.updateMetadataScore).toHaveBeenCalledWith(5, 75);
+    expect(repo.loadScoreDataMany).toHaveBeenCalledOnce();
+    expect(repo.loadScoreDataMany).toHaveBeenCalledWith([3, 5], undefined);
+    expect(repo.updateMetadataScores).toHaveBeenCalledWith(
+      [
+        { bookId: 3, score: 75 },
+        { bookId: 5, score: 75 },
+      ],
+      undefined,
+    );
+  });
+
+  it('bounds bulk score reads and writes to 500 ids per batch', async () => {
+    const { service, repo, scorer, appSettings } = makeService();
+    repo.loadScoreDataMany.mockImplementation((ids: number[]) => Promise.resolve(ids.map((bookId) => ({ bookId, data: { title: 'Book' } }))));
+    appSettings.getMetadataScoreWeights.mockResolvedValue(makeWeights());
+    scorer.compute.mockReturnValue(75);
+    await service.calculateAndSaveMany(Array.from({ length: 501 }, (_, index) => index + 1));
+    expect(appSettings.getMetadataScoreWeights).toHaveBeenCalledOnce();
+    expect(repo.loadScoreDataMany.mock.calls.map(([ids]) => ids.length)).toEqual([500, 1]);
+    expect(repo.updateMetadataScores.mock.calls.map(([rows]) => rows.length)).toEqual([500, 1]);
+  });
+
+  it('does not wait for a queued single-book score while using a mutation transaction', async () => {
+    const { service, repo, scorer, appSettings } = makeService();
+    const singleLoad = deferred<{ title: string }>();
+    repo.loadScoreData.mockReturnValue(singleLoad.promise);
+    appSettings.getMetadataScoreWeights.mockResolvedValue(makeWeights());
+    scorer.compute.mockReturnValue(75);
+    const single = service.calculateAndSave(3);
+    await Promise.resolve();
+    const executor = { execute: vi.fn() };
+    repo.loadScoreDataMany.mockResolvedValue([{ bookId: 3, data: { title: 'Book' } }]);
+    await service.calculateAndSaveMany([3], executor as never);
+    expect(repo.loadScoreDataMany).toHaveBeenCalledWith([3], executor);
+    expect(repo.updateMetadataScores).toHaveBeenCalledWith([{ bookId: 3, score: 75 }], executor);
+    singleLoad.resolve({ title: 'Book' });
+    await single;
   });
 
   it('starts manual recalculation and reports completed status with success/failure counters', async () => {

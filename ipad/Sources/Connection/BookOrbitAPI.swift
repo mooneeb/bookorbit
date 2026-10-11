@@ -1937,6 +1937,143 @@ actor BookOrbitAPI {
     return credentials
   }
 
+  func boundedBulkDownload(
+    path: String, body: Data, session: UUID,
+    progress: @MainActor @Sendable (BookFileTransferProgress) -> Void
+  ) async throws -> StagedBookFile {
+    try ensureSession(session)
+    var request = URLRequest(url: profile.endpoint(path))
+    request.httpMethod = "POST"
+    request.httpBody = body
+    request.timeoutInterval = 120
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(session)
+    var delivery = try await networkBytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      request.setValue(
+        "Bearer \(try await refresh().accessToken)", forHTTPHeaderField: "Authorization")
+      try ensureSession(session)
+      delivery = try await networkBytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    try ensureSession(session)
+    let staging = try BulkExportStaging(response: response)
+    var buffer = Data()
+    buffer.reserveCapacity(64 * 1024)
+    var received: Int64 = 0
+    var lastUpdate = Date.timeIntervalSinceReferenceDate
+    for try await byte in bytes {
+      buffer.append(byte)
+      received += 1
+      guard received <= BulkExportStaging.maximumBytes else {
+        throw ConnectionError.responseTooLarge
+      }
+      if buffer.count == 64 * 1024 {
+        try Task.checkCancellation()
+        try ensureSession(session)
+        try staging.write(buffer)
+        buffer.removeAll(keepingCapacity: true)
+        if Date.timeIntervalSinceReferenceDate - lastUpdate > 0.2 {
+          await progress(.init(received: received, total: max(0, response.expectedContentLength)))
+          lastUpdate = Date.timeIntervalSinceReferenceDate
+        }
+      }
+    }
+    try Task.checkCancellation()
+    try ensureSession(session)
+    guard received > 0,
+      response.expectedContentLength < 0 || received == response.expectedContentLength
+    else { throw ConnectionError.invalidResponse }
+    if !buffer.isEmpty { try staging.write(buffer) }
+    await progress(.init(received: received, total: received))
+    return try staging.finish(size: received)
+  }
+
+  func eventStream<T: Decodable & Sendable>(
+    _ path: String, body: Data, onEvent: @Sendable (T) async throws -> Void
+  ) async throws {
+    guard body.count <= 1024 * 1024 else { throw ConnectionError.responseTooLarge }
+    let generation = try authenticatedSessionGeneration()
+    try Task.checkCancellation()
+    var request = URLRequest(url: profile.endpoint(path))
+    request.httpMethod = "POST"
+    request.httpBody = body
+    request.timeoutInterval = 600
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(generation)
+    var delivery = try await networkBytes(for: request)
+    if (delivery.1 as? HTTPURLResponse)?.statusCode == 401 {
+      delivery.0.task.cancel()
+      let credentials = try await refresh()
+      try ensureSession(generation)
+      request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+      delivery = try await networkBytes(for: request)
+    }
+    let (bytes, response) = delivery
+    defer { bytes.task.cancel() }
+    try ensureSession(generation)
+    guard let response = response as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    guard response.statusCode == 200, response.mimeType == "text/event-stream" else {
+      throw ConnectionError.invalidResponse
+    }
+    var line = Data()
+    var frame = Data()
+    var received = 0
+    for try await byte in bytes {
+      received += 1
+      guard received <= 64 * 1024 * 1024, line.count < 64 * 1024 else {
+        throw ConnectionError.responseTooLarge
+      }
+      if received % (16 * 1024) == 0 {
+        try Task.checkCancellation()
+        try ensureSession(generation)
+      }
+      if byte != 10 {
+        line.append(byte)
+        continue
+      }
+      try Task.checkCancellation()
+      try ensureSession(generation)
+      if line.last == 13 { line.removeLast() }
+      guard let text = String(data: line, encoding: .utf8) else {
+        throw ConnectionError.invalidResponse
+      }
+      line.removeAll(keepingCapacity: true)
+      if text.isEmpty {
+        if !frame.isEmpty {
+          let event = try JSONDecoder().decode(T.self, from: frame)
+          frame.removeAll(keepingCapacity: true)
+          try await onEvent(event)
+          try ensureSession(generation)
+        }
+      } else if text.hasPrefix("data:") {
+        var value = text.dropFirst(5)
+        if value.first == " " { value = value.dropFirst() }
+        let data = Data(value.utf8)
+        let separator = frame.isEmpty ? 0 : 1
+        guard frame.count + separator + data.count <= 64 * 1024 else {
+          throw ConnectionError.responseTooLarge
+        }
+        if separator == 1 { frame.append(10) }
+        frame.append(data)
+      }
+    }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    guard frame.isEmpty, line.isEmpty else { throw ConnectionError.invalidResponse }
+  }
+
   private func raw(
     _ path: String, method: String, body: Data?, query: [URLQueryItem] = [], token: String? = nil
   ) async throws
@@ -1966,4 +2103,54 @@ actor BookOrbitAPI {
       throw ConnectionError.http(response.statusCode)
     }
   }
+  func boundedMultipart<T: Decodable & Sendable>(
+    _ path: String, filename: String, data: Data, fieldName: String = "file",
+    headers: [String: String] = [:], byteLimit: Int = 512 * 1024, session: UUID? = nil
+  ) async throws -> T {
+    guard data.count <= 4 * 1024 * 1024, byteLimit > 0, byteLimit <= 1024 * 1024,
+      !filename.contains("\r"), !filename.contains("\n"), !filename.contains("\""),
+      !fieldName.contains("\r"), !fieldName.contains("\n"), !fieldName.contains("\"")
+    else { throw ConnectionError.invalidResponse }
+    let generation = try session ?? authenticatedSessionGeneration()
+    try ensureSession(generation)
+    let boundary = "BookOrbit-\(UUID().uuidString)"
+    var body = Data(
+      "--\(boundary)\r\nContent-Disposition: form-data; name=\"\(fieldName)\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        .utf8)
+    body.append(data)
+    body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+    var request = URLRequest(url: profile.endpoint(path))
+    request.httpMethod = "POST"
+    request.httpBody = body
+    request.setValue(
+      "multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+    for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    try ensureSession(generation)
+    var result = try await networkBytes(for: request)
+    try ensureSession(generation)
+    if (result.1 as? HTTPURLResponse)?.statusCode == 401 {
+      result.0.task.cancel()
+      request.setValue(
+        "Bearer \(try await refresh().accessToken)", forHTTPHeaderField: "Authorization")
+      try ensureSession(generation)
+      result = try await networkBytes(for: request)
+      try ensureSession(generation)
+    }
+    defer { result.0.task.cancel() }
+    guard let response = result.1 as? HTTPURLResponse else { throw ConnectionError.invalidResponse }
+    if response.statusCode == 401 { throw ConnectionError.expiredSession }
+    try validate(response)
+    var responseData = Data()
+    for try await byte in result.0 {
+      try Task.checkCancellation()
+      try ensureSession(generation)
+      guard responseData.count < byteLimit else { throw ConnectionError.invalidResponse }
+      responseData.append(byte)
+    }
+    try Task.checkCancellation()
+    try ensureSession(generation)
+    return try JSONDecoder().decode(T.self, from: responseData)
+  }
+
 }

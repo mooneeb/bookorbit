@@ -1312,6 +1312,9 @@ const sourceTypeCompatibility = computed<SourceTypeCompatibility | null>(() => {
       <div
         class="relative flex flex-col w-full max-w-5xl bg-background rounded-lg shadow-2xl overflow-hidden border border-border"
         style="height: min(90vh, 700px)"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="t('migration.importTitle')"
       >
         <!-- Mobile top bar -->
         <div class="md:hidden flex items-center px-4 h-14 border-b border-border shrink-0">

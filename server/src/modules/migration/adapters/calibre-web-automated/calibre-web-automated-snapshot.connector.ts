@@ -1,3 +1,4 @@
+import { isAudioFormat, isComicFormat } from '@bookorbit/types';
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import { constants } from 'node:fs';
@@ -148,6 +149,11 @@ export class CalibreWebAutomatedSnapshotConnector {
   constructor(@Inject(migrationConfig.KEY) private readonly config: ConfigType<typeof migrationConfig>) {}
 
   async fetchSourceRecords(config: CalibreWebAutomatedConnectionConfig): Promise<CalibreWebAutomatedSourceRecords> {
+    for await (const records of this.fetchSourceRecordBatches(config, true)) return records;
+    throw new BadRequestException('The Calibre-Web Automated snapshot could not be read safely');
+  }
+
+  async *fetchSourceRecordBatches(config: CalibreWebAutomatedConnectionConfig, legacy = false): AsyncGenerator<CalibreWebAutomatedSourceRecords> {
     let appFile: AuthorizedCalibreWebAutomatedSnapshotFile | null = null;
     let metadataFile: AuthorizedCalibreWebAutomatedSnapshotFile | null = null;
     let temporaryDirectory: string | null = null;
@@ -174,7 +180,55 @@ export class CalibreWebAutomatedSnapshotConnector {
       metadataDatabase = openDefensiveDatabase(metadataCopyPath);
       verifyIntegrity(appDatabase);
       verifyIntegrity(metadataDatabase);
-      return readSourceRecords(appDatabase, metadataDatabase);
+      if (legacy) {
+        yield readSourceRecords(appDatabase, metadataDatabase);
+        return;
+      }
+      const empty = { bookIds: [], userIds: [], shelfIds: [], shelfLinkIds: [] };
+      const initial = readSourceRecords(appDatabase, metadataDatabase, empty);
+      for (const users of sqlitePages(appDatabase, USER_SQL)) {
+        yield { ...initial, users: users.flatMap((row) => mapUser(row, new WarningCollector()) ?? []), bookOverlays: false };
+      }
+      const capabilities = initial.capabilities;
+      if (capabilities.shelves) {
+        for (const rows of sqlitePages(appDatabase, SHELF_SQL)) {
+          const userIds = [...new Set(rows.map((row) => Number(row.userId)))];
+          yield {
+            ...readSourceRecords(appDatabase, metadataDatabase, { ...empty, userIds, shelfIds: rows.map((row) => Number(row.id)) }),
+            bookOverlays: false,
+          };
+        }
+      }
+      for (const rows of sqlitePages(metadataDatabase, BOOK_SQL, 100)) {
+        const bookIds = rows.map((row) => Number(row.id));
+        const books = readSourceRecords(appDatabase, metadataDatabase, { ...empty, bookIds });
+        yield { ...books, bookOverlays: true };
+        for (const users of sqlitePages(appDatabase, USER_SQL)) {
+          for (const user of users) {
+            const userIds = [Number(user.id)];
+            yield { ...readSourceRecords(appDatabase, metadataDatabase, { ...empty, bookIds, userIds }), bookOverlays: false };
+          }
+        }
+        if (capabilities.shelves) {
+          const idsSql = bookIds.join(',');
+          const membershipSql = SHELF_BOOK_SQL.replace('WHERE id > ?', `WHERE book_id IN (${idsSql}) AND id > ?`);
+          for (const links of sqlitePages(appDatabase, membershipSql)) {
+            const shelfIds = [...new Set(links.map((row) => Number(row.shelfId)))];
+            const userIds = appDatabase
+              .prepare(`SELECT DISTINCT user_id AS id FROM shelf WHERE id IN (${shelfIds.join(',')})`)
+              .all()
+              .map((row) => Number(row.id));
+            const records = readSourceRecords(appDatabase, metadataDatabase, {
+              bookIds,
+              userIds,
+              shelfIds,
+              shelfLinkIds: links.map((row) => Number(row.id)),
+              shelvesOnly: true,
+            });
+            yield { ...records, bookOverlays: false };
+          }
+        }
+      }
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
       throw new BadRequestException('The Calibre-Web Automated snapshot could not be read safely');
@@ -322,7 +376,57 @@ function openDefensiveDatabase(path: string): DatabaseSync {
   const enableDefensive = (database as unknown as { enableDefensive?: (active: boolean) => void }).enableDefensive;
   if (enableDefensive) enableDefensive.call(database, true);
   database.exec('PRAGMA query_only = ON; PRAGMA trusted_schema = OFF');
+  database.function('source_timestamp', { deterministic: true }, snapshotTimestamp);
+  database.function('source_web_format', { deterministic: true }, validWebProgressFormat);
+  database.function('source_percentage', { deterministic: true }, validProgressPercentage);
+  database.function('source_cfi', { deterministic: true }, (value) => Number(validProgressCfi(value)));
+  database.function('source_text', { deterministic: true }, (value) => Number(Boolean(boundedText(value, MAX_TEXT_BYTES)?.trim())));
+  database.function('source_checksum', { deterministic: true }, (value) => boundedText(value, MAX_TEXT_BYTES)?.trim() || null);
+  database.function('source_format', { deterministic: true }, (value) => boundedText(value, MAX_TEXT_BYTES)?.trim().toLowerCase() || null);
   return database;
+}
+
+function snapshotTimestamp(value: unknown): number | null {
+  const text = boundedText(value, MAX_TEXT_BYTES);
+  const timestamp = text ? Date.parse(text) : NaN;
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function validProgressPercentage(value: unknown): number | null {
+  const number = finiteNumber(value);
+  return number != null && number >= -0.000001 && number <= 100.000001 ? Math.max(0, Math.min(100, number)) : null;
+}
+
+function validProgressCfi(value: unknown): boolean {
+  const cfi = boundedText(value, MAX_TEXT_BYTES)?.trim();
+  if (!cfi || !/^epubcfi\(.+\)$/.test(cfi) || /[\r\n]/.test(cfi)) return false;
+  let depth = 0;
+  for (let index = 'epubcfi'.length; index < cfi.length; index += 1) {
+    const character = cfi[index];
+    if (character === '^') {
+      index += 1;
+      continue;
+    }
+    if (character === '(') depth += 1;
+    if (character === ')') depth -= 1;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
+}
+
+function validWebProgressFormat(rawFormat: unknown, rawBookmark: unknown): string | null {
+  const format = boundedText(rawFormat, MAX_TEXT_BYTES)?.trim().toLowerCase();
+  const bookmark = boundedText(rawBookmark, MAX_TEXT_BYTES)?.trim();
+  if (!format || !bookmark) return null;
+  if (format === 'epub') return validProgressCfi(bookmark) ? format : null;
+  if (isAudioFormat(format)) {
+    const position = Number(bookmark);
+    return Number.isFinite(position) && position >= 0 ? format : null;
+  }
+  if (['cbr', 'cbt', 'cbz'].includes(format) && isComicFormat(format)) {
+    return /^\d+$/.test(bookmark) && Number.isSafeInteger(Number(bookmark)) ? format : null;
+  }
+  return null;
 }
 
 function verifyIntegrity(database: DatabaseSync): void {
@@ -335,8 +439,99 @@ function verifyIntegrity(database: DatabaseSync): void {
   throw new BadRequestException('Calibre-Web Automated snapshot database failed its integrity check');
 }
 
-function readSourceRecords(appDatabase: DatabaseSync, metadataDatabase: DatabaseSync): CalibreWebAutomatedSourceRecords {
+interface RecordScope {
+  bookIds: number[];
+  userIds: number[];
+  shelfIds: number[];
+  shelfLinkIds: number[];
+  shelvesOnly?: boolean;
+}
+
+function* sqlitePages(database: DatabaseSync, query: string, pageSize = 500): Generator<SqlRow[]> {
+  const statement = database.prepare(query);
+  let lastId = -1;
+  while (true) {
+    const rows = statement.all(lastId, pageSize) as SqlRow[];
+    if (!rows.length) return;
+    yield rows;
+    lastId = Number(rows.at(-1)!.id);
+    if (rows.length < pageSize) return;
+  }
+}
+
+function selectKoboProgressStates(states: string): string {
+  // A newer position without a percentage still needs the older percentage for mergeProgress.
+  return `WITH scoped_states AS (${states}),
+    bookmarks AS (
+      SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY kobo_reading_state_id ORDER BY source_timestamp(last_modified) DESC, id DESC
+      ) AS bookmark_rank
+      FROM kobo_bookmark WHERE id > 0 AND kobo_reading_state_id IN (SELECT id FROM scoped_states)
+    ), candidates AS (
+      SELECT scoped_states.*,
+        bookmarks.id AS bookmark_id,
+        COALESCE(source_timestamp(bookmarks.last_modified), source_timestamp(priorityTimestamp), source_timestamp(lastModified)) AS updated_at,
+        COALESCE(source_percentage(progress_percent), source_percentage(content_source_progress_percent)) IS NOT NULL AS has_percentage
+      FROM scoped_states INNER JOIN bookmarks ON bookmarks.kobo_reading_state_id = scoped_states.id AND bookmark_rank = 1
+      WHERE scoped_states.id > 0 AND (
+        source_percentage(progress_percent) IS NOT NULL OR source_percentage(content_source_progress_percent) IS NOT NULL OR source_cfi(location_value) = 1
+      )
+    ), ranked AS (
+      SELECT *,
+        ROW_NUMBER() OVER (PARTITION BY userId, bookId ORDER BY updated_at DESC, bookmark_id DESC) AS progress_rank,
+        ROW_NUMBER() OVER (PARTITION BY userId, bookId, has_percentage ORDER BY updated_at DESC, bookmark_id DESC) AS percentage_rank
+      FROM candidates
+    ) SELECT id, userId, bookId, lastModified, priorityTimestamp FROM ranked
+      WHERE progress_rank = 1 OR (has_percentage = 1 AND percentage_rank = 1)`;
+}
+
+function readSourceRecords(appDatabase: DatabaseSync, metadataDatabase: DatabaseSync, scope?: RecordScope): CalibreWebAutomatedSourceRecords {
   const warnings = new WarningCollector();
+  let selectedKoboStateIds: number[] = [];
+  const readScoped = <T>(database: DatabaseSync, query: string, pageSize: number, map: (row: SqlRow) => T | null): T[] => {
+    if (!scope) return readMapped(database, query, pageSize, map);
+    const ids = (values: number[]) => (values.length ? values.join(',') : 'NULL');
+    let filter: string;
+    if (query === USER_SQL) filter = `id IN (${ids(scope.userIds)})`;
+    else if (query === BOOK_SQL) filter = `id IN (${ids(scope.bookIds)})`;
+    else if (query === SHELF_SQL) filter = `id IN (${ids(scope.shelfIds)})`;
+    else if (query === SHELF_BOOK_SQL) filter = `id IN (${ids(scope.shelfLinkIds)})`;
+    else if (scope.shelvesOnly && [STATUS_SQL, WEB_PROGRESS_SQL, KOBO_STATE_SQL, KOBO_BOOKMARK_SQL, KOREADER_PROGRESS_SQL].includes(query)) return [];
+    else if ([STATUS_SQL, WEB_PROGRESS_SQL, KOBO_STATE_SQL].includes(query))
+      filter = `bookId IN (${ids(scope.bookIds)}) AND userId IN (${ids(scope.userIds)})`;
+    else if (query === KOBO_BOOKMARK_SQL) filter = `readingStateId IN (${ids(selectedKoboStateIds)})`;
+    else if (query === KOREADER_PROGRESS_SQL) {
+      const validChecksums = 'id > 0 AND book > 0 AND source_text(checksum) = 1 AND source_text(format) = 1 AND source_text(version) = 1';
+      const checksums = metadataDatabase
+        .prepare(
+          `SELECT DISTINCT source_checksum(checksum) AS checksum, book AS bookId, source_format(format) AS format FROM book_format_checksums WHERE ${validChecksums} AND book IN (${ids(scope.bookIds)}) AND source_checksum(checksum) IN (SELECT source_checksum(checksum) FROM book_format_checksums WHERE ${validChecksums} GROUP BY source_checksum(checksum) HAVING COUNT(DISTINCT book || ':' || source_format(format)) = 1)`,
+        )
+        .all();
+      if (!checksums.length) return [];
+      const targets = new Map(
+        checksums.map((row) => [String(row.checksum).trim(), `${String(row.bookId)}:${String(row.format).trim().toLowerCase()}`]),
+      );
+      database.function('source_koreader_target', { deterministic: true }, (value) => {
+        const document = boundedText(value, MAX_TEXT_BYTES)?.trim();
+        return document ? (targets.get(document) ?? null) : null;
+      });
+      const values = checksums.map((row) => String(row.checksum).replaceAll("'", "''"));
+      filter = `userId IN (${ids(scope.userIds)}) AND source_checksum(document) IN (${values.map((value) => `'${value}'`).join(',')})`;
+    } else filter = `bookId IN (${ids(scope.bookIds)})`;
+    const projection = query.replace(/ WHERE[\s\S]*$/, '');
+    let selected = `SELECT * FROM (${projection}) scoped WHERE ${filter}`;
+    if (query === STATUS_SQL)
+      selected = `SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY userId, bookId ORDER BY COALESCE(julianday(lastModified), 0) DESC, id DESC) AS source_rank FROM (${selected}) WHERE readStatus IN (0, 1, 2)) WHERE source_rank = 1`;
+    if (query === WEB_PROGRESS_SQL)
+      selected = `SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY userId, bookId, source_web_format(format, bookmarkKey) ORDER BY id DESC) AS source_rank FROM (${selected}) WHERE source_web_format(format, bookmarkKey) IS NOT NULL) WHERE source_rank = 1`;
+    if (query === KOREADER_PROGRESS_SQL)
+      selected = `SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY userId, source_koreader_target(document) ORDER BY source_timestamp(timestamp) DESC, id DESC) AS source_rank FROM (${selected}) WHERE source_percentage(percentage) IS NOT NULL AND source_text(progress) = 1 AND source_koreader_target(document) IS NOT NULL) WHERE source_rank = 1`;
+    if (query === KOBO_STATE_SQL) selected = selectKoboProgressStates(selected);
+    if (query === KOBO_BOOKMARK_SQL)
+      selected = `SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY readingStateId ORDER BY source_timestamp(lastModified) DESC, id DESC) AS source_rank FROM (${selected}) WHERE id > 0) WHERE source_rank = 1`;
+    const scopedQuery = `SELECT * FROM (${selected}) source_page WHERE id > ? ORDER BY id LIMIT ?`;
+    return readMapped(database, scopedQuery, Math.min(pageSize, 500), map);
+  };
   const compatibilityWarnings = ['Schema compatibility was verified against Calibre-Web Automated v4.0.6'];
   const appTables = getAvailableTables(appDatabase);
   const metadataTables = getAvailableTables(metadataDatabase);
@@ -433,60 +628,61 @@ function readSourceRecords(appDatabase: DatabaseSync, metadataDatabase: Database
     shelves: verifyOptionalSchema(appDatabase, appTables, ['shelf', 'book_shelf_link'], APP_OPTIONAL_SCHEMA, compatibilityWarnings, 'shelves'),
   };
 
-  const users = readMapped(appDatabase, USER_SQL, CORE_PAGE_SIZE, (row) => mapUser(row, warnings));
+  const users = readScoped(appDatabase, USER_SQL, CORE_PAGE_SIZE, (row) => mapUser(row, warnings));
   const userIds = new Set(users.map((row) => row.id));
-  const books = readMapped(metadataDatabase, BOOK_SQL, CORE_PAGE_SIZE, (row) => mapBook(row, warnings));
+  const books = readScoped(metadataDatabase, BOOK_SQL, CORE_PAGE_SIZE, (row) => mapBook(row, warnings));
   const bookIds = new Set(books.map((row) => row.id));
-  const files = readMapped(metadataDatabase, FILE_SQL, CORE_PAGE_SIZE, (row) => mapFile(row, bookIds, warnings));
+  const files = readScoped(metadataDatabase, FILE_SQL, CORE_PAGE_SIZE, (row) => mapFile(row, bookIds, warnings));
 
   const settings = capabilities.settings ? readSettings(appDatabase, getColumns(appDatabase, 'settings'), warnings) : [];
   const authorLinks = capabilities.authors
-    ? readMapped(metadataDatabase, AUTHOR_LINK_SQL, RELATION_PAGE_SIZE, (row) => mapAuthorLink(row, bookIds, warnings))
+    ? readScoped(metadataDatabase, AUTHOR_LINK_SQL, RELATION_PAGE_SIZE, (row) => mapAuthorLink(row, bookIds, warnings))
     : [];
   const publisherLinks = capabilities.publishers
-    ? readMapped(metadataDatabase, PUBLISHER_LINK_SQL, RELATION_PAGE_SIZE, (row) => mapNamedLink(row, bookIds, warnings, 'publisher'))
+    ? readScoped(metadataDatabase, PUBLISHER_LINK_SQL, RELATION_PAGE_SIZE, (row) => mapNamedLink(row, bookIds, warnings, 'publisher'))
     : [];
   const languageLinks = capabilities.languages
-    ? readMapped(metadataDatabase, LANGUAGE_LINK_SQL, RELATION_PAGE_SIZE, (row) => mapLanguageLink(row, bookIds, warnings))
+    ? readScoped(metadataDatabase, LANGUAGE_LINK_SQL, RELATION_PAGE_SIZE, (row) => mapLanguageLink(row, bookIds, warnings))
     : [];
   const seriesLinks = capabilities.series
-    ? readMapped(metadataDatabase, SERIES_LINK_SQL, RELATION_PAGE_SIZE, (row) => mapSeriesLink(row, bookIds, warnings))
+    ? readScoped(metadataDatabase, SERIES_LINK_SQL, RELATION_PAGE_SIZE, (row) => mapSeriesLink(row, bookIds, warnings))
     : [];
   const ratingLinks = capabilities.ratings
-    ? readMapped(metadataDatabase, RATING_LINK_SQL, RELATION_PAGE_SIZE, (row) => mapRatingLink(row, bookIds, warnings))
+    ? readScoped(metadataDatabase, RATING_LINK_SQL, RELATION_PAGE_SIZE, (row) => mapRatingLink(row, bookIds, warnings))
     : [];
   const comments = capabilities.comments
-    ? readMapped(metadataDatabase, COMMENT_SQL, RELATION_PAGE_SIZE, (row) => mapComment(row, bookIds, warnings))
+    ? readScoped(metadataDatabase, COMMENT_SQL, RELATION_PAGE_SIZE, (row) => mapComment(row, bookIds, warnings))
     : [];
   const tagLinks = capabilities.tags
-    ? readMapped(metadataDatabase, TAG_LINK_SQL, RELATION_PAGE_SIZE, (row) => mapNamedLink(row, bookIds, warnings, 'tag'))
+    ? readScoped(metadataDatabase, TAG_LINK_SQL, RELATION_PAGE_SIZE, (row) => mapNamedLink(row, bookIds, warnings, 'tag'))
     : [];
   const identifiers = capabilities.identifiers
-    ? readMapped(metadataDatabase, IDENTIFIER_SQL, RELATION_PAGE_SIZE, (row) => mapIdentifier(row, bookIds, warnings))
+    ? readScoped(metadataDatabase, IDENTIFIER_SQL, RELATION_PAGE_SIZE, (row) => mapIdentifier(row, bookIds, warnings))
     : [];
   const statuses = capabilities.userBookStatuses
-    ? readMapped(appDatabase, STATUS_SQL, CORE_PAGE_SIZE, (row) => mapStatus(row, userIds, bookIds, warnings))
+    ? readScoped(appDatabase, STATUS_SQL, CORE_PAGE_SIZE, (row) => mapStatus(row, userIds, bookIds, warnings))
     : [];
   const webProgress = capabilities.webProgress
-    ? readMapped(appDatabase, WEB_PROGRESS_SQL, CORE_PAGE_SIZE, (row) => mapWebProgress(row, userIds, bookIds, warnings))
+    ? readScoped(appDatabase, WEB_PROGRESS_SQL, CORE_PAGE_SIZE, (row) => mapWebProgress(row, userIds, bookIds, warnings))
     : [];
   const koboReadingStates = capabilities.koboProgress
-    ? readMapped(appDatabase, KOBO_STATE_SQL, CORE_PAGE_SIZE, (row) => mapKoboState(row, userIds, bookIds, warnings))
+    ? readScoped(appDatabase, KOBO_STATE_SQL, CORE_PAGE_SIZE, (row) => mapKoboState(row, userIds, bookIds, warnings))
     : [];
   const koboStateIds = new Set(koboReadingStates.map((row) => row.id));
+  selectedKoboStateIds = [...koboStateIds];
   const koboBookmarks = capabilities.koboProgress
-    ? readMapped(appDatabase, KOBO_BOOKMARK_SQL, CORE_PAGE_SIZE, (row) => mapKoboBookmark(row, koboStateIds, warnings))
+    ? readScoped(appDatabase, KOBO_BOOKMARK_SQL, CORE_PAGE_SIZE, (row) => mapKoboBookmark(row, koboStateIds, warnings))
     : [];
   const koreaderProgress = capabilities.koreaderProgress
-    ? readMapped(appDatabase, KOREADER_PROGRESS_SQL, CORE_PAGE_SIZE, (row) => mapKoreaderProgress(row, userIds, warnings))
+    ? readScoped(appDatabase, KOREADER_PROGRESS_SQL, CORE_PAGE_SIZE, (row) => mapKoreaderProgress(row, userIds, warnings))
     : [];
   const checksums = capabilities.koreaderProgress
-    ? readMapped(metadataDatabase, CHECKSUM_SQL, RELATION_PAGE_SIZE, (row) => mapChecksum(row, bookIds, warnings))
+    ? readScoped(metadataDatabase, CHECKSUM_SQL, RELATION_PAGE_SIZE, (row) => mapChecksum(row, bookIds, warnings))
     : [];
-  const shelves = capabilities.shelves ? readMapped(appDatabase, SHELF_SQL, CORE_PAGE_SIZE, (row) => mapShelf(row, userIds, warnings)) : [];
+  const shelves = capabilities.shelves ? readScoped(appDatabase, SHELF_SQL, CORE_PAGE_SIZE, (row) => mapShelf(row, userIds, warnings)) : [];
   const shelfIds = new Set(shelves.map((row) => row.id));
   const shelfBooks = capabilities.shelves
-    ? readMapped(appDatabase, SHELF_BOOK_SQL, CORE_PAGE_SIZE, (row) => mapShelfBook(row, shelfIds, bookIds, warnings))
+    ? readScoped(appDatabase, SHELF_BOOK_SQL, CORE_PAGE_SIZE, (row) => mapShelfBook(row, shelfIds, bookIds, warnings))
     : [];
 
   return {

@@ -1,7 +1,12 @@
-import { BadRequestException, ConflictException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { RequestUser } from '../../common/types/request-user';
 import { MigrationSourceService, resolveConnectionConfig } from './migration-source.service';
+
+function makeUser(id = 1): RequestUser {
+  return { id, isSuperuser: true } as RequestUser;
+}
 
 const noopEncryption = {
   encryptConfig: vi.fn((c: Record<string, unknown>) => c),
@@ -60,6 +65,12 @@ function createService(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe('MigrationSourceService', () => {
+  it("rejects validation of another user's source even when invoked without an HTTP guard", async () => {
+    const { service } = createService();
+
+    await expect(service.validateSourceById(1, { id: 2, isSuperuser: false } as RequestUser)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('lists supported source types from the adapter registry', () => {
     const { service } = createService();
     expect(service.listSupportedSourceTypes()).toEqual(['booklore']);
@@ -81,7 +92,7 @@ describe('MigrationSourceService', () => {
     const updateSourceValidation = vi.fn(() => Promise.resolve(buildSource()));
     const { service, repo } = createService({ updateSourceValidation });
 
-    const result = await service.validateSourceById(1);
+    const result = await service.validateSourceById(1, makeUser());
 
     expect(result.ok).toBe(true);
     expect(updateSourceValidation).toHaveBeenCalledWith(
@@ -103,7 +114,7 @@ describe('MigrationSourceService', () => {
     const { service, adapter, repo } = createService({ updateSourceValidation });
     adapter.validate.mockResolvedValue(validationResult(false));
 
-    const result = await service.validateSourceById(1);
+    const result = await service.validateSourceById(1, makeUser());
 
     expect(result.ok).toBe(false);
     expect(updateSourceValidation).toHaveBeenCalledWith(
@@ -124,7 +135,7 @@ describe('MigrationSourceService', () => {
       findSourceById: vi.fn(() => Promise.resolve(null)),
     });
 
-    await expect(service.validateSourceById(999)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.validateSourceById(999, makeUser())).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('resetSource deletes saved setup when no migration run exists', async () => {
@@ -132,7 +143,7 @@ describe('MigrationSourceService', () => {
       listRuns: vi.fn(() => Promise.resolve([])),
     });
 
-    await expect(service.resetSource(1)).resolves.toBeUndefined();
+    await expect(service.resetSource(1, makeUser())).resolves.toBeUndefined();
 
     expect(repo.findSourceById).toHaveBeenCalledWith(1);
     expect(repo.listRuns).toHaveBeenCalledWith(1);
@@ -144,7 +155,7 @@ describe('MigrationSourceService', () => {
       findSourceById: vi.fn(() => Promise.resolve(null)),
     });
 
-    await expect(service.resetSource(999)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.resetSource(999, makeUser())).rejects.toBeInstanceOf(NotFoundException);
     expect(repo.deleteSource).not.toHaveBeenCalled();
   });
 
@@ -153,7 +164,7 @@ describe('MigrationSourceService', () => {
       listRuns: vi.fn(() => Promise.resolve([{ id: 10, state: 'failed' }])),
     });
 
-    await expect(service.resetSource(1)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.resetSource(1, makeUser())).rejects.toBeInstanceOf(BadRequestException);
     expect(repo.deleteSource).not.toHaveBeenCalled();
   });
 
@@ -162,8 +173,8 @@ describe('MigrationSourceService', () => {
       listRuns: vi.fn(() => Promise.resolve([{ id: 99, state: 'running' }])),
     });
 
-    await expect(service.resetSource(1)).rejects.toBeInstanceOf(ConflictException);
-    expect(repo.findSourceById).not.toHaveBeenCalled();
+    await expect(service.resetSource(1, makeUser())).rejects.toBeInstanceOf(ConflictException);
+    expect(repo.findSourceById).toHaveBeenCalledWith(1);
     expect(repo.deleteSource).not.toHaveBeenCalled();
   });
 
@@ -203,7 +214,7 @@ describe('MigrationSourceService', () => {
           database: 'booklore',
         },
       },
-      42,
+      makeUser(42),
     );
 
     const calledConfig = updateSource.mock.calls[0][1].connectionConfig as Record<string, unknown>;
@@ -237,7 +248,7 @@ describe('MigrationSourceService', () => {
           database: 'booklore',
         },
       },
-      2,
+      makeUser(2),
     );
 
     expect(createSource).toHaveBeenCalledWith(
@@ -269,7 +280,7 @@ describe('MigrationSourceService', () => {
           database: 'booklore',
         },
       },
-      2,
+      makeUser(2),
     );
 
     expect(createSource).toHaveBeenCalledWith(expect.objectContaining({ name: 'Migration Source' }));
@@ -293,7 +304,7 @@ describe('MigrationSourceService', () => {
             database: 'booklore',
           },
         },
-        1,
+        makeUser(1),
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -315,7 +326,7 @@ describe('MigrationSourceService', () => {
             database: 'booklore',
           },
         },
-        1,
+        makeUser(1),
       ),
     ).rejects.toBeInstanceOf(ConflictException);
   });
@@ -338,7 +349,7 @@ describe('MigrationSourceService', () => {
             database: 'booklore',
           },
         },
-        1,
+        makeUser(1),
       ),
     ).rejects.toBeInstanceOf(InternalServerErrorException);
   });
@@ -349,13 +360,13 @@ describe('MigrationSourceService', () => {
       validate: vi.fn(() => Promise.resolve(validationResult(true))),
     });
 
-    await expect(service.getSourcePathPrefixes(1)).resolves.toEqual({ prefixes: [] });
+    await expect(service.getSourcePathPrefixes(1, makeUser())).resolves.toEqual({ prefixes: [] });
   });
 
   it('getSourcePathPrefixes fetches prefixes through adapter when supported', async () => {
     const { service } = createService();
 
-    await expect(service.getSourcePathPrefixes(1)).resolves.toEqual({ prefixes: ['/library'] });
+    await expect(service.getSourcePathPrefixes(1, makeUser())).resolves.toEqual({ prefixes: ['/library'] });
   });
 
   it('getSourcePathPrefixes throws NotFoundException for missing source', async () => {
@@ -363,7 +374,7 @@ describe('MigrationSourceService', () => {
       findSourceById: vi.fn(() => Promise.resolve(null)),
     });
 
-    await expect(service.getSourcePathPrefixes(404)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.getSourcePathPrefixes(404, makeUser())).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('tests CWA with only its parsed snapshot paths and never accepts a request import root', async () => {
@@ -432,7 +443,7 @@ describe('MigrationSourceService', () => {
           metadataDatabasePath: '/imports/cwa/metadata.db',
         },
       },
-      42,
+      makeUser(42),
     );
 
     expect(updateSource).toHaveBeenCalledWith(
@@ -453,7 +464,7 @@ describe('MigrationSourceService', () => {
       metadataDatabasePath: '/imports/cwa/metadata.db',
     });
 
-    await expect(service.validateSourceById(7)).resolves.toMatchObject({
+    await expect(service.validateSourceById(7, makeUser())).resolves.toMatchObject({
       sourceType: 'calibre_web_automated',
       sourceVersion: null,
       warnings: ['Schema compatibility was verified against Calibre-Web Automated v4.0.6'],
@@ -465,7 +476,7 @@ describe('MigrationSourceService', () => {
         lastValidatedAt: expect.any(Date),
       }),
     );
-    await expect(service.getSourcePathPrefixes(7)).resolves.toEqual({ prefixes: ['/logical/calibre-library'] });
+    await expect(service.getSourcePathPrefixes(7, makeUser())).resolves.toEqual({ prefixes: ['/logical/calibre-library'] });
     expect(repo.purgeRunState).toHaveBeenCalledWith(7);
   });
 

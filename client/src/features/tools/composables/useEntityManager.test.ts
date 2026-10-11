@@ -13,7 +13,7 @@ vi.mock('../api/entity-manager', () => ({
   scanDuplicates: vi.fn<(...args: unknown[]) => unknown>(),
   dismissPair: vi.fn<(...args: unknown[]) => unknown>(),
   undismissPair: vi.fn<(...args: unknown[]) => unknown>(),
-  getDismissedPairs: vi.fn<(...args: unknown[]) => unknown>(),
+  getDismissedPairsPage: vi.fn<(...args: unknown[]) => unknown>(),
   getEntityInfo: vi.fn<(...args: unknown[]) => unknown>(),
 }))
 
@@ -30,7 +30,7 @@ const mockBulkDeleteEntities = vi.mocked(entityManagerApi.bulkDeleteEntities)
 const mockSplitEntity = vi.mocked(entityManagerApi.splitEntity)
 const mockDismissPair = vi.mocked(entityManagerApi.dismissPair)
 const mockUndismissPair = vi.mocked(entityManagerApi.undismissPair)
-const mockGetDismissedPairs = vi.mocked(entityManagerApi.getDismissedPairs)
+const mockGetDismissedPairs = vi.mocked(entityManagerApi.getDismissedPairsPage)
 
 function makeStatus(state: DuplicateScanStatus['state']): DuplicateScanStatus {
   return { entityType: 'author', state, computedAt: null, totalPairs: null, threshold: null, progressPct: null }
@@ -70,7 +70,7 @@ describe('useEntityManager', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.resetAllMocks()
-    mockGetDismissedPairs.mockResolvedValue([])
+    mockGetDismissedPairs.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
   })
 
   afterEach(() => {
@@ -500,7 +500,7 @@ describe('useEntityManager', () => {
   describe('dismissPair()', () => {
     it('calls entityManagerApi.dismissPair with non-inline payload', async () => {
       mockDismissPair.mockResolvedValue(undefined as never)
-      mockGetDismissedPairs.mockResolvedValue([])
+      mockGetDismissedPairs.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
       const { dismissPair } = useEntityManager()
 
       await dismissPair(1, 2, 'not a duplicate')
@@ -514,7 +514,7 @@ describe('useEntityManager', () => {
 
     it('calls entityManagerApi.dismissPair with inline payload', async () => {
       mockDismissPair.mockResolvedValue(undefined as never)
-      mockGetDismissedPairs.mockResolvedValue([])
+      mockGetDismissedPairs.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
       const { dismissPair, entityType } = useEntityManager()
       entityType.value = 'publisher'
 
@@ -530,7 +530,7 @@ describe('useEntityManager', () => {
     it('refreshes dismissed pairs after dismissing', async () => {
       mockDismissPair.mockResolvedValue(undefined as never)
       const pair = makeDismissedPair(99, 1, 2)
-      mockGetDismissedPairs.mockResolvedValue([pair])
+      mockGetDismissedPairs.mockResolvedValue({ items: [pair], total: 1, page: 1, pageSize: 20 })
       const { dismissPair, dismissedPairs } = useEntityManager()
 
       await dismissPair(1, 2)
@@ -542,7 +542,7 @@ describe('useEntityManager', () => {
   describe('undismissPair()', () => {
     it('calls entityManagerApi.undismissPair with non-inline payload', async () => {
       mockUndismissPair.mockResolvedValue(undefined as never)
-      mockGetDismissedPairs.mockResolvedValue([])
+      mockGetDismissedPairs.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
       const { undismissPair } = useEntityManager()
 
       await undismissPair(3, 4)
@@ -555,7 +555,7 @@ describe('useEntityManager', () => {
 
     it('calls entityManagerApi.undismissPair with inline payload', async () => {
       mockUndismissPair.mockResolvedValue(undefined as never)
-      mockGetDismissedPairs.mockResolvedValue([])
+      mockGetDismissedPairs.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
       const { undismissPair, entityType } = useEntityManager()
       entityType.value = 'language'
 
@@ -569,7 +569,7 @@ describe('useEntityManager', () => {
 
     it('refreshes dismissed pairs after undismissing', async () => {
       mockUndismissPair.mockResolvedValue(undefined as never)
-      mockGetDismissedPairs.mockResolvedValue([])
+      mockGetDismissedPairs.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
       const { undismissPair, dismissedPairs } = useEntityManager()
 
       await undismissPair(1, 2)
@@ -582,12 +582,12 @@ describe('useEntityManager', () => {
   describe('fetchDismissedPairs()', () => {
     it('calls getDismissedPairs and updates dismissedPairs', async () => {
       const pairs = [makeDismissedPair(1, 10, 20)]
-      mockGetDismissedPairs.mockResolvedValue(pairs)
+      mockGetDismissedPairs.mockResolvedValue({ items: pairs, total: pairs.length, page: 1, pageSize: 20 })
       const { fetchDismissedPairs, dismissedPairs } = useEntityManager()
 
       await fetchDismissedPairs()
 
-      expect(mockGetDismissedPairs).toHaveBeenCalledWith('author')
+      expect(mockGetDismissedPairs).toHaveBeenCalledWith('author', { page: 1, pageSize: 20 }, expect.any(AbortSignal))
       expect(dismissedPairs.value).toEqual(pairs)
     })
 
@@ -601,7 +601,7 @@ describe('useEntityManager', () => {
     })
 
     it('sets dismissedLoading to false after success', async () => {
-      mockGetDismissedPairs.mockResolvedValue([])
+      mockGetDismissedPairs.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
       const { fetchDismissedPairs, dismissedLoading } = useEntityManager()
 
       await fetchDismissedPairs()

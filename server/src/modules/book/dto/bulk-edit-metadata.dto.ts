@@ -1,28 +1,53 @@
-import { IsArray, IsIn, IsInt, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
+import {
+  Allow,
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
+  IsDefined,
+  IsIn,
+  IsInt,
+  IsISO8601,
+  IsObject,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateIf,
+  ValidateNested,
+} from 'class-validator';
+import type {
+  BulkArrayEdit,
+  BulkStringEdit,
+  BulkNumberEdit,
+  BulkMetadataEditFields,
+  BulkMetadataVersion,
+  CustomMetadataBookValueInput,
+  CustomMetadataPrimitiveValue,
+} from '@bookorbit/types';
 import { Type } from 'class-transformer';
 import { BulkSelectionDto } from './bulk-selection.dto';
 import { BookSeriesMembershipDto } from './update-book-metadata.dto';
 
 const ARRAY_MODES = ['add', 'remove', 'replace'] as const;
-export type BulkArrayMode = (typeof ARRAY_MODES)[number];
+export type BulkArrayMode = BulkArrayEdit['mode'];
 
-export class BulkArrayFieldDto {
+export class BulkArrayFieldDto implements BulkArrayEdit {
   @IsIn(ARRAY_MODES)
   mode!: BulkArrayMode;
 
   @IsArray()
+  @ArrayMaxSize(1000)
   @IsString({ each: true })
   values!: string[];
 }
 
-export class BulkScalarStringFieldDto {
-  @IsOptional()
+export class BulkScalarStringFieldDto implements BulkStringEdit {
+  @ValidateIf((_dto, value) => value !== null)
   @IsString()
   value!: string | null;
 }
 
-export class BulkScalarNumberFieldDto {
-  @IsOptional()
+export class BulkScalarNumberFieldDto implements BulkNumberEdit {
+  @ValidateIf((_dto, value) => value !== null)
   @IsInt()
   value!: number | null;
 }
@@ -37,9 +62,29 @@ const ALLOWED_FIELD_KEYS = new Set<string>([
   'language',
   'publishedYear',
   'narrators',
+  'customMetadata',
 ]);
 
-export class BulkEditFieldsDto {
+export class BulkCustomMetadataValueDto implements CustomMetadataBookValueInput {
+  @IsInt()
+  @Min(1)
+  fieldId!: number;
+
+  @ValidateIf((_dto, value) => value !== null)
+  @IsDefined()
+  @Allow()
+  value!: CustomMetadataPrimitiveValue;
+}
+
+export class BulkEditFieldsDto implements BulkMetadataEditFields {
+  @ValidateIf((_dto, value) => value !== undefined)
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => BulkCustomMetadataValueDto)
+  customMetadata?: BulkCustomMetadataValueDto[];
+
   @IsOptional()
   @ValidateNested()
   @Type(() => BulkArrayFieldDto)
@@ -108,7 +153,23 @@ export class BulkEditFieldsDto {
 
 export { ALLOWED_FIELD_KEYS as BULK_EDIT_ALLOWED_FIELD_KEYS };
 
+export class BulkMetadataVersionDto implements BulkMetadataVersion {
+  @IsInt()
+  @Min(1)
+  bookId!: number;
+
+  @IsISO8601()
+  updatedAt!: string;
+}
+
 export class BulkEditMetadataDto extends BulkSelectionDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => BulkMetadataVersionDto)
+  expectedVersions?: BulkMetadataVersionDto[];
+
   @IsObject()
   @ValidateNested()
   @Type(() => BulkEditFieldsDto)

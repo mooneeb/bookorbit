@@ -1,12 +1,18 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { and, asc, desc, eq, gt, inArray, notInArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
+import { MigrationPlanMatchRepository } from './migration-plan-match.repository';
+import type { PlannedBookMatch } from './planner/planner.types';
 
 type Db = NodePgDatabase<typeof schema>;
 type MigrationRunState = 'draft' | 'preflight_failed' | 'dry_run_ready' | 'running' | 'failed' | 'completed';
+export type MigrationBatchMetric = Pick<
+  typeof schema.migrationRunMetrics.$inferSelect,
+  'entityType' | 'processed' | 'imported' | 'skipped' | 'unresolved' | 'failed'
+>;
 const ACTIVE_RUN_STATES: MigrationRunState[] = ['running'];
 const BATCH_CHUNK_SIZE = 500;
 
@@ -22,8 +28,13 @@ function chunk<T>(items: T[], size: number): T[][] {
 export class MigrationRepository {
   constructor(@Inject(DB) private readonly db: Db) {}
 
-  listSources() {
-    return this.db.select().from(schema.migrationSources).orderBy(desc(schema.migrationSources.id));
+  listSources(userId?: number) {
+    return this.db
+      .select()
+      .from(schema.migrationSources)
+      .where(userId === undefined ? undefined : eq(schema.migrationSources.createdByUserId, userId))
+      .orderBy(desc(schema.migrationSources.id))
+      .limit(100);
   }
 
   async createSource(values: Pick<schema.NewMigrationSource, 'type' | 'name' | 'connectionConfig' | 'capabilities' | 'createdByUserId'>) {
@@ -64,7 +75,7 @@ export class MigrationRepository {
     return row ?? null;
   }
 
-  listTargetUsersForMapping() {
+  listTargetUsersForMapping(userId?: number) {
     return this.db
       .select({
         id: schema.users.id,
@@ -73,11 +84,11 @@ export class MigrationRepository {
         email: schema.users.email,
       })
       .from(schema.users)
-      .where(eq(schema.users.active, true))
+      .where(and(eq(schema.users.active, true), userId === undefined ? undefined : eq(schema.users.id, userId)))
       .orderBy(asc(schema.users.username));
   }
 
-  async findExistingBookFilePaths(paths: string[]): Promise<Set<string>> {
+  async findExistingBookFilePaths(paths: string[], actorUserId: number): Promise<Set<string>> {
     const uniquePaths = [...new Set(paths.filter((value) => value.trim().length > 0))];
     if (uniquePaths.length === 0) return new Set();
 
@@ -87,22 +98,40 @@ export class MigrationRepository {
       const rows = await this.db
         .select({ absolutePath: schema.bookFiles.absolutePath })
         .from(schema.bookFiles)
-        .where(inArray(schema.bookFiles.absolutePath, batch));
+        .where(
+          and(
+            inArray(schema.bookFiles.absolutePath, batch),
+            sql`exists (
+          select 1 from ${schema.books}
+          inner join ${schema.users} on ${schema.users.id} = ${actorUserId}
+          where ${schema.books.id} = ${schema.bookFiles.bookId}
+            and (${schema.users.isSuperuser} or exists (
+              select 1 from ${schema.userLibraryAccess}
+              where ${schema.userLibraryAccess.userId} = ${actorUserId}
+                and ${schema.userLibraryAccess.libraryId} = ${schema.books.libraryId}
+                and ${schema.userLibraryAccess.accessLevel} in ('editor', 'owner')
+            ))
+        )`,
+          ),
+        );
       for (const row of rows) out.add(row.absolutePath);
     }
 
     return out;
   }
 
-  listProfiles(sourceId?: number) {
-    if (sourceId === undefined) {
-      return this.db.select().from(schema.migrationProfiles).orderBy(desc(schema.migrationProfiles.id));
-    }
+  listProfiles(sourceId?: number, ownerUserId?: number) {
     return this.db
       .select()
       .from(schema.migrationProfiles)
-      .where(eq(schema.migrationProfiles.sourceId, sourceId))
-      .orderBy(desc(schema.migrationProfiles.id));
+      .where(
+        and(
+          sourceId === undefined ? undefined : eq(schema.migrationProfiles.sourceId, sourceId),
+          ownerUserId === undefined ? undefined : eq(schema.migrationProfiles.createdByUserId, ownerUserId),
+        ),
+      )
+      .orderBy(desc(schema.migrationProfiles.id))
+      .limit(100);
   }
 
   async createProfile(values: Pick<schema.NewMigrationProfile, 'sourceId' | 'name' | 'userMappings' | 'pathMappings' | 'scope' | 'createdByUserId'>) {
@@ -144,28 +173,145 @@ export class MigrationRepository {
     return row;
   }
 
-  listPlanArtifacts(sourceId?: number) {
-    if (sourceId === undefined) {
-      return this.db.select().from(schema.migrationPlanArtifacts).orderBy(desc(schema.migrationPlanArtifacts.id));
-    }
+  listPlanArtifacts(sourceId?: number, ownerUserId?: number) {
     return this.db
       .select()
       .from(schema.migrationPlanArtifacts)
-      .where(eq(schema.migrationPlanArtifacts.sourceId, sourceId))
-      .orderBy(desc(schema.migrationPlanArtifacts.id));
+      .where(
+        and(
+          sourceId === undefined ? undefined : eq(schema.migrationPlanArtifacts.sourceId, sourceId),
+          ownerUserId === undefined ? undefined : eq(schema.migrationPlanArtifacts.createdByUserId, ownerUserId),
+        ),
+      )
+      .orderBy(desc(schema.migrationPlanArtifacts.id))
+      .limit(100);
   }
 
   findPlanArtifactById(id: number) {
     return this.db.query.migrationPlanArtifacts.findFirst({ where: eq(schema.migrationPlanArtifacts.id, id) });
   }
 
-  async updatePlanArtifact(id: number, values: { plan: unknown; sourceData?: unknown; summary: unknown }) {
+  async findPlanArtifactOwnershipById(id: number) {
     const [row] = await this.db
-      .update(schema.migrationPlanArtifacts)
-      .set({ plan: values.plan, sourceData: values.sourceData, summary: values.summary })
-      .where(eq(schema.migrationPlanArtifacts.id, id))
-      .returning();
+      .select({
+        id: schema.migrationPlanArtifacts.id,
+        profileId: schema.migrationPlanArtifacts.profileId,
+        createdByUserId: schema.migrationPlanArtifacts.createdByUserId,
+      })
+      .from(schema.migrationPlanArtifacts)
+      .where(eq(schema.migrationPlanArtifacts.id, id));
     return row;
+  }
+
+  async updatePlanArtifact(
+    id: number,
+    values: {
+      plan: unknown;
+      sourceData?: unknown;
+      summary: unknown;
+      sourceSnapshotHash?: string;
+      profileHash?: string;
+      planHash?: string;
+      matchedBookAdditions?: PlannedBookMatch[];
+    },
+  ) {
+    const { matchedBookAdditions, ...artifactValues } = values;
+    const plan = objectRecord(values.plan);
+    if (!Array.isArray(plan.matchedBooks)) {
+      const [row] = await this.db
+        .update(schema.migrationPlanArtifacts)
+        .set(artifactValues)
+        .where(eq(schema.migrationPlanArtifacts.id, id))
+        .returning();
+      if (!row) throw new NotFoundException(`Migration plan artifact not found: ${id}`);
+      return row;
+    }
+    return this.db.transaction(async (tx) => {
+      const table = schema.migrationPlanArtifacts;
+      const [artifact] = await tx
+        .select({ userId: table.createdByUserId, batched: sql<boolean>`COALESCE(${table.plan}->>'matchedBooksBatched' = 'true', false)` })
+        .from(table)
+        .where(eq(table.id, id))
+        .limit(1)
+        .for('update');
+      if (!artifact) throw new NotFoundException(`Migration plan artifact not found: ${id}`);
+      if (artifact.userId === null) throw new BadRequestException('Plan artifact is missing an owner. Create a new dry-run plan.');
+      const matches = new MigrationPlanMatchRepository(tx);
+      if (matchedBookAdditions !== undefined && artifact.batched) await matches.append(id, artifact.userId, matchedBookAdditions);
+      else await matches.replace(id, artifact.userId, plan.matchedBooks as PlannedBookMatch[]);
+      const preview = await matches.pageForOwner(id, artifact.userId, 0, 40);
+      const [row] = await tx
+        .update(table)
+        .set({
+          ...artifactValues,
+          plan: {
+            ...plan,
+            matchedBooks: preview.items,
+            matchedBooksBatched: true,
+            previewPagination: {
+              ...objectRecord(plan.previewPagination),
+              matchedBooks: { total: preview.total, limit: 40, nextOffset: preview.total > 40 ? 40 : null },
+            },
+          },
+          summary: { ...objectRecord(values.summary), matchedBooks: preview.total },
+        })
+        .where(and(eq(table.id, id), eq(table.createdByUserId, artifact.userId)))
+        .returning();
+      if (!row) throw new NotFoundException(`Migration plan artifact not found: ${id}`);
+      return row;
+    });
+  }
+
+  findPlanMatchesForBooks(artifactId: number, sourceBookIds: string[]): Promise<PlannedBookMatch[]> {
+    return new MigrationPlanMatchRepository(this.db).forSourceBooks(artifactId, sourceBookIds);
+  }
+
+  async listPlanMatchedBooks(artifactId: number, offset: number, limit = 100): Promise<PlannedBookMatch[]> {
+    return (await new MigrationPlanMatchRepository(this.db).page(artifactId, offset, limit))?.items ?? [];
+  }
+
+  async deletePlanArtifact(id: number): Promise<void> {
+    await this.db.delete(schema.migrationPlanArtifacts).where(eq(schema.migrationPlanArtifacts.id, id));
+  }
+
+  async appendPlanSourceBatch(artifactId: number, batchIndex: number, sourceData: unknown, bookOverlays: boolean): Promise<void> {
+    await this.db.insert(schema.migrationPlanSourceBatches).values({ artifactId, batchIndex, sourceData, bookOverlays: bookOverlays ? 1 : 0 });
+  }
+
+  listPlanSourceBatches(artifactId: number, afterBatchIndex = -1, limit = 1) {
+    return this.db
+      .select()
+      .from(schema.migrationPlanSourceBatches)
+      .where(and(eq(schema.migrationPlanSourceBatches.artifactId, artifactId), gt(schema.migrationPlanSourceBatches.batchIndex, afterBatchIndex)))
+      .orderBy(asc(schema.migrationPlanSourceBatches.batchIndex))
+      .limit(Math.min(Math.max(limit, 1), 10));
+  }
+
+  findBatchCheckpoint(runId: number, stage: string) {
+    return this.db.query.migrationRunBatchCheckpoints.findFirst({
+      where: and(eq(schema.migrationRunBatchCheckpoints.runId, runId), eq(schema.migrationRunBatchCheckpoints.stage, stage)),
+    });
+  }
+
+  async commitBatchCheckpoint(runId: number, stage: string, batchIndex: number, metrics: MigrationBatchMetric[]): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      for (const metric of metrics) {
+        await tx
+          .insert(schema.migrationRunMetrics)
+          .values({ runId, stage, ...metric })
+          .onConflictDoUpdate({
+            target: [schema.migrationRunMetrics.runId, schema.migrationRunMetrics.stage, schema.migrationRunMetrics.entityType],
+            set: { ...metric, updatedAt: new Date() },
+          });
+      }
+      await tx
+        .insert(schema.migrationRunBatchCheckpoints)
+        .values({ runId, stage, batchIndex, metrics })
+        .onConflictDoUpdate({
+          target: [schema.migrationRunBatchCheckpoints.runId, schema.migrationRunBatchCheckpoints.stage],
+          set: { batchIndex, metrics, updatedAt: new Date() },
+        });
+    });
   }
 
   async purgeRunState(sourceId: number): Promise<void> {
@@ -236,11 +382,18 @@ export class MigrationRepository {
     });
   }
 
-  listRuns(sourceId?: number) {
-    if (sourceId === undefined) {
-      return this.db.select().from(schema.migrationRuns).orderBy(desc(schema.migrationRuns.id));
-    }
-    return this.db.select().from(schema.migrationRuns).where(eq(schema.migrationRuns.sourceId, sourceId)).orderBy(desc(schema.migrationRuns.id));
+  listRuns(sourceId?: number, ownerUserId?: number) {
+    return this.db
+      .select()
+      .from(schema.migrationRuns)
+      .where(
+        and(
+          sourceId === undefined ? undefined : eq(schema.migrationRuns.sourceId, sourceId),
+          ownerUserId === undefined ? undefined : eq(schema.migrationRuns.triggeredByUserId, ownerUserId),
+        ),
+      )
+      .orderBy(desc(schema.migrationRuns.id))
+      .limit(100);
   }
 
   findRunById(id: number) {
@@ -251,11 +404,12 @@ export class MigrationRepository {
     runId: number,
     state: MigrationRunState,
     patch: Partial<Pick<schema.NewMigrationRun, 'currentStage' | 'startedAt' | 'endedAt' | 'errorMessage'>>,
+    expectedState: MigrationRunState,
   ) {
     const [row] = await this.db
       .update(schema.migrationRuns)
       .set({ ...patch, state })
-      .where(eq(schema.migrationRuns.id, runId))
+      .where(and(eq(schema.migrationRuns.id, runId), eq(schema.migrationRuns.state, expectedState)))
       .returning();
     return row ?? null;
   }
@@ -319,4 +473,8 @@ export class MigrationRepository {
 
 function buildRunLockKey(): string {
   return 'migration-run-lock:global';
+}
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }

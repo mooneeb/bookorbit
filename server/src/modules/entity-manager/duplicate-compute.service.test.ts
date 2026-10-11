@@ -20,13 +20,16 @@ function makeService() {
   const updateWhere = vi.fn().mockResolvedValue(undefined);
   const set = vi.fn().mockReturnValue({ where: updateWhere });
 
+  const transaction = vi.fn();
   const db = {
     select: vi.fn().mockReturnValue({ from }),
     execute: vi.fn().mockResolvedValue({ rows: [] }),
     insert: vi.fn().mockReturnValue({ values }),
     update: vi.fn().mockReturnValue({ set }),
+    transaction,
   };
 
+  transaction.mockImplementation(async (work: (tx: typeof db) => Promise<unknown>) => work(db));
   const service = new DuplicateComputeService(db as any);
 
   return {
@@ -79,41 +82,27 @@ describe('DuplicateComputeService', () => {
       expect(db.insert).not.toHaveBeenCalled();
     });
 
-    it('skips when a job is already running', () => {
-      const { service, db } = makeService();
-      (service as any).runningJobs.add('author');
-
-      service.triggerCompute('author', {} as any, 0.7);
-
-      expect(db.insert).not.toHaveBeenCalled();
-    });
-
-    it('skips when the strategy does not support batch computation', async () => {
-      const { service, db } = makeService();
-
+    it('does not start a second computation while the first is pending', async () => {
+      const { service, db, onConflictDoUpdate, set } = makeService();
+      let finishStart!: () => void;
+      onConflictDoUpdate.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishStart = resolve;
+          }),
+      );
       service.triggerCompute('author', { entityType: 'author', isInline: false } as any, 0.7);
-
-      await vi.waitFor(() => {
-        expect(db.insert).not.toHaveBeenCalled();
-        expect((service as any).runningJobs.has('author')).toBe(false);
-      });
+      service.triggerCompute('author', { entityType: 'author', isInline: false } as any, 0.7);
+      expect(db.insert).toHaveBeenCalledTimes(1);
+      finishStart();
+      await vi.waitFor(() => expect(set).toHaveBeenCalledWith(expect.objectContaining({ isComputing: false, totalPairs: 0 })));
     });
 
-    it('starts a compute job for supported non-inline strategies', async () => {
-      const { service, db, onConflictDoUpdate } = makeService();
-      const strategy = {
-        entityType: 'author',
-        isInline: false,
-        getAllEntityIds: vi.fn().mockResolvedValue([]),
-        computeCandidatePairsForBatch: vi.fn(),
-      };
-
-      service.triggerCompute('author', strategy as any, 0.72);
-
-      await vi.waitFor(() => {
-        expect(db.insert).toHaveBeenCalled();
-        expect(onConflictDoUpdate).toHaveBeenCalled();
-      });
+    it('computes first-class entities without requiring strategy batch hooks', async () => {
+      const { service, onConflictDoUpdate, set } = makeService();
+      service.triggerCompute('author', { entityType: 'author', isInline: false } as any, 0.72);
+      await vi.waitFor(() => expect(set).toHaveBeenCalledWith(expect.objectContaining({ isComputing: false, totalPairs: 0, processedCount: 0 })));
+      expect(onConflictDoUpdate).toHaveBeenCalled();
     });
   });
 

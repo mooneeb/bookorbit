@@ -24,6 +24,7 @@ import type {
   EntityBookScope,
 } from './entity-strategy.interface';
 import { assertEntityRelationsWithinLibraries, buildEntityBookScopeClauses } from './entity-book-scope';
+import { mutateEntityBooks } from './entity-mutation-books';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -196,36 +197,29 @@ export abstract class JunctionEntityStrategy implements EntityStrategy {
     const targetId = input.targetId as number;
     const sourceIds = input.sourceIds as number[];
 
-    await this.assertMutationScope([targetId, ...sourceIds], input.libraryIds ?? []);
+    await this.assertScopedRelations([targetId, ...sourceIds], input.libraryIds ?? [], input.contentFilters);
 
     const target = await this.findEntityById(targetId);
     if (!target) throw new NotFoundException(`${this.entityType} not found`);
 
-    const affectedBookIds = await this.findAffectedBookIds(sourceIds);
-
-    await this.db.transaction(async (tx) => {
-      const sourceRelations = await tx
-        .selectDistinct({ bookId: this.junctionBookIdCol })
-        .from(this.junctionTable)
-        .where(inArray(this.junctionEntityIdCol, sourceIds));
-
-      if (sourceRelations.length > 0) {
-        await tx
-          .insert(this.junctionTable)
-          .values(sourceRelations.map((r: any) => this.buildJunctionRow(r.bookId, targetId)))
-          .onConflictDoNothing();
-      }
-
-      await tx.delete(this.junctionTable).where(inArray(this.junctionEntityIdCol, sourceIds));
-      await tx.delete(this.entityTable).where(inArray(this.entityIdCol, sourceIds));
-    });
-
-    return { affectedBookIds };
+    const scope = { libraryIds: input.libraryIds ?? [], contentFilters: input.contentFilters };
+    return mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks(sourceIds, scope),
+      async (tx) => {
+        await this.insertMutationRelations(tx, targetId);
+        await tx.delete(this.junctionTable).where(inArray(this.junctionEntityIdCol, sourceIds));
+        await tx.delete(this.entityTable).where(inArray(this.entityIdCol, sourceIds));
+      },
+      (tx) => this.lockMutationEntities(tx, [targetId, ...sourceIds], scope),
+    );
   }
 
   async rename(input: RenameInput): Promise<StrategyRenameResult> {
     const entityId = input.entityId as number;
-    await this.assertMutationScope([entityId], input.libraryIds);
+    await this.assertScopedRelations([entityId], input.libraryIds, input.contentFilters);
     const [entity] = await this.db.select({ name: this.nameCol }).from(this.entityTable).where(eq(this.entityIdCol, entityId)).limit(1);
     if (!entity) throw new NotFoundException(`${this.entityType} not found`);
 
@@ -236,78 +230,113 @@ export abstract class JunctionEntityStrategy implements EntityStrategy {
     const [existing] = await this.db.select({ id: this.entityIdCol }).from(this.entityTable).where(eq(this.nameCol, trimmed)).limit(1);
     if (existing && (existing as any).id !== entityId) {
       const existingId = (existing as any).id as number;
-      const mergeResult = await this.merge({ targetId: existingId, sourceIds: [entityId], userId: input.userId, libraryIds: input.libraryIds ?? [] });
-      return { oldName, affectedBookIds: mergeResult.affectedBookIds, wasImplicitMerge: true, mergedEntityId: existingId };
+      const mergeResult = await this.merge({
+        targetId: existingId,
+        sourceIds: [entityId],
+        userId: input.userId,
+        libraryIds: input.libraryIds ?? [],
+        contentFilters: input.contentFilters,
+        onBooksChanged: input.onBooksChanged,
+        spoolBookIds: input.spoolBookIds,
+      });
+      return { ...mergeResult, oldName, wasImplicitMerge: true, mergedEntityId: existingId };
     }
 
-    await this.db.update(this.entityTable).set({ name: trimmed }).where(eq(this.entityIdCol, entityId));
-    const affectedBookIds = await this.findAffectedBookIds([entityId]);
-    return { oldName, affectedBookIds, wasImplicitMerge: false };
+    const scope = { libraryIds: input.libraryIds, contentFilters: input.contentFilters };
+    const result = await mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks([entityId], scope),
+      async (tx) => {
+        await tx.update(this.entityTable).set({ name: trimmed }).where(eq(this.entityIdCol, entityId));
+      },
+      (tx) => this.lockMutationEntities(tx, [entityId], scope),
+    );
+    return { ...result, oldName, wasImplicitMerge: false };
   }
 
   async deleteEntity(input: DeleteInput): Promise<StrategyDeleteResult> {
     const entityId = input.entityId as number;
-    await this.assertMutationScope([entityId], input.libraryIds);
+    await this.assertScopedRelations([entityId], input.libraryIds, input.contentFilters);
     const [entity] = await this.db.select({ name: this.nameCol }).from(this.entityTable).where(eq(this.entityIdCol, entityId)).limit(1);
     if (!entity) throw new NotFoundException(`${this.entityType} not found`);
 
-    const affectedBookIds = await this.findAffectedBookIds([entityId]);
-
-    if (input.mode === 'soft') {
-      await this.db.delete(this.junctionTable).where(eq(this.junctionEntityIdCol, entityId));
-    } else {
-      if (!this.hasCascade) {
-        await this.db.transaction(async (tx) => {
-          await tx.delete(this.junctionTable).where(eq(this.junctionEntityIdCol, entityId));
-          await tx.delete(this.entityTable).where(eq(this.entityIdCol, entityId));
-        });
-      } else {
-        await this.db.delete(this.entityTable).where(eq(this.entityIdCol, entityId));
-      }
-    }
-
-    return { name: (entity as any).name, affectedBookIds };
+    const scope = { libraryIds: input.libraryIds, contentFilters: input.contentFilters };
+    const result = await mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks([entityId], scope),
+      async (tx) => {
+        await tx.delete(this.junctionTable).where(eq(this.junctionEntityIdCol, entityId));
+        if (input.mode !== 'soft') await tx.delete(this.entityTable).where(eq(this.entityIdCol, entityId));
+      },
+      (tx) => this.lockMutationEntities(tx, [entityId], scope),
+    );
+    return { ...result, name: (entity as any).name };
   }
 
   async split(input: SplitInput): Promise<StrategySplitResult> {
-    await this.assertMutationScope([input.entityId], input.libraryIds ?? []);
+    await this.assertScopedRelations([input.entityId], input.libraryIds ?? [], input.contentFilters);
     const [entity] = await this.db.select({ name: this.nameCol }).from(this.entityTable).where(eq(this.entityIdCol, input.entityId)).limit(1);
     if (!entity) throw new NotFoundException(`${this.entityType} not found`);
 
-    const affectedBookIds = await this.findAffectedBookIds([input.entityId]);
     const newEntities: { id: number; name: string }[] = [];
-
-    await this.db.transaction(async (tx) => {
-      for (const name of input.newNames) {
-        const trimmed = name.trim();
-        const [existing] = await tx.select({ id: this.entityIdCol }).from(this.entityTable).where(eq(this.nameCol, trimmed)).limit(1);
-        if (existing) {
-          newEntities.push({ id: (existing as any).id, name: trimmed });
-        } else {
-          const [inserted] = await tx.insert(this.entityTable).values({ name: trimmed }).returning({ id: this.entityIdCol });
-          newEntities.push({ id: (inserted as any).id, name: trimmed });
+    const scope = { libraryIds: input.libraryIds ?? [], contentFilters: input.contentFilters };
+    const result = await mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks([input.entityId], scope),
+      async (tx) => {
+        for (const name of input.newNames) {
+          const trimmed = name.trim();
+          const [existing] = await tx.select({ id: this.entityIdCol }).from(this.entityTable).where(eq(this.nameCol, trimmed)).limit(1);
+          if (existing) {
+            newEntities.push({ id: (existing as any).id, name: trimmed });
+          } else {
+            const [inserted] = await tx.insert(this.entityTable).values({ name: trimmed }).returning({ id: this.entityIdCol });
+            newEntities.push({ id: (inserted as any).id, name: trimmed });
+          }
         }
-      }
 
-      const bookRows = await tx
-        .selectDistinct({ bookId: this.junctionBookIdCol })
-        .from(this.junctionTable)
-        .where(eq(this.junctionEntityIdCol, input.entityId));
-
-      for (const newEntity of newEntities) {
-        if (bookRows.length > 0) {
-          await tx
-            .insert(this.junctionTable)
-            .values(bookRows.map((r: any) => this.buildJunctionRow(r.bookId, newEntity.id)))
-            .onConflictDoNothing();
+        for (const newEntity of newEntities) {
+          if (newEntity.id === input.entityId) throw new BadRequestException('Split names must differ from the original entity');
+          await this.insertMutationRelations(tx, newEntity.id);
         }
-      }
 
-      await tx.delete(this.junctionTable).where(eq(this.junctionEntityIdCol, input.entityId));
-      await tx.delete(this.entityTable).where(eq(this.entityIdCol, input.entityId));
-    });
+        await tx.delete(this.junctionTable).where(eq(this.junctionEntityIdCol, input.entityId));
+        await tx.delete(this.entityTable).where(eq(this.entityIdCol, input.entityId));
+      },
+      (tx) => this.lockMutationEntities(tx, [input.entityId], scope),
+    );
 
-    return { originalName: (entity as any).name, newEntities, affectedBookIds };
+    return { ...result, originalName: (entity as any).name, newEntities };
+  }
+
+  private selectMutationBooks(ids: number[], scope: EntityBookScope) {
+    return sql`SELECT DISTINCT ${this.junctionBookIdCol} FROM ${this.junctionTable}
+      JOIN ${books} ON ${books.id} = ${this.junctionBookIdCol}
+      WHERE ${inArray(this.junctionEntityIdCol, ids)} AND ${and(...buildEntityBookScopeClauses(this.db, scope))}`;
+  }
+
+  private async lockMutationEntities(tx: Db, ids: number[], scope: EntityBookScope): Promise<void> {
+    const rows = await tx
+      .select({ id: this.entityIdCol })
+      .from(this.entityTable)
+      .where(inArray(this.entityIdCol, ids))
+      .orderBy(this.entityIdCol)
+      .for('update');
+    if (rows.length !== new Set(ids).size) throw new NotFoundException(`${this.entityType} not found`);
+    await assertEntityRelationsWithinLibraries(tx, this.rawJunctionTable, this.rawEntityIdCol, ids, scope.libraryIds, scope.contentFilters);
+  }
+
+  private async insertMutationRelations(tx: Db, entityId: number): Promise<void> {
+    const orderColumn = this.entityType === 'narrator' ? sql`, display_order` : sql``;
+    const orderValue = this.entityType === 'narrator' ? sql`, 0` : sql``;
+    await tx.execute(sql`INSERT INTO ${this.junctionTable} (book_id, ${sql.identifier(this.rawEntityIdCol)}${orderColumn})
+      SELECT book_id, ${entityId}${orderValue} FROM entity_mutation_books WHERE true ON CONFLICT DO NOTHING`);
   }
 
   async findAffectedBookIds(ids: (number | string)[]): Promise<number[]> {
@@ -361,7 +390,11 @@ export abstract class JunctionEntityStrategy implements EntityStrategy {
 
   protected abstract buildJunctionRow(bookId: number, entityId: number): Record<string, unknown>;
 
-  private assertMutationScope(entityIds: number[], libraryIds: number[]): Promise<void> {
-    return assertEntityRelationsWithinLibraries(this.db, this.rawJunctionTable, this.rawEntityIdCol, entityIds, libraryIds);
+  assertMutationScope(ids: (number | string)[], scope: EntityBookScope): Promise<void> {
+    return this.assertScopedRelations(ids as number[], scope.libraryIds, scope.contentFilters);
+  }
+
+  private assertScopedRelations(entityIds: number[], libraryIds: number[], contentFilters?: EntityBookScope['contentFilters']): Promise<void> {
+    return assertEntityRelationsWithinLibraries(this.db, this.rawJunctionTable, this.rawEntityIdCol, entityIds, libraryIds, contentFilters);
   }
 }

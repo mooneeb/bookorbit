@@ -2,24 +2,31 @@
 import { computed, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CheckCircle2, Search, Sparkles } from '@lucide/vue'
-import type { DismissedPairInfo, DuplicateCluster } from '@bookorbit/types'
+import type { DismissedPairInfo, DuplicateCluster, EntityType } from '@bookorbit/types'
 
 import DuplicateClusterList from './DuplicateClusterList.vue'
 import DuplicateCompare from './DuplicateCompare.vue'
 import DismissedPairsSection from './DismissedPairsSection.vue'
 import { useDuplicateReview } from '../composables/useDuplicateReview'
+import { useDuplicateClusterPage } from '../composables/useDuplicateClusterPage'
 
 const props = defineProps<{
   clusters: DuplicateCluster[]
+  entityType: EntityType
   page: number
   totalPages: number
   scanning: boolean
   hasScanned: boolean
   scanError: string | null
   operationLoading: boolean
+  operationError: string | null
   dismissedPairs: DismissedPairInfo[]
   dismissedLoading: boolean
   showDismissed: boolean
+  dismissedPage: number
+  dismissedTotal: number
+  dismissedTotalPages: number
+  dismissedError: string | null
 }>()
 
 const emit = defineEmits<{
@@ -30,11 +37,13 @@ const emit = defineEmits<{
   dismissCluster: [cluster: DuplicateCluster]
   undismiss: [idA: number | string, idB: number | string]
   toggleDismissed: []
+  'update:dismissedPage': [value: number]
 }>()
 
 const { t } = useI18n()
 
 const { activeKey, activeCluster, selectCluster, clearSelection } = useDuplicateReview(toRef(props, 'clusters'))
+const detail = useDuplicateClusterPage(toRef(props, 'entityType'), activeCluster)
 
 const showEmptyState = computed(() => !props.scanning && props.clusters.length === 0 && props.scanError === null)
 
@@ -47,8 +56,8 @@ function handleMerge(targetId: number | string, sourceIds: (number | string)[], 
 }
 
 function handleDismissEntity(entityId: number | string): void {
-  if (!activeCluster.value) return
-  emit('dismissEntity', activeCluster.value, entityId)
+  if (!detail.currentCluster.value) return
+  emit('dismissEntity', detail.currentCluster.value, entityId)
 }
 
 function handleDismissPair(idA: number | string, idB: number | string): void {
@@ -56,8 +65,8 @@ function handleDismissPair(idA: number | string, idB: number | string): void {
 }
 
 function handleDismissCluster(): void {
-  if (!activeCluster.value) return
-  emit('dismissCluster', activeCluster.value)
+  if (!detail.currentCluster.value) return
+  emit('dismissCluster', detail.currentCluster.value)
 }
 
 function handleUndismiss(idA: number | string, idB: number | string): void {
@@ -67,10 +76,17 @@ function handleUndismiss(idA: number | string, idB: number | string): void {
 function handleToggleDismissed(): void {
   emit('toggleDismissed')
 }
+
+function handleDismissedPage(value: number): void {
+  emit('update:dismissedPage', value)
+}
 </script>
 
 <template>
   <div class="flex h-full flex-col">
+    <p v-if="operationError" class="mb-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">
+      {{ operationError }}
+    </p>
     <p v-if="scanError" class="flex-none rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">
       {{ scanError }}
     </p>
@@ -102,16 +118,22 @@ function handleToggleDismissed(): void {
           :active-key="activeKey"
           :page="page"
           :total-pages="totalPages"
+          :loading="scanning"
           @select="selectCluster"
           @update:page="handleUpdatePage"
         />
       </div>
 
       <DuplicateCompare
-        v-if="activeCluster"
-        :key="activeKey ?? ''"
-        :cluster="activeCluster"
-        :operation-loading="operationLoading"
+        v-if="detail.currentCluster.value"
+        :key="`${activeKey}-${detail.page.value}`"
+        :cluster="detail.currentCluster.value"
+        :page="detail.page.value"
+        :total-pages="detail.totalPages.value"
+        :detail-loading="detail.loading.value"
+        :detail-error="detail.error.value"
+        :operation-loading="operationLoading || scanning"
+        @update:page="detail.fetchPage"
         @merge="handleMerge"
         @dismiss-entity="handleDismissEntity"
         @dismiss-pair="handleDismissPair"
@@ -139,10 +161,20 @@ function handleToggleDismissed(): void {
         @click="handleToggleDismissed"
       >
         {{ showDismissed ? t('tools.entityManager.dismissed.hidePairs') : t('tools.entityManager.dismissed.showPairs') }}
-        <template v-if="!showDismissed && dismissedPairs.length > 0"> ({{ dismissedPairs.length }})</template>
+        <template v-if="!showDismissed && dismissedTotal > 0"> ({{ dismissedTotal }})</template>
       </button>
       <div v-if="showDismissed" class="mt-2 max-h-52 overflow-y-auto">
-        <DismissedPairsSection :pairs="dismissedPairs" :loading="dismissedLoading" @undismiss="handleUndismiss" />
+        <DismissedPairsSection
+          :pairs="dismissedPairs"
+          :loading="dismissedLoading"
+          :page="dismissedPage"
+          :total="dismissedTotal"
+          :total-pages="dismissedTotalPages"
+          :error="dismissedError"
+          :operation-loading="operationLoading"
+          @undismiss="handleUndismiss"
+          @update:page="handleDismissedPage"
+        />
       </div>
     </div>
   </div>

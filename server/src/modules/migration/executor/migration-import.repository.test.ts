@@ -528,10 +528,13 @@ describe('MigrationImportRepository', () => {
   });
 
   it('runs batch user-state write methods for non-empty and empty batches', async () => {
+    const clientId = '9182fe18-0eb0-5d79-a011-cd9fe409fe4c';
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
-    const onConflictDoNothing = vi.fn().mockResolvedValue(undefined);
-    const returning = vi.fn().mockResolvedValue([{ id: 1, userId: 1 }]);
-    const values = vi.fn().mockReturnValue({ onConflictDoUpdate, onConflictDoNothing, returning });
+    const returning = vi
+      .fn()
+      .mockResolvedValue([{ id: 1, userId: 1, clientId } satisfies Pick<typeof schema.annotations.$inferSelect, 'id' | 'userId' | 'clientId'>]);
+    const onConflictDoNothing = vi.fn().mockReturnValue({ returning });
+    const values = vi.fn().mockReturnValue({ onConflictDoUpdate, onConflictDoNothing });
     const insert = vi.fn().mockReturnValue({ values });
     const repo = new MigrationImportRepository({ insert } as never);
 
@@ -551,7 +554,7 @@ describe('MigrationImportRepository', () => {
       { userId: 1, bookId: 2, percentage: 25, currentFileId: 10, positionSeconds: 0, updatedAt: new Date() } as never,
     ]);
     await repo.batchInsertBookmarks([{ userId: 1, bookId: 2, title: 'mark', cfi: '/6/2', createdAt: new Date() } as never]);
-    await repo.batchInsertAnnotations([{ userId: 1, bookId: 2, cfi: '/6/2', text: 'a', color: 'yellow', style: 'highlight' } as never]);
+    await repo.batchInsertAnnotations([{ clientId, userId: 1, bookId: 2, cfi: '/6/2', text: 'a', color: 'yellow', style: 'highlight' }]);
     await repo.batchInsertCollectionBooks([{ collectionId: 7, bookId: 2 }]);
 
     expect(insert).toHaveBeenCalledWith(schema.userBookStatus);
@@ -561,6 +564,8 @@ describe('MigrationImportRepository', () => {
     expect(insert).toHaveBeenCalledWith(schema.annotations);
     expect(insert).toHaveBeenCalledWith(schema.annotationPositions);
     expect(insert).toHaveBeenCalledWith(schema.collectionBooks);
+    expect(returning).toHaveBeenCalledWith({ id: schema.annotations.id, userId: schema.annotations.userId, clientId: schema.annotations.clientId });
+    expect(values).toHaveBeenCalledWith([{ annotationId: 1, userId: 1, format: 'cfi', pos0: '/6/2', status: 'exact' }]);
     expect(onConflictDoUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         target: [schema.userBookStatus.userId, schema.userBookStatus.bookId],

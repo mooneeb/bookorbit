@@ -9,18 +9,14 @@ describe('BulkRenameRepository', () => {
       from: vi.fn().mockReturnThis(),
       innerJoin: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
-      orderBy: vi.fn().mockResolvedValue(rows),
+      orderBy: vi.fn().mockImplementation(function (this: unknown) {
+        return Object.assign(Promise.resolve(rows), { limit: vi.fn().mockResolvedValue(rows) });
+      }),
+      limit: vi.fn().mockResolvedValue(rows),
     };
   }
 
-  function subqueryChain() {
-    return {
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-    };
-  }
-
-  describe('findAllBooksForLibrary', () => {
+  describe('findBooksPageForLibrary', () => {
     it('maps book rows and groups authors by book', async () => {
       const bookRows = [
         {
@@ -84,15 +80,14 @@ describe('BulkRenameRepository', () => {
         select: vi
           .fn()
           .mockReturnValueOnce(queryChain(bookRows))
-          .mockReturnValueOnce(subqueryChain())
           .mockReturnValueOnce(queryChain(authorRows))
           .mockReturnValueOnce(queryChain(narratorRows))
           .mockReturnValueOnce(queryChain(fileRows))
-          .mockReturnValue(subqueryChain()),
+          .mockReturnValue(queryChain([])),
       };
 
       const repo = new BulkRenameRepository(db as never);
-      const result = await repo.findAllBooksForLibrary(7);
+      const result = await repo.findBooksPageForLibrary(7, 0, 1000);
 
       expect(result).toHaveLength(2);
       expect(result[0]).toMatchObject({
@@ -138,15 +133,14 @@ describe('BulkRenameRepository', () => {
         select: vi
           .fn()
           .mockReturnValueOnce(queryChain(bookRows))
-          .mockReturnValueOnce(subqueryChain())
           .mockReturnValueOnce(queryChain([]))
           .mockReturnValueOnce(queryChain([]))
           .mockReturnValueOnce(queryChain([]))
-          .mockReturnValue(subqueryChain()),
+          .mockReturnValue(queryChain([])),
       };
 
       const repo = new BulkRenameRepository(db as never);
-      const result = await repo.findAllBooksForLibrary(7);
+      const result = await repo.findBooksPageForLibrary(7, 0, 1000);
 
       expect(result).toHaveLength(1);
       expect(result[0].authors).toEqual([]);
@@ -158,39 +152,24 @@ describe('BulkRenameRepository', () => {
       const db = { select: vi.fn().mockReturnValueOnce(queryChain([])) };
 
       const repo = new BulkRenameRepository(db as never);
-      const result = await repo.findAllBooksForLibrary(7);
+      const result = await repo.findBooksPageForLibrary(7, 0, 1000);
 
       expect(result).toEqual([]);
       expect(db.select).toHaveBeenCalledTimes(1);
     });
 
-    it('fetches contributors via a library subquery, never a per-book parameter list (issue #361)', async () => {
+    it('bounds candidate queries and scopes related records to the selected page', async () => {
       const calls: Array<{ text: string; params: unknown[] }> = [];
       const fakeClient = {
         query: vi.fn().mockImplementation((cfg: { text: string }, params: unknown[]) => {
           calls.push({ text: cfg.text, params });
-          // The first (books) query must return at least one row so the author query runs.
-          return Promise.resolve({ rows: calls.length === 1 ? [new Array(16).fill(null)] : [] });
+          return Promise.resolve({ rows: calls.length === 1 ? [[91, ...new Array(20).fill(null)]] : [] });
         }),
       };
-
       const db = drizzle({ client: fakeClient as never, schema });
-      const repo = new BulkRenameRepository(db as never);
-
-      await repo.findAllBooksForLibrary(42);
-
-      // Books, authors, narrators, files.
-      expect(calls).toHaveLength(4);
-
-      // The ONLY bind parameter is the libraryId - not one entry per book - so no statement
-      // can exceed PostgreSQL's 65535-parameter wire-protocol limit, regardless of library size.
-      for (const contributorQuery of calls.slice(1)) {
-        expect(contributorQuery.params).toEqual([42]);
-
-        const sqlText = contributorQuery.text.toLowerCase();
-        expect(sqlText).toContain('in (select');
-        expect(sqlText).toContain('"library_id"');
-      }
+      await new BulkRenameRepository(db).findBooksPageForLibrary(42, 90, 1000);
+      expect(calls[0].params).toEqual([42, 90, 1000, 250]);
+      for (const query of calls.slice(1)) expect(query.params).toEqual([91]);
     });
   });
 

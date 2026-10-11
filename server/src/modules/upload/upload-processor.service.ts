@@ -13,7 +13,7 @@ import { FORMATS_WITH_UNBOUNDED_METADATA_READS, MAX_BUFFERED_METADATA_BYTES } fr
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
-import { bookFiles, bookMetadata, books, libraries, uploadSessions } from '../../db/schema';
+import { bookFiles, bookMetadata, books, libraries, uploadSessions, bookDockFinalizations } from '../../db/schema';
 import { BookMetadataFetchOrchestratorService } from '../book-metadata-fetch/book-metadata-fetch-orchestrator.service';
 import { BookCoverStore } from '../book-cover-store/book-cover-store.service';
 import { CoverSlotReconciler } from '../metadata/cover-slot-reconciler.service';
@@ -164,7 +164,12 @@ export class UploadProcessorService {
    * Files must arrive **primary first**: `primaryFileId` is set on the row that creates the book.
    * A book that already existed re-ranks its primary once every file of the unit is in.
    */
-  async createUnitBookRecords(libraryId: number, libraryFolderId: number, files: UnitBookFileInput[]): Promise<UnitBookRecords> {
+  async createUnitBookRecords(
+    libraryId: number,
+    libraryFolderId: number,
+    files: UnitBookFileInput[],
+    options: { dockFileId?: number } = {},
+  ): Promise<UnitBookRecords> {
     if (files.length === 0) throw new InternalServerErrorException('Cannot create a book from an empty unit');
 
     // Hashing is the expensive half and needs no transaction, so it happens before one is open
@@ -200,6 +205,12 @@ export class UploadProcessorService {
         if (replaced) replacedPrimaries.push(replaced);
       }
 
+      if (options.dockFileId !== undefined) {
+        await tx
+          .update(bookDockFinalizations)
+          .set({ state: 'committed', bookIds, updatedAt: new Date() })
+          .where(eq(bookDockFinalizations.fileId, options.dockFileId));
+      }
       return { bookIds, createdBookIds, attachedFileIds, replacedPrimaries };
     });
   }

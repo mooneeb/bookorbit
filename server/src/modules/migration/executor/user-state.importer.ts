@@ -256,7 +256,7 @@ export class UserStateImporter {
         userId: targetUserId,
         bookId: targetBookId,
         rating,
-        updatedAt: toDate(row.updatedAt) ?? new Date(),
+        updatedAt: toDate(row.updatedAt) ?? new Date(0),
       });
       counters.imported += 1;
     }
@@ -315,7 +315,7 @@ export class UserStateImporter {
         typeof row.pageNumber === 'number' && Number.isFinite(row.pageNumber) && row.pageNumber >= 0 ? Math.trunc(row.pageNumber) : null;
       const cfi = row.cfi?.trim() ? row.cfi : null;
 
-      const sourceUpdatedAt = toDate(row.updatedAt) ?? new Date();
+      const sourceUpdatedAt = toDate(row.updatedAt) ?? new Date(0);
       batch.push({
         bookFileId: resolvedFile.targetFile.id,
         userId: targetUserId,
@@ -329,18 +329,7 @@ export class UserStateImporter {
       counters.imported += 1;
     }
     const dedupedBatch = dedupeByKey(batch, (item) => `${item.bookFileId}:${item.userId}`, preferReadingProgressRow);
-    const progressScope = buildProgressScope(planned, bookMap, progressFiles);
-    const fileIdsToClear = [...progressScope.entries()].flatMap(([bookId, kinds]) =>
-      (progressFiles.targetFilesByBookId.get(bookId) ?? [])
-        .filter((file) => {
-          const kind = progressMediaKind(file.format);
-          return kind != null && kinds.has(kind);
-        })
-        .map((file) => file.id),
-    );
-
     await this.importRepo.withTransaction(async (importRepo) => {
-      await importRepo.clearReadingProgress([...userMap.values()], fileIdsToClear);
       await importRepo.batchUpsertReadingProgress(dedupedBatch);
     });
     await this.repo.setRunMetric(runId, 'user_state', 'reading_progress', counters);
@@ -396,17 +385,13 @@ export class UserStateImporter {
         percentage,
         currentFileId: resolvedFile.targetFile.id,
         positionSeconds,
-        updatedAt: toDate(row.updatedAt) ?? new Date(),
+        updatedAt: toDate(row.updatedAt) ?? new Date(0),
       });
       counters.imported += 1;
     }
 
     const dedupedBatch = dedupeByKey(batch, (item) => `${item.userId}:${item.bookId}`, preferLatestByUpdatedAt);
-    const progressScope = buildProgressScope(planned, bookMap, progressFiles);
-    const audioBookIds = [...progressScope.entries()].filter(([, kinds]) => kinds.has('audio')).map(([bookId]) => bookId);
-
     await this.importRepo.withTransaction(async (importRepo) => {
-      await importRepo.clearAudiobookProgress([...userMap.values()], audioBookIds);
       await importRepo.batchUpsertAudiobookProgress(dedupedBatch);
     });
     await this.repo.setRunMetric(runId, 'user_state', 'audiobook_progress', counters);
@@ -485,6 +470,7 @@ export class UserStateImporter {
     const sourceBooksById = new Map(planned.execution.sourceData.books.map((book) => [book.sourceBookId, book]));
 
     const batch: Array<{
+      clientId: string;
       userId: number;
       bookId: number;
       title: string;
@@ -505,6 +491,7 @@ export class UserStateImporter {
       }
 
       batch.push({
+        clientId: migrationItemIdentity(planned.plan.snapshot.sourceType, targetBookId, row),
         userId: targetUserId,
         bookId: targetBookId,
         title: truncateText(row.title ?? 'Imported bookmark', 500),
@@ -516,7 +503,6 @@ export class UserStateImporter {
     }
 
     await this.importRepo.withTransaction(async (importRepo) => {
-      await importRepo.clearBookmarks([...userMap.values()], [...bookMap.values()]);
       await importRepo.batchInsertBookmarks(batch);
     });
     await this.repo.setRunMetric(runId, 'user_state', 'bookmarks', counters);
@@ -536,6 +522,7 @@ export class UserStateImporter {
     }
 
     const batch: Array<{
+      clientId: string;
       userId: number;
       bookId: number;
       cfi: string;
@@ -560,6 +547,7 @@ export class UserStateImporter {
       }
 
       batch.push({
+        clientId: migrationItemIdentity(planned.plan.snapshot.sourceType, targetBookId, row),
         userId: targetUserId,
         bookId: targetBookId,
         cfi: truncateText(row.cfi ?? '', 2000),
@@ -569,13 +557,12 @@ export class UserStateImporter {
         note: row.note,
         chapterTitle: truncateNullableText(row.chapterTitle, 500) ?? null,
         createdAt: toDate(row.createdAt) ?? new Date(),
-        updatedAt: toDate(row.updatedAt) ?? new Date(),
+        updatedAt: toDate(row.updatedAt) ?? new Date(0),
       });
       counters.imported += 1;
     }
 
     await this.importRepo.withTransaction(async (importRepo) => {
-      await importRepo.clearAnnotations([...userMap.values()], [...bookMap.values()]);
       await importRepo.batchInsertAnnotations(batch);
     });
     await this.repo.setRunMetric(runId, 'user_state', 'annotations', counters);
@@ -613,7 +600,6 @@ export class UserStateImporter {
         names.add(row.name.toLowerCase());
         usedCollectionNamesByUser.set(row.userId, names);
       }
-      const preparedCollectionIds = new Set<number>();
 
       const ensureCollection = async (shelf: { sourceShelfId: string; sourceUserId: string; name: string }): Promise<number | null> => {
         const targetUserId = userMap.get(shelf.sourceUserId);
@@ -634,11 +620,6 @@ export class UserStateImporter {
           });
           collectionId = inserted.id;
           importedCollectionKeyToId.set(key, collectionId);
-        }
-
-        if (!preparedCollectionIds.has(collectionId)) {
-          await importRepo.clearCollectionBooks(collectionId);
-          preparedCollectionIds.add(collectionId);
         }
 
         return collectionId;
@@ -798,45 +779,6 @@ function resolveProgressFile(row: SourceUserFileProgress, targetBookId: number, 
   const targetKind = progressMediaKind(targetFile?.format);
   if (!targetFile || !targetKind || (inferredKind && inferredKind !== targetKind)) return null;
   return { kind: inferredKind ?? targetKind, targetFile };
-}
-
-function buildProgressScope(
-  planned: PlannerResult,
-  bookMap: Map<string, number>,
-  progressFiles: ProgressFileContext,
-): Map<number, Set<ProgressMediaKind>> {
-  const result = new Map<number, Set<ProgressMediaKind>>();
-  const add = (bookId: number, kind: ProgressMediaKind | null) => {
-    if (!kind) return;
-    const kinds = result.get(bookId) ?? new Set<ProgressMediaKind>();
-    kinds.add(kind);
-    result.set(bookId, kinds);
-  };
-
-  for (const [sourceBookId, targetBookId] of bookMap) {
-    const sourceFiles = progressFiles.sourceFilesByBookId.get(sourceBookId) ?? [];
-    for (const sourceFile of sourceFiles) {
-      const sourceKind = progressMediaKind(sourceFileFormat(sourceFile));
-      if (sourceKind) {
-        add(targetBookId, sourceKind);
-        continue;
-      }
-      const targetFileId = progressFiles.sourceFileToTargetFile.get(sourceFile.sourceFileId);
-      add(targetBookId, targetFileId ? progressMediaKind(progressFiles.targetFilesById.get(targetFileId)?.format) : null);
-    }
-
-    if (!result.has(targetBookId)) {
-      const primaryFileId = progressFiles.primaryFilesByBookId.get(targetBookId);
-      add(targetBookId, primaryFileId ? progressMediaKind(progressFiles.targetFilesById.get(primaryFileId)?.format) : null);
-    }
-  }
-
-  for (const row of planned.execution.sourceData.userFileProgress) {
-    const targetBookId = bookMap.get(row.sourceBookId);
-    if (targetBookId) add(targetBookId, inferProgressKind(row, targetBookId, progressFiles));
-  }
-
-  return result;
 }
 
 const IMPORTED_COLLECTION_DESCRIPTION_PREFIX = 'Imported from Booklore migration shelf: ';
@@ -1044,4 +986,15 @@ function resolveTrackIndex(trackIndex: number, fileCount: number): number | null
   const oneBased = rounded - 1;
   if (oneBased >= 0 && oneBased < fileCount) return oneBased;
   return null;
+}
+
+function migrationItemIdentity(
+  sourceType: string,
+  targetBookId: number,
+  row: { sourceUserId: string; sourceBookId: string; cfi: string | null; createdAt: string | null; positionSeconds?: number | null },
+): string {
+  const hash = createHash('sha256')
+    .update(JSON.stringify([sourceType, targetBookId, row.sourceUserId, row.sourceBookId, row.cfi, row.createdAt, row.positionSeconds ?? null]))
+    .digest('hex');
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }

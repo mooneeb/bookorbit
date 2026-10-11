@@ -548,6 +548,7 @@ export class MigrationImportRepository {
             rating: sql`excluded.rating`,
             updatedAt: sql`excluded.updated_at`,
           },
+          setWhere: sql`excluded.updated_at > ${schema.userBookRatings.updatedAt}`,
         });
     }
   }
@@ -568,6 +569,7 @@ export class MigrationImportRepository {
             updatedAt: sql`excluded.updated_at`,
             lastReadAt: sql`excluded.last_read_at`,
           },
+          setWhere: sql`excluded.updated_at > ${schema.readingProgress.updatedAt}`,
         });
     }
   }
@@ -586,6 +588,7 @@ export class MigrationImportRepository {
             positionSeconds: sql`excluded.position_seconds`,
             updatedAt: sql`excluded.updated_at`,
           },
+          setWhere: sql`excluded.updated_at > ${schema.audiobookProgress.updatedAt}`,
         });
     }
   }
@@ -733,13 +736,16 @@ export class MigrationImportRepository {
             return annotation;
           }),
         )
-        .returning({ id: schema.annotations.id, userId: schema.annotations.userId });
+        .onConflictDoNothing()
+        .returning({ id: schema.annotations.id, userId: schema.annotations.userId, clientId: schema.annotations.clientId });
+      if (rows.length === 0) continue;
+      const byClientId = new Map(batch.map((item) => [item.clientId, item]));
       await this.db.insert(schema.annotationPositions).values(
-        rows.map((row, index) => ({
+        rows.map((row) => ({
           annotationId: row.id,
           userId: row.userId,
           format: 'cfi' as const,
-          pos0: batch[index].cfi,
+          pos0: byClientId.get(row.clientId)?.cfi ?? '',
           status: 'exact' as const,
         })),
       );

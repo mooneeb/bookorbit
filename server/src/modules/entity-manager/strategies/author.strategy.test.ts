@@ -2,12 +2,15 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { vi } from 'vitest';
 
 import { AuthorStrategy } from './author.strategy';
+import { getTableName, type SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import { authors } from '../../../db/schema';
 
 vi.mock('../../../db/book-author-sort-key', () => ({
-  refreshPrimaryAuthorSortNamesForBooks: vi.fn().mockResolvedValue(undefined),
+  refreshPrimaryAuthorSortNamesForBookSelection: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { refreshPrimaryAuthorSortNamesForBooks } from '../../../db/book-author-sort-key';
+import { refreshPrimaryAuthorSortNamesForBookSelection } from '../../../db/book-author-sort-key';
 
 function makeStrategy(db: Record<string, unknown> = {}, deps: Record<string, unknown> = {}) {
   const authorsRepo = {
@@ -202,570 +205,211 @@ describe('AuthorStrategy', () => {
     });
   });
 
+  function mutationFixture(
+    input: Partial<typeof authors.$inferSelect>[] = [
+      { id: 1, name: 'Old' },
+      { id: 2, name: 'Target' },
+    ],
+    ids: number[] = [10, 20],
+    outside = false,
+  ) {
+    const dialect = new PgDialect();
+    const rows = input.map((row) => ({ sortName: null, description: null, hasPhoto: false, ...row }));
+    const filter = (condition: SQL) => {
+      const query = dialect.sqlToQuery(condition);
+      const last = query.params.at(-1);
+      return typeof last === 'string'
+        ? rows.filter((row) => row.name?.replace(/\s+/g, ' ').trim().toLowerCase() === last)
+        : rows.filter((row) => query.params.includes(row.id));
+    };
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn((condition: SQL) => {
+          const selected = filter(condition);
+          const promise = Promise.resolve(selected);
+          return {
+            then: promise.then.bind(promise),
+            limit: vi.fn().mockResolvedValue(selected),
+            orderBy: vi.fn().mockReturnValue({ for: vi.fn().mockResolvedValue(selected) }),
+          };
+        }),
+      }),
+    });
+    const updateSet = vi.fn((values: object) => ({
+      where: vi.fn((condition: SQL) => {
+        filter(condition).forEach((row) => Object.assign(row, values));
+      }),
+    }));
+    const update = vi.fn().mockReturnValue({ set: updateSet });
+    const deleteFrom = vi.fn((table) => ({
+      where: vi.fn((condition: SQL) => {
+        if (getTableName(table) !== 'authors') return;
+        const deleted = new Set(filter(condition));
+        for (let index = rows.length - 1; index >= 0; index--) if (deleted.has(rows[index]!)) rows.splice(index, 1);
+      }),
+    }));
+    const insertValues = vi.fn((values: { name: string }) => {
+      const row = { id: 100 + rows.length, sortName: null, description: null, hasPhoto: false, ...values };
+      rows.push(row);
+      return { returning: vi.fn().mockResolvedValue([{ id: row.id }]) };
+    });
+    const insert = vi.fn().mockReturnValue({ values: insertValues });
+    const execute = vi.fn((statement: SQL) => {
+      const query = dialect.sqlToQuery(statement);
+      if (query.sql.includes('scoped_relation')) return { rows: outside ? [{ outside: 1 }] : [] };
+      if (query.sql.includes('AS outside')) return { rows: [{ outside: false }] };
+      if (query.sql.includes('count(*)::int AS count FROM entity_mutation_books')) return { rows: [{ count: ids.length }] };
+      if (query.sql.includes('AS "bookId" FROM entity_mutation_books'))
+        return { rows: ids.filter((id) => id > Number(query.params[0])).map((bookId) => ({ bookId })) };
+      return { rows: [] };
+    });
+    const db = { select, update, insert, delete: deleteFrom, execute };
+    const transaction = vi.fn(async (callback: (tx: typeof db) => Promise<unknown>) => callback(db));
+    const image = { promoteImage: vi.fn().mockResolvedValue(false), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
+    const enrichment = { schedule: vi.fn().mockResolvedValue(undefined) };
+    return {
+      strategy: makeStrategy({ ...db, transaction }, { authorImageStorage: image, enrichmentOrchestrator: enrichment }),
+      rows,
+      image,
+      enrichment,
+      transaction,
+      updateSet,
+      deleteFrom,
+      insertValues,
+      execute,
+    };
+  }
+
   describe('merge', () => {
-    function makeSelectForMerge(targetAuthor: unknown, sourceAuthors: unknown[], affectedBookIds: { bookId: number }[] = []) {
-      const affectedWhere = vi.fn().mockResolvedValue(affectedBookIds);
-      const affectedFrom = vi.fn().mockReturnValue({ where: affectedWhere });
-      const selectDistinct = vi.fn().mockReturnValue({ from: affectedFrom });
-
-      const targetLimit = vi.fn().mockResolvedValue(targetAuthor ? [targetAuthor] : []);
-      const targetWhere = vi.fn().mockReturnValue({ limit: targetLimit });
-      const targetFrom = vi.fn().mockReturnValue({ where: targetWhere });
-
-      const sourceFroms = sourceAuthors.map((src) => {
-        const lim = vi.fn().mockResolvedValue(src ? [src] : []);
-        const wh = vi.fn().mockReturnValue({ limit: lim });
-        const fr = vi.fn().mockReturnValue({ where: wh });
-        return fr;
-      });
-
-      let selectCallIdx = 0;
-      const select = vi.fn().mockImplementation(() => {
-        const idx = selectCallIdx++;
-        if (idx === 0) return { from: targetFrom };
-        const srcIdx = idx - 1;
-        if (srcIdx < sourceFroms.length) return { from: sourceFroms[srcIdx]! };
-        return { from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) };
-      });
-
-      const updateWhere = vi.fn().mockResolvedValue(undefined);
-      const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
-      const update = vi.fn().mockReturnValue({ set: updateSet });
-
-      return { select, selectDistinct, update };
-    }
-
-    it('rejects merging authors that are used outside the accessible libraries', async () => {
-      const execute = vi.fn().mockResolvedValue({ rows: [{ '?column?': 1 }] });
-      const authorsRepo = { mergeAuthors: vi.fn() };
-      const strategy = makeStrategy({ execute }, { authorsRepo });
-
-      await expect(strategy.merge({ targetId: 1, sourceIds: [2], userId: 5, libraryIds: [7] })).rejects.toBeInstanceOf(ForbiddenException);
-
-      expect(authorsRepo.mergeAuthors).not.toHaveBeenCalled();
+    it('rejects merging authors used outside the accessible scope before image or DB changes', async () => {
+      const fixture = mutationFixture(undefined, undefined, true);
+      await expect(fixture.strategy.merge({ targetId: 2, sourceIds: [1], userId: 5, libraryIds: [7] })).rejects.toBeInstanceOf(ForbiddenException);
+      expect(fixture.transaction).not.toHaveBeenCalled();
+      expect(fixture.image.promoteImage).not.toHaveBeenCalled();
     });
 
-    it('throws NotFoundException when target author does not exist', async () => {
-      const limit = vi.fn().mockResolvedValue([]);
-      const where = vi.fn().mockReturnValue({ limit });
-      const from = vi.fn().mockReturnValue({ where });
-      const select = vi.fn().mockReturnValue({ from });
-
-      const strategy = makeStrategy({ select });
-
-      await expect(strategy.merge({ targetId: 99, sourceIds: [1], userId: 1 })).rejects.toBeInstanceOf(NotFoundException);
+    it.each([1, 2])('rejects a missing source or target author id=%s', async (missingId) => {
+      const fixture = mutationFixture([{ id: 3 - missingId, name: 'Remaining' }]);
+      await expect(fixture.strategy.merge({ targetId: 2, sourceIds: [1], userId: 5, libraryIds: [7] })).rejects.toBeInstanceOf(NotFoundException);
+      expect(fixture.image.promoteImage).not.toHaveBeenCalled();
     });
 
-    it('resolves sortName from source when target is missing it', async () => {
-      const { select, selectDistinct, update } = makeSelectForMerge({ id: 1, sortName: null, description: null, hasPhoto: false }, [
-        { sortName: 'Tolkien, J.R.R.', description: null },
+    it.each(['sortName', 'description'] as const)('resolves a missing target %s from the source in the transaction', async (field) => {
+      const fixture = mutationFixture([
+        { id: 1, name: 'Old', [field]: 'Source value' },
+        { id: 2, name: 'Target' },
       ]);
-
-      const authorsRepo = { updateAuthorById: vi.fn().mockResolvedValue(undefined), mergeAuthors: vi.fn().mockResolvedValue(undefined) };
-      const authorImageStorage = { promoteImage: vi.fn().mockResolvedValue(false), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const enrichmentOrchestrator = { schedule: vi.fn().mockResolvedValue(undefined) };
-
-      const strategy = makeStrategy({ select, selectDistinct, update }, { authorsRepo, authorImageStorage, enrichmentOrchestrator });
-
-      const result = await strategy.merge({ targetId: 1, sourceIds: [2], userId: 5 });
-
-      expect(authorsRepo.updateAuthorById).toHaveBeenCalledWith(1, expect.objectContaining({ sortName: 'Tolkien, J.R.R.' }));
-      expect(result.fieldsResolved).toContain('sortName');
+      const result = await fixture.strategy.merge({ targetId: 2, sourceIds: [1], userId: 5, libraryIds: [7] });
+      expect(result.fieldsResolved).toContain(field);
+      expect(fixture.rows.find((row) => row.id === 2)?.[field]).toBe('Source value');
+      expect(result.affectedBookIds).toEqual([10, 20]);
+      expect(result.affectedBookCount).toBe(2);
     });
 
-    it('resolves description from source when target is missing it', async () => {
-      const { select, selectDistinct, update } = makeSelectForMerge({ id: 1, sortName: 'Already Set', description: null, hasPhoto: false }, [
-        { sortName: null, description: 'A great author' },
+    it('preserves populated target metadata and photo', async () => {
+      const fixture = mutationFixture([
+        { id: 1, name: 'Old', sortName: 'Source', description: 'Source' },
+        { id: 2, name: 'Target', sortName: 'Target sort', description: 'Target description', hasPhoto: true },
       ]);
-
-      const authorsRepo = { updateAuthorById: vi.fn().mockResolvedValue(undefined), mergeAuthors: vi.fn().mockResolvedValue(undefined) };
-      const authorImageStorage = { promoteImage: vi.fn().mockResolvedValue(false), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const enrichmentOrchestrator = { schedule: vi.fn().mockResolvedValue(undefined) };
-
-      const strategy = makeStrategy({ select, selectDistinct, update }, { authorsRepo, authorImageStorage, enrichmentOrchestrator });
-
-      const result = await strategy.merge({ targetId: 1, sourceIds: [2], userId: 5 });
-
-      expect(authorsRepo.updateAuthorById).toHaveBeenCalledWith(1, expect.objectContaining({ description: 'A great author' }));
-      expect(result.fieldsResolved).toContain('description');
+      const result = await fixture.strategy.merge({ targetId: 2, sourceIds: [1], userId: 5, libraryIds: [7] });
+      expect(result.fieldsResolved).toEqual([]);
+      expect(fixture.rows[0]).toMatchObject({ id: 2, sortName: 'Target sort', description: 'Target description', hasPhoto: true });
+      expect(fixture.image.promoteImage).not.toHaveBeenCalled();
     });
 
-    it('does not call updateAuthorById when target already has all fields', async () => {
-      const { select, selectDistinct, update } = makeSelectForMerge({ id: 1, sortName: 'Tolkien, J.R.R.', description: 'Author', hasPhoto: true }, [
-        { sortName: 'Other', description: 'Other desc' },
-      ]);
-
-      const authorsRepo = { updateAuthorById: vi.fn().mockResolvedValue(undefined), mergeAuthors: vi.fn().mockResolvedValue(undefined) };
-      const authorImageStorage = { promoteImage: vi.fn().mockResolvedValue(false), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const enrichmentOrchestrator = { schedule: vi.fn().mockResolvedValue(undefined) };
-
-      const strategy = makeStrategy({ select, selectDistinct, update }, { authorsRepo, authorImageStorage, enrichmentOrchestrator });
-
-      await strategy.merge({ targetId: 1, sourceIds: [2], userId: 5 });
-
-      expect(authorsRepo.updateAuthorById).not.toHaveBeenCalled();
-    });
-
-    it('promotes image and sets hasPhoto when target lacks a photo and promotion succeeds', async () => {
-      const { select, selectDistinct, update } = makeSelectForMerge({ id: 1, sortName: null, description: null, hasPhoto: false }, [
-        { sortName: null, description: null },
-      ]);
-
-      const authorsRepo = { updateAuthorById: vi.fn().mockResolvedValue(undefined), mergeAuthors: vi.fn().mockResolvedValue(undefined) };
-      const authorImageStorage = { promoteImage: vi.fn().mockResolvedValue(true), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const enrichmentOrchestrator = { schedule: vi.fn().mockResolvedValue(undefined) };
-
-      const strategy = makeStrategy({ select, selectDistinct, update }, { authorsRepo, authorImageStorage, enrichmentOrchestrator });
-
-      const result = await strategy.merge({ targetId: 1, sourceIds: [2], userId: 5 });
-
-      expect(authorImageStorage.promoteImage).toHaveBeenCalledWith(2, 1);
-      expect(update).toHaveBeenCalled();
+    it('promotes a missing photo, removes source directories, and schedules target enrichment', async () => {
+      const fixture = mutationFixture();
+      fixture.image.promoteImage.mockResolvedValue(true);
+      const result = await fixture.strategy.merge({ targetId: 2, sourceIds: [1], userId: 5, libraryIds: [7] });
       expect(result.imagePromoted).toBe(true);
       expect(result.fieldsResolved).toContain('photo');
-    });
-
-    it('does not promote image when target already has a photo', async () => {
-      const { select, selectDistinct, update } = makeSelectForMerge({ id: 1, sortName: null, description: null, hasPhoto: true }, [
-        { sortName: null, description: null },
-      ]);
-
-      const authorImageStorage = { promoteImage: vi.fn().mockResolvedValue(true), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const authorsRepo = { updateAuthorById: vi.fn().mockResolvedValue(undefined), mergeAuthors: vi.fn().mockResolvedValue(undefined) };
-      const enrichmentOrchestrator = { schedule: vi.fn().mockResolvedValue(undefined) };
-
-      const strategy = makeStrategy({ select, selectDistinct, update }, { authorsRepo, authorImageStorage, enrichmentOrchestrator });
-
-      await strategy.merge({ targetId: 1, sourceIds: [2], userId: 5 });
-
-      expect(authorImageStorage.promoteImage).not.toHaveBeenCalled();
-    });
-
-    it('calls mergeAuthors, deletes source dirs, and schedules enrichment', async () => {
-      const { select, selectDistinct, update } = makeSelectForMerge({ id: 1, sortName: null, description: null, hasPhoto: false }, [
-        { sortName: null, description: null },
-        { sortName: null, description: null },
-      ]);
-
-      const authorsRepo = { updateAuthorById: vi.fn().mockResolvedValue(undefined), mergeAuthors: vi.fn().mockResolvedValue(undefined) };
-      const authorImageStorage = { promoteImage: vi.fn().mockResolvedValue(false), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const enrichmentOrchestrator = { schedule: vi.fn().mockResolvedValue(undefined) };
-
-      const strategy = makeStrategy({ select, selectDistinct, update }, { authorsRepo, authorImageStorage, enrichmentOrchestrator });
-
-      await strategy.merge({ targetId: 1, sourceIds: [2, 3], userId: 5 });
-
-      expect(authorsRepo.mergeAuthors).toHaveBeenCalledWith(1, [2, 3]);
-      expect(authorImageStorage.deleteAuthorDir).toHaveBeenCalledWith(2);
-      expect(authorImageStorage.deleteAuthorDir).toHaveBeenCalledWith(3);
-      expect(enrichmentOrchestrator.schedule).toHaveBeenCalledWith(1, 'author_merge_target');
-    });
-
-    it('returns affectedBookIds, imagePromoted, and fieldsResolved', async () => {
-      const { select, selectDistinct, update } = makeSelectForMerge(
-        { id: 1, sortName: null, description: null, hasPhoto: false },
-        [{ sortName: 'X', description: null }],
-        [{ bookId: 10 }, { bookId: 20 }],
-      );
-
-      const authorsRepo = { updateAuthorById: vi.fn().mockResolvedValue(undefined), mergeAuthors: vi.fn().mockResolvedValue(undefined) };
-      const authorImageStorage = { promoteImage: vi.fn().mockResolvedValue(false), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const enrichmentOrchestrator = { schedule: vi.fn().mockResolvedValue(undefined) };
-
-      const strategy = makeStrategy({ select, selectDistinct, update }, { authorsRepo, authorImageStorage, enrichmentOrchestrator });
-
-      const result = await strategy.merge({ targetId: 1, sourceIds: [2], userId: 5 });
-
-      expect(result.affectedBookIds).toEqual([10, 20]);
-      expect(result.imagePromoted).toBe(false);
-      expect(result.fieldsResolved).toContain('sortName');
+      expect(fixture.rows[0]?.hasPhoto).toBe(true);
+      expect(fixture.image.promoteImage).toHaveBeenCalledExactlyOnceWith(1, 2);
+      expect(fixture.image.deleteAuthorDir).toHaveBeenCalledExactlyOnceWith(1);
+      expect(fixture.enrichment.schedule).toHaveBeenCalledExactlyOnceWith(2, 'author_merge_target');
     });
   });
 
   describe('rename', () => {
-    it('throws NotFoundException when entity does not exist', async () => {
-      const { select } = makeSelectChain([]);
-      const strategy = makeStrategy({ select });
-
-      await expect(strategy.rename({ entityId: 1, newName: 'New Name', userId: 1, libraryIds: [] })).rejects.toBeInstanceOf(NotFoundException);
+    it('rejects a missing entity and blank names', async () => {
+      const fixture = mutationFixture();
+      await expect(fixture.strategy.rename({ entityId: 99, newName: 'New', userId: 5, libraryIds: [7] })).rejects.toBeInstanceOf(NotFoundException);
+      await expect(fixture.strategy.rename({ entityId: 1, newName: ' \t\n ', userId: 5, libraryIds: [7] })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     });
 
-    it('throws BadRequestException for empty name', async () => {
-      const { select } = makeSelectChain([{ name: 'Old Name' }]);
-      const strategy = makeStrategy({ select });
-
-      await expect(strategy.rename({ entityId: 1, newName: '   ', userId: 1, libraryIds: [] })).rejects.toBeInstanceOf(BadRequestException);
+    it('performs an implicit merge with a normalized existing name and keeps the old name', async () => {
+      const fixture = mutationFixture();
+      const result = await fixture.strategy.rename({ entityId: 1, newName: ' Target ', userId: 5, libraryIds: [7] });
+      expect(result).toMatchObject({ oldName: 'Old', wasImplicitMerge: true, mergedEntityId: 2, affectedBookCount: 2 });
+      expect(fixture.rows.map((row) => row.id)).toEqual([2]);
     });
 
-    it('throws BadRequestException for whitespace-only name', async () => {
-      const { select } = makeSelectChain([{ name: 'Old Name' }]);
-      const strategy = makeStrategy({ select });
-
-      await expect(strategy.rename({ entityId: 1, newName: '\t\n', userId: 1, libraryIds: [] })).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('triggers implicit merge when another author with the same normalized name exists', async () => {
-      const existingAuthorWhere = vi.fn().mockResolvedValue([{ id: 99, name: 'New Name' }]);
-      const existingAuthorFrom = vi.fn().mockReturnValue({ where: existingAuthorWhere });
-
-      const entityLimit = vi.fn().mockResolvedValue([{ name: 'Old Name' }]);
-      const entityWhere = vi.fn().mockReturnValue({ limit: entityLimit });
-      const entityFrom = vi.fn().mockReturnValue({ where: entityWhere });
-
-      const sourceForMergeLimit = vi.fn().mockResolvedValue([{ id: 99, sortName: null, description: null, hasPhoto: false }]);
-      const sourceForMergeWhere = vi.fn().mockReturnValue({ limit: sourceForMergeLimit });
-      const sourceForMergeFrom = vi.fn().mockReturnValue({ where: sourceForMergeWhere });
-
-      const sourceFieldsLimit = vi.fn().mockResolvedValue([{ sortName: null, description: null }]);
-      const sourceFieldsWhere = vi.fn().mockReturnValue({ limit: sourceFieldsLimit });
-      const sourceFieldsFrom = vi.fn().mockReturnValue({ where: sourceFieldsWhere });
-
-      const affectedWhere = vi.fn().mockResolvedValue([{ bookId: 5 }]);
-      const affectedFrom = vi.fn().mockReturnValue({ where: affectedWhere });
-      const selectDistinct = vi.fn().mockReturnValue({ from: affectedFrom });
-
-      let callIdx = 0;
-      const select = vi.fn().mockImplementation(() => {
-        callIdx++;
-        if (callIdx === 1) return { from: entityFrom };
-        if (callIdx === 2) return { from: existingAuthorFrom };
-        if (callIdx === 3) return { from: sourceForMergeFrom };
-        return { from: sourceFieldsFrom };
-      });
-
-      const updateWhere = vi.fn().mockResolvedValue(undefined);
-      const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
-      const update = vi.fn().mockReturnValue({ set: updateSet });
-
-      const authorsRepo = { updateAuthorById: vi.fn().mockResolvedValue(undefined), mergeAuthors: vi.fn().mockResolvedValue(undefined) };
-      const authorImageStorage = { promoteImage: vi.fn().mockResolvedValue(false), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const enrichmentOrchestrator = { schedule: vi.fn().mockResolvedValue(undefined) };
-
-      const strategy = makeStrategy({ select, selectDistinct, update }, { authorsRepo, authorImageStorage, enrichmentOrchestrator });
-
-      const result = await strategy.rename({ entityId: 1, newName: 'New   Name', userId: 5, libraryIds: [] });
-
-      expect(result.wasImplicitMerge).toBe(true);
-      expect(result.mergedEntityId).toBe(99);
-      expect(result.oldName).toBe('Old Name');
-    });
-
-    it('chooses a non-current merge target when normalized lookup returns the current author first', async () => {
-      const existingAuthorWhere = vi.fn().mockResolvedValue([
+    it('chooses a non-current normalized merge target when the current author appears first', async () => {
+      const fixture = mutationFixture([
         { id: 1, name: 'New  Name' },
         { id: 99, name: 'New Name' },
       ]);
-      const existingAuthorFrom = vi.fn().mockReturnValue({ where: existingAuthorWhere });
-
-      const entityLimit = vi.fn().mockResolvedValue([{ name: 'Old Name' }]);
-      const entityWhere = vi.fn().mockReturnValue({ limit: entityLimit });
-      const entityFrom = vi.fn().mockReturnValue({ where: entityWhere });
-
-      const sourceForMergeLimit = vi.fn().mockResolvedValue([{ id: 99, sortName: null, description: null, hasPhoto: false }]);
-      const sourceForMergeWhere = vi.fn().mockReturnValue({ limit: sourceForMergeLimit });
-      const sourceForMergeFrom = vi.fn().mockReturnValue({ where: sourceForMergeWhere });
-
-      const sourceFieldsLimit = vi.fn().mockResolvedValue([{ sortName: null, description: null }]);
-      const sourceFieldsWhere = vi.fn().mockReturnValue({ limit: sourceFieldsLimit });
-      const sourceFieldsFrom = vi.fn().mockReturnValue({ where: sourceFieldsWhere });
-
-      const affectedWhere = vi.fn().mockResolvedValue([{ bookId: 5 }]);
-      const affectedFrom = vi.fn().mockReturnValue({ where: affectedWhere });
-      const selectDistinct = vi.fn().mockReturnValue({ from: affectedFrom });
-
-      let callIdx = 0;
-      const select = vi.fn().mockImplementation(() => {
-        callIdx++;
-        if (callIdx === 1) return { from: entityFrom };
-        if (callIdx === 2) return { from: existingAuthorFrom };
-        if (callIdx === 3) return { from: sourceForMergeFrom };
-        return { from: sourceFieldsFrom };
-      });
-
-      const updateWhere = vi.fn().mockResolvedValue(undefined);
-      const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
-      const update = vi.fn().mockReturnValue({ set: updateSet });
-
-      const authorsRepo = { updateAuthorById: vi.fn().mockResolvedValue(undefined), mergeAuthors: vi.fn().mockResolvedValue(undefined) };
-      const authorImageStorage = { promoteImage: vi.fn().mockResolvedValue(false), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const enrichmentOrchestrator = { schedule: vi.fn().mockResolvedValue(undefined) };
-
-      const strategy = makeStrategy({ select, selectDistinct, update }, { authorsRepo, authorImageStorage, enrichmentOrchestrator });
-
-      const result = await strategy.rename({ entityId: 1, newName: 'New Name', userId: 5, libraryIds: [] });
-
-      expect(authorsRepo.updateAuthorById).not.toHaveBeenCalledWith(1, { name: 'New Name' });
-      expect(result.wasImplicitMerge).toBe(true);
-      expect(result.mergedEntityId).toBe(99);
+      const result = await fixture.strategy.rename({ entityId: 1, newName: 'New Name', userId: 5, libraryIds: [7] });
+      expect(result).toMatchObject({ wasImplicitMerge: true, mergedEntityId: 99 });
     });
 
-    it('updates author name and returns wasImplicitMerge false when no conflict', async () => {
-      const entityLimit = vi.fn().mockResolvedValue([{ name: 'Old Name' }]);
-      const entityWhere = vi.fn().mockReturnValue({ limit: entityLimit });
-      const entityFrom = vi.fn().mockReturnValue({ where: entityWhere });
-
-      const noExistingWhere = vi.fn().mockResolvedValue([]);
-      const noExistingFrom = vi.fn().mockReturnValue({ where: noExistingWhere });
-
-      const affectedWhere = vi.fn().mockResolvedValue([{ bookId: 7 }]);
-      const affectedFrom = vi.fn().mockReturnValue({ where: affectedWhere });
-      const selectDistinct = vi.fn().mockReturnValue({ from: affectedFrom });
-
-      let callIdx = 0;
-      const select = vi.fn().mockImplementation(() => {
-        callIdx++;
-        if (callIdx === 1) return { from: entityFrom };
-        return { from: noExistingFrom };
-      });
-
-      const authorsRepo = { updateAuthorById: vi.fn().mockResolvedValue(undefined), mergeAuthors: vi.fn().mockResolvedValue(undefined) };
-      const authorImageStorage = { promoteImage: vi.fn().mockResolvedValue(false), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const enrichmentOrchestrator = { schedule: vi.fn().mockResolvedValue(undefined) };
-
-      const strategy = makeStrategy({ select, selectDistinct }, { authorsRepo, authorImageStorage, enrichmentOrchestrator });
-
-      const result = await strategy.rename({ entityId: 1, newName: ' New   Name ', userId: 5, libraryIds: [] });
-
-      expect(authorsRepo.updateAuthorById).toHaveBeenCalledWith(1, { name: 'New Name' });
-      expect(result.oldName).toBe('Old Name');
-      expect(result.wasImplicitMerge).toBe(false);
-      expect(result.affectedBookIds).toEqual([7]);
+    it('normalizes and updates a distinct name without an implicit merge', async () => {
+      const fixture = mutationFixture();
+      const result = await fixture.strategy.rename({ entityId: 1, newName: ' New   Name ', userId: 5, libraryIds: [7] });
+      expect(result).toMatchObject({ oldName: 'Old', wasImplicitMerge: false, affectedBookIds: [10, 20], affectedBookCount: 2 });
+      expect(fixture.rows.find((row) => row.id === 1)?.name).toBe('New Name');
     });
   });
 
   describe('deleteEntity', () => {
-    it('throws NotFoundException when entity does not exist', async () => {
-      const { select } = makeSelectChain([]);
-      const strategy = makeStrategy({ select });
-
-      await expect(strategy.deleteEntity({ entityId: 1, mode: 'soft', libraryIds: [] })).rejects.toBeInstanceOf(NotFoundException);
+    it('rejects a missing entity', async () => {
+      const fixture = mutationFixture();
+      await expect(fixture.strategy.deleteEntity({ entityId: 99, mode: 'hard', libraryIds: [7] })).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('soft mode: deletes from bookAuthors and refreshes sort names', async () => {
-      const entityLimit = vi.fn().mockResolvedValue([{ name: 'Tolkien' }]);
-      const entityWhere = vi.fn().mockReturnValue({ limit: entityLimit });
-      const entityFrom = vi.fn().mockReturnValue({ where: entityWhere });
-
-      const affectedWhere = vi.fn().mockResolvedValue([{ bookId: 10 }, { bookId: 20 }]);
-      const affectedFrom = vi.fn().mockReturnValue({ where: affectedWhere });
-      const selectDistinct = vi.fn().mockReturnValue({ from: affectedFrom });
-
-      const deleteWhere = vi.fn().mockResolvedValue(undefined);
-      const deleteFrom = vi.fn().mockReturnValue({ where: deleteWhere });
-
-      let callIdx = 0;
-      const select = vi.fn().mockImplementation(() => {
-        callIdx++;
-        if (callIdx === 1) return { from: entityFrom };
-        return { from: affectedFrom };
-      });
-
-      const authorsRepo = { updateAuthorById: vi.fn(), mergeAuthors: vi.fn(), deleteAuthors: vi.fn() };
-      const authorImageStorage = { promoteImage: vi.fn(), deleteAuthorDir: vi.fn() };
-
-      const strategy = makeStrategy({ select, selectDistinct, delete: deleteFrom }, { authorsRepo, authorImageStorage });
-
-      const result = await strategy.deleteEntity({ entityId: 1, mode: 'soft', libraryIds: [] });
-
-      expect(deleteFrom).toHaveBeenCalledTimes(1);
-      expect(refreshPrimaryAuthorSortNamesForBooks).toHaveBeenCalledWith(expect.anything(), [10, 20]);
-      expect(authorsRepo.deleteAuthors).not.toHaveBeenCalled();
-      expect(result).toEqual({ name: 'Tolkien', affectedBookIds: [10, 20] });
-    });
-
-    it('hard mode: calls deleteAuthors and deleteAuthorDir', async () => {
-      const entityLimit = vi.fn().mockResolvedValue([{ name: 'Lewis' }]);
-      const entityWhere = vi.fn().mockReturnValue({ limit: entityLimit });
-      const entityFrom = vi.fn().mockReturnValue({ where: entityWhere });
-
-      const affectedWhere = vi.fn().mockResolvedValue([{ bookId: 30 }]);
-      const affectedFrom = vi.fn().mockReturnValue({ where: affectedWhere });
-      const selectDistinct = vi.fn().mockReturnValue({ from: affectedFrom });
-
-      let callIdx = 0;
-      const select = vi.fn().mockImplementation(() => {
-        callIdx++;
-        if (callIdx === 1) return { from: entityFrom };
-        return { from: affectedFrom };
-      });
-
-      const authorsRepo = { updateAuthorById: vi.fn(), mergeAuthors: vi.fn(), deleteAuthors: vi.fn().mockResolvedValue(undefined) };
-      const authorImageStorage = { promoteImage: vi.fn(), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-
-      const strategy = makeStrategy({ select, selectDistinct }, { authorsRepo, authorImageStorage });
-
-      const result = await strategy.deleteEntity({ entityId: 2, mode: 'hard', libraryIds: [] });
-
-      expect(authorsRepo.deleteAuthors).toHaveBeenCalledWith([2]);
-      expect(authorImageStorage.deleteAuthorDir).toHaveBeenCalledWith(2);
-      expect(result).toEqual({ name: 'Lewis', affectedBookIds: [30] });
+    it.each(['soft', 'hard'] as const)('deletes relations in %s mode and refreshes only captured books', async (mode) => {
+      const fixture = mutationFixture();
+      const result = await fixture.strategy.deleteEntity({ entityId: 1, mode, libraryIds: [7] });
+      expect(result).toEqual({ name: 'Old', affectedBookIds: [10, 20], affectedBookCount: 2 });
+      expect(fixture.rows.some((row) => row.id === 1)).toBe(mode === 'soft');
+      expect(refreshPrimaryAuthorSortNamesForBookSelection).toHaveBeenCalledWith(expect.anything(), expect.anything());
+      if (mode === 'hard') expect(fixture.image.deleteAuthorDir).toHaveBeenCalledWith(1);
+      else expect(fixture.image.deleteAuthorDir).not.toHaveBeenCalled();
     });
   });
 
   describe('split', () => {
-    it('throws NotFoundException when entity does not exist', async () => {
-      const { select } = makeSelectChain([]);
-      const strategy = makeStrategy({ select });
-
-      await expect(strategy.split({ entityId: 1, newNames: ['A', 'B'] })).rejects.toBeInstanceOf(NotFoundException);
+    it('rejects a missing entity', async () => {
+      const fixture = mutationFixture();
+      await expect(fixture.strategy.split({ entityId: 99, newNames: ['A', 'B'], libraryIds: [7] })).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('creates new authors, assigns bookAuthors rows, removes old rows, and deletes image dir', async () => {
-      const entityLimit = vi.fn().mockResolvedValue([{ name: 'Old Author' }]);
-      const entityWhere = vi.fn().mockReturnValue({ limit: entityLimit });
-      const entityFrom = vi.fn().mockReturnValue({ where: entityWhere });
-
-      const affectedWhere = vi.fn().mockResolvedValue([{ bookId: 5 }]);
-      const affectedFrom = vi.fn().mockReturnValue({ where: affectedWhere });
-      const selectDistinct = vi.fn().mockReturnValue({ from: affectedFrom });
-
-      let outerSelectIdx = 0;
-      const select = vi.fn().mockImplementation(() => {
-        outerSelectIdx++;
-        if (outerSelectIdx === 1) return { from: entityFrom };
-        return { from: affectedFrom };
-      });
-
-      const txInsertReturning = vi.fn().mockResolvedValue([{ id: 100 }]);
-      const txInsertOnConflict = vi.fn().mockReturnValue({ returning: txInsertReturning });
-      const txInsertValues = vi.fn().mockReturnValue({ onConflictDoNothing: txInsertOnConflict, returning: txInsertReturning });
-      const txInsert = vi.fn().mockReturnValue({ values: txInsertValues });
-
-      const txExistingWhere = vi.fn().mockResolvedValue([]);
-      const txSelectFrom = vi.fn().mockReturnValue({ where: txExistingWhere });
-      const txSelect = vi.fn().mockReturnValue({ from: txSelectFrom });
-
-      const txBookRowsWhere = vi.fn().mockResolvedValue([{ bookId: 5, displayOrder: 0 }]);
-      const txBookRowsFrom = vi.fn().mockReturnValue({ where: txBookRowsWhere });
-
-      let txSelectIdx = 0;
-      txSelect.mockImplementation(() => {
-        txSelectIdx++;
-        if (txSelectIdx <= 2) return { from: txSelectFrom };
-        return { from: txBookRowsFrom };
-      });
-
-      const txDeleteWhere = vi.fn().mockResolvedValue(undefined);
-      const txDeleteFrom = vi.fn().mockReturnValue({ where: txDeleteWhere });
-
-      const tx = {
-        select: txSelect,
-        insert: txInsert,
-        delete: txDeleteFrom,
-      };
-
-      const transaction = vi.fn().mockImplementation(async (cb: (tx: typeof tx) => Promise<unknown>) => cb(tx));
-
-      const authorImageStorage = { promoteImage: vi.fn(), deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const authorsRepo = { updateAuthorById: vi.fn(), mergeAuthors: vi.fn(), deleteAuthors: vi.fn() };
-
-      const strategy = makeStrategy({ select, selectDistinct, transaction }, { authorsRepo, authorImageStorage });
-
-      const result = await strategy.split({ entityId: 1, newNames: [' New   A ', 'New\tB'] });
-
-      expect(transaction).toHaveBeenCalledTimes(1);
-      expect(txInsertValues).toHaveBeenNthCalledWith(1, { name: 'New A' });
-      expect(txInsertValues).toHaveBeenNthCalledWith(2, { name: 'New B' });
-      expect(txDeleteWhere).toHaveBeenCalledTimes(2);
-      expect(authorImageStorage.deleteAuthorDir).toHaveBeenCalledWith(1);
-      expect(result.originalName).toBe('Old Author');
-      expect(result.affectedBookIds).toEqual([5]);
+    it('creates normalized names, removes the source, and preserves the affected count', async () => {
+      const fixture = mutationFixture();
+      const result = await fixture.strategy.split({ entityId: 1, newNames: [' New   A ', 'New\tB'], libraryIds: [7] });
+      expect(result.originalName).toBe('Old');
+      expect(result.newEntities.map((row) => row.name)).toEqual(['New A', 'New B']);
+      expect(result.affectedBookIds).toEqual([10, 20]);
+      expect(result.affectedBookCount).toBe(2);
+      expect(fixture.rows.some((row) => row.id === 1)).toBe(false);
+      expect(fixture.image.deleteAuthorDir).toHaveBeenCalledWith(1);
     });
 
-    it('reuses existing author when name already exists during split', async () => {
-      const entityLimit = vi.fn().mockResolvedValue([{ name: 'Shared Author' }]);
-      const entityWhere = vi.fn().mockReturnValue({ limit: entityLimit });
-      const entityFrom = vi.fn().mockReturnValue({ where: entityWhere });
-
-      const affectedWhere = vi.fn().mockResolvedValue([]);
-      const affectedFrom = vi.fn().mockReturnValue({ where: affectedWhere });
-      const selectDistinct = vi.fn().mockReturnValue({ from: affectedFrom });
-
-      let outerIdx = 0;
-      const select = vi.fn().mockImplementation(() => {
-        outerIdx++;
-        if (outerIdx === 1) return { from: entityFrom };
-        return { from: affectedFrom };
-      });
-
-      const existingAuthorWhere = vi.fn().mockResolvedValue([{ id: 55, name: 'Existing Author' }]);
-      const existingAuthorFrom = vi.fn().mockReturnValue({ where: existingAuthorWhere });
-
-      const bookRowsWhere = vi.fn().mockResolvedValue([]);
-      const bookRowsFrom = vi.fn().mockReturnValue({ where: bookRowsWhere });
-
-      let txIdx = 0;
-      const txSelect = vi.fn().mockImplementation(() => {
-        txIdx++;
-        if (txIdx === 1) return { from: existingAuthorFrom };
-        return { from: bookRowsFrom };
-      });
-
-      const txInsert = vi.fn();
-      const txDeleteWhere = vi.fn().mockResolvedValue(undefined);
-      const txDeleteFrom = vi.fn().mockReturnValue({ where: txDeleteWhere });
-
-      const tx = { select: txSelect, insert: txInsert, delete: txDeleteFrom };
-      const transaction = vi.fn().mockImplementation(async (cb: (tx: typeof tx) => Promise<unknown>) => cb(tx));
-
-      const authorImageStorage = { deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const authorsRepo = { updateAuthorById: vi.fn(), mergeAuthors: vi.fn(), deleteAuthors: vi.fn() };
-
-      const strategy = makeStrategy({ select, selectDistinct, transaction }, { authorsRepo, authorImageStorage });
-
-      const result = await strategy.split({ entityId: 1, newNames: ['Existing   Author'] });
-
-      expect(txInsert).not.toHaveBeenCalled();
-      expect(result.newEntities[0]).toMatchObject({ id: 55, name: 'Existing Author' });
+    it('reuses a normalized existing author and deduplicates repeated names', async () => {
+      const fixture = mutationFixture();
+      const result = await fixture.strategy.split({ entityId: 1, newNames: ['Target', ' Target '], libraryIds: [7] });
+      expect(result.newEntities).toEqual([{ id: 2, name: 'Target' }]);
+      expect(fixture.insertValues).not.toHaveBeenCalled();
     });
 
     it('does not reuse the source author as a normalized split target', async () => {
-      const entityLimit = vi.fn().mockResolvedValue([{ name: 'Old  Author' }]);
-      const entityWhere = vi.fn().mockReturnValue({ limit: entityLimit });
-      const entityFrom = vi.fn().mockReturnValue({ where: entityWhere });
-
-      const affectedWhere = vi.fn().mockResolvedValue([]);
-      const affectedFrom = vi.fn().mockReturnValue({ where: affectedWhere });
-      const selectDistinct = vi.fn().mockReturnValue({ from: affectedFrom });
-
-      let outerIdx = 0;
-      const select = vi.fn().mockImplementation(() => {
-        outerIdx++;
-        if (outerIdx === 1) return { from: entityFrom };
-        return { from: affectedFrom };
-      });
-
-      const existingAuthorWhere = vi.fn().mockResolvedValue([{ id: 1, name: 'Old  Author' }]);
-      const existingAuthorFrom = vi.fn().mockReturnValue({ where: existingAuthorWhere });
-
-      const bookRowsWhere = vi.fn().mockResolvedValue([]);
-      const bookRowsFrom = vi.fn().mockReturnValue({ where: bookRowsWhere });
-
-      let txIdx = 0;
-      const txSelect = vi.fn().mockImplementation(() => {
-        txIdx++;
-        if (txIdx === 1) return { from: existingAuthorFrom };
-        return { from: bookRowsFrom };
-      });
-
-      const txInsertReturning = vi.fn().mockResolvedValue([{ id: 56 }]);
-      const txInsertValues = vi.fn().mockReturnValue({ returning: txInsertReturning });
-      const txInsert = vi.fn().mockReturnValue({ values: txInsertValues });
-      const txDeleteWhere = vi.fn().mockResolvedValue(undefined);
-      const txDeleteFrom = vi.fn().mockReturnValue({ where: txDeleteWhere });
-
-      const tx = { select: txSelect, insert: txInsert, delete: txDeleteFrom };
-      const transaction = vi.fn().mockImplementation(async (cb: (tx: typeof tx) => Promise<unknown>) => cb(tx));
-
-      const authorImageStorage = { deleteAuthorDir: vi.fn().mockResolvedValue(undefined) };
-      const authorsRepo = { updateAuthorById: vi.fn(), mergeAuthors: vi.fn(), deleteAuthors: vi.fn() };
-
-      const strategy = makeStrategy({ select, selectDistinct, transaction }, { authorsRepo, authorImageStorage });
-
-      const result = await strategy.split({ entityId: 1, newNames: ['Old Author'] });
-
-      expect(txInsertValues).toHaveBeenCalledWith({ name: 'Old Author' });
-      expect(result.newEntities[0]).toMatchObject({ id: 56, name: 'Old Author' });
+      const fixture = mutationFixture();
+      const result = await fixture.strategy.split({ entityId: 1, newNames: ['Old'], libraryIds: [7] });
+      expect(result.newEntities[0]).toMatchObject({ name: 'Old' });
+      expect(result.newEntities[0]?.id).not.toBe(1);
+      expect(fixture.insertValues).toHaveBeenCalledWith({ name: 'Old' });
     });
   });
 

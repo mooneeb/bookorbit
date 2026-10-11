@@ -84,6 +84,8 @@ describe('BulkRenameService', () => {
 
   const bulkRenameRepo = {
     findAllBooksForLibrary: vi.fn(),
+    findBooksPageForLibrary: vi.fn(),
+    findLastBookId: vi.fn(),
     findLibrarySettings: vi.fn(),
   };
 
@@ -116,6 +118,11 @@ describe('BulkRenameService', () => {
   beforeEach(() => {
     vi.resetAllMocks();
 
+    bulkRenameRepo.findLastBookId.mockResolvedValue(Number.MAX_SAFE_INTEGER);
+    bulkRenameRepo.findBooksPageForLibrary.mockImplementation(async (_libraryId: number, afterBookId: number, _lastBookId: number, limit: number) => {
+      const books: BulkRenameBookData[] = await bulkRenameRepo.findAllBooksForLibrary(_libraryId);
+      return books.filter((book) => book.bookId > afterBookId).slice(0, limit);
+    });
     appSettings.isCrossPlatformPathSanitizationEnabled.mockResolvedValue(false);
     appSettings.getUploadPattern.mockResolvedValue('{authors}/{title}');
     appSettings.getUploadPatternBookPerFolder.mockResolvedValue('{authors}/{title}/');
@@ -132,6 +139,10 @@ describe('BulkRenameService', () => {
       notificationService as any,
       fileWatcherService as any,
     );
+  });
+
+  afterEach(async () => {
+    await service.onModuleDestroy();
   });
 
   describe('getPreview', () => {
@@ -322,9 +333,8 @@ describe('BulkRenameService', () => {
 
       const book1 = makeBookData({ bookId: 1, title: 'WillChange' });
       book1.metadata.title = 'WillChange';
-      const book2 = makeBookData({ bookId: 2, title: 'AlreadyRight' });
+      const book2 = makeBookData({ bookId: 2, title: 'AlreadyRight', absolutePath: '/library/AlreadyRight.epub' });
       book2.metadata.title = 'AlreadyRight';
-      book2.absolutePath = '/library/AlreadyRight.epub';
       bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([book1, book2]);
 
       const willRename = await service.getPreview(1, 1, 50, 'will_rename');
@@ -358,7 +368,7 @@ describe('BulkRenameService', () => {
       await service.getPreview(1, 1, 50);
       await service.getPreview(1, 1, 50);
 
-      expect(bulkRenameRepo.findAllBooksForLibrary).toHaveBeenCalledTimes(1);
+      expect(bulkRenameRepo.findBooksPageForLibrary).toHaveBeenCalledTimes(2);
     });
 
     it('falls back to global pattern when library has no pattern', async () => {
@@ -444,13 +454,13 @@ describe('BulkRenameService', () => {
         expect(result.totalByStatus.will_rename).toBe(0);
       });
 
-      it('keeps a rename into the folder held by the same work in another format', async () => {
+      it('holds back a rename into an occupied folder to preserve reading state', async () => {
         bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([looseSeriesBook(2, 'Dune', '1', 'm4b')]);
         fileRenameRepo.findFolderOwners.mockResolvedValue(new Map([[seriesFolder, { bookId: 1, title: 'Dune', primaryAuthor: 'Frank Herbert' }]]));
 
         const result = await service.getPreview(1, 1, 50);
 
-        expect(result.items[0].status).toBe('will_rename');
+        expect(result.items[0].status).toBe('collision');
       });
 
       it('holds back every book of a series that would share one new folder', async () => {
@@ -462,12 +472,12 @@ describe('BulkRenameService', () => {
         expect(result.items[0].reason).toBe('Multiple books would resolve to the same folder');
       });
 
-      it('keeps two formats of one work that would share a new folder', async () => {
+      it('holds back two books sharing a folder to preserve their identities', async () => {
         bulkRenameRepo.findAllBooksForLibrary.mockResolvedValue([looseSeriesBook(1, 'Dune', '1'), looseSeriesBook(2, 'Dune', '1', 'm4b')]);
 
         const result = await service.getPreview(1, 1, 50);
 
-        expect(result.items.map((item) => item.status)).toEqual(['will_rename', 'will_rename']);
+        expect(result.items.map((item) => item.status)).toEqual(['collision', 'collision']);
       });
 
       it('does not look up folder owners for a file-as-book library', async () => {
@@ -530,6 +540,13 @@ describe('BulkRenameService', () => {
         organizationMode: 'book_per_file',
         watch: false,
       });
+      bulkRenameRepo.findLastBookId.mockResolvedValue(Number.MAX_SAFE_INTEGER);
+      bulkRenameRepo.findBooksPageForLibrary.mockImplementation(
+        async (_libraryId: number, afterBookId: number, _lastBookId: number, limit: number) => {
+          const books: BulkRenameBookData[] = await bulkRenameRepo.findAllBooksForLibrary(_libraryId);
+          return books.filter((book) => book.bookId > afterBookId).slice(0, limit);
+        },
+      );
       appSettings.isCrossPlatformPathSanitizationEnabled.mockResolvedValue(false);
 
       const book = makeBookData({ bookId: 1 });
@@ -709,7 +726,7 @@ describe('BulkRenameService', () => {
       });
 
       expect(fileRenameService.performRename).toHaveBeenCalledTimes(1);
-      expect(fileRenameService.performRename).toHaveBeenCalledWith(1, 42, false, true);
+      expect(fileRenameService.performRename).toHaveBeenCalledWith(1, 42, false, true, expect.objectContaining({ libraryId: 1, preserveBook: true }));
       expect(renameEvents(events)).toEqual([{ bookId: 1, status: 'success', reason: undefined }]);
       expect(summary.processed).toBe(1);
       expect(summary.succeeded).toBe(1);
@@ -726,7 +743,7 @@ describe('BulkRenameService', () => {
       });
 
       // performRename(bookId, userId, force=false, suppressNotification=true)
-      expect(fileRenameService.performRename).toHaveBeenCalledWith(1, 42, false, true);
+      expect(fileRenameService.performRename).toHaveBeenCalledWith(1, 42, false, true, expect.objectContaining({ libraryId: 1, preserveBook: true }));
     });
 
     it('does nothing per-book when there are no will_rename candidates but still notifies completion', async () => {
@@ -983,7 +1000,7 @@ describe('BulkRenameService', () => {
       fileRenameService.performRename.mockResolvedValue({ status: 'success', durationMs: 10 });
 
       await service.getPreview(1, 1, 50);
-      expect(bulkRenameRepo.findAllBooksForLibrary).toHaveBeenCalledTimes(1);
+      expect(bulkRenameRepo.findBooksPageForLibrary).toHaveBeenCalledTimes(2);
 
       // execute() recomputes the preview internally to derive the will_rename set (call #2),
       // and clears the cache so the following getPreview recomputes again (call #3).
@@ -991,10 +1008,10 @@ describe('BulkRenameService', () => {
         onProgress: () => {},
         isCancelled: () => false,
       });
-      expect(bulkRenameRepo.findAllBooksForLibrary).toHaveBeenCalledTimes(2);
+      expect(bulkRenameRepo.findBooksPageForLibrary).toHaveBeenCalledTimes(4);
 
       await service.getPreview(1, 1, 50);
-      expect(bulkRenameRepo.findAllBooksForLibrary).toHaveBeenCalledTimes(3);
+      expect(bulkRenameRepo.findBooksPageForLibrary).toHaveBeenCalledTimes(6);
     });
   });
 
@@ -1453,7 +1470,7 @@ describe('BulkRenameService', () => {
       service.invalidateCache(1);
       await service.getPreview(1, 1, 50);
 
-      expect(bulkRenameRepo.findAllBooksForLibrary).toHaveBeenCalledTimes(2);
+      expect(bulkRenameRepo.findBooksPageForLibrary).toHaveBeenCalledTimes(4);
     });
   });
 });

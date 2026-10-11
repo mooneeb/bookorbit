@@ -25,6 +25,7 @@ import type {
   BookDockFinalizePreviewResult,
   BookDockFinalizePreviewStatus,
   BookDockFinalizeResult,
+  BookDockFinalizeJobRequest,
   BookDockMetadata,
   ComicMetadataFields,
   MetadataSeriesMembership,
@@ -40,6 +41,7 @@ import {
   resolveUploadPath,
 } from '@bookorbit/types';
 import type { BookRequestImportFormats } from '@bookorbit/types';
+import type { RequestUser } from '../../common/types/request-user';
 import type { FileRole } from '../scanner/lib/classify';
 import { BookReadService } from '../book/book-read.service';
 import { NotificationService } from '../notification/notification.service';
@@ -59,6 +61,7 @@ import { LibraryService } from '../library/library.service';
 import { MetadataService } from '../metadata/metadata.service';
 import { MetadataScoreService } from '../metadata-score/metadata-score.service';
 import { UploadProcessorService, type UnitBookFileInput, type UnitBookRecords } from '../upload/upload-processor.service';
+import { UploadSessionService } from '../upload/upload-session.service';
 import { UploadStorageService } from '../upload/upload-storage.service';
 import { UploadValidatorService } from '../upload/upload-validator.service';
 import { inspectEpubMediaOverlayFields } from '../reader/epub/epub-media-overlay-capability';
@@ -68,6 +71,13 @@ import { BookDockGateway } from './book-dock.gateway';
 import { normalizeBookDockMetadata } from './book-dock-metadata.utils';
 import { BookDockProcessingStateService } from './book-dock-processing-state.service';
 import { BookDockWorkQueue } from './book-dock-work-queue';
+import { BookDockFinalizationRepository } from './book-dock-finalization.repository';
+import { BookDockPublicationService } from './book-dock-publication.service';
+import { AuthService } from '../auth/auth.service';
+import type { BookDockFinalizeIntent } from '../../db/schema';
+
+export const BOOK_DOCK_FINALIZE_CHECKPOINT = Symbol('BOOK_DOCK_FINALIZE_CHECKPOINT');
+export type BookDockFinalizeCheckpoint = (phase: 'published' | 'committed' | 'metadata', fileId: number) => Promise<void>;
 import type { BookDockFileRow, BookDockUnitFileRow } from '../../db/schema';
 
 type Db = NodePgDatabase<typeof schema>;
@@ -221,6 +231,7 @@ function unitDestinationFolder(destPath: string, folderPath: string): string {
 export class BookDockFinalizeService implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(BookDockFinalizeService.name);
   private readonly autoFinalizeQueue: BookDockWorkQueue;
+  private readonly filingLocks = new Map<number, Promise<void>>();
 
   constructor(
     @Inject(DB) private readonly db: Db,
@@ -240,6 +251,11 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     private readonly fileWriteService: FileWriteService,
     @Optional() private readonly seriesIdentity?: SeriesIdentityService,
     @Optional() private readonly seriesMemberships?: SeriesMembershipService,
+    @Optional() private readonly uploadSessions?: UploadSessionService,
+    @Optional() private readonly finalizations?: BookDockFinalizationRepository,
+    @Optional() private readonly publication?: BookDockPublicationService,
+    @Optional() private readonly auth?: AuthService,
+    @Optional() @Inject(BOOK_DOCK_FINALIZE_CHECKPOINT) private readonly checkpoint?: BookDockFinalizeCheckpoint,
   ) {
     this.autoFinalizeQueue = new BookDockWorkQueue(
       AUTO_FINALIZE_QUEUE_CONCURRENCY,
@@ -279,80 +295,125 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     needsReview?: boolean,
     readyToFile?: boolean,
   ): Promise<BookDockFinalizeResult> {
-    const ids = selectAll ? [] : dedupeIds(fileIds ?? []);
-    const overrideMap = new Map((overrides ?? []).map((o) => [o.fileId, o]));
+    const startedAt = Date.now();
+    const fields = `userId=${userId} selectAll=${selectAll === true} selected=${fileIds?.length ?? 0}`;
+    this.logger.log(`[book_dock.finalize] [start] ${fields} - finalization started`);
+    try {
+      const ids = selectAll ? [] : dedupeIds(fileIds ?? []);
+      const overrideMap = new Map((overrides ?? []).map((o) => [o.fileId, o]));
 
-    const results: BookDockFinalizeFileResult[] = [];
-    let succeeded = 0;
-    let failed = 0;
+      const results: BookDockFinalizeFileResult[] = [];
+      let succeeded = 0;
+      let failed = 0;
 
-    if (selectAll) {
-      let afterId: number | undefined;
-      while (true) {
-        const rows = await this.repo.findSelectionBatch({
-          limit: BATCH_SIZE,
-          afterId,
-          excludedIds,
-          status,
-          search,
-          needsReview,
-          readyToFile,
-          userId,
-          canManageAll,
-        });
-        if (rows.length === 0) break;
+      if (selectAll) {
+        let afterId: number | undefined;
+        while (true) {
+          const rows = await this.repo.findSelectionBatch({
+            limit: BATCH_SIZE,
+            afterId,
+            excludedIds,
+            status,
+            search,
+            needsReview,
+            readyToFile,
+            userId,
+            canManageAll,
+          });
+          if (rows.length === 0) break;
 
-        const prepared = await this.prepareFinalizeBatch(rows, defaultLibraryId, defaultFolderId, overrideMap, userId, isSuperuser);
-        for (const analysis of prepared.analyses) {
-          const result = await this.finalizePreparedCandidate(analysis, prepared.existingDestinations);
-          results.push(result);
-          if (result.success) succeeded++;
-          else failed++;
-        }
-
-        afterId = rows[rows.length - 1]?.id;
-      }
-    } else {
-      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-        const batch = ids.slice(i, i + BATCH_SIZE);
-        const rows = await this.repo.findByIds(batch, userId, canManageAll);
-        const prepared = await this.prepareFinalizeBatch(rows, defaultLibraryId, defaultFolderId, overrideMap, userId, isSuperuser);
-        const analysisById = new Map(prepared.analyses.map((analysis) => [analysis.fileId, analysis]));
-
-        for (const fileId of batch) {
-          const analysis = analysisById.get(fileId);
-          if (!analysis) {
-            failed++;
-            results.push({
-              fileId,
-              fileName: `book-dock-file-${fileId}`,
-              success: false,
-              message: 'Book Dock file not found',
-            });
-            continue;
+          const prepared = await this.prepareFinalizeBatch(rows, defaultLibraryId, defaultFolderId, overrideMap, userId, isSuperuser);
+          for (const analysis of prepared.analyses) {
+            const result = await this.finalizePreparedCandidate(analysis, prepared.existingDestinations, userId);
+            results.push(result);
+            if (result.success) succeeded++;
+            else failed++;
           }
 
-          const result = await this.finalizePreparedCandidate(analysis, prepared.existingDestinations);
-          results.push(result);
-          if (result.success) succeeded++;
-          else failed++;
+          afterId = rows[rows.length - 1]?.id;
+        }
+      } else {
+        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+          const batch = ids.slice(i, i + BATCH_SIZE);
+          const rows = await this.repo.findByIds(batch, userId, canManageAll);
+          const prepared = await this.prepareFinalizeBatch(rows, defaultLibraryId, defaultFolderId, overrideMap, userId, isSuperuser);
+          const analysisById = new Map(prepared.analyses.map((analysis) => [analysis.fileId, analysis]));
+
+          for (const fileId of batch) {
+            const analysis = analysisById.get(fileId);
+            if (!analysis) {
+              const durable = await this.findFinalizationReceipt(fileId, userId, isSuperuser);
+              if (durable) {
+                succeeded++;
+                results.push(durable);
+                continue;
+              }
+              const receipt = await this.uploadSessions?.findDockFinalization(fileId, userId);
+              if (receipt?.bookId) {
+                await this.libraryService.verifyUserAccessLevel(userId, receipt.libraryId, isSuperuser, 'editor');
+                succeeded++;
+                results.push({ fileId, fileName: receipt.filename, success: true, bookId: receipt.bookId });
+                continue;
+              }
+              failed++;
+              results.push({
+                fileId,
+                fileName: `book-dock-file-${fileId}`,
+                success: false,
+                message: 'Book Dock file not found',
+              });
+              continue;
+            }
+
+            const result = await this.finalizePreparedCandidate(analysis, prepared.existingDestinations, userId);
+            results.push(result);
+            if (result.success) succeeded++;
+            else failed++;
+          }
         }
       }
+
+      this.emitChange();
+
+      this.notificationService
+        .notify({
+          type: failed > 0 ? NotificationType.BookDockFinalizedWithErrors : NotificationType.BookDockFinalized,
+          title: failed > 0 ? 'Book Dock finalization completed with errors' : 'Book Dock finalization completed',
+          message: `${succeeded} succeeded, ${failed} failed`,
+          scope: { kind: 'user', userId },
+          meta: { total: results.length, succeeded, failed },
+        })
+        .catch(() => {});
+
+      this.logger.log(
+        `[book_dock.finalize] [end] ${fields} durationMs=${Date.now() - startedAt} total=${results.length} succeeded=${succeeded} failed=${failed} - finalization completed`,
+      );
+      return { total: results.length, succeeded, failed, results };
+    } catch (error) {
+      this.logger.warn(
+        `[book_dock.finalize] [fail] ${fields} durationMs=${Date.now() - startedAt} errorClass=${error instanceof Error ? error.name : 'Unknown'} error="${sanitizeLogValue(error instanceof Error ? error.message : 'Finalization failed')}" - finalization failed`,
+      );
+      throw error;
     }
+  }
 
-    this.emitChange();
-
-    this.notificationService
-      .notify({
-        type: failed > 0 ? NotificationType.BookDockFinalizedWithErrors : NotificationType.BookDockFinalized,
-        title: failed > 0 ? 'Book Dock finalization completed with errors' : 'Book Dock finalization completed',
-        message: `${succeeded} succeeded, ${failed} failed`,
-        scope: { kind: 'user', userId },
-        meta: { total: results.length, succeeded, failed },
-      })
-      .catch(() => {});
-
-    return { total: results.length, succeeded, failed, results };
+  async finalizeQueuedFile(user: RequestUser, fileId: number, request: BookDockFinalizeJobRequest): Promise<BookDockFinalizeFileResult> {
+    const canManageAll = user.isSuperuser || user.permissions.includes(Permission.ManageBookDock);
+    const [row] = await this.repo.findByIds([fileId], user.id, canManageAll);
+    if (!row) {
+      return (
+        (await this.findFinalizationReceipt(fileId, user.id, user.isSuperuser)) ?? {
+          fileId,
+          fileName: `book-dock-file-${fileId}`,
+          success: false,
+          message: 'Book Dock file not found',
+        }
+      );
+    }
+    const overrides = new Map((request.overrides ?? []).map((entry) => [entry.fileId, entry]));
+    const result = await this.finalizeFile(row, request.defaultLibraryId, request.defaultFolderId, overrides, user.id, user.isSuperuser);
+    if (result.success) this.emitChange();
+    return result;
   }
 
   private async finalizeFile(
@@ -368,10 +429,169 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     if (!analysis) {
       return { fileId: row.id, fileName: row.fileName, success: false, message: 'Finalization target could not be resolved' };
     }
-    return this.finalizePreparedCandidate(analysis, prepared.existingDestinations);
+    return this.finalizePreparedCandidate(analysis, prepared.existingDestinations, userId);
   }
 
   private async finalizePreparedCandidate(
+    analysis: FinalizeCandidateAnalysis,
+    existingDestinations: Map<string, number>,
+    userId: number,
+  ): Promise<BookDockFinalizeFileResult> {
+    if (this.finalizations && this.publication) {
+      return this.finalizations.locked(4104, analysis.fileId, () => this.finalizeDurably(analysis, existingDestinations, userId));
+    }
+    const previous = this.filingLocks.get(analysis.fileId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.filingLocks.set(analysis.fileId, current);
+    await previous;
+    try {
+      const ownerId = analysis.row.uploadedBy;
+      const receipt = ownerId ? await this.uploadSessions?.findDockFinalization(analysis.fileId, ownerId) : null;
+      if (receipt?.bookId) return { fileId: analysis.fileId, fileName: receipt.filename, success: true, bookId: receipt.bookId };
+      return await this.filePreparedCandidate(analysis, existingDestinations);
+    } finally {
+      release();
+      if (this.filingLocks.get(analysis.fileId) === current) this.filingLocks.delete(analysis.fileId);
+    }
+  }
+
+  async findFinalizationReceipt(fileId: number, userId: number, isSuperuser: boolean): Promise<BookDockFinalizeFileResult | null> {
+    const receipt = await this.finalizations?.find(fileId);
+    if (!receipt || receipt.userId !== userId) return null;
+    await this.libraryService.verifyUserAccessLevel(userId, receipt.libraryId, isSuperuser, 'editor');
+    if (receipt.state === 'completed') return receipt.result ?? null;
+    return this.finalizations!.locked(4104, fileId, async () => {
+      const current = await this.finalizations!.find(fileId);
+      return current ? this.resumeFinalization(current) : null;
+    });
+  }
+
+  async recoverFinalizations(): Promise<void> {
+    if (!this.finalizations) return;
+    let cursor = 0;
+    while (true) {
+      const rows = await this.finalizations.unfinished(cursor);
+      if (!rows.length) return;
+      for (const row of rows) {
+        await this.finalizations.locked(4104, row.fileId, async () => {
+          const current = await this.finalizations!.find(row.fileId);
+          if (current && current.state !== 'completed') await this.resumeFinalization(current);
+        });
+      }
+      cursor = rows[rows.length - 1]!.fileId;
+    }
+  }
+
+  private async finalizeDurably(
+    analysis: FinalizeCandidateAnalysis,
+    destinations: Map<string, number>,
+    userId: number,
+  ): Promise<BookDockFinalizeFileResult> {
+    const existing = await this.finalizations!.find(analysis.fileId);
+    if (existing) return this.resumeFinalization(existing);
+    const classified = await this.classifyDestination(analysis, destinations);
+    if (classified.status !== 'ready') return this.analysisToFileResult(classified);
+    if (!classified.placement || !classified.folder || !classified.library || !classified.destPath || !classified.format)
+      return { fileId: analysis.fileId, fileName: analysis.fileName, success: false, message: 'Finalization target could not be resolved' };
+    let actorId = userId || analysis.row.uploadedBy || 0;
+    if (!actorId) {
+      const [owner] = await this.db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.isSuperuser, true))
+        .orderBy(schema.users.id)
+        .limit(1);
+      if (!owner) return { fileId: analysis.fileId, fileName: analysis.fileName, success: false, message: 'No active import owner is available' };
+      actorId = owner.id;
+    }
+    try {
+      const publication = await this.publication!.prepare(classified.placement, classified.folder.path, analysis.fileId);
+      const intent: BookDockFinalizeIntent = {
+        row: classified.row,
+        libraryId: classified.library.id,
+        folderId: classified.folder.id,
+        root: classified.folder.path,
+        format: classified.format,
+        destPath: classified.destPath,
+        bookFolderPath: classified.bookFolderPath,
+        placement: classified.placement,
+        publication,
+      };
+      const journal = await this.finalizations!.begin(analysis.fileId, actorId, intent);
+      const result = await this.resumeFinalization(journal);
+      if (result.success && result.bookId) destinations.set(this.destinationKey(intent.libraryId, intent.destPath), result.bookId);
+      return result;
+    } catch (error) {
+      this.logFinalizeFailure(analysis.fileId, 'prepare', error);
+      return { fileId: analysis.fileId, fileName: analysis.fileName, success: false, message: resolveFinalizeErrorMessage(error) };
+    }
+  }
+
+  private async resumeFinalization(
+    journal: NonNullable<Awaited<ReturnType<BookDockFinalizationRepository['find']>>>,
+  ): Promise<BookDockFinalizeFileResult> {
+    if (journal.state === 'completed' && journal.result) return journal.result;
+    const { intent } = journal;
+    try {
+      const user = await this.auth!.findActingUser(journal.userId);
+      if (
+        !user ||
+        (!user.isSuperuser && (!user.permissions.includes(Permission.BookDockAccess) || !user.permissions.includes(Permission.LibraryUpload)))
+      )
+        throw new ForbiddenException('Import owner no longer has permission to file books');
+      if (intent.row.uploadedBy !== user.id && !user.isSuperuser && !user.permissions.includes(Permission.ManageBookDock))
+        throw new ForbiddenException('Book Dock file belongs to another user');
+      await this.libraryService.verifyUserAccessLevel(user.id, journal.libraryId, user.isSuperuser, 'editor');
+      const [library, folder] = await Promise.all([
+        this.findLibraryOrFail(intent.libraryId),
+        this.findFolderOrFail(intent.folderId, intent.libraryId),
+      ]);
+      if (folder.path !== intent.root) throw new BadRequestException('Import destination changed. Restore the original folder before retrying');
+      let bookIds = journal.bookIds;
+      if (!bookIds.length) {
+        await this.publication!.publish(intent.publication, intent.root);
+        await this.checkpoint?.('published', journal.fileId);
+        const written = await this.createUnitBookRecord(
+          library,
+          folder,
+          intent.placement,
+          intent.destPath,
+          intent.format,
+          intent.bookFolderPath,
+          journal.fileId,
+        );
+        bookIds = written.bookIds;
+        await this.checkpoint?.('committed', journal.fileId);
+      }
+      for (const bookId of bookIds) await this.applyMetadata(bookId, intent.row, bookId === bookIds[0]);
+      await this.checkpoint?.('metadata', journal.fileId);
+      if (intent.row.uploadedBy) await this.uploadSessions?.recordDockFinalization(journal.fileId, intent.row.uploadedBy, bookIds[0]!);
+      const result: BookDockFinalizeFileResult = {
+        fileId: journal.fileId,
+        fileName: intent.row.fileName,
+        newName: intent.destPath.substring(intent.root.length + 1),
+        success: true,
+        bookId: bookIds[0]!,
+      };
+      await this.publication!.cleanup(intent.publication);
+      await this.cleanupBookDockRecord(intent.row);
+      await this.finalizations!.update(journal.fileId, { state: 'completed', result, error: null });
+      this.processor.reconcileCoversAsync(bookIds);
+      if (library.fileWriteEnabled) for (const bookId of bookIds) this.fileWriteService.scheduleWrite(bookId, 'auto', user.id);
+      return result;
+    } catch (error) {
+      const message = resolveFinalizeErrorMessage(error);
+      // Keep the committed identity even when a later metadata or cleanup step fails.
+      await this.finalizations!.update(journal.fileId, { state: 'failed', error: message });
+      this.logFinalizeFailure(journal.fileId, 'recovery', error);
+      return { fileId: journal.fileId, fileName: intent.row.fileName, success: false, message };
+    }
+  }
+
+  private async filePreparedCandidate(
     preparedAnalysis: FinalizeCandidateAnalysis,
     existingDestinations: Map<string, number>,
   ): Promise<BookDockFinalizeFileResult> {
@@ -412,6 +632,7 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
         // Several ids only in a loose-file library, where each format is its own book. They are the
         // same work, so they get the same metadata rather than one of them getting all of it.
         for (const created of written.bookIds) await this.applyMetadata(created, row, created === bookId);
+        if (row.uploadedBy) await this.uploadSessions?.recordDockFinalization(row.id, row.uploadedBy, bookId);
       } catch (err) {
         // The books committed before the failure, and metadata runs against services that cannot
         // join that transaction, so the compensation is explicit: take back exactly what this unit
@@ -583,7 +804,7 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
       }
 
       const library = await this.findLibraryOrFail(libraryId);
-      await this.libraryService.verifyUserAccess(userId, libraryId, isSuperuser);
+      await this.libraryService.verifyUserAccessLevel(userId, libraryId, isSuperuser, 'editor');
 
       const folder = await this.findFolderOrFail(folderId, libraryId);
       const format = row.format ?? extname(row.fileName).toLowerCase().slice(1);
@@ -747,6 +968,7 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
     persistedPrimaryPath: string,
     primaryFormat: string,
     bookFolderPath: string | undefined,
+    dockFileId?: number,
   ): Promise<UnitBookRecords> {
     if (placement.length === 0) throw new Error('Finalization placed no files');
 
@@ -769,7 +991,8 @@ export class BookDockFinalizeService implements OnModuleInit, OnApplicationBoots
       });
     }
 
-    return this.processor.createUnitBookRecords(library.id, folder.id, files);
+    if (dockFileId === undefined) return this.processor.createUnitBookRecords(library.id, folder.id, files);
+    return this.processor.createUnitBookRecords(library.id, folder.id, files, { dockFileId });
   }
 
   /** Never throws: it runs while the error that caused it is already on its way up. */

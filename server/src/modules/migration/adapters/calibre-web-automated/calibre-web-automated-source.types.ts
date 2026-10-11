@@ -164,6 +164,7 @@ export interface CalibreWebAutomatedShelfBookRecord {
 }
 
 export interface CalibreWebAutomatedSourceRecords {
+  bookOverlays?: boolean;
   sourceVersion: null;
   compatibilityWarnings: string[];
   warnings: CalibreWebAutomatedConnectorWarning[];

@@ -73,4 +73,15 @@ describe('useDuplicateReview', () => {
 
     expect(activeCluster.value).toBeNull()
   })
+
+  it('keeps the mobile group list open when changing pages after returning to it', async () => {
+    const clusters = ref([makeCluster([1, 2])])
+    const { activeCluster, clearSelection, selectCluster } = useDuplicateReview(clusters)
+    clearSelection()
+    clusters.value = [makeCluster([3, 4])]
+    await nextTick()
+    expect(activeCluster.value).toBeNull()
+    selectCluster('3|4')
+    expect(activeCluster.value?.entities[0]?.id).toBe(3)
+  })
 })

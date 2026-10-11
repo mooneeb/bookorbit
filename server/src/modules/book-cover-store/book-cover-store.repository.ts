@@ -210,12 +210,22 @@ export class BookCoverStoreRepository {
     medium: CoverMedium,
     media: CoverMedia,
     mutation: SlotMutation,
-    options: { bumpBook: boolean; servedBytesChanged: boolean; updatedAt: Date; beforeMedia?: CoverMedia },
-  ): Promise<{ libraryId: number; koboCoverChanged: boolean }> {
+    options: { bumpBook: boolean; servedBytesChanged: boolean; updatedAt: Date; beforeMedia?: CoverMedia; onlyIfAbsent?: boolean },
+  ): Promise<{ libraryId: number; koboCoverChanged: boolean; mutationApplied: boolean }> {
     return this.db.transaction(async (tx) => {
       const before = await this.selectSlots(bookId, tx);
       if (mutation.kind === 'delete') {
         await tx.delete(bookCovers).where(and(eq(bookCovers.bookId, bookId), eq(bookCovers.medium, medium)));
+      } else if (options.onlyIfAbsent) {
+        const inserted = await tx
+          .insert(bookCovers)
+          .values({ bookId, medium, ...mutation.row })
+          .onConflictDoNothing()
+          .returning({ bookId: bookCovers.bookId });
+        if (inserted.length === 0) {
+          const [book] = await tx.select({ libraryId: books.libraryId }).from(books).where(eq(books.id, bookId)).limit(1);
+          return { libraryId: book?.libraryId ?? 0, koboCoverChanged: false, mutationApplied: false };
+        }
       } else {
         await tx
           .insert(bookCovers)
@@ -255,7 +265,7 @@ export class BookCoverStoreRepository {
       }
 
       const [book] = await tx.select({ libraryId: books.libraryId }).from(books).where(eq(books.id, bookId)).limit(1);
-      return { libraryId: book?.libraryId ?? 0, koboCoverChanged };
+      return { libraryId: book?.libraryId ?? 0, koboCoverChanged, mutationApplied: true };
     });
   }
 

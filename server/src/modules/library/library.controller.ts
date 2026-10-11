@@ -101,6 +101,7 @@ export class LibraryController {
 
   @Patch(':id')
   @RequirePermission(Permission.ManageLibraries)
+  @RequireLibraryAccess('editor')
   @Auditable({
     action: AuditAction.LibraryUpdate,
     resource: AuditResource.Library,

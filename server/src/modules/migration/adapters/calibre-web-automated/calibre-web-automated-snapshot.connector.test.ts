@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+import { CalibreWebAutomatedNormalizer } from './calibre-web-automated-normalizer';
 import {
   authorizeCalibreWebAutomatedSnapshotFile,
   CalibreWebAutomatedSnapshotConnector,
@@ -81,6 +82,169 @@ describe('CalibreWebAutomatedSnapshotConnector', () => {
     expect(JSON.stringify(records)).not.toContain('mail-secret');
     expect(JSON.stringify(records)).not.toContain('oauth-secret');
     expect(JSON.stringify(records)).not.toContain('session-secret');
+  });
+
+  it('streams books in bounded cohorts while preserving progress and shelf membership', async () => {
+    const pair = await createCompatiblePair(importRoot);
+    withDatabase(pair.metadataDatabasePath, (database) => {
+      const insert = database.prepare('INSERT INTO books (id, title, pubdate, series_index, author_sort, path) VALUES (?, ?, NULL, 1, NULL, ?)');
+      for (let index = 11; index <= 115; index += 1) insert.run(index, `Book ${index}`, `books/${index}`);
+    });
+    const connector = makeConnector(importRoot);
+    let books = 0;
+    let progress = 0;
+    let memberships = 0;
+    for await (const records of connector.fetchSourceRecordBatches(configFor(pair))) {
+      expect(records.books.length).toBeLessThanOrEqual(100);
+      expect(records.statuses.length).toBeLessThanOrEqual(500);
+      expect(records.webProgress.length).toBeLessThanOrEqual(500);
+      expect(records.shelfBooks.length).toBeLessThanOrEqual(500);
+      if (records.bookOverlays !== false) books += records.books.length;
+      progress += records.webProgress.length;
+      memberships += records.shelfBooks.length;
+    }
+    expect(books).toBe(106);
+    expect(progress).toBe(1);
+    expect(memberships).toBe(1);
+  });
+
+  it('reduces duplicate progress histories without changing private users, source precedence, or locator fallbacks', async () => {
+    const pair = await createCompatiblePair(importRoot);
+    withDatabase(pair.metadataDatabasePath, (database) => {
+      database.exec(`
+        INSERT INTO books (id, title, pubdate, series_index, author_sort, path) VALUES (11, 'Second Book', NULL, 1, NULL, 'books/11');
+        INSERT INTO books (id, title, pubdate, series_index, author_sort, path) VALUES (12, 'Third Book', NULL, 1, NULL, 'books/12');
+        INSERT INTO data VALUES (101, 11, 'EPUB', 1234, 'Second Book');
+        INSERT INTO data VALUES (102, 12, 'EPUB', 1234, 'Third Book');
+        INSERT INTO book_format_checksums VALUES (29, 12, 'EPUB', 'third-checksum', 'koreader', NULL);
+      `);
+    });
+    withDatabase(pair.appDatabasePath, (database) => {
+      database.prepare('INSERT INTO user (id, name, email, role) VALUES (?, ?, ?, ?)').run(2, 'other-reader', 'other@example.com', 1);
+      const web = database.prepare('INSERT INTO bookmark VALUES (?, ?, ?, ?, ?)');
+      const state = database.prepare('INSERT INTO kobo_reading_state VALUES (?, ?, ?, ?, ?)');
+      const bookmark = database.prepare('INSERT INTO kobo_bookmark VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      const koreader = database.prepare('INSERT INTO kosync_progress VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      database.exec('BEGIN');
+      for (let index = 0; index < 601; index += 1) {
+        web.run(1000 + index, 1, 10, 'EPUB', 'epubcfi(/6/8)');
+        state.run(2000 + index, 1, 10, '2010-01-01T00:00:00Z', null);
+        bookmark.run(3000 + index, 2000 + index, '2010-01-01T00:00:00Z', 'body', 'epub', 'epubcfi(/6/10)', 10, null);
+        koreader.run(4000 + index, 1, 'partial-checksum', 'epubcfi(/6/12)', 12, 'KOReader', 'device', '2010-01-01T00:00:00Z');
+      }
+      web.run(7001, 1, 10, ' EPUB ', 'epubcfi(/6/20)');
+      web.run(7002, 1, 10, 'epub', 'epubcfi(unbalanced(()');
+      web.run(7003, 1, 11, 'EPUB', 'epubcfi(/6/22)');
+      web.run(7004, 1, 12, 'EPUB', 'epubcfi(/6/40)');
+      web.run(7005, 2, 10, 'EPUB', 'epubcfi(/6/50)');
+      koreader.run(7101, 1, 'partial-checksum', 'epubcfi(/6/24)', 55, 'KOReader', 'device', 'January 10, 2026 00:00:00 GMT');
+      koreader.run(7102, 1, 'partial-checksum', 'epubcfi(/6/26)', 150, 'KOReader', 'device', '2026-01-12T00:00:00Z');
+      koreader.run(7103, 1, 'partial-checksum', 'epubcfi(/6/28)', 40, 'KOReader', 'device', '2026-01-09T00:00:00Z');
+      koreader.run(7104, 1, 'third-checksum', 'not-a-cfi', 35, 'KOReader', 'device', '2026-01-10T00:00:00Z');
+      for (const [bookId, oldStateId, newStateId, oldBookmarkId, newBookmarkId] of [
+        [10, 7201, 7202, 7301, 7302],
+        [11, 7203, 7204, 7303, 7304],
+      ]) {
+        state.run(oldStateId, 1, bookId, '2026-01-08T00:00:00Z', null);
+        state.run(newStateId, 1, bookId, '2026-01-09T00:00:00Z', 'January 11, 2026 00:00:00 GMT');
+        bookmark.run(oldBookmarkId, oldStateId, '2026-01-08T00:00:00Z', 'body', 'epub', 'epubcfi(/6/30)', 80, null);
+        bookmark.run(newBookmarkId, newStateId, 'invalid-date', 'body', 'epub', 'epubcfi(/6/32)', 150, null);
+      }
+      database.exec('COMMIT');
+    });
+    const progress = [];
+    const normalizer = new CalibreWebAutomatedNormalizer();
+    for await (const records of makeConnector(importRoot).fetchSourceRecordBatches(configFor(pair))) {
+      expect(records.webProgress.length).toBeLessThanOrEqual(3);
+      expect(records.koreaderProgress.length).toBeLessThanOrEqual(2);
+      expect(records.koboReadingStates.length).toBeLessThanOrEqual(4);
+      expect(records.koboBookmarks.length).toBeLessThanOrEqual(4);
+      progress.push(...normalizer.normalize(records).data.userFileProgress);
+    }
+    expect(progress).toEqual([
+      {
+        sourceUserId: '1',
+        sourceBookId: '10',
+        sourceFileId: '10:100',
+        percentage: 55,
+        cfi: 'epubcfi(/6/32)',
+        pageNumber: null,
+        positionSeconds: null,
+        updatedAt: '2026-01-10T00:00:00.000Z',
+      },
+      {
+        sourceUserId: '1',
+        sourceBookId: '11',
+        sourceFileId: '11:101',
+        percentage: 80,
+        cfi: 'epubcfi(/6/32)',
+        pageNumber: null,
+        positionSeconds: null,
+        updatedAt: '2026-01-08T00:00:00.000Z',
+      },
+      {
+        sourceUserId: '1',
+        sourceBookId: '12',
+        sourceFileId: '12:102',
+        percentage: 35,
+        cfi: 'epubcfi(/6/40)',
+        pageNumber: null,
+        positionSeconds: null,
+        updatedAt: '2026-01-10T00:00:00.000Z',
+      },
+      {
+        sourceUserId: '2',
+        sourceBookId: '10',
+        sourceFileId: '10:100',
+        percentage: null,
+        cfi: 'epubcfi(/6/50)',
+        pageNumber: null,
+        positionSeconds: null,
+        updatedAt: null,
+      },
+    ]);
+  });
+
+  it('reduces KOReader checksum aliases to the newest valid progress for their shared file', async () => {
+    const pair = await createCompatiblePair(importRoot);
+    withDatabase(pair.metadataDatabasePath, (database) => {
+      const checksum = database.prepare('INSERT INTO book_format_checksums VALUES (?, ?, ?, ?, ?, ?)');
+      database.exec('BEGIN');
+      database.exec("INSERT INTO books (id, title, series_index, path) VALUES (11, 'Other Book', 1, 'books/11')");
+      database.exec("INSERT INTO data VALUES (101, 11, 'EPUB', 1234, 'Other Book')");
+      for (let index = 0; index < 501; index += 1) checksum.run(2000 + index, 10, 'EPUB', `history-checksum-${index}`, 'koreader', null);
+      checksum.run(8000, 10, 'EPUB', 'invalid-version-checksum', '', null);
+      checksum.run(8001, 11, 'EPUB', 'conflicted-checksum', 'koreader', null);
+      checksum.run(8002, 10, 'EPUB', 'conflicted-checksum ', 'koreader', null);
+      database.exec('COMMIT');
+    });
+    withDatabase(pair.appDatabasePath, (database) => {
+      const progress = database.prepare('INSERT INTO kosync_progress VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      database.exec('BEGIN');
+      for (let index = 0; index < 501; index += 1)
+        progress.run(3000 + index, 1, `history-checksum-${index}`, 'epubcfi(/6/60)', 71, 'KOReader', 'device', '2026-01-06T00:00:00Z');
+      progress.run(8000, 1, 'invalid-version-checksum', 'epubcfi(/6/62)', 91, 'KOReader', 'device', '2026-01-07T00:00:00Z');
+      progress.run(8001, 1, 'conflicted-checksum', 'epubcfi(/6/64)', 92, 'KOReader', 'device', '2026-01-08T00:00:00Z');
+      database.exec('COMMIT');
+    });
+    const progress = [];
+    const normalizer = new CalibreWebAutomatedNormalizer();
+    for await (const records of makeConnector(importRoot).fetchSourceRecordBatches(configFor(pair))) {
+      expect(records.koreaderProgress.length).toBeLessThanOrEqual(1);
+      progress.push(...normalizer.normalize(records).data.userFileProgress);
+    }
+    expect(progress).toEqual([
+      {
+        sourceUserId: '1',
+        sourceBookId: '10',
+        sourceFileId: '10:100',
+        percentage: 71,
+        cfi: 'epubcfi(/6/60)',
+        pageNumber: null,
+        positionSeconds: null,
+        updatedAt: '2026-01-06T00:00:00.000Z',
+      },
+    ]);
   });
 
   it('continues with reduced capabilities when optional tables or columns are missing', async () => {

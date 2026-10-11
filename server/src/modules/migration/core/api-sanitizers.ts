@@ -81,11 +81,36 @@ export function sanitizePlanArtifactForApi(artifact: MigrationPlanArtifact): Api
     id: artifact.id,
     sourceId: artifact.sourceId,
     profileId: artifact.profileId,
-    plan: artifact.plan,
+    plan: sanitizePlanPreview(artifact.plan),
     summary: artifact.summary,
     createdAt: artifact.createdAt,
     updatedAt: artifact.updatedAt,
   };
+}
+
+export function sanitizePlanPreview(raw: unknown): unknown {
+  const plan = asRecord(raw);
+  const pagination: Record<string, { total: number; limit: number; nextOffset: number | null }> = {};
+  const preview = { ...plan };
+  for (const field of ['matchedBooks', 'unresolvedBooks', 'duplicateBookMatches']) {
+    const rows = plan[field];
+    if (!Array.isArray(rows)) continue;
+    const storedPagination = asRecord(asRecord(plan.previewPagination)[field]);
+    const total = typeof storedPagination.total === 'number' ? storedPagination.total : rows.length;
+    pagination[field] = { total, limit: 40, nextOffset: total > 40 ? 40 : null };
+    preview[field] = field === 'duplicateBookMatches' ? rows.slice(0, 40).map(sanitizeDuplicatePreview) : rows.slice(0, 40);
+  }
+  return Object.keys(pagination).length > 0 ? { ...preview, previewPagination: pagination } : preview;
+}
+
+function sanitizeDuplicatePreview(raw: unknown): unknown {
+  const row = asRecord(raw);
+  const sourceBookIds = Array.isArray(row.sourceBookIds) ? row.sourceBookIds : [];
+  const preview = { ...row };
+  for (const field of ['sourceBookIds', 'sourceCandidates', 'matches', 'strategies']) {
+    if (Array.isArray(row[field])) preview[field] = row[field].slice(0, 40);
+  }
+  return { ...preview, candidatePagination: { total: sourceBookIds.length, limit: 40, nextOffset: sourceBookIds.length > 40 ? 40 : null } };
 }
 
 export function sanitizeRunForApi(run: MigrationRun): ApiMigrationRun {

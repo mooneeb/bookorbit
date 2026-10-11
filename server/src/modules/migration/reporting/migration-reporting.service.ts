@@ -1,281 +1,480 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Readable } from 'node:stream';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 
-import type { SourceBook, SourceExportData } from '../adapters/source-adapter.types';
+import type { RequestUser } from '../../../common/types/request-user';
+import { sanitizeLogValue } from '../../../common/utils/log-sanitize.utils';
+import type { SourceBook } from '../adapters/source-adapter.types';
 import { asRecord } from '../core/coerce';
-import { MigrationRepository } from '../migration.repository';
 import { sanitizeRunForApi } from '../core/api-sanitizers';
+import { MigrationRepository } from '../migration.repository';
 import type { PlannedBookMatch, PlannedDuplicateBookMatch, PlannedUserPreview } from '../planner/planner.types';
+import { MigrationReportRepository, type DuplicateArrayField, type PlanArrayField } from './migration-report.repository';
+
+type Artifact = NonNullable<Awaited<ReturnType<MigrationReportRepository['findArtifact']>>>;
+type DetailKind = 'matched' | 'unresolved' | 'duplicate' | 'users';
+const DETAIL_FIELDS = { matched: 'matchedBooks', unresolved: 'unresolvedBooks', duplicate: 'duplicateBookMatches', users: 'userPreview' } as const;
+const PREVIEW_LIMIT = 40;
+const EXPORT_LIMIT = 100;
+const CSV_HEADERS = [
+  'section',
+  'stage',
+  'entityType',
+  'processed',
+  'imported',
+  'skipped',
+  'unresolved',
+  'failed',
+  'sourceBookId',
+  'sourceTitle',
+  'sourceAuthor',
+  'targetBookId',
+  'targetTitle',
+  'strategy',
+  'sourceUserId',
+  'targetUserId',
+  'username',
+  'reason',
+  'details',
+  'code',
+  'message',
+  'createdAt',
+];
+type CsvRow = Record<string, string | number | null | undefined>;
 
 @Injectable()
 export class MigrationReportingService {
-  constructor(private readonly repo: MigrationRepository) {}
+  private readonly logger = new Logger(MigrationReportingService.name);
 
-  async getRunReport(runId: number) {
-    const run = await this.repo.findRunById(runId);
-    if (!run) throw new NotFoundException(`Migration run not found: ${runId}`);
+  constructor(
+    private readonly repo: MigrationRepository,
+    private readonly reports: MigrationReportRepository,
+  ) {}
 
-    const [metrics, artifact] = await Promise.all([
-      this.repo.listRunMetrics(runId),
-      run.planArtifactId ? this.repo.findPlanArtifactById(run.planArtifactId) : Promise.resolve(null),
-    ]);
-    const totals = summarizeMetrics(metrics);
-    const sourceData = (artifact?.sourceData as SourceExportData | null) ?? null;
-    const plan = artifact?.plan ?? null;
-    const summary = artifact?.summary ?? null;
-    const sourceBooksById = new Map(sourceData?.books.map((book) => [book.sourceBookId, book]) ?? []);
-    const matchedBooks = normalizeMatchedBooks(asRecord(plan).matchedBooks);
-    const unresolvedBooks = normalizeUnresolvedBooks(asRecord(plan).unresolvedBooks, sourceBooksById);
-    const duplicateBookMatches = normalizeDuplicateBookMatches(asRecord(plan).duplicateBookMatches);
-    const userPreview = normalizeUserPreview(asRecord(plan).userPreview, asRecord(summary).perUserPreview);
-    const targetTitlesById = await this.repo.findBookTitlesByIds(
-      uniqueNumbers([...matchedBooks.map((row) => row.targetBookId), ...duplicateBookMatches.map((row) => row.targetBookId)]),
-    );
-
-    return {
-      run: sanitizeRunForApi(run),
-      totals,
-      metrics,
-      plan,
-      summary,
-      details: {
-        matchedBooks: matchedBooks.map((row) => ({
-          sourceBookId: row.sourceBookId,
-          sourceTitle: sourceBooksById.get(row.sourceBookId)?.title ?? null,
-          sourceAuthor: sourceBooksById.get(row.sourceBookId)?.author ?? null,
-          targetBookId: row.targetBookId,
-          targetTitle: targetTitlesById.get(row.targetBookId) ?? null,
-          strategy: row.strategy,
-        })),
-        unresolvedBooks,
-        duplicateBookMatches: duplicateBookMatches.map((row) => ({
-          targetBookId: row.targetBookId,
-          targetTitle: targetTitlesById.get(row.targetBookId) ?? null,
-          sourceBookIds: row.sourceBookIds,
-          sourceTitles: row.sourceBookIds.map((sourceBookId) => sourceBooksById.get(sourceBookId)?.title ?? null),
-          strategies: row.strategies,
-          reason: row.reason,
-        })),
-        userPreview,
-      },
-    };
-  }
-
-  async getRunProgress(runId: number) {
-    const run = await this.repo.findRunById(runId);
-    if (!run) throw new NotFoundException(`Migration run not found: ${runId}`);
-
-    const metrics = await this.repo.listRunMetrics(runId);
-    const totals = metrics.reduce(
-      (acc, row) => ({
-        processed: acc.processed + row.processed,
-        imported: acc.imported + row.imported,
-        skipped: acc.skipped + row.skipped,
-        unresolved: acc.unresolved + row.unresolved,
-        failed: acc.failed + row.failed,
-      }),
-      {
-        processed: 0,
-        imported: 0,
-        skipped: 0,
-        unresolved: 0,
-        failed: 0,
-      },
-    );
-
-    return {
-      run: sanitizeRunForApi(run),
-      totals,
-      metrics,
-    };
-  }
-
-  async exportRunReport(runId: number, requestedFormat?: string) {
-    const report = await this.getRunReport(runId);
-    const format = requestedFormat?.toLowerCase() === 'csv' ? 'csv' : 'json';
-
-    if (format === 'json') {
-      return {
-        format,
-        fileName: `migration-run-${runId}-report.json`,
-        contentType: 'application/json',
-        content: JSON.stringify(report, null, 2),
-      };
+  async getRunReport(runId: number, user: RequestUser) {
+    const context = await this.context(runId, user);
+    const details: Record<string, unknown[]> = {};
+    const detailsPagination: Record<string, { total: number; limit: number; nextOffset: number | null }> = {};
+    const plan = context.artifact?.plan == null ? null : { ...asRecord(context.artifact.plan) };
+    for (const kind of Object.keys(DETAIL_FIELDS) as DetailKind[]) {
+      const page = await this.detailPage(context.artifact, kind, 0, PREVIEW_LIMIT);
+      const field = DETAIL_FIELDS[kind];
+      details[field] = page.items;
+      detailsPagination[field] = { total: page.total, limit: PREVIEW_LIMIT, nextOffset: page.nextOffset };
+      if (plan && context.artifact?.planFields.includes(field)) {
+        plan[field] = (await this.reports.planPage(context.artifact.id, field, 0, PREVIEW_LIMIT))?.items ?? [];
+      }
     }
+    if (plan && context.artifact?.planFields.includes('userMappings')) {
+      plan.userMappings = (await this.reports.planPage(context.artifact.id, 'userMappings', 0, PREVIEW_LIMIT))?.items ?? [];
+    }
+    if (plan) plan.previewPagination = detailsPagination;
+    const summary = context.artifact?.summary == null ? null : { ...asRecord(context.artifact.summary) };
+    if (summary && context.artifact?.hasSummaryPreview) summary.perUserPreview = details.userPreview;
+    return { run: context.run, totals: context.totals, metrics: context.metrics, plan, summary, details, detailsPagination };
+  }
 
-    const rows: Record<string, string | number | null>[] = [
-      {
-        section: 'summary',
-        stage: null,
-        entityType: null,
-        processed: report.totals.processed,
-        imported: report.totals.imported,
-        skipped: report.totals.skipped,
-        unresolved: report.totals.unresolved,
-        failed: report.totals.failed,
-        sourceBookId: null,
-        sourceTitle: null,
-        sourceAuthor: null,
-        targetBookId: null,
-        targetTitle: null,
-        strategy: null,
-        sourceUserId: null,
-        targetUserId: null,
-        username: null,
-        reason: null,
-        details: `matchedBooks=${report.details.matchedBooks.length}; unresolvedBooks=${report.details.unresolvedBooks.length}; mappedUsers=${report.details.userPreview.length}`,
-        code: 'summary',
-        message: `Run state: ${report.run.state}`,
-        createdAt: report.run.updatedAt?.toISOString() ?? report.run.createdAt.toISOString(),
-      },
-      ...report.metrics.map((row) => ({
-        section: 'metrics',
-        stage: row.stage,
-        entityType: row.entityType,
-        processed: row.processed,
-        imported: row.imported,
-        skipped: row.skipped,
-        unresolved: row.unresolved,
-        failed: row.failed,
-        sourceBookId: null,
-        sourceTitle: null,
-        sourceAuthor: null,
-        targetBookId: null,
-        targetTitle: null,
-        strategy: null,
-        sourceUserId: null,
-        targetUserId: null,
-        username: null,
-        reason: null,
-        details: null,
-        code: null,
-        message: null,
-        createdAt: row.updatedAt.toISOString(),
-      })),
-      ...report.details.matchedBooks.map((row) => ({
-        section: 'matched_books',
-        stage: 'shared_overlays',
-        entityType: 'book_match',
-        processed: null,
-        imported: null,
-        skipped: null,
-        unresolved: null,
-        failed: null,
-        sourceBookId: row.sourceBookId,
-        sourceTitle: row.sourceTitle,
-        sourceAuthor: row.sourceAuthor,
-        targetBookId: row.targetBookId,
-        targetTitle: row.targetTitle,
-        strategy: row.strategy,
-        sourceUserId: null,
-        targetUserId: null,
-        username: null,
-        reason: null,
-        details: null,
-        code: null,
-        message: null,
-        createdAt: report.run.updatedAt?.toISOString() ?? report.run.createdAt.toISOString(),
-      })),
-      ...report.details.unresolvedBooks.map((row) => ({
-        section: 'unresolved_books',
-        stage: null,
-        entityType: 'book_match',
-        processed: null,
-        imported: null,
-        skipped: null,
-        unresolved: null,
-        failed: null,
-        sourceBookId: row.sourceBookId,
-        sourceTitle: row.title,
-        sourceAuthor: row.author,
-        targetBookId: null,
-        targetTitle: null,
-        strategy: null,
-        sourceUserId: null,
-        targetUserId: null,
-        username: null,
-        reason: row.reason,
-        details: null,
-        code: null,
-        message: null,
-        createdAt: report.run.updatedAt?.toISOString() ?? report.run.createdAt.toISOString(),
-      })),
-      ...report.details.duplicateBookMatches.map((row) => ({
-        section: 'duplicate_matches',
-        stage: null,
-        entityType: 'book_match',
-        processed: null,
-        imported: null,
-        skipped: null,
-        unresolved: null,
-        failed: null,
-        sourceBookId: row.sourceBookIds.join('|'),
-        sourceTitle: row.sourceTitles.filter((title): title is string => typeof title === 'string').join(' | '),
-        sourceAuthor: null,
-        targetBookId: row.targetBookId,
-        targetTitle: row.targetTitle,
-        strategy: row.strategies.join('|'),
-        sourceUserId: null,
-        targetUserId: null,
-        username: null,
-        reason: row.reason,
-        details: `sourceBookIds=${row.sourceBookIds.join('|')}`,
-        code: null,
-        message: null,
-        createdAt: report.run.updatedAt?.toISOString() ?? report.run.createdAt.toISOString(),
-      })),
-      ...report.details.userPreview.map((row) => ({
-        section: 'user_preview',
-        stage: 'user_state',
-        entityType: 'user_preview',
-        processed: null,
-        imported: null,
-        skipped: null,
-        unresolved: null,
-        failed: null,
-        sourceBookId: null,
-        sourceTitle: null,
-        sourceAuthor: null,
-        targetBookId: null,
-        targetTitle: null,
-        strategy: null,
-        sourceUserId: row.sourceUserId,
-        targetUserId: row.targetUserId,
-        username: row.username,
-        reason: null,
-        details: `statuses=${row.counts.statuses}; fileProgress=${row.counts.fileProgress}; readingSessions=${row.counts.readingSessions}; bookmarks=${row.counts.bookmarks}; annotations=${row.counts.annotations}; shelves=${row.counts.shelves}`,
-        code: null,
-        message: null,
-        createdAt: report.run.updatedAt?.toISOString() ?? report.run.createdAt.toISOString(),
-      })),
-    ];
+  async getRunProgress(runId: number, user: RequestUser) {
+    const run = await this.ownedRun(runId, user);
+    const metrics = await this.repo.listRunMetrics(runId);
+    return { run: sanitizeRunForApi(run), totals: summarizeMetrics(metrics), metrics };
+  }
 
+  async getRunDetails(runId: number, kind: string, offset = 0, limit = PREVIEW_LIMIT, user: RequestUser) {
+    this.assertKind(kind);
+    const context = await this.context(runId, user);
+    return { runId, kind, ...(await this.detailPage(context.artifact, kind, this.offset(offset), this.limit(limit))) };
+  }
+
+  async getPlanMatches(artifactId: number, kind: string, offset = 0, limit = PREVIEW_LIMIT, user: RequestUser) {
+    if (kind !== 'matched' && kind !== 'unresolved' && kind !== 'duplicate')
+      throw new BadRequestException('Match kind must be matched, unresolved, or duplicate.');
+    await this.ownedArtifact(artifactId, user);
+    const boundedOffset = this.offset(offset);
+    const boundedLimit = this.limit(limit);
+    const page = await this.reports.planPage(artifactId, DETAIL_FIELDS[kind], boundedOffset, boundedLimit);
+    return {
+      artifactId,
+      kind,
+      offset: boundedOffset,
+      limit: boundedLimit,
+      total: page?.total ?? 0,
+      nextOffset: nextOffset(boundedOffset, boundedLimit, page?.total ?? 0),
+      items: page?.items ?? [],
+    };
+  }
+
+  async getDuplicateCandidates(artifactId: number, targetBookId: number, offset = 0, limit = PREVIEW_LIMIT, user: RequestUser) {
+    await this.ownedArtifact(artifactId, user);
+    const group = await this.reports.duplicateGroup(artifactId, targetBookId);
+    if (!group) throw new NotFoundException(`Duplicate match not found: ${targetBookId}`);
+    const boundedOffset = this.offset(offset);
+    const boundedLimit = this.limit(limit);
+    const [ids, strategies, matches, existing] = await Promise.all([
+      this.reports.duplicatePage(artifactId, targetBookId, 'sourceBookIds', boundedOffset, boundedLimit),
+      this.reports.duplicatePage(artifactId, targetBookId, 'strategies', boundedOffset, boundedLimit),
+      this.reports.duplicatePage(artifactId, targetBookId, 'matches', boundedOffset, boundedLimit),
+      this.reports.duplicatePage(artifactId, targetBookId, 'sourceCandidates', boundedOffset, boundedLimit),
+    ]);
+    const sourceIds = ids.filter((id): id is string => typeof id === 'string');
+    const books = await this.reports.sourceBooks(artifactId, sourceIds);
+    const items = sourceIds.map((sourceBookId, index) => {
+      const candidate = asRecord(existing[index]);
+      const source = books.get(sourceBookId);
+      return {
+        sourceBookId,
+        title: source?.title ?? candidate.title ?? null,
+        author: source?.author ?? candidate.author ?? null,
+        filePath: source?.filePath ?? candidate.filePath ?? null,
+        strategy: asRecord(matches[index]).strategy ?? strategies[index] ?? candidate.strategy ?? 'title_author',
+      };
+    });
+    return {
+      artifactId,
+      targetBookId,
+      offset: boundedOffset,
+      limit: boundedLimit,
+      total: group.total,
+      nextOffset: nextOffset(boundedOffset, boundedLimit, group.total),
+      items,
+    };
+  }
+
+  async exportRunReport(runId: number, requestedFormat: string | undefined, user: RequestUser) {
+    const context = await this.context(runId, user);
+    const format = requestedFormat?.toLowerCase() === 'csv' ? 'csv' : 'json';
     return {
       format,
-      fileName: `migration-run-${runId}-report.csv`,
-      contentType: 'text/csv; charset=utf-8',
-      content: toCsv(rows),
+      fileName: `migration-run-${runId}-report.${format}`,
+      contentType: format === 'csv' ? 'text/csv; charset=utf-8' : 'application/json',
+      content: Readable.from(this.loggedExport(runId, format, context)),
     };
   }
-}
 
-function toCsv(rows: Record<string, string | number | null>[]): string {
-  if (rows.length === 0) return '';
-  const headers = Object.keys(rows[0]);
-  const lines = [headers.join(',')];
-
-  for (const row of rows) {
-    const values = headers.map((header) => csvCell(row[header]));
-    lines.push(values.join(','));
+  private async *loggedExport(runId: number, format: string, context: Awaited<ReturnType<MigrationReportingService['context']>>) {
+    const startedAt = Date.now();
+    let bytes = 0;
+    this.logger.log(`[migration.report_export] [start] runId=${runId} format=${format} - report export started`);
+    try {
+      for await (const chunk of format === 'csv' ? this.csvReport(context) : this.jsonReport(context)) {
+        bytes += Buffer.byteLength(chunk);
+        yield chunk;
+      }
+      this.logger.log(`[migration.report_export] [end] runId=${runId} durationMs=${Date.now() - startedAt} bytes=${bytes} - report export completed`);
+    } catch (error) {
+      this.logger.error(
+        `[migration.report_export] [fail] runId=${runId} durationMs=${Date.now() - startedAt} errorClass=${error instanceof Error ? error.name : 'Unknown'} error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - report export failed`,
+      );
+      throw error;
+    }
   }
 
-  return lines.join('\n');
+  private async *jsonReport(context: Awaited<ReturnType<MigrationReportingService['context']>>) {
+    yield `{"run":${JSON.stringify(context.run)},"totals":${JSON.stringify(context.totals)},"metrics":${JSON.stringify(context.metrics)},"plan":`;
+    yield* this.artifactObject(context.artifact, 'plan');
+    yield ',"summary":';
+    yield* this.artifactObject(context.artifact, 'summary');
+    yield ',"details":{';
+    let first = true;
+    for (const kind of Object.keys(DETAIL_FIELDS) as DetailKind[]) {
+      yield `${first ? '' : ','}${JSON.stringify(DETAIL_FIELDS[kind])}:[`;
+      first = false;
+      let firstRow = true;
+      for await (const row of this.detailRows(context.artifact, kind)) {
+        if (!firstRow) yield ',';
+        firstRow = false;
+        if (kind === 'duplicate' && context.artifact) yield* this.duplicateDetail(context.artifact, asRecord(row));
+        else yield JSON.stringify(row);
+      }
+      yield ']';
+    }
+    yield '}}';
+  }
+
+  private async *artifactObject(artifact: Artifact | null, kind: 'plan' | 'summary') {
+    const base = artifact?.[kind];
+    if (base == null || !artifact) {
+      yield 'null';
+      return;
+    }
+    const json = JSON.stringify(base);
+    yield json.slice(0, -1);
+    let hasFields = Object.keys(asRecord(base)).length > 0;
+    const fields = kind === 'plan' ? artifact.planFields : artifact.hasSummaryPreview ? ['perUserPreview' as const] : [];
+    for (const field of fields) {
+      yield `${hasFields ? ',' : ''}${JSON.stringify(field)}:[`;
+      hasFields = true;
+      let first = true;
+      for await (const row of this.planRows(artifact.id, field)) {
+        if (!first) yield ',';
+        first = false;
+        if (field === 'duplicateBookMatches') yield* this.duplicatePlan(artifact.id, asRecord(row));
+        else yield JSON.stringify(row);
+      }
+      yield ']';
+    }
+    yield '}';
+  }
+
+  private async *planRows(id: number, field: PlanArrayField | 'perUserPreview') {
+    let offset = 0;
+    while (true) {
+      const page = await this.reports.planPage(id, field, offset, EXPORT_LIMIT);
+      if (!page || page.items.length === 0) return;
+      for (const row of page.items) yield row;
+      offset += EXPORT_LIMIT;
+      if (offset >= page.total) return;
+    }
+  }
+
+  private async *duplicatePlan(id: number, preview: Record<string, unknown>) {
+    const targetBookId = Number(preview.targetBookId);
+    const group = await this.reports.duplicateGroup(id, targetBookId);
+    if (!group) {
+      yield JSON.stringify(preview);
+      return;
+    }
+    yield JSON.stringify(group.base).slice(0, -1);
+    let hasFields = Object.keys(group.base).length > 0;
+    for (const field of group.fields as DuplicateArrayField[]) {
+      yield `${hasFields ? ',' : ''}${JSON.stringify(field)}:[`;
+      hasFields = true;
+      yield* this.duplicateArray(id, targetBookId, field, group.total);
+      yield ']';
+    }
+    yield '}';
+  }
+
+  private async *duplicateArray(id: number, targetBookId: number, field: DuplicateArrayField, total: number, titles = false) {
+    let first = true;
+    for (let offset = 0; offset < total; offset += EXPORT_LIMIT) {
+      const page = await this.reports.duplicatePage(id, targetBookId, field, offset, EXPORT_LIMIT);
+      const books = titles
+        ? await this.reports.sourceBooks(
+            id,
+            page.filter((row): row is string => typeof row === 'string'),
+          )
+        : null;
+      for (const row of page) {
+        if (!first) yield ',';
+        first = false;
+        yield JSON.stringify(titles ? (books?.get(String(row))?.title ?? null) : row);
+      }
+    }
+  }
+
+  private async *duplicateDetail(artifact: Artifact, preview: Record<string, unknown>) {
+    const targetBookId = Number(preview.targetBookId);
+    const group = await this.reports.duplicateGroup(artifact.id, targetBookId);
+    const total = group?.total ?? 0;
+    yield `{"targetBookId":${targetBookId},"targetTitle":${JSON.stringify(preview.targetTitle ?? null)},"sourceBookIds":[`;
+    yield* this.duplicateArray(artifact.id, targetBookId, 'sourceBookIds', total);
+    yield '],"sourceTitles":[';
+    yield* this.duplicateArray(artifact.id, targetBookId, 'sourceBookIds', total, true);
+    yield '],"strategies":[';
+    yield* this.duplicateArray(artifact.id, targetBookId, 'strategies', total);
+    yield '],"reason":"duplicate_target_match"}';
+  }
+
+  private async *detailRows(artifact: Artifact | null, kind: DetailKind) {
+    let offset = 0;
+    while (true) {
+      const page = await this.detailPage(artifact, kind, offset, EXPORT_LIMIT);
+      for (const row of page.items) yield row;
+      offset += EXPORT_LIMIT;
+      if (offset >= page.total) return;
+    }
+  }
+
+  private async *csvReport(context: Awaited<ReturnType<MigrationReportingService['context']>>) {
+    const createdAt = (context.run.updatedAt ?? context.run.createdAt).toISOString();
+    const counts: Partial<Record<DetailKind, number>> = {};
+    for (const kind of ['matched', 'unresolved', 'users'] as const) counts[kind] = (await this.detailPage(context.artifact, kind, 0, 1)).total;
+    yield `${CSV_HEADERS.join(',')}\n`;
+    yield csvLine({
+      section: 'summary',
+      ...context.totals,
+      details: `matchedBooks=${counts.matched}; unresolvedBooks=${counts.unresolved}; mappedUsers=${counts.users}`,
+      code: 'summary',
+      message: `Run state: ${context.run.state}`,
+      createdAt,
+    });
+    for (const metric of context.metrics)
+      yield csvLine({
+        section: 'metrics',
+        stage: metric.stage,
+        entityType: metric.entityType,
+        processed: metric.processed,
+        imported: metric.imported,
+        skipped: metric.skipped,
+        unresolved: metric.unresolved,
+        failed: metric.failed,
+        createdAt: metric.updatedAt.toISOString(),
+      });
+    for (const kind of Object.keys(DETAIL_FIELDS) as DetailKind[]) {
+      for await (const value of this.detailRows(context.artifact, kind)) {
+        const row = asRecord(value);
+        if (kind === 'matched')
+          yield csvLine({ section: 'matched_books', stage: 'shared_overlays', entityType: 'book_match', ...row, createdAt } as CsvRow);
+        else if (kind === 'unresolved')
+          yield csvLine({
+            section: 'unresolved_books',
+            entityType: 'book_match',
+            sourceBookId: String(row.sourceBookId),
+            sourceTitle: row.title as string | null,
+            sourceAuthor: row.author as string | null,
+            reason: String(row.reason),
+            createdAt,
+          });
+        else if (kind === 'users') {
+          const counts = asRecord(row.counts);
+          yield csvLine({
+            section: 'user_preview',
+            stage: 'user_state',
+            entityType: 'user_preview',
+            sourceUserId: String(row.sourceUserId),
+            targetUserId: Number(row.targetUserId),
+            username: String(row.username),
+            details: `statuses=${String(counts.statuses)}; fileProgress=${String(counts.fileProgress)}; readingSessions=${String(counts.readingSessions)}; bookmarks=${String(counts.bookmarks)}; annotations=${String(counts.annotations)}; shelves=${String(counts.shelves)}`,
+            createdAt,
+          });
+        } else if (context.artifact) yield* this.duplicateCsv(context.artifact, row, createdAt);
+      }
+    }
+  }
+
+  private async *duplicateCsv(artifact: Artifact, row: Record<string, unknown>, createdAt: string) {
+    const targetBookId = Number(row.targetBookId);
+    const group = await this.reports.duplicateGroup(artifact.id, targetBookId);
+    const total = group?.total ?? 0;
+    const base: CsvRow = {
+      section: 'duplicate_matches',
+      entityType: 'book_match',
+      targetBookId,
+      targetTitle: row.targetTitle as string | null,
+      reason: 'duplicate_target_match',
+      createdAt,
+    };
+    for (let index = 0; index < CSV_HEADERS.length; index += 1) {
+      if (index) yield ',';
+      const field = CSV_HEADERS[index];
+      if (['sourceBookId', 'sourceTitle', 'strategy', 'details'].includes(field)) {
+        yield '"';
+        if (field === 'details') yield 'sourceBookIds=';
+        let first = true;
+        for (let offset = 0; offset < total; offset += EXPORT_LIMIT) {
+          const values = await this.reports.duplicatePage(
+            artifact.id,
+            targetBookId,
+            field === 'strategy' ? 'strategies' : 'sourceBookIds',
+            offset,
+            EXPORT_LIMIT,
+          );
+          const books =
+            field === 'sourceTitle'
+              ? await this.reports.sourceBooks(
+                  artifact.id,
+                  values.filter((v): v is string => typeof v === 'string'),
+                )
+              : null;
+          for (const value of values) {
+            const text = field === 'sourceTitle' ? books?.get(String(value))?.title : String(value);
+            if (text == null) continue;
+            if (!first) yield field === 'sourceTitle' ? ' | ' : '|';
+            first = false;
+            yield text.replace(/"/g, '""');
+          }
+        }
+        yield '"';
+      } else yield csvCell(base[field]);
+    }
+    yield '\n';
+  }
+
+  private async detailPage(artifact: Artifact | null, kind: DetailKind, offset: number, limit: number) {
+    const field = kind === 'users' && !artifact?.hasUserPreview ? 'perUserPreview' : DETAIL_FIELDS[kind];
+    const page = artifact ? await this.reports.planPage(artifact.id, field, offset, limit) : null;
+    const raw = page?.items ?? [];
+    const sourceIds = raw.flatMap((value) => {
+      const row = asRecord(value);
+      return typeof row.sourceBookId === 'string'
+        ? [row.sourceBookId]
+        : Array.isArray(row.sourceBookIds)
+          ? row.sourceBookIds.filter((id): id is string => typeof id === 'string')
+          : [];
+    });
+    const targetIds = raw.flatMap((value) => (typeof asRecord(value).targetBookId === 'number' ? [Number(asRecord(value).targetBookId)] : []));
+    const [books, titles] = await Promise.all([
+      artifact ? this.reports.sourceBooks(artifact.id, sourceIds) : Promise.resolve(new Map()),
+      this.repo.findBookTitlesByIds(uniqueNumbers(targetIds)),
+    ]);
+    let items: unknown[];
+    if (kind === 'matched')
+      items = normalizeMatchedBooks(raw).map((row) => ({
+        ...row,
+        sourceTitle: books.get(row.sourceBookId)?.title ?? null,
+        sourceAuthor: books.get(row.sourceBookId)?.author ?? null,
+        targetTitle: titles.get(row.targetBookId) ?? null,
+      }));
+    else if (kind === 'unresolved') items = normalizeUnresolvedBooks(raw, books);
+    else if (kind === 'duplicate')
+      items = normalizeDuplicateBookMatches(raw).map((row, index) => ({
+        targetBookId: row.targetBookId,
+        targetTitle: titles.get(row.targetBookId) ?? null,
+        sourceBookIds: row.sourceBookIds,
+        sourceTitles: row.sourceBookIds.map((id) => books.get(id)?.title ?? null),
+        strategies: row.strategies,
+        reason: row.reason,
+        candidatePagination: asRecord(raw[index]).candidatePagination,
+      }));
+    else items = normalizeUserPreview(raw, []);
+    const total = page?.total ?? 0;
+    return { offset, limit, total, nextOffset: nextOffset(offset, limit, total), items };
+  }
+
+  private async ownedRun(runId: number, user: RequestUser) {
+    const run = await this.repo.findRunById(runId);
+    if (!run) throw new NotFoundException(`Migration run not found: ${runId}`);
+    if (!user.isSuperuser && run.triggeredByUserId !== user.id) throw new ForbiddenException('Migration belongs to another user');
+    return run;
+  }
+
+  private async ownedArtifact(id: number, user: RequestUser) {
+    const artifact = await this.reports.findArtifact(id);
+    if (!artifact) throw new NotFoundException(`Migration plan artifact not found: ${id}`);
+    if (!user.isSuperuser && artifact.createdByUserId !== user.id) throw new ForbiddenException('Migration belongs to another user');
+    return artifact;
+  }
+
+  private async context(runId: number, user: RequestUser) {
+    const run = await this.ownedRun(runId, user);
+    const [metrics, artifact] = await Promise.all([
+      this.repo.listRunMetrics(runId),
+      run.planArtifactId ? this.ownedArtifact(run.planArtifactId, user) : Promise.resolve(null),
+    ]);
+    return { run: sanitizeRunForApi(run), metrics, totals: summarizeMetrics(metrics), artifact };
+  }
+
+  private assertKind(kind: string): asserts kind is DetailKind {
+    if (!Object.hasOwn(DETAIL_FIELDS, kind)) throw new BadRequestException('Detail kind must be matched, unresolved, duplicate, or users.');
+  }
+  private limit(limit: number) {
+    return Math.min(Math.max(Math.trunc(limit), 1), EXPORT_LIMIT);
+  }
+  private offset(offset: number) {
+    return Math.max(Math.trunc(offset), 0);
+  }
 }
 
+function nextOffset(offset: number, limit: number, total: number) {
+  return offset + limit < total ? offset + limit : null;
+}
+function csvLine(row: CsvRow) {
+  return `${CSV_HEADERS.map((field) => csvCell(row[field])).join(',')}\n`;
+}
 function csvCell(value: string | number | null | undefined): string {
-  if (value === null || value === undefined) return '';
+  if (value == null) return '';
   const text = String(value);
-  if (!/[",\n]/.test(text)) return text;
-  return `"${text.replace(/"/g, '""')}"`;
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 function summarizeMetrics(metrics: Array<{ processed: number; imported: number; skipped: number; unresolved: number; failed: number }>) {
@@ -311,7 +510,7 @@ function normalizeMatchedBooks(value: unknown): PlannedBookMatch[] {
 
 function normalizeUnresolvedBooks(
   value: unknown,
-  sourceBooksById: Map<string, SourceBook>,
+  sourceBooksById: Map<string, Pick<SourceBook, 'title' | 'author'>>,
 ): Array<{ sourceBookId: string; title: string | null; author: string | null; reason: string }> {
   if (!Array.isArray(value)) return [];
   return value.flatMap((row) => {

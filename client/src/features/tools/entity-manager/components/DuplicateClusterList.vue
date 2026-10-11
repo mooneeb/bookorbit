@@ -11,6 +11,7 @@ const props = defineProps<{
   activeKey: string | null
   page: number
   totalPages: number
+  loading?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -29,7 +30,7 @@ function primaryName(cluster: DuplicateCluster): string {
 }
 
 function otherCount(cluster: DuplicateCluster): number {
-  return cluster.entities.length - 1
+  return (cluster.entityTotal ?? cluster.entities.length) - 1
 }
 
 function similarityPercent(cluster: DuplicateCluster): number {
@@ -83,7 +84,7 @@ function handleNextPage(): void {
       <button
         type="button"
         class="grid size-7 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        :disabled="page <= 1"
+        :disabled="loading || page <= 1"
         :aria-label="t('tools.entityManager.browse.previousPage')"
         @click="handlePrevPage"
       >
@@ -93,7 +94,7 @@ function handleNextPage(): void {
       <button
         type="button"
         class="grid size-7 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        :disabled="page >= totalPages"
+        :disabled="loading || page >= totalPages"
         :aria-label="t('tools.entityManager.browse.nextPage')"
         @click="handleNextPage"
       >

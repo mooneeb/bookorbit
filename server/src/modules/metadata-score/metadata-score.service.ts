@@ -2,12 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import type { MetadataScoreRecalculationState, MetadataScoreWeights } from '@bookorbit/types';
 import { AppSettingsService } from '../app-settings/app-settings.service';
-import { MetadataScoreRepository } from './metadata-score.repository';
+import { MetadataScoreRepository, type MetadataScoreExecutor } from './metadata-score.repository';
+import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { MetadataScoreScorer, type ScoreData } from './metadata-score.scorer';
 
 const RECALCULATION_PAGE_SIZE = 200;
 const RECALCULATION_WRITE_CONCURRENCY = 25;
-const ON_DEMAND_WRITE_CONCURRENCY = 25;
+const ON_DEMAND_BATCH_SIZE = 500;
 const RECALCULATION_EVENT = 'metadata_score.recalculate_all';
 const RECALCULATION_BOOK_EVENT = 'metadata_score.recalculate_book';
 
@@ -75,14 +76,37 @@ export class MetadataScoreService {
     });
   }
 
-  async calculateAndSaveMany(bookIds: number[]): Promise<void> {
+  async calculateAndSaveMany(bookIds: number[], executor?: MetadataScoreExecutor): Promise<void> {
     const uniqueBookIds = [...new Set(bookIds)].filter((bookId) => Number.isInteger(bookId) && bookId > 0);
     if (uniqueBookIds.length === 0) return;
 
     const weights = await this.appSettings.getMetadataScoreWeights();
-    for (let index = 0; index < uniqueBookIds.length; index += ON_DEMAND_WRITE_CONCURRENCY) {
-      const chunk = uniqueBookIds.slice(index, index + ON_DEMAND_WRITE_CONCURRENCY);
-      await Promise.all(chunk.map((bookId) => this.enqueueBookCalculation(bookId, () => this.calculateAndSaveWithWeights(bookId, weights))));
+    for (let index = 0; index < uniqueBookIds.length; index += ON_DEMAND_BATCH_SIZE) {
+      const chunk = uniqueBookIds.slice(index, index + ON_DEMAND_BATCH_SIZE);
+      if (executor) {
+        const rows = await this.repo.loadScoreDataMany(chunk, executor);
+        await this.repo.updateMetadataScores(
+          rows.map(({ bookId, data }) => ({ bookId, score: this.scorer.compute(data, weights) })),
+          executor,
+        );
+        continue;
+      }
+      const previous = chunk.map((bookId) => (this.pendingBookCalculations.get(bookId) ?? Promise.resolve()).catch(() => undefined));
+      const calculation = Promise.all(previous).then(async () => {
+        const rows = await this.repo.loadScoreDataMany(chunk, executor);
+        await this.repo.updateMetadataScores(
+          rows.map(({ bookId, data }) => ({ bookId, score: this.scorer.compute(data, weights) })),
+          executor,
+        );
+      });
+      for (const bookId of chunk) this.pendingBookCalculations.set(bookId, calculation);
+      try {
+        await calculation;
+      } finally {
+        for (const bookId of chunk) {
+          if (this.pendingBookCalculations.get(bookId) === calculation) this.pendingBookCalculations.delete(bookId);
+        }
+      }
     }
   }
 
@@ -189,7 +213,7 @@ export class MetadataScoreService {
   }
 
   private sanitizeErrorMessage(message: string): string {
-    return message.replace(/[\r\n"]/g, ' ').slice(0, 200);
+    return sanitizeLogValue(message, 200);
   }
 
   private makeInitialStatus(): MetadataRecalculationStatus {

@@ -10960,7 +10960,18 @@
         "thresholdLabel": "Minimum similarity",
         "thresholdValue": "{percent}%+",
         "willBeMerged": "{count, plural, one {# entity will be merged and removed} other {# entities will be merged and removed}}",
-        "chooseTargetHint": "Select the entity to keep. Everything else in the group merges into it."
+        "chooseTargetHint": "Select the entity to keep. Everything else in the group merges into it.",
+        "chooseSelectedHint": "Choose the entity to keep and select entities to merge on this page.",
+        "entityPageCount": "{count} of {total} entities",
+        "pairPageCount": "Pair details: {count} of {total} pairs",
+        "detailPage": "Group page {page} of {pages}",
+        "previousDetailPage": "Previous group detail page",
+        "nextDetailPage": "Next group detail page",
+        "includeInMerge": "Include {name} in merge",
+        "dismissDisplayedPairs": "Dismiss displayed pairs",
+        "previewSelectedMerge": "Preview selected merge",
+        "reviewSelectedMerge": "Review selected merge",
+        "notSelectedForMerge": "Not selected for merge"
       },
       "dismissed": {
         "loading": "Loading dismissed pairs...",
@@ -10968,7 +10979,11 @@
         "restore": "Restore",
         "restoreTitle": "Restore this pair",
         "hidePairs": "Hide dismissed pairs",
-        "showPairs": "Show dismissed pairs"
+        "showPairs": "Show dismissed pairs",
+        "pageSummary": "Dismissed page {page} of {pages}",
+        "previousPage": "Previous dismissed page",
+        "nextPage": "Next dismissed page",
+        "pairCount": "{count, plural, one {# dismissed pair} other {# dismissed pairs}}"
       },
       "browse": {
         "searchPlaceholder": "Search...",

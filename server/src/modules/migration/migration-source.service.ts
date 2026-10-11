@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 
 import type { MigrationSource } from '../../db/schema';
+import type { RequestUser } from '../../common/types/request-user';
 import { CreateMigrationSourceDto } from './dto/create-migration-source.dto';
 import { TestMigrationSourceDto } from './dto/test-migration-source.dto';
 import { parseConnectionConfig, PASSWORD_REDACTED_SENTINEL } from './core/connection-config';
@@ -8,6 +9,7 @@ import { sanitizeSourceForApi } from './core/api-sanitizers';
 import { MigrationEncryptionService } from './core/migration-encryption.service';
 import { MigrationRepository } from './migration.repository';
 import { SourceAdapterRegistry } from './adapters/source-adapter.registry';
+import { assertMigrationOwner } from './core/migration-access';
 
 const ACTIVE_LIVE_STATES = new Set(['running']);
 
@@ -28,9 +30,10 @@ export class MigrationSourceService {
     return adapter.validate(parseConnectionConfig(dto.type, dto.connectionConfig));
   }
 
-  async validateSourceById(sourceId: number) {
+  async validateSourceById(sourceId: number, user: RequestUser) {
     const source = await this.repo.findSourceById(sourceId);
     if (!source) throw new NotFoundException(`Migration source not found: ${sourceId}`);
+    assertMigrationOwner(source.createdByUserId, user);
 
     const adapter = this.adapterRegistry.get(source.type);
     const decryptedConfig = this.encryption.decryptConfig(source.connectionConfig);
@@ -52,13 +55,14 @@ export class MigrationSourceService {
     return result;
   }
 
-  async createSource(dto: CreateMigrationSourceDto, userId: number) {
+  async createSource(dto: CreateMigrationSourceDto, user: RequestUser) {
     await this.assertNoGlobalActiveRun();
 
     const adapter = this.adapterRegistry.get(dto.type);
 
-    const sources = await this.repo.listSources();
+    const sources = await this.repo.listSources(user.id);
     const existingSource = sources[0] ?? null;
+    if (existingSource) assertMigrationOwner(existingSource.createdByUserId, user);
     const connectionConfig = resolveConnectionConfig(dto.connectionConfig, existingSource, this.encryption);
 
     const validation = await adapter.validate(parseConnectionConfig(dto.type, connectionConfig));
@@ -80,7 +84,7 @@ export class MigrationSourceService {
         counts: validation.counts,
         missingTables: validation.missingTables,
       },
-      createdByUserId: userId,
+      createdByUserId: user.id,
     } as const;
 
     const source = existingSource
@@ -101,11 +105,11 @@ export class MigrationSourceService {
     });
   }
 
-  async resetSource(sourceId: number): Promise<void> {
-    await this.assertNoGlobalActiveRun();
-
+  async resetSource(sourceId: number, user: RequestUser): Promise<void> {
     const source = await this.repo.findSourceById(sourceId);
     if (!source) throw new NotFoundException(`Migration source not found: ${sourceId}`);
+    assertMigrationOwner(source.createdByUserId, user);
+    await this.assertNoGlobalActiveRun();
 
     const runs = await this.repo.listRuns(sourceId);
     if (runs.length > 0) {
@@ -116,9 +120,10 @@ export class MigrationSourceService {
     if (!deleted) throw new InternalServerErrorException('Failed to reset migration setup');
   }
 
-  async getSourcePathPrefixes(sourceId: number): Promise<{ prefixes: string[] }> {
+  async getSourcePathPrefixes(sourceId: number, user: RequestUser): Promise<{ prefixes: string[] }> {
     const source = await this.repo.findSourceById(sourceId);
     if (!source) throw new NotFoundException(`Migration source not found: ${sourceId}`);
+    assertMigrationOwner(source.createdByUserId, user);
     const adapter = this.adapterRegistry.get(source.type);
     if (!adapter.fetchPathPrefixes) return { prefixes: [] };
     const decryptedConfig = this.encryption.decryptConfig(source.connectionConfig);

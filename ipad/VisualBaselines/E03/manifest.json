@@ -1,0 +1,612 @@
+{
+  "version": 1,
+  "issue": 4,
+  "representativeProfiles": [
+    "pro13-portrait-light",
+    "pro11-landscape-dark",
+    "pro11-portrait-large",
+    "pro13-narrow-dark"
+  ],
+  "nativeNarrowCounterpart": "pro13-landscape-dark-large",
+  "nativeNarrowWindow": "requires actual app window evidence; counterpart does not cover narrow windows",
+  "entries": [
+    {
+      "surface": "native",
+      "source": "ipad/UITests/AcquisitionJourneyTests.swift",
+      "tests": [
+        "BookOrbitUITests/AcquisitionJourneyTests/testIPADE03A01NativeFileSelectionDockReviewFinalizeAndReader",
+        "BookOrbitUITests/AcquisitionJourneyTests/testIPADE03A01ServerDockScanReviewDurableFinalizeAndReader"
+      ],
+      "screenshotNames": [
+        "IPAD-E03-A01-native-partial-upload-held",
+        "IPAD-E03-A01-dock-review-preview",
+        "IPAD-E03-A01-server-dock-folder-scanned",
+        "IPAD-E03-A01-scanned-dock-review-preview",
+        "IPAD-E03-A01-durable-import-before-relaunch",
+        "IPAD-E03-A01-durable-import-restored",
+        "IPAD-E03-A01-native-reader-<bookID>"
+      ],
+      "accessibilityAuditAuthored": true,
+      "performanceMetricsAuthored": false
+    },
+    {
+      "surface": "native",
+      "source": "ipad/UITests/BulkActionsJourneyTests.swift",
+      "tests": [
+        "BookOrbitUITests/BulkActionsJourneyTests/testIPADE03A04SelectedPreviewApplyAndContentExport",
+        "BookOrbitUITests/BulkActionsJourneyTests/testIPADE03A04CancelledCommittedBatchRequiresFreshReviewAfterRelaunch",
+        "BookOrbitUITests/BulkActionsJourneyTests/testIPADE03A04InvalidDraftShowsErrorWithoutApplying",
+        "BookOrbitUITests/BulkActionsJourneyTests/testIPADE03A04RestrictedAccountHidesBulkActions"
+      ],
+      "screenshotNames": [
+        "IPAD-E03-A04-selection-retained-across-pages",
+        "IPAD-E03-A04-selected-edit-preview",
+        "IPAD-E03-A04-selected-edit-completed",
+        "IPAD-E03-A04-selected-native-reader-<id>-reopened",
+        "IPAD-E03-A04-content-export-preview",
+        "IPAD-E03-A04-streamed-export-ready",
+        "IPAD-E03-A04-native-files-delivery",
+        "IPAD-E03-A04-cancelled-delivery-retry",
+        "IPAD-E03-A04-cancelled-committed-response",
+        "IPAD-E03-A04-relaunched-batch-needs-review",
+        "IPAD-E03-A04-recovered-current-value-preview",
+        "IPAD-E03-A04-invalid-draft-error",
+        "IPAD-E03-A04-restricted-actions-hidden"
+      ],
+      "accessibilityAuditAuthored": true,
+      "performanceMetricsAuthored": false
+    },
+    {
+      "surface": "native",
+      "source": "ipad/UITests/EntityManagementJourneyTests.swift",
+      "tests": [
+        "BookOrbitUITests/EntityManagementJourneyTests/testIPADE03A05EntityRenamePreviewCancelApplyPreservesBook",
+        "BookOrbitUITests/EntityManagementJourneyTests/testIPADE03A05EntityManagementHiddenForRestrictedRole",
+        "BookOrbitUITests/EntityManagementJourneyTests/testIPADE03A05DuplicateComponentPagesWithoutAccumulation"
+      ],
+      "screenshotNames": [
+        "IPAD-E03-A05-entities-directory",
+        "IPAD-E03-A05-entities-rename-preview",
+        "IPAD-E03-A05-entities-rename-result",
+        "IPAD-E03-A05-entities-permission-denied",
+        "IPAD-E03-A05-entities-component-page-1",
+        "IPAD-E03-A05-entities-component-page-2"
+      ],
+      "accessibilityAuditAuthored": false,
+      "performanceMetricsAuthored": false
+    },
+    {
+      "surface": "native",
+      "source": "ipad/UITests/LibraryManagementJourneyTests.swift",
+      "tests": [
+        "BookOrbitUITests/LibraryManagementJourneyTests/testIPADE03ManagementNavigationUsesSpecificPermissions"
+      ],
+      "screenshotNames": ["IPAD-E03-permission-scoped-management-navigation"],
+      "accessibilityAuditAuthored": false,
+      "performanceMetricsAuthored": false
+    },
+    {
+      "surface": "native",
+      "source": "ipad/UITests/MaintenanceJourneyTests.swift",
+      "tests": [
+        "BookOrbitUITests/MaintenanceJourneyTests/testIPADE03A05MaintenancePreviewPagingAndCoverReview",
+        "BookOrbitUITests/MaintenanceJourneyTests/testIPADE03A05MergePreviewApplyAndReadableFileRepair",
+        "BookOrbitUITests/MaintenanceJourneyTests/testIPADE03A05MaintenanceHiddenWithoutSpecificPermission"
+      ],
+      "screenshotNames": [
+        "IPAD-E03-A05-maintenance-duplicates-preview",
+        "IPAD-E03-A05-maintenance-duplicate-result",
+        "IPAD-E03-A05-maintenance-cover-cleanup-preview",
+        "IPAD-E03-A05-maintenance-landscape",
+        "IPAD-E03-A05-native-merge-preview",
+        "IPAD-E03-A05-native-merge-result",
+        "IPAD-E03-A05-native-repair-preview",
+        "IPAD-E03-A05-native-repair-result",
+        "IPAD-E03-A05-maintenance-reader-denied"
+      ],
+      "accessibilityAuditAuthored": true,
+      "performanceMetricsAuthored": false
+    },
+    {
+      "surface": "native",
+      "source": "ipad/UITests/MaintenanceSettingsJourneyTests.swift",
+      "tests": [
+        "BookOrbitUITests/MaintenanceSettingsJourneyTests/testIPADE03A05BaselineSettingsAndConfirmedIdempotentActions",
+        "BookOrbitUITests/MaintenanceSettingsJourneyTests/testIPADE03A05BaselineSettingsHiddenFromReader",
+        "BookOrbitUITests/MaintenanceSettingsJourneyTests/testIPADE03A05SettingsPermissionDoesNotExposeSuperuserBackfill"
+      ],
+      "screenshotNames": [
+        "IPAD-E03-A05-baseline-settings-saved",
+        "IPAD-E03-A05-recommendation-review",
+        "IPAD-E03-A05-recommendation-outcome",
+        "IPAD-E03-A05-achievement-review",
+        "IPAD-E03-A05-achievement-outcome",
+        "IPAD-E03-A05-baseline-relaunch-reconciled",
+        "IPAD-E03-A05-baseline-reader-denied",
+        "IPAD-E03-A05-settings-permission-without-superuser"
+      ],
+      "accessibilityAuditAuthored": true,
+      "performanceMetricsAuthored": false
+    },
+    {
+      "surface": "native",
+      "source": "ipad/UITests/MigrationJourneyTests.swift",
+      "tests": [
+        "BookOrbitUITests/MigrationJourneyTests/testIPADE03A03ProviderConfigurationAndFailure",
+        "BookOrbitUITests/MigrationJourneyTests/testIPADE03A03MigrationRoundTrip"
+      ],
+      "screenshotNames": [
+        "IPAD-E03-A03-config-<provider>",
+        "IPAD-E03-A03-source-validation-error",
+        "IPAD-E03-A03-migration-permission-hidden",
+        "IPAD-E03-A03-<type>-<mode>-configured",
+        "IPAD-E03-A03-<type>-<mode>-source-interrupted",
+        "IPAD-E03-A03-<type>-<mode>-dry-run",
+        "IPAD-E03-A03-<type>-<mode>-running-before-cancel",
+        "IPAD-E03-A03-<type>-<mode>-cancelled",
+        "IPAD-E03-A03-<type>-<mode>-same-run-retried-report",
+        "IPAD-E03-A03-<type>-<mode>-report-relaunched",
+        "IPAD-E03-A03-<type>-<mode>-report-landscape",
+        "IPAD-E03-A03-<type>-<mode>-<format>-reader-open-<reopen>",
+        "IPAD-E03-A03-<type>-<mode>-preserved-private-note-in-hub"
+      ],
+      "accessibilityAuditAuthored": true,
+      "performanceMetricsAuthored": false
+    },
+    {
+      "surface": "native",
+      "source": "ipad/UITests/RequestAdministrationJourneyTests.swift",
+      "tests": [
+        "BookOrbitUITests/RequestAdministrationJourneyTests/testIPADE03AdminSourceClientConfiguration",
+        "BookOrbitUITests/RequestAdministrationJourneyTests/testIPADE03ProwlarrSyncAndManagedSourceToggle",
+        "BookOrbitUITests/RequestAdministrationJourneyTests/testIPADE03PluginFilesPickerReviewInstallCheckAndRemove",
+        "BookOrbitUITests/RequestAdministrationJourneyTests/testIPADE03AutomationDestinationAndReleaseTierPersist",
+        "BookOrbitUITests/RequestAdministrationJourneyTests/testIPADE03ReaderRequestPreferencePersists",
+        "BookOrbitUITests/RequestAdministrationJourneyTests/testIPADE03ModeratorCannotAccessConfiguration"
+      ],
+      "screenshotNames": [
+        "IPAD-E03-REQUEST-ADMIN-native-source-form",
+        "IPAD-E03-REQUEST-ADMIN-native-source-tested",
+        "IPAD-E03-REQUEST-ADMIN-native-source-network-persisted",
+        "IPAD-E03-REQUEST-ADMIN-native-client-form",
+        "IPAD-E03-REQUEST-ADMIN-native-client-tested",
+        "IPAD-E03-REQUEST-ADMIN-native-hardlink-tested",
+        "IPAD-E03-REQUEST-ADMIN-native-reconciliation-empty",
+        "IPAD-E03-REQUEST-ADMIN-native-reconciliation-orphan",
+        "IPAD-E03-REQUEST-ADMIN-native-reconciliation-orphan-removed",
+        "IPAD-E03-REQUEST-ADMIN-native-manager-form",
+        "IPAD-E03-REQUEST-ADMIN-native-manager-tested",
+        "IPAD-E03-REQUEST-ADMIN-native-manager-synced",
+        "IPAD-E03-REQUEST-ADMIN-native-managed-source-disabled",
+        "IPAD-E03-REQUEST-ADMIN-native-plugin-source-review",
+        "IPAD-E03-REQUEST-ADMIN-native-plugin-installed",
+        "IPAD-E03-REQUEST-ADMIN-native-plugin-unsupported-update",
+        "IPAD-E03-REQUEST-ADMIN-native-plugin-removed",
+        "IPAD-E03-REQUEST-ADMIN-native-release-tier",
+        "IPAD-E03-REQUEST-ADMIN-native-automation-saved",
+        "IPAD-E03-REQUEST-ADMIN-native-automation-reloaded",
+        "IPAD-E03-REQUEST-ADMIN-native-reader-preference-saved",
+        "IPAD-E03-REQUEST-ADMIN-native-reader-preference-reloaded",
+        "IPAD-E03-REQUEST-ADMIN-moderator-permissions"
+      ],
+      "accessibilityAuditAuthored": false,
+      "performanceMetricsAuthored": false
+    },
+    {
+      "surface": "native",
+      "source": "ipad/UITests/RequestLifecycleJourneyTests.swift",
+      "tests": [
+        "BookOrbitUITests/RequestLifecycleJourneyTests/testIPADE03A02RequestCreateAndCancel",
+        "BookOrbitUITests/RequestLifecycleJourneyTests/testIPADE03A02SelfFulfilReleaseAndReadPDF",
+        "BookOrbitUITests/RequestLifecycleJourneyTests/testIPADE03A02RestrictedUserCannotReachRequests",
+        "BookOrbitUITests/RequestLifecycleJourneyTests/testIPADE03A02JoinAndUnsubscribe"
+      ],
+      "screenshotNames": [
+        "IPAD-E03-A02-request-created",
+        "IPAD-E03-A02-request-cancelled",
+        "IPAD-E03-A02-self-fulfil-approved",
+        "IPAD-E03-A02-source-failure",
+        "IPAD-E03-A02-release-picker",
+        "IPAD-E03-A02-import-review",
+        "IPAD-E03-A02-received-book",
+        "IPAD-E03-A02-readable-PDF",
+        "IPAD-E03-A02-request-permission-hidden",
+        "IPAD-E03-A02-existing-request-discovery",
+        "IPAD-E03-A02-subscribed",
+        "IPAD-E03-A02-unsubscribed"
+      ],
+      "accessibilityAuditAuthored": false,
+      "performanceMetricsAuthored": false
+    },
+    {
+      "surface": "native",
+      "source": "ipad/UITests/ScanJourneyTests.swift",
+      "tests": [
+        "BookOrbitUITests/ScanJourneyTests/testIPADE03A01ScanPreviewHistoryAndReader"
+      ],
+      "screenshotNames": [
+        "IPAD-E03-A01-scan-preview",
+        "IPAD-E03-A01-scan-completed-history",
+        "IPAD-E03-A01-scan-relaunch-reconciled",
+        "IPAD-E03-A01-scanned-pdf-reader"
+      ],
+      "accessibilityAuditAuthored": false,
+      "performanceMetricsAuthored": false
+    },
+    {
+      "surface": "web",
+      "source": "scripts/ipad/e03-bulk-cross-client.test.mjs",
+      "screenshotNames": [
+        "IPAD-E03-A04-selected-book-<id>-reloaded",
+        "IPAD-E03-A04-selected-reader-<id>-reopened"
+      ],
+      "nativeDynamicTypeCoverage": false
+    },
+    {
+      "surface": "web",
+      "source": "scripts/ipad/e03-entities-cross-client.test.mjs",
+      "screenshotNames": [
+        "IPAD-E03-A05-entities-web-renamed-profile",
+        "IPAD-E03-A05-entities-web-reader-preserved"
+      ],
+      "nativeDynamicTypeCoverage": false
+    },
+    {
+      "surface": "web",
+      "source": "scripts/ipad/e03-entity-pagination-cross-client.test.mjs",
+      "screenshotNames": [
+        "IPAD-E03-A05-web-selected-merge-preview",
+        "IPAD-E03-A05-web-mobile-group-page",
+        "IPAD-E03-A05-web-mobile-dismissed-restored"
+      ],
+      "nativeDynamicTypeCoverage": false
+    },
+    {
+      "surface": "web",
+      "source": "scripts/ipad/e03-maintenance-web.test.mjs",
+      "screenshotNames": [
+        "IPAD-E03-A05-web-repaired-book-detail",
+        "IPAD-E03-A05-web-repaired-pdf-reader",
+        "IPAD-E03-A05-web-repaired-pdf-reopened",
+        "IPAD-E03-A05-web-reader-permission",
+        "IPAD-E03-A05-baseline-maintenance-web",
+        "IPAD-E03-A05-baseline-maintenance-admin"
+      ],
+      "nativeDynamicTypeCoverage": false
+    },
+    {
+      "surface": "web",
+      "source": "scripts/ipad/e03-migration-cross-client.test.mjs",
+      "screenshotNames": [
+        "IPAD-E03-A03-<mode>-web-dry-run",
+        "IPAD-E03-A03-<mode>-web-report-reopened",
+        "IPAD-E03-A03-<mode>-web-preserved-passage-notes",
+        "IPAD-E03-A03-<mode>-reader-<format>",
+        "IPAD-E03-A03-<mode>-reader-reopened-<format>"
+      ],
+      "nativeDynamicTypeCoverage": false
+    },
+    {
+      "surface": "web",
+      "source": "scripts/ipad/e03-request-admin-cross-client.test.mjs",
+      "screenshotNames": [
+        "IPAD-E03-REQUEST-ADMIN-native-source-in-web",
+        "IPAD-E03-REQUEST-ADMIN-native-client-in-web",
+        "IPAD-E03-REQUEST-ADMIN-web-moderator-denied"
+      ],
+      "nativeDynamicTypeCoverage": false
+    },
+    {
+      "surface": "web",
+      "source": "scripts/ipad/e03-request-lifecycle-cross-client.test.mjs",
+      "screenshotNames": [
+        "IPAD-E03-A02-web-subscribed",
+        "IPAD-E03-A02-web-unsubscribed",
+        "IPAD-E03-A02-web-cancelled",
+        "IPAD-E03-A02-web-source-failure",
+        "IPAD-E03-A02-web-release-picker",
+        "IPAD-E03-A02-web-import-review",
+        "IPAD-E03-A02-web-received-book",
+        "IPAD-E03-A02-web-readable-PDF"
+      ],
+      "nativeDynamicTypeCoverage": false
+    },
+    {
+      "surface": "web",
+      "source": "scripts/ipad/e03-scan-web.test.mjs",
+      "screenshotNames": [
+        "IPAD-E03-A01-scanned-book-web",
+        "IPAD-E03-A01-scanned-pdf-web-reader"
+      ],
+      "nativeDynamicTypeCoverage": false
+    },
+    {
+      "surface": "web",
+      "source": "scripts/ipad/e03-upload-web.test.mjs",
+      "screenshotNames": [
+        "IPAD-E03-A01-imported-web-detail",
+        "IPAD-E03-A01-imported-web-reader"
+      ],
+      "nativeDynamicTypeCoverage": false
+    }
+  ],
+  "residualGates": [
+    "Human-approved E03 baselines",
+    "Actual image inspection records bound to SHA-256",
+    "Native orientation and genuine Reduce Motion verification per state",
+    "Native narrow-window evidence",
+    "E03 native performance metrics and reviewed budgets",
+    "VoiceOver and physical iPad walkthrough"
+  ],
+  "matrixCoverage": [
+    {
+      "profile": "pro13-portrait-light",
+      "allAuthoredStates": true
+    },
+    {
+      "profile": "pro11-landscape-dark",
+      "states": [
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A01-dock-review-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A01-native-reader-<bookID>"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A02-release-picker"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A02-import-review"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A02-readable-PDF"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A03-<type>-<mode>-dry-run"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A03-<type>-<mode>-report-landscape"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A04-selected-edit-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A04-content-export-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-entities-directory"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-maintenance-duplicates-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-merge-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-repair-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-baseline-settings-saved"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A01-imported-web-reader"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A02-web-release-picker"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A02-web-import-review"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A02-web-readable-PDF"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A03-<mode>-web-dry-run"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A03-<mode>-web-report-reopened"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A04-selected-reader-<id>-reopened"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A05-web-selected-merge-preview"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A05-baseline-maintenance-web"
+        }
+      ]
+    },
+    {
+      "profile": "pro11-portrait-large",
+      "states": [
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A01-dock-review-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A01-native-reader-<bookID>"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A02-source-failure"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A02-import-review"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A03-source-validation-error"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A03-<type>-<mode>-same-run-retried-report"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A04-selected-edit-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A04-invalid-draft-error"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-entities-component-page-1"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-repair-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-recommendation-review"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-settings-permission-without-superuser"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A01-imported-web-detail"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A02-web-source-failure"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A02-web-import-review"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A03-<mode>-web-report-reopened"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A04-selected-book-<id>-reloaded"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A05-web-selected-merge-preview"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A05-baseline-maintenance-admin"
+        }
+      ]
+    },
+    {
+      "profile": "pro13-narrow-dark",
+      "states": [
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A01-dock-review-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A01-native-reader-<bookID>"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A02-release-picker"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A02-import-review"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A03-<type>-<mode>-dry-run"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A04-content-export-preview"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-entities-component-page-1"
+        },
+        {
+          "surface": "native",
+          "name": "IPAD-E03-A05-native-repair-preview"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A01-imported-web-reader"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A02-web-release-picker"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A02-web-import-review"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A03-<mode>-web-dry-run"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A04-selected-reader-<id>-reopened"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A05-web-mobile-group-page"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A05-web-mobile-dismissed-restored"
+        },
+        {
+          "surface": "web",
+          "name": "IPAD-E03-A05-baseline-maintenance-admin"
+        }
+      ]
+    }
+  ],
+  "expansion": {
+    "migrationModes": [
+      "booklore-database",
+      "grimmory-database",
+      "audiobookshelf-api",
+      "audiobookshelf-backup",
+      "calibre_web_automated-snapshot"
+    ],
+    "migrationProviders": [
+      "Booklore",
+      "Grimmory",
+      "Audiobookshelf",
+      "Calibre-Web-Automated"
+    ],
+    "mediaFormats": ["epub", "pdf", "cbz", "mp3"],
+    "reopenIterations": [1, 2],
+    "selectedBookIds": [1, 2]
+  }
+}

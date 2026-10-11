@@ -5,6 +5,8 @@ import type {
   BulkDeleteResult,
   DeleteResult,
   DismissedPairInfo,
+  EntityDismissedPairsPage,
+  EntityDuplicateClusterPage,
   DuplicateScanResponse,
   DuplicateScanStatus,
   EntityInfo,
@@ -57,6 +59,16 @@ export async function mergeEntities(
     body: JSON.stringify(payload),
   })
   if (!res.ok) throw new Error(`Failed to merge ${entityType}`)
+  return res.json()
+}
+
+export async function getDuplicateClusterPage(
+  entityType: EntityType,
+  params: { clusterId: string; page: number; pageSize: number },
+  signal?: AbortSignal,
+): Promise<EntityDuplicateClusterPage> {
+  const res = await api(`${BASE}/${entityType}/duplicates/cluster${toQuery(params)}`, { signal })
+  if (!res.ok) throw new Error(`Failed to get ${entityType} duplicate group page`)
   return res.json()
 }
 
@@ -138,6 +150,16 @@ export async function undismissPair(
 
 export async function getDismissedPairs(entityType: EntityType): Promise<DismissedPairInfo[]> {
   const res = await api(`${BASE}/${entityType}/duplicates/dismissed`)
+  if (!res.ok) throw new Error(`Failed to get dismissed ${entityType} pairs`)
+  return res.json()
+}
+
+export async function getDismissedPairsPage(
+  entityType: EntityType,
+  params: { page: number; pageSize: number },
+  signal?: AbortSignal,
+): Promise<EntityDismissedPairsPage> {
+  const res = await api(`${BASE}/${entityType}/duplicates/dismissed-page${toQuery(params)}`, { signal })
   if (!res.ok) throw new Error(`Failed to get dismissed ${entityType} pairs`)
   return res.json()
 }

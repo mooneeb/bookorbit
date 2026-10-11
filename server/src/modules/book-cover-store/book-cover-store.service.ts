@@ -1,7 +1,7 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { COVER_MEDIA, isAudioFormat, type BookCard, type BookCoverSlot, type CoverMedia, type CoverMedium } from '@bookorbit/types';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { access, copyFile, cp, link, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'fs/promises';
 import { basename, join } from 'path';
 import sharp from 'sharp';
@@ -31,6 +31,15 @@ import {
 } from './book-cover-store.repository';
 
 export type CoverVariant = 'cover' | 'thumbnail';
+
+export type BookCoverAdoptionIntent = {
+  version: 1;
+  sourceBookId: number;
+  targetBookId: number;
+  sourceSlots: Array<Omit<BookCoverSlotRow, 'updatedAt' | 'dormantSince'> & { updatedAt: string; dormantSince: string | null }>;
+  sourceFingerprint: string;
+  artifacts: Array<{ medium: CoverMedium | 'legacy'; fileName: string; digest: string }>;
+};
 
 type SaveOptions = {
   origin: BookCoverOrigin;
@@ -275,49 +284,139 @@ export class BookCoverStore {
   }
 
   /** The slots a book will hand over when it is merged into another book, read before it goes. */
-  async slotsForAdoption(bookId: number): Promise<BookCoverSlotRow[]> {
+  async slotsForAdoption(bookId: number, options: { includeDormant?: boolean } = {}): Promise<BookCoverSlotRow[]> {
     const context = await this.repository.findContext(bookId);
     if (!context) return [];
-    return (await this.ensureConverted(context)).slots.filter((slot) => slot.dormantSince === null);
+    return (await this.ensureConverted(context)).slots.filter((slot) => options.includeDormant || slot.dormantSince === null);
   }
 
-  /**
-   * Moves the slots of a book that was merged away into the book that absorbed its files, for each
-   * medium the target has no slot for. Call it after the merge and before the source's cover
-   * directory is removed.
-   */
-  async adoptSlots(sourceBookId: number, sourceSlots: readonly BookCoverSlotRow[], targetBookId: number): Promise<CoverMedium[]> {
+  async captureAdoption(sourceBookId: number, targetBookId: number): Promise<BookCoverAdoptionIntent> {
+    await this.convertedContext(targetBookId);
+    const sourceSlots = (await this.slotsForAdoption(sourceBookId, { includeDormant: true }))
+      .sort((a, b) => a.medium.localeCompare(b.medium))
+      .map((slot) => ({ ...slot, updatedAt: slot.updatedAt.toISOString(), dormantSince: slot.dormantSince?.toISOString() ?? null }));
+    const parent = join(bookCoverDirPath(this.appDataPath, targetBookId), 'merged', String(sourceBookId));
+    const staged = join(parent, `.snapshot-${randomUUID()}`);
+    const artifacts: BookCoverAdoptionIntent['artifacts'] = [];
+    await mkdir(staged, { recursive: true });
+    try {
+      for (const medium of ['legacy', 'ebook', 'audio'] as const) {
+        const sourceDir =
+          medium === 'legacy' ? bookCoverDirPath(this.appDataPath, sourceBookId) : bookCoverSlotDirPath(this.appDataPath, sourceBookId, medium);
+        const files = (await this.readDirIfExists(sourceDir))
+          .filter((name) => findPreferredBookCoverFileName([name]) || name === COVER_THUMBNAIL_FILE_NAME)
+          .sort();
+        if (files.length > 32) throw new ConflictException('Cover cache needs review before merging');
+        for (const fileName of files) {
+          const path = join(sourceDir, fileName);
+          if ((await stat(path)).size > 64 * 1024 * 1024) throw new ConflictException('Cover cache contains an oversized artifact');
+          const bytes = await readFile(path);
+          const destination = join(staged, medium);
+          await mkdir(destination, { recursive: true });
+          await writeFile(join(destination, fileName), bytes);
+          artifacts.push({ medium, fileName, digest: createHash('sha256').update(bytes).digest('hex') });
+        }
+      }
+      const sourceFingerprint = createHash('sha256').update(JSON.stringify({ sourceSlots, artifacts })).digest('hex');
+      const archive = join(parent, sourceFingerprint);
+      try {
+        await rename(staged, archive);
+      } catch (error) {
+        if (!(await this.directoryExists(archive))) throw error;
+        await rm(staged, { recursive: true, force: true });
+      }
+      return { version: 1, sourceBookId, targetBookId, sourceSlots, sourceFingerprint, artifacts };
+    } catch (error) {
+      await rm(staged, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  async finishAdoption(intent: BookCoverAdoptionIntent): Promise<void> {
+    const archive = join(bookCoverDirPath(this.appDataPath, intent.targetBookId), 'merged', String(intent.sourceBookId), intent.sourceFingerprint);
+    for (const artifact of intent.artifacts) {
+      const bytes = await readFile(join(archive, artifact.medium, artifact.fileName));
+      if (createHash('sha256').update(bytes).digest('hex') !== artifact.digest) {
+        throw new ConflictException('Preserved cover artifact changed; recover it before finishing the merge');
+      }
+    }
+    await this.adoptSlots(
+      intent.sourceBookId,
+      intent.sourceSlots.map((slot) => ({
+        ...slot,
+        updatedAt: new Date(slot.updatedAt),
+        dormantSince: slot.dormantSince ? new Date(slot.dormantSince) : null,
+      })),
+      intent.targetBookId,
+      { archive, allowLockedEmpty: true },
+    );
+  }
+
+  /** Copying preserves the recovery source when a database write fails after the cache is staged. */
+  async adoptSlots(
+    sourceBookId: number,
+    sourceSlots: readonly BookCoverSlotRow[],
+    targetBookId: number,
+    options: { archive?: string; allowLockedEmpty?: boolean } = {},
+  ): Promise<CoverMedium[]> {
     if (sourceSlots.length === 0) return [];
-    const target = await this.convertedContext(targetBookId);
+    const target = options.archive ? await this.requireContext(targetBookId) : await this.convertedContext(targetBookId);
     const adopted: CoverMedium[] = [];
     for (const slot of sourceSlots) {
       const medium = slot.medium as CoverMedium;
-      if (this.slotFor(target, medium) || this.isLocked(target, medium)) continue;
-      const sourceDir = bookCoverSlotDirPath(this.appDataPath, sourceBookId, medium);
+      if (this.slotFor(target, medium) || (!options.allowLockedEmpty && this.isLocked(target, medium))) continue;
+      const sourceDir = options.archive ? join(options.archive, medium) : bookCoverSlotDirPath(this.appDataPath, sourceBookId, medium);
       if (!findPreferredBookCoverFileName(await this.readDirIfExists(sourceDir))) continue;
       const targetDir = bookCoverSlotDirPath(this.appDataPath, targetBookId, medium);
-      await rm(targetDir, { recursive: true, force: true });
       await mkdir(bookCoverDirPath(this.appDataPath, targetBookId), { recursive: true });
-      try {
-        await rename(sourceDir, targetDir);
-      } catch {
-        await cp(sourceDir, targetDir, { recursive: true });
+      if (await this.directoryExists(targetDir)) {
+        const existingFiles = await this.readDirIfExists(targetDir);
+        const sourceFiles = await this.readDirIfExists(sourceDir);
+        for (const fileName of existingFiles) {
+          if (!sourceFiles.includes(fileName) || !(await readFile(join(targetDir, fileName))).equals(await readFile(join(sourceDir, fileName)))) {
+            throw new ConflictException('Target cover changed during merge; preserved source cover remains available');
+          }
+        }
+        for (const fileName of sourceFiles) {
+          if (!existingFiles.includes(fileName)) await copyFile(join(sourceDir, fileName), join(targetDir, fileName));
+        }
+      } else {
+        const staged = `${targetDir}.merge-${randomUUID()}`;
+        try {
+          await cp(sourceDir, staged, { recursive: true });
+          await rename(staged, targetDir);
+        } finally {
+          await rm(staged, { recursive: true, force: true });
+        }
       }
       const now = new Date();
-      await this.repository.applySlotMutation(
+      const mutation = await this.repository.applySlotMutation(
         targetBookId,
         medium,
         target.media,
         {
           kind: 'upsert',
-          row: { ...this.rowValues(slot), updatedAt: now, dormantSince: this.mediumIsActive(medium, target.media) ? null : now },
+          row: {
+            ...this.rowValues(slot),
+            updatedAt: now,
+            dormantSince: this.mediumIsActive(medium, target.media) ? null : (slot.dormantSince ?? now),
+          },
         },
-        { bumpBook: true, servedBytesChanged: true, updatedAt: now },
+        { bumpBook: true, servedBytesChanged: true, updatedAt: now, onlyIfAbsent: true },
       );
-      adopted.push(medium);
+      if (mutation.mutationApplied !== false) adopted.push(medium);
     }
     if (adopted.length > 0) this.emitChanged(target, false);
     return adopted;
+  }
+
+  private async directoryExists(path: string): Promise<boolean> {
+    try {
+      return (await stat(path)).isDirectory();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
   }
 
   async removeCoverDirectory(bookId: number): Promise<void> {

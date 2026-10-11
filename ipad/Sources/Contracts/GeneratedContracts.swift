@@ -2,6 +2,3061 @@
 // Regenerate after shared contract changes.
 import Foundation
 
+enum UploadTarget: Codable, Sendable, Equatable {
+    case `library`(UploadTargetLibrary)
+    case `existing_book`(UploadTargetExistingBook)
+    case `book_dock`(UploadTargetBookDock)
+
+    private enum CodingKeys: String, CodingKey { case `kind` }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .`kind`) {
+        case "library": self = .`library`(try UploadTargetLibrary(from: decoder))
+        case "existing_book": self = .`existing_book`(try UploadTargetExistingBook(from: decoder))
+        case "book_dock": self = .`book_dock`(try UploadTargetBookDock(from: decoder))
+        default: throw DecodingError.dataCorruptedError(forKey: .`kind`, in: container, debugDescription: "Invalid UploadTarget discriminator")
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        switch self {
+        case .`library`(let value): try value.encode(to: encoder)
+        case .`existing_book`(let value): try value.encode(to: encoder)
+        case .`book_dock`(let value): try value.encode(to: encoder)
+        }
+    }
+}
+
+struct UploadTargetLibrary: Codable, Sendable, Equatable {
+    var `kind`: String
+    var `libraryId`: Int
+    var `folderId`: Int?
+}
+
+struct UploadTargetExistingBook: Codable, Sendable, Equatable {
+    var `kind`: String
+    var `bookId`: Int
+}
+
+struct UploadTargetBookDock: Codable, Sendable, Equatable {
+    var `kind`: String
+}
+
+struct CreateUploadSessionRequest: Codable, Sendable, Equatable {
+    var `filename`: String
+    var `sizeBytes`: Int
+    var `idempotencyKey`: String
+    var `target`: UploadTarget
+    var `contentType`: String? = nil
+    var `sha256`: String? = nil
+}
+
+struct UploadSessionResponse: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `filename`: String
+    var `sizeBytes`: Int
+    var `receivedBytes`: Int
+    var `chunkSizeBytes`: Int
+    var `status`: String
+    var `target`: UploadTarget
+    var `errorCode`: String? = nil
+    var `errorMessage`: String? = nil
+    var `bookId`: Int? = nil
+    var `bookDockFileId`: Int? = nil
+    var `expiresAt`: String
+    var `createdAt`: String
+    var `updatedAt`: String
+    var `completedAt`: String? = nil
+}
+
+struct UploadCapabilitiesLibrary: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `allowedFormats`: [String]
+    var `organizationMode`: String
+    var `folders`: [UploadCapabilitiesLibraryFoldersItem]
+}
+
+struct UploadCapabilitiesLibraryFoldersItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+}
+
+struct UploadCapabilitiesResponse: Codable, Sendable, Equatable {
+    var `maxFileSizeBytes`: Int
+    var `chunkSizeBytes`: Int
+    var `supportedFormats`: [String]
+    var `canUploadToLibrary`: Bool
+    var `canUseBookDock`: Bool
+    var `libraries`: [UploadCapabilitiesLibrary]
+}
+
+struct BookDockMetadata: Codable, Sendable, Equatable {
+    var `title`: String? = nil
+    var `subtitle`: String? = nil
+    var `authors`: [String]? = nil
+    var `narrators`: [String]? = nil
+    var `description`: String? = nil
+    var `publisher`: String? = nil
+    var `publishedDate`: String? = nil
+    var `publishedYear`: Int? = nil
+    var `language`: String? = nil
+    var `pageCount`: Int? = nil
+    var `isbn10`: String? = nil
+    var `isbn13`: String? = nil
+    var `seriesName`: String? = nil
+    var `seriesIndex`: String? = nil
+    var `seriesMemberships`: [MetadataSeriesMembership]? = nil
+    var `genres`: [String]? = nil
+    var `coverUrl`: String? = nil
+    var `durationSeconds`: Int? = nil
+    var `abridged`: Bool? = nil
+    var `chapters`: [AudiobookChapter]? = nil
+    var `communityRatings`: [BookDockMetadataCommunityRatingsItem]? = nil
+    var `googleBooksId`: String? = nil
+    var `goodreadsId`: String? = nil
+    var `amazonId`: String? = nil
+    var `hardcoverId`: String? = nil
+    var `hardcoverEditionId`: String? = nil
+    var `openLibraryId`: String? = nil
+    var `itunesId`: String? = nil
+    var `audibleId`: String? = nil
+    var `librofmId`: String? = nil
+    var `koboId`: String? = nil
+    var `comicvineId`: String? = nil
+    var `ranobedbId`: String? = nil
+    var `lubimyczytacId`: String? = nil
+    var `aladinId`: String? = nil
+    var `comicMetadata`: ComicMetadataFields? = nil
+}
+
+struct MetadataSeriesMembership: Codable, Sendable, Equatable {
+    var `seriesName`: String
+    var `seriesIndex`: String?
+}
+
+struct AudiobookChapter: Codable, Sendable, Equatable {
+    var `title`: String
+    var `startMs`: Int
+}
+
+struct BookDockMetadataCommunityRatingsItem: Codable, Sendable, Equatable {
+    var `provider`: String
+    var `rating`: Double
+    var `ratingCount`: Int?
+}
+
+struct ComicMetadataFields: Codable, Sendable, Equatable {
+    var `issueNumber`: String?
+    var `volumeName`: String?
+    var `pencillers`: [String]?
+    var `inkers`: [String]?
+    var `colorists`: [String]?
+    var `letterers`: [String]?
+    var `coverArtists`: [String]?
+    var `characters`: [String]?
+    var `teams`: [String]?
+    var `locations`: [String]?
+    var `storyArcs`: [String]?
+}
+
+struct BookDockUnitFile: Codable, Sendable, Equatable {
+    var `fileName`: String
+    var `fileSize`: Double? = nil
+    var `format`: String? = nil
+    var `role`: String
+    var `sortOrder`: Int? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`fileName`, forKey: .`fileName`)
+        try container.encode(`fileSize`, forKey: .`fileSize`)
+        try container.encode(`format`, forKey: .`format`)
+        try container.encode(`role`, forKey: .`role`)
+        try container.encode(`sortOrder`, forKey: .`sortOrder`)
+    }
+}
+
+struct BookDockFile: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `fileName`: String
+    var `fileSize`: Double? = nil
+    var `format`: String? = nil
+    var `status`: String
+    var `embeddedMetadata`: BookDockMetadata? = nil
+    var `selectedMetadata`: BookDockMetadata? = nil
+    var `fetchedMetadata`: BookDockMetadata? = nil
+    var `targetLibraryId`: Int? = nil
+    var `targetFolderId`: Int? = nil
+    var `confidence`: Double? = nil
+    var `fetchedMetadataSources`: BookDockFileFetchedMetadataSources? = nil
+    var `errorMessage`: String? = nil
+    var `metadataEditedAt`: String? = nil
+    var `createdAt`: String
+    var `updatedAt`: String
+    var `unitFiles`: [BookDockUnitFile]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`fileName`, forKey: .`fileName`)
+        try container.encode(`fileSize`, forKey: .`fileSize`)
+        try container.encode(`format`, forKey: .`format`)
+        try container.encode(`status`, forKey: .`status`)
+        try container.encode(`embeddedMetadata`, forKey: .`embeddedMetadata`)
+        try container.encode(`selectedMetadata`, forKey: .`selectedMetadata`)
+        try container.encode(`fetchedMetadata`, forKey: .`fetchedMetadata`)
+        try container.encode(`targetLibraryId`, forKey: .`targetLibraryId`)
+        try container.encode(`targetFolderId`, forKey: .`targetFolderId`)
+        try container.encode(`confidence`, forKey: .`confidence`)
+        try container.encode(`fetchedMetadataSources`, forKey: .`fetchedMetadataSources`)
+        try container.encode(`errorMessage`, forKey: .`errorMessage`)
+        try container.encode(`metadataEditedAt`, forKey: .`metadataEditedAt`)
+        try container.encode(`createdAt`, forKey: .`createdAt`)
+        try container.encode(`updatedAt`, forKey: .`updatedAt`)
+        try container.encode(`unitFiles`, forKey: .`unitFiles`)
+    }
+}
+
+struct BookDockFileFetchedMetadataSources: Codable, Sendable, Equatable {
+    var `publisher`: String?
+    var `language`: String?
+    var `pageCount`: String?
+    var `genres`: String?
+    var `description`: String?
+    var `googleBooksId`: String?
+    var `goodreadsId`: String?
+    var `amazonId`: String?
+    var `hardcoverId`: String?
+    var `hardcoverEditionId`: String?
+    var `openLibraryId`: String?
+    var `itunesId`: String?
+    var `audibleId`: String?
+    var `librofmId`: String?
+    var `koboId`: String?
+    var `comicvineId`: String?
+    var `ranobedbId`: String?
+    var `lubimyczytacId`: String?
+    var `aladinId`: String?
+    var `title`: String?
+    var `subtitle`: String?
+    var `authors`: String?
+    var `publishedYear`: String?
+    var `seriesName`: String?
+    var `seriesIndex`: String?
+    var `isbn13`: String?
+    var `isbn10`: String?
+    var `narrators`: String?
+    var `durationSeconds`: String?
+    var `abridged`: String?
+    var `publishedDate`: String?
+    var `seriesMemberships`: String?
+    var `communityRatings`: String?
+    var `comicMetadata`: String?
+    var `coverUrl`: String?
+    var `chapters`: String?
+}
+
+struct BookDockFilesPage: Codable, Sendable, Equatable {
+    var `items`: [BookDockFile]
+    var `total`: Int
+    var `page`: Int
+    var `size`: Int
+}
+
+struct BookDockSettings: Codable, Sendable, Equatable {
+    var `bookDockPath`: String
+    var `autoFetchMetadata`: Bool
+    var `autoFinalizeEnabled`: Bool
+    var `autoFinalizeThreshold`: Double
+    var `autoFinalizeLibraryId`: Int? = nil
+    var `autoFinalizeFolderId`: Int? = nil
+    var `autoFinalizeMetadataMode`: String
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`bookDockPath`, forKey: .`bookDockPath`)
+        try container.encode(`autoFetchMetadata`, forKey: .`autoFetchMetadata`)
+        try container.encode(`autoFinalizeEnabled`, forKey: .`autoFinalizeEnabled`)
+        try container.encode(`autoFinalizeThreshold`, forKey: .`autoFinalizeThreshold`)
+        try container.encode(`autoFinalizeLibraryId`, forKey: .`autoFinalizeLibraryId`)
+        try container.encode(`autoFinalizeFolderId`, forKey: .`autoFinalizeFolderId`)
+        try container.encode(`autoFinalizeMetadataMode`, forKey: .`autoFinalizeMetadataMode`)
+    }
+}
+
+struct UpdateBookDockSettingsRequest: Codable, Sendable, Equatable {
+    var `autoFetchMetadata`: Bool
+    var `autoFinalizeEnabled`: Bool
+    var `autoFinalizeThreshold`: Double
+    var `autoFinalizeLibraryId`: Int? = nil
+    var `autoFinalizeFolderId`: Int? = nil
+    var `autoFinalizeMetadataMode`: String
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`autoFetchMetadata`, forKey: .`autoFetchMetadata`)
+        try container.encode(`autoFinalizeEnabled`, forKey: .`autoFinalizeEnabled`)
+        try container.encode(`autoFinalizeThreshold`, forKey: .`autoFinalizeThreshold`)
+        try container.encode(`autoFinalizeLibraryId`, forKey: .`autoFinalizeLibraryId`)
+        try container.encode(`autoFinalizeFolderId`, forKey: .`autoFinalizeFolderId`)
+        try container.encode(`autoFinalizeMetadataMode`, forKey: .`autoFinalizeMetadataMode`)
+    }
+}
+
+struct BookDockFinalizeOverride: Codable, Sendable, Equatable {
+    var `fileId`: Int
+    var `libraryId`: Int? = nil
+    var `folderId`: Int? = nil
+    var `targetFileName`: String? = nil
+}
+
+struct BookDockFinalizeRequest: Codable, Sendable, Equatable {
+    var `fileIds`: [Int]? = nil
+    var `selectAll`: Bool? = nil
+    var `excludedIds`: [Int]? = nil
+    var `status`: String? = nil
+    var `search`: String? = nil
+    var `defaultLibraryId`: Int? = nil
+    var `defaultFolderId`: Int? = nil
+    var `overrides`: [BookDockFinalizeOverride]? = nil
+}
+
+struct BookDockFinalizeJobRequest: Codable, Sendable, Equatable {
+    var `idempotencyKey`: String
+    var `needsReview`: Bool? = nil
+    var `readyToFile`: Bool? = nil
+    var `fileIds`: [Int]? = nil
+    var `selectAll`: Bool? = nil
+    var `excludedIds`: [Int]? = nil
+    var `status`: String? = nil
+    var `search`: String? = nil
+    var `defaultLibraryId`: Int? = nil
+    var `defaultFolderId`: Int? = nil
+    var `overrides`: [BookDockFinalizeOverride]? = nil
+}
+
+struct BookDockFinalizeJob: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `state`: String
+    var `total`: Int
+    var `processed`: Int
+    var `succeeded`: Int
+    var `failed`: Int
+    var `error`: String? = nil
+    var `createdAt`: String
+    var `updatedAt`: String
+    var `results`: [BookDockFinalizeFileResult]
+    var `resultsTruncated`: Bool
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`state`, forKey: .`state`)
+        try container.encode(`total`, forKey: .`total`)
+        try container.encode(`processed`, forKey: .`processed`)
+        try container.encode(`succeeded`, forKey: .`succeeded`)
+        try container.encode(`failed`, forKey: .`failed`)
+        try container.encode(`error`, forKey: .`error`)
+        try container.encode(`createdAt`, forKey: .`createdAt`)
+        try container.encode(`updatedAt`, forKey: .`updatedAt`)
+        try container.encode(`results`, forKey: .`results`)
+        try container.encode(`resultsTruncated`, forKey: .`resultsTruncated`)
+    }
+}
+
+struct BookDockFinalizeFileResult: Codable, Sendable, Equatable {
+    var `fileId`: Int
+    var `fileName`: String
+    var `newName`: String? = nil
+    var `success`: Bool
+    var `bookId`: Int? = nil
+    var `isDuplicate`: Bool? = nil
+    var `existingBookId`: Int? = nil
+    var `message`: String? = nil
+}
+
+struct BookDockFinalizeResult: Codable, Sendable, Equatable {
+    var `total`: Int
+    var `succeeded`: Int
+    var `failed`: Int
+    var `results`: [BookDockFinalizeFileResult]
+}
+
+struct BookDockFinalizePreviewItem: Codable, Sendable, Equatable {
+    var `fileId`: Int
+    var `fileName`: String
+    var `newName`: String? = nil
+    var `status`: String
+    var `existingBookId`: Int? = nil
+    var `message`: String? = nil
+}
+
+struct BookDockFinalizePreviewResult: Codable, Sendable, Equatable {
+    var `total`: Int
+    var `ready`: Int
+    var `duplicates`: Int
+    var `destinationConflicts`: Int
+    var `missingDestination`: Int
+    var `blocked`: Int
+    var `truncated`: Bool
+    var `itemLimit`: Int
+    var `items`: [BookDockFinalizePreviewItem]
+}
+
+struct UpdateBookDockFileRequest: Codable, Sendable, Equatable {
+    var `expectedUpdatedAt`: String? = nil
+    var `selectedMetadata`: BookDockMetadata? = nil
+    var `targetLibraryId`: Int? = nil
+    var `targetFolderId`: Int? = nil
+}
+
+struct LibraryScanConfiguration: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `type`: String
+    var `folders`: [LibraryFolder]
+    var `watch`: Bool
+    var `autoScanCronExpression`: String? = nil
+    var `allowedFormats`: [String]
+    var `excludePatterns`: [String]
+    var `organizationMode`: String
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`name`, forKey: .`name`)
+        try container.encode(`type`, forKey: .`type`)
+        try container.encode(`folders`, forKey: .`folders`)
+        try container.encode(`watch`, forKey: .`watch`)
+        try container.encode(`autoScanCronExpression`, forKey: .`autoScanCronExpression`)
+        try container.encode(`allowedFormats`, forKey: .`allowedFormats`)
+        try container.encode(`excludePatterns`, forKey: .`excludePatterns`)
+        try container.encode(`organizationMode`, forKey: .`organizationMode`)
+    }
+}
+
+struct LibraryFolder: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `path`: String
+    var `role`: String
+    var `createdAt`: String
+}
+
+struct ScanStartResult: Codable, Sendable, Equatable {
+    var `jobId`: Int
+}
+
+struct ScanStatusResponse: Codable, Sendable, Equatable {
+    var `progress`: ScanProgressEvent? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`progress`, forKey: .`progress`)
+    }
+}
+
+struct ScanProgressEvent: Codable, Sendable, Equatable {
+    var `jobId`: Int
+    var `libraryId`: Int
+    var `status`: String
+    var `processed`: Int
+    var `total`: Int
+    var `added`: Int
+    var `updated`: Int
+    var `missing`: Int
+    var `errorMessage`: String? = nil
+}
+
+struct LibraryScanHistoryEntry: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `status`: String
+    var `triggeredBy`: String
+    var `startedAt`: String
+    var `completedAt`: String? = nil
+    var `addedCount`: Int
+    var `updatedCount`: Int
+    var `missingCount`: Int
+    var `errorMessage`: String? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`status`, forKey: .`status`)
+        try container.encode(`triggeredBy`, forKey: .`triggeredBy`)
+        try container.encode(`startedAt`, forKey: .`startedAt`)
+        try container.encode(`completedAt`, forKey: .`completedAt`)
+        try container.encode(`addedCount`, forKey: .`addedCount`)
+        try container.encode(`updatedCount`, forKey: .`updatedCount`)
+        try container.encode(`missingCount`, forKey: .`missingCount`)
+        try container.encode(`errorMessage`, forKey: .`errorMessage`)
+    }
+}
+
+struct PrescanResult: Codable, Sendable, Equatable {
+    var `paths`: [PrescanPathResult]
+    var `totalFiles`: Int
+}
+
+struct PrescanPathResult: Codable, Sendable, Equatable {
+    var `path`: String
+    var `accessible`: Bool
+    var `fileCount`: Int
+    var `overlapLibrary`: String? = nil
+    var `error`: String? = nil
+}
+
+struct ScanStartRequest: Codable, Sendable, Equatable {
+    var `expectedLastJobId`: Int? = nil
+}
+
+struct ScanConfigurationRequest: Codable, Sendable, Equatable {
+    var `folders`: [String]
+    var `watch`: Bool
+    var `autoScanCronExpression`: String? = nil
+    var `allowedFormats`: [String]
+    var `excludePatterns`: [String]
+    var `organizationMode`: String
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`folders`, forKey: .`folders`)
+        try container.encode(`watch`, forKey: .`watch`)
+        try container.encode(`autoScanCronExpression`, forKey: .`autoScanCronExpression`)
+        try container.encode(`allowedFormats`, forKey: .`allowedFormats`)
+        try container.encode(`excludePatterns`, forKey: .`excludePatterns`)
+        try container.encode(`organizationMode`, forKey: .`organizationMode`)
+    }
+}
+
+struct ScanPreviewRequest: Codable, Sendable, Equatable {
+    var `libraryId`: Int
+    var `paths`: [String]
+}
+
+struct BookRequestPage: Codable, Sendable, Equatable {
+    var `items`: [BookRequestItem]
+    var `total`: Int
+}
+
+struct BookRequestItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `userId`: Int
+    var `requesterUsername`: String
+    var `requesterName`: String
+    var `mediaKind`: String
+    var `status`: String
+    var `preferredFormats`: [String]
+    var `note`: String? = nil
+    var `targetLibraryId`: Int? = nil
+    var `targetLibraryName`: String? = nil
+    var `targetFolderId`: Int? = nil
+    var `decidedByUserId`: Int? = nil
+    var `decidedByUsername`: String? = nil
+    var `decidedAt`: String? = nil
+    var `decisionNote`: String? = nil
+    var `matchedBookId`: Int? = nil
+    var `bookDockFileId`: Int? = nil
+    var `selfServe`: Bool
+    var `fulfillerUserId`: Int? = nil
+    var `statusReason`: String? = nil
+    var `failureCode`: String? = nil
+    var `failureMeta`: [String: StringOrNumber]? = nil
+    var `subscribers`: [BookRequestSubscriber]
+    var `download`: BookRequestDownloadItem? = nil
+    var `dismissed`: Bool
+    var `createdAt`: String
+    var `updatedAt`: String
+    var `title`: String
+    var `subtitle`: String? = nil
+    var `authors`: [String]
+    var `seriesName`: String? = nil
+    var `seriesIndex`: Double? = nil
+    var `isbn10`: String? = nil
+    var `isbn13`: String? = nil
+    var `publishedYear`: Int? = nil
+    var `language`: String? = nil
+    var `coverUrl`: String? = nil
+    var `providerKey`: String? = nil
+    var `providerId`: String? = nil
+    var `metadataSources`: [BookRequestMetadataSource]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`userId`, forKey: .`userId`)
+        try container.encode(`requesterUsername`, forKey: .`requesterUsername`)
+        try container.encode(`requesterName`, forKey: .`requesterName`)
+        try container.encode(`mediaKind`, forKey: .`mediaKind`)
+        try container.encode(`status`, forKey: .`status`)
+        try container.encode(`preferredFormats`, forKey: .`preferredFormats`)
+        try container.encode(`note`, forKey: .`note`)
+        try container.encode(`targetLibraryId`, forKey: .`targetLibraryId`)
+        try container.encode(`targetLibraryName`, forKey: .`targetLibraryName`)
+        try container.encode(`targetFolderId`, forKey: .`targetFolderId`)
+        try container.encode(`decidedByUserId`, forKey: .`decidedByUserId`)
+        try container.encode(`decidedByUsername`, forKey: .`decidedByUsername`)
+        try container.encode(`decidedAt`, forKey: .`decidedAt`)
+        try container.encode(`decisionNote`, forKey: .`decisionNote`)
+        try container.encode(`matchedBookId`, forKey: .`matchedBookId`)
+        try container.encode(`bookDockFileId`, forKey: .`bookDockFileId`)
+        try container.encode(`selfServe`, forKey: .`selfServe`)
+        try container.encode(`fulfillerUserId`, forKey: .`fulfillerUserId`)
+        try container.encode(`statusReason`, forKey: .`statusReason`)
+        try container.encode(`failureCode`, forKey: .`failureCode`)
+        try container.encode(`failureMeta`, forKey: .`failureMeta`)
+        try container.encode(`subscribers`, forKey: .`subscribers`)
+        try container.encode(`download`, forKey: .`download`)
+        try container.encode(`dismissed`, forKey: .`dismissed`)
+        try container.encode(`createdAt`, forKey: .`createdAt`)
+        try container.encode(`updatedAt`, forKey: .`updatedAt`)
+        try container.encode(`title`, forKey: .`title`)
+        try container.encode(`subtitle`, forKey: .`subtitle`)
+        try container.encode(`authors`, forKey: .`authors`)
+        try container.encode(`seriesName`, forKey: .`seriesName`)
+        try container.encode(`seriesIndex`, forKey: .`seriesIndex`)
+        try container.encode(`isbn10`, forKey: .`isbn10`)
+        try container.encode(`isbn13`, forKey: .`isbn13`)
+        try container.encode(`publishedYear`, forKey: .`publishedYear`)
+        try container.encode(`language`, forKey: .`language`)
+        try container.encode(`coverUrl`, forKey: .`coverUrl`)
+        try container.encode(`providerKey`, forKey: .`providerKey`)
+        try container.encode(`providerId`, forKey: .`providerId`)
+        try container.encode(`metadataSources`, forKey: .`metadataSources`)
+    }
+}
+
+enum StringOrNumber: Codable, Sendable, Equatable, Hashable {
+    case string(String)
+    case number(Double)
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(String.self) { self = .string(value); return }
+        if let value = try? container.decode(Double.self) { self = .number(value); return }
+        throw DecodingError.typeMismatch(Self.self, .init(codingPath: decoder.codingPath, debugDescription: "Invalid filter value"))
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        }
+    }
+}
+
+struct BookRequestSubscriber: Codable, Sendable, Equatable {
+    var `userId`: Int
+    var `username`: String
+    var `name`: String
+}
+
+struct BookRequestDownloadItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `requestId`: Int
+    var `downloadClientId`: Int? = nil
+    var `downloadClientName`: String? = nil
+    var `downloadClientColor`: String? = nil
+    var `source`: String
+    var `indexerId`: Int? = nil
+    var `indexerName`: String? = nil
+    var `indexerColor`: String? = nil
+    var `automated`: Bool
+    var `releaseTitle`: String
+    var `releaseSizeBytes`: Int? = nil
+    var `clientKey`: String? = nil
+    var `status`: String
+    var `progressPercent`: Double
+    var `downloadedBytes`: Int
+    var `totalBytes`: Int? = nil
+    var `errorMessage`: String? = nil
+    var `grabbedAt`: String? = nil
+    var `completedAt`: String? = nil
+    var `importedAt`: String? = nil
+    var `createdAt`: String
+    var `releaseUnits`: [ReleaseUnitChoice]? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`requestId`, forKey: .`requestId`)
+        try container.encode(`downloadClientId`, forKey: .`downloadClientId`)
+        try container.encode(`downloadClientName`, forKey: .`downloadClientName`)
+        try container.encode(`downloadClientColor`, forKey: .`downloadClientColor`)
+        try container.encode(`source`, forKey: .`source`)
+        try container.encode(`indexerId`, forKey: .`indexerId`)
+        try container.encode(`indexerName`, forKey: .`indexerName`)
+        try container.encode(`indexerColor`, forKey: .`indexerColor`)
+        try container.encode(`automated`, forKey: .`automated`)
+        try container.encode(`releaseTitle`, forKey: .`releaseTitle`)
+        try container.encode(`releaseSizeBytes`, forKey: .`releaseSizeBytes`)
+        try container.encode(`clientKey`, forKey: .`clientKey`)
+        try container.encode(`status`, forKey: .`status`)
+        try container.encode(`progressPercent`, forKey: .`progressPercent`)
+        try container.encode(`downloadedBytes`, forKey: .`downloadedBytes`)
+        try container.encode(`totalBytes`, forKey: .`totalBytes`)
+        try container.encode(`errorMessage`, forKey: .`errorMessage`)
+        try container.encode(`grabbedAt`, forKey: .`grabbedAt`)
+        try container.encode(`completedAt`, forKey: .`completedAt`)
+        try container.encode(`importedAt`, forKey: .`importedAt`)
+        try container.encode(`createdAt`, forKey: .`createdAt`)
+        try container.encode(`releaseUnits`, forKey: .`releaseUnits`)
+    }
+}
+
+struct ReleaseUnitChoice: Codable, Sendable, Equatable {
+    var `index`: Int
+    var `primaryPath`: String
+    var `mediaKind`: String
+    var `title`: String?
+    var `contentFileCount`: Double
+    var `totalFileCount`: Double
+    var `sizeBytes`: Double?
+}
+
+struct BookRequestMetadataSource: Codable, Sendable, Equatable {
+    var `providerKey`: String
+    var `providerId`: String
+    var `providerLabel`: String
+    var `isbn10`: String?
+    var `isbn13`: String?
+}
+
+struct BookRequestSubmitResult: Codable, Sendable, Equatable {
+    var `request`: BookRequestItem
+    var `subscribed`: Bool
+}
+
+struct BookRequestAvailability: Codable, Sendable, Equatable {
+    var `ownedBookId`: Int? = nil
+    var `existingRequestId`: Int? = nil
+    var `existingRequestStatus`: String? = nil
+    var `alreadySubscribed`: Bool
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`ownedBookId`, forKey: .`ownedBookId`)
+        try container.encode(`existingRequestId`, forKey: .`existingRequestId`)
+        try container.encode(`existingRequestStatus`, forKey: .`existingRequestStatus`)
+        try container.encode(`alreadySubscribed`, forKey: .`alreadySubscribed`)
+    }
+}
+
+struct BookRequestAvailabilityQuery: Codable, Sendable, Equatable {
+    var `isbn13`: String? = nil
+    var `title`: String
+    var `author`: String? = nil
+    var `mediaKind`: String
+    var `providerKey`: String? = nil
+    var `providerId`: String? = nil
+}
+
+struct CreateBookRequestPayload: Codable, Sendable, Equatable {
+    var `title`: String
+    var `mediaKind`: String
+    var `targetLibraryId`: Int? = nil
+    var `targetFolderId`: Int? = nil
+    var `preferredFormats`: [String]? = nil
+    var `note`: String? = nil
+    var `selfServe`: Bool? = nil
+    var `userId`: Int? = nil
+    var `subtitle`: String? = nil
+    var `authors`: [String]? = nil
+    var `seriesName`: String? = nil
+    var `seriesIndex`: Double? = nil
+    var `isbn10`: String? = nil
+    var `isbn13`: String? = nil
+    var `publishedYear`: Int? = nil
+    var `language`: String? = nil
+    var `coverUrl`: String? = nil
+    var `providerKey`: String? = nil
+    var `providerId`: String? = nil
+    var `metadataSources`: [BookRequestMetadataSource]? = nil
+}
+
+struct DecideBookRequestPayload: Codable, Sendable, Equatable {
+    var `decisionNote`: String? = nil
+    var `targetLibraryId`: Int? = nil
+    var `targetFolderId`: Int? = nil
+}
+
+struct FulfillBookRequestPayload: Codable, Sendable, Equatable {
+    var `bookDockFileId`: Int? = nil
+    var `matchedBookId`: Int? = nil
+    var `note`: String? = nil
+}
+
+struct BookRequestReview: Codable, Sendable, Equatable {
+    var `requestId`: Int
+    var `bookDockFileId`: Int? = nil
+    var `verification`: BookRequestVerification? = nil
+    var `files`: [BookRequestReviewFile]
+    var `totalSizeBytes`: Int? = nil
+    var `canFile`: Bool
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`requestId`, forKey: .`requestId`)
+        try container.encode(`bookDockFileId`, forKey: .`bookDockFileId`)
+        try container.encode(`verification`, forKey: .`verification`)
+        try container.encode(`files`, forKey: .`files`)
+        try container.encode(`totalSizeBytes`, forKey: .`totalSizeBytes`)
+        try container.encode(`canFile`, forKey: .`canFile`)
+    }
+}
+
+struct BookRequestVerification: Codable, Sendable, Equatable {
+    var `score`: Double
+    var `threshold`: Double
+    var `passed`: Bool
+    var `reason`: String
+    var `rows`: [BookRequestVerificationRow]
+}
+
+struct BookRequestVerificationRow: Codable, Sendable, Equatable {
+    var `field`: String
+    var `requested`: String?
+    var `imported`: String?
+    var `verdict`: String
+}
+
+struct BookRequestReviewFile: Codable, Sendable, Equatable {
+    var `format`: String?
+    var `role`: String
+    var `fileSize`: Double?
+    var `fileName`: String
+}
+
+struct ReleaseSearchResult: Codable, Sendable, Equatable {
+    var `releases`: [ReleaseCandidateItem]
+    var `criteria`: ReleaseSearchCriteria
+    var `indexers`: [IndexerSearchStatus]
+    var `uncoveredIndexerCount`: Int
+    var `enabledIndexerCount`: Int
+    var `configuredIndexerCount`: Int
+    var `profileActive`: Bool
+    var `searchedAt`: String
+    var `cached`: Bool
+}
+
+struct ReleaseCandidateItem: Codable, Sendable, Equatable {
+    var `indexerId`: Int
+    var `indexerName`: String
+    var `guid`: String
+    var `title`: String
+    var `sizeBytes`: Int? = nil
+    var `seeders`: Double? = nil
+    var `leechers`: Double? = nil
+    var `format`: String? = nil
+    var `formats`: [String]
+    var `language`: String? = nil
+    var `fileCount`: Int? = nil
+    var `freeleech`: Bool
+    var `vipOnly`: Bool
+    var `alreadyGrabbed`: Bool
+    var `publishedAt`: String? = nil
+    var `audio`: ReleaseAudioInfo? = nil
+    var `score`: Double
+    var `tier`: Double? = nil
+    var `tierName`: String? = nil
+    var `profileMismatch`: ReleaseProfileMismatch? = nil
+    var `reasons`: [ReleaseScoreReason]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`indexerId`, forKey: .`indexerId`)
+        try container.encode(`indexerName`, forKey: .`indexerName`)
+        try container.encode(`guid`, forKey: .`guid`)
+        try container.encode(`title`, forKey: .`title`)
+        try container.encode(`sizeBytes`, forKey: .`sizeBytes`)
+        try container.encode(`seeders`, forKey: .`seeders`)
+        try container.encode(`leechers`, forKey: .`leechers`)
+        try container.encode(`format`, forKey: .`format`)
+        try container.encode(`formats`, forKey: .`formats`)
+        try container.encode(`language`, forKey: .`language`)
+        try container.encode(`fileCount`, forKey: .`fileCount`)
+        try container.encode(`freeleech`, forKey: .`freeleech`)
+        try container.encode(`vipOnly`, forKey: .`vipOnly`)
+        try container.encode(`alreadyGrabbed`, forKey: .`alreadyGrabbed`)
+        try container.encode(`publishedAt`, forKey: .`publishedAt`)
+        try container.encode(`audio`, forKey: .`audio`)
+        try container.encode(`score`, forKey: .`score`)
+        try container.encode(`tier`, forKey: .`tier`)
+        try container.encode(`tierName`, forKey: .`tierName`)
+        try container.encode(`profileMismatch`, forKey: .`profileMismatch`)
+        try container.encode(`reasons`, forKey: .`reasons`)
+    }
+}
+
+struct ReleaseAudioInfo: Codable, Sendable, Equatable {
+    var `bitrateKbps`: Double?
+    var `bitrateMode`: String?
+    var `channels`: Double?
+    var `samplingRateHz`: Double?
+    var `durationSeconds`: Int?
+    var `chapterCount`: Double?
+}
+
+struct ReleaseProfileMismatch: Codable, Sendable, Equatable {
+    var `tier`: Double
+    var `tierName`: String
+    var `failures`: [ReleaseProfileMismatchFailure]
+}
+
+enum ReleaseProfileMismatchFailure: Codable, Sendable, Equatable {
+    case `formatUnknown`(ReleaseProfileMismatchFailureFormatUnknown)
+    case `format`(ReleaseProfileMismatchFailureFormat)
+    case `fileLayoutUnknown`(ReleaseProfileMismatchFailureFileLayoutUnknown)
+    case `fileLayout`(ReleaseProfileMismatchFailureFileLayout)
+    case `bitrate`(ReleaseProfileMismatchFailureBitrate)
+    case `channels`(ReleaseProfileMismatchFailureChannels)
+    case `languageUnknown`(ReleaseProfileMismatchFailureLanguageUnknown)
+    case `language`(ReleaseProfileMismatchFailureLanguage)
+    case `source`(ReleaseProfileMismatchFailureSource)
+    case `seeders`(ReleaseProfileMismatchFailureSeeders)
+    case `sizeUnknown`(ReleaseProfileMismatchFailureSizeUnknown)
+    case `size`(ReleaseProfileMismatchFailureSize)
+    case `freeleech`(ReleaseProfileMismatchFailureFreeleech)
+    case `vipOnly`(ReleaseProfileMismatchFailureVipOnly)
+
+    private enum CodingKeys: String, CodingKey { case `code` }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(String.self, forKey: .`code`) {
+        case "formatUnknown": self = .`formatUnknown`(try ReleaseProfileMismatchFailureFormatUnknown(from: decoder))
+        case "format": self = .`format`(try ReleaseProfileMismatchFailureFormat(from: decoder))
+        case "fileLayoutUnknown": self = .`fileLayoutUnknown`(try ReleaseProfileMismatchFailureFileLayoutUnknown(from: decoder))
+        case "fileLayout": self = .`fileLayout`(try ReleaseProfileMismatchFailureFileLayout(from: decoder))
+        case "bitrate": self = .`bitrate`(try ReleaseProfileMismatchFailureBitrate(from: decoder))
+        case "channels": self = .`channels`(try ReleaseProfileMismatchFailureChannels(from: decoder))
+        case "languageUnknown": self = .`languageUnknown`(try ReleaseProfileMismatchFailureLanguageUnknown(from: decoder))
+        case "language": self = .`language`(try ReleaseProfileMismatchFailureLanguage(from: decoder))
+        case "source": self = .`source`(try ReleaseProfileMismatchFailureSource(from: decoder))
+        case "seeders": self = .`seeders`(try ReleaseProfileMismatchFailureSeeders(from: decoder))
+        case "sizeUnknown": self = .`sizeUnknown`(try ReleaseProfileMismatchFailureSizeUnknown(from: decoder))
+        case "size": self = .`size`(try ReleaseProfileMismatchFailureSize(from: decoder))
+        case "freeleech": self = .`freeleech`(try ReleaseProfileMismatchFailureFreeleech(from: decoder))
+        case "vipOnly": self = .`vipOnly`(try ReleaseProfileMismatchFailureVipOnly(from: decoder))
+        default: throw DecodingError.dataCorruptedError(forKey: .`code`, in: container, debugDescription: "Invalid ReleaseProfileMismatchFailure discriminator")
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        switch self {
+        case .`formatUnknown`(let value): try value.encode(to: encoder)
+        case .`format`(let value): try value.encode(to: encoder)
+        case .`fileLayoutUnknown`(let value): try value.encode(to: encoder)
+        case .`fileLayout`(let value): try value.encode(to: encoder)
+        case .`bitrate`(let value): try value.encode(to: encoder)
+        case .`channels`(let value): try value.encode(to: encoder)
+        case .`languageUnknown`(let value): try value.encode(to: encoder)
+        case .`language`(let value): try value.encode(to: encoder)
+        case .`source`(let value): try value.encode(to: encoder)
+        case .`seeders`(let value): try value.encode(to: encoder)
+        case .`sizeUnknown`(let value): try value.encode(to: encoder)
+        case .`size`(let value): try value.encode(to: encoder)
+        case .`freeleech`(let value): try value.encode(to: encoder)
+        case .`vipOnly`(let value): try value.encode(to: encoder)
+        }
+    }
+}
+
+struct ReleaseProfileMismatchFailureFormatUnknown: Codable, Sendable, Equatable {
+    var `code`: String
+    var `expected`: [String]
+}
+
+struct ReleaseProfileMismatchFailureFormat: Codable, Sendable, Equatable {
+    var `code`: String
+    var `expected`: [String]
+    var `actual`: [String]
+}
+
+struct ReleaseProfileMismatchFailureFileLayoutUnknown: Codable, Sendable, Equatable {
+    var `code`: String
+    var `expected`: String
+}
+
+struct ReleaseProfileMismatchFailureFileLayout: Codable, Sendable, Equatable {
+    var `code`: String
+    var `expected`: String
+    var `actual`: String
+}
+
+struct ReleaseProfileMismatchFailureBitrate: Codable, Sendable, Equatable {
+    var `code`: String
+    var `expected`: Double
+    var `actual`: Double
+}
+
+struct ReleaseProfileMismatchFailureChannels: Codable, Sendable, Equatable {
+    var `code`: String
+    var `expected`: Double
+    var `actual`: Double
+}
+
+struct ReleaseProfileMismatchFailureLanguageUnknown: Codable, Sendable, Equatable {
+    var `code`: String
+    var `expected`: [String]
+}
+
+struct ReleaseProfileMismatchFailureLanguage: Codable, Sendable, Equatable {
+    var `code`: String
+    var `expected`: [String]
+    var `actual`: String
+}
+
+struct ReleaseProfileMismatchFailureSource: Codable, Sendable, Equatable {
+    var `code`: String
+}
+
+struct ReleaseProfileMismatchFailureSeeders: Codable, Sendable, Equatable {
+    var `code`: String
+    var `expected`: Double
+    var `actual`: Double
+}
+
+struct ReleaseProfileMismatchFailureSizeUnknown: Codable, Sendable, Equatable {
+    var `code`: String
+    var `expected`: Double
+}
+
+struct ReleaseProfileMismatchFailureSize: Codable, Sendable, Equatable {
+    var `code`: String
+    var `expected`: Double
+    var `actual`: Double
+}
+
+struct ReleaseProfileMismatchFailureFreeleech: Codable, Sendable, Equatable {
+    var `code`: String
+}
+
+struct ReleaseProfileMismatchFailureVipOnly: Codable, Sendable, Equatable {
+    var `code`: String
+}
+
+struct ReleaseScoreReason: Codable, Sendable, Equatable {
+    var `code`: String
+    var `points`: Double
+    var `detail`: String?
+}
+
+struct ReleaseSearchCriteria: Codable, Sendable, Equatable {
+    var `title`: String
+    var `authors`: [String]
+    var `isbn10`: String?
+    var `isbn13`: String?
+    var `activeIsbn`: String?
+    var `isbns`: [String]
+    var `mediaKind`: String
+    var `language`: String?
+    var `preferredFormats`: [String]
+}
+
+struct IndexerSearchStatus: Codable, Sendable, Equatable {
+    var `indexerId`: Double
+    var `indexerName`: String
+    var `color`: String?
+    var `ok`: Bool
+    var `count`: Double
+    var `filtered`: Double
+    var `query`: IndexerSearchQuery?
+    var `failure`: String?
+    var `error`: String?
+    var `seedsBack`: Bool
+    var `delivery`: String
+}
+
+struct IndexerSearchQuery: Codable, Sendable, Equatable {
+    var `kind`: String
+    var `value`: String
+}
+
+struct DownloadClientSummary: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `color`: String? = nil
+    var `delivery`: String
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`name`, forKey: .`name`)
+        try container.encode(`color`, forKey: .`color`)
+        try container.encode(`delivery`, forKey: .`delivery`)
+    }
+}
+
+struct GrabBookRequestPayload: Codable, Sendable, Equatable {
+    var `indexerId`: Int? = nil
+    var `releaseGuid`: String? = nil
+    var `magnet`: String? = nil
+    var `torrentFileBase64`: String? = nil
+    var `torrentFileName`: String? = nil
+    var `downloadClientId`: Int? = nil
+}
+
+struct IndexerListResult: Codable, Sendable, Equatable {
+    var `indexers`: [IndexerItem]
+    var `encryptionConfigured`: Bool
+}
+
+struct IndexerItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `color`: String? = nil
+    var `adapterType`: String
+    var `enabled`: Bool
+    var `baseUrl`: String
+    var `hasCredential`: Bool
+    var `allowPrivateAddress`: Bool
+    var `applyTrackerSeedGoals`: Bool
+    var `seedRatioGoal`: Double? = nil
+    var `seedTimeMinutes`: Double? = nil
+    var `categories`: IndexerCategoryMap
+    var `disabledMediaKinds`: [String]
+    var `isbnSearchDisabled`: Bool
+    var `settings`: [String: JSONValue]
+    var `networkProfile`: IndexerItemNetworkProfile? = nil
+    var `lastTestedAt`: String? = nil
+    var `lastTestOk`: Bool? = nil
+    var `lastErrorMessage`: String? = nil
+    var `lastSearchAt`: String? = nil
+    var `lastSearchOk`: Bool? = nil
+    var `lastSearchError`: String? = nil
+    var `searchFailureStreak`: Double
+    var `createdAt`: String
+    var `updatedAt`: String
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`name`, forKey: .`name`)
+        try container.encode(`color`, forKey: .`color`)
+        try container.encode(`adapterType`, forKey: .`adapterType`)
+        try container.encode(`enabled`, forKey: .`enabled`)
+        try container.encode(`baseUrl`, forKey: .`baseUrl`)
+        try container.encode(`hasCredential`, forKey: .`hasCredential`)
+        try container.encode(`allowPrivateAddress`, forKey: .`allowPrivateAddress`)
+        try container.encode(`applyTrackerSeedGoals`, forKey: .`applyTrackerSeedGoals`)
+        try container.encode(`seedRatioGoal`, forKey: .`seedRatioGoal`)
+        try container.encode(`seedTimeMinutes`, forKey: .`seedTimeMinutes`)
+        try container.encode(`categories`, forKey: .`categories`)
+        try container.encode(`disabledMediaKinds`, forKey: .`disabledMediaKinds`)
+        try container.encode(`isbnSearchDisabled`, forKey: .`isbnSearchDisabled`)
+        try container.encode(`settings`, forKey: .`settings`)
+        try container.encode(`networkProfile`, forKey: .`networkProfile`)
+        try container.encode(`lastTestedAt`, forKey: .`lastTestedAt`)
+        try container.encode(`lastTestOk`, forKey: .`lastTestOk`)
+        try container.encode(`lastErrorMessage`, forKey: .`lastErrorMessage`)
+        try container.encode(`lastSearchAt`, forKey: .`lastSearchAt`)
+        try container.encode(`lastSearchOk`, forKey: .`lastSearchOk`)
+        try container.encode(`lastSearchError`, forKey: .`lastSearchError`)
+        try container.encode(`searchFailureStreak`, forKey: .`searchFailureStreak`)
+        try container.encode(`createdAt`, forKey: .`createdAt`)
+        try container.encode(`updatedAt`, forKey: .`updatedAt`)
+    }
+}
+
+struct IndexerCategoryMap: Codable, Sendable, Equatable {
+    var `ebook`: [Double]
+    var `audiobook`: [Double]
+    var `comic`: [Double]
+}
+
+indirect enum JSONValue: Codable, Sendable, Equatable, Hashable {
+    case string(String), number(Double), boolean(Bool), null, array([JSONValue]), object([String: JSONValue])
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null }
+        else if let value = try? container.decode(Bool.self) { self = .boolean(value) }
+        else if let value = try? container.decode(Double.self) { self = .number(value) }
+        else if let value = try? container.decode(String.self) { self = .string(value) }
+        else if let value = try? container.decode([JSONValue].self) { self = .array(value) }
+        else { self = .object(try container.decode([String: JSONValue].self)) }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .boolean(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        case .array(let value): try container.encode(value)
+        case .object(let value): try container.encode(value)
+        }
+    }
+}
+
+struct IndexerItemNetworkProfile: Codable, Sendable, Equatable {
+    var `resolvers`: [String]?
+    var `proxyUrl`: String?
+}
+
+struct IndexerAdapterListResult: Codable, Sendable, Equatable {
+    var `adapters`: [IndexerAdapterDescriptor]
+    var `pluginFailures`: [IndexerPluginFailure]
+}
+
+struct IndexerAdapterDescriptor: Codable, Sendable, Equatable {
+    var `type`: String
+    var `label`: String
+    var `builtIn`: Bool
+    var `version`: String?
+    var `updateable`: Bool?
+    var `requiresCredential`: Bool
+    var `credentialKind`: String?
+    var `mediaKinds`: [String]
+    var `usesCategories`: Bool
+    var `seedsBack`: Bool
+    var `delivery`: String
+    var `supportsIsbnSearch`: Bool
+    var `defaultCategories`: IndexerCategoryMap
+    var `defaultBaseUrl`: String?
+    var `baseUrlHint`: String?
+    var `settingsFields`: [IndexerSettingsField]
+}
+
+struct IndexerSettingsField: Codable, Sendable, Equatable {
+    var `key`: String
+    var `type`: String
+    var `label`: String
+    var `hint`: String?
+    var `default`: JSONValue?
+    var `format`: String?
+    var `options`: [String]?
+    var `minItems`: Double?
+}
+
+struct IndexerPluginFailure: Codable, Sendable, Equatable {
+    var `directory`: String
+    var `reason`: String
+}
+
+struct IndexerTestResult: Codable, Sendable, Equatable {
+    var `success`: Bool
+    var `indexerName`: String? = nil
+    var `error`: String? = nil
+}
+
+struct CreateIndexerPayload: Codable, Sendable, Equatable {
+    var `name`: String
+    var `adapterType`: String
+    var `baseUrl`: String
+    var `color`: String? = nil
+    var `credential`: String? = nil
+    var `enabled`: Bool? = nil
+    var `allowPrivateAddress`: Bool? = nil
+    var `applyTrackerSeedGoals`: Bool? = nil
+    var `seedRatioGoal`: Double? = nil
+    var `seedTimeMinutes`: Double? = nil
+    var `categories`: CreateIndexerPayloadCategories? = nil
+    var `disabledMediaKinds`: [String]? = nil
+    var `isbnSearchDisabled`: Bool? = nil
+    var `settings`: [String: JSONValue]? = nil
+    var `networkProfile`: CreateIndexerPayloadNetworkProfile? = nil
+}
+
+struct CreateIndexerPayloadCategories: Codable, Sendable, Equatable {
+    var `ebook`: [Double]?
+    var `audiobook`: [Double]?
+    var `comic`: [Double]?
+}
+
+struct CreateIndexerPayloadNetworkProfile: Codable, Sendable, Equatable {
+    var `resolvers`: [String]?
+    var `proxyUrl`: String?
+}
+
+struct UpdateIndexerPayload: Codable, Sendable, Equatable {
+    var `name`: String? = nil
+    var `adapterType`: String? = nil
+    var `baseUrl`: String? = nil
+    var `color`: String? = nil
+    var `credential`: String? = nil
+    var `enabled`: Bool? = nil
+    var `allowPrivateAddress`: Bool? = nil
+    var `applyTrackerSeedGoals`: Bool? = nil
+    var `seedRatioGoal`: Double? = nil
+    var `seedTimeMinutes`: Double? = nil
+    var `categories`: UpdateIndexerPayloadCategories? = nil
+    var `disabledMediaKinds`: [String]? = nil
+    var `isbnSearchDisabled`: Bool? = nil
+    var `settings`: [String: JSONValue]? = nil
+    var `networkProfile`: UpdateIndexerPayloadNetworkProfile? = nil
+}
+
+struct UpdateIndexerPayloadCategories: Codable, Sendable, Equatable {
+    var `ebook`: [Double]?
+    var `audiobook`: [Double]?
+    var `comic`: [Double]?
+}
+
+struct UpdateIndexerPayloadNetworkProfile: Codable, Sendable, Equatable {
+    var `resolvers`: [String]?
+    var `proxyUrl`: String?
+}
+
+struct PluginInspection: Codable, Sendable, Equatable {
+    var `type`: String
+    var `label`: String
+    var `version`: String? = nil
+    var `update`: PluginUpdateChannel? = nil
+    var `requiresCredential`: Bool
+    var `credentialKind`: String? = nil
+    var `mediaKinds`: [String]
+    var `usesCategories`: Bool
+    var `seedsBack`: Bool
+    var `defaultBaseUrl`: String? = nil
+    var `baseUrlHint`: String? = nil
+    var `settingsFields`: [IndexerSettingsField]
+    var `source`: String
+    var `replaces`: Bool
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`type`, forKey: .`type`)
+        try container.encode(`label`, forKey: .`label`)
+        try container.encodeIfPresent(`version`, forKey: .`version`)
+        try container.encodeIfPresent(`update`, forKey: .`update`)
+        try container.encode(`requiresCredential`, forKey: .`requiresCredential`)
+        try container.encode(`credentialKind`, forKey: .`credentialKind`)
+        try container.encode(`mediaKinds`, forKey: .`mediaKinds`)
+        try container.encode(`usesCategories`, forKey: .`usesCategories`)
+        try container.encode(`seedsBack`, forKey: .`seedsBack`)
+        try container.encodeIfPresent(`defaultBaseUrl`, forKey: .`defaultBaseUrl`)
+        try container.encodeIfPresent(`baseUrlHint`, forKey: .`baseUrlHint`)
+        try container.encode(`settingsFields`, forKey: .`settingsFields`)
+        try container.encode(`source`, forKey: .`source`)
+        try container.encode(`replaces`, forKey: .`replaces`)
+    }
+}
+
+struct PluginUpdateChannel: Codable, Sendable, Equatable {
+    var `manifestUrl`: String
+    var `ed25519PublicKey`: String
+}
+
+struct PluginInstallResult: Codable, Sendable, Equatable {
+    var `active`: Bool
+    var `type`: String
+    var `label`: String
+    var `version`: String? = nil
+    var `update`: PluginUpdateChannel? = nil
+    var `requiresCredential`: Bool
+    var `credentialKind`: String? = nil
+    var `mediaKinds`: [String]
+    var `usesCategories`: Bool
+    var `seedsBack`: Bool
+    var `defaultBaseUrl`: String? = nil
+    var `baseUrlHint`: String? = nil
+    var `settingsFields`: [IndexerSettingsField]
+    var `source`: String
+    var `replaces`: Bool
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`active`, forKey: .`active`)
+        try container.encode(`type`, forKey: .`type`)
+        try container.encode(`label`, forKey: .`label`)
+        try container.encodeIfPresent(`version`, forKey: .`version`)
+        try container.encodeIfPresent(`update`, forKey: .`update`)
+        try container.encode(`requiresCredential`, forKey: .`requiresCredential`)
+        try container.encode(`credentialKind`, forKey: .`credentialKind`)
+        try container.encode(`mediaKinds`, forKey: .`mediaKinds`)
+        try container.encode(`usesCategories`, forKey: .`usesCategories`)
+        try container.encode(`seedsBack`, forKey: .`seedsBack`)
+        try container.encodeIfPresent(`defaultBaseUrl`, forKey: .`defaultBaseUrl`)
+        try container.encodeIfPresent(`baseUrlHint`, forKey: .`baseUrlHint`)
+        try container.encode(`settingsFields`, forKey: .`settingsFields`)
+        try container.encode(`source`, forKey: .`source`)
+        try container.encode(`replaces`, forKey: .`replaces`)
+    }
+}
+
+struct PluginUpdateListResult: Codable, Sendable, Equatable {
+    var `updates`: [PluginUpdateStatus]
+}
+
+struct PluginUpdateStatus: Codable, Sendable, Equatable {
+    var `type`: String
+    var `currentVersion`: String? = nil
+    var `latestVersion`: String? = nil
+    var `state`: String
+    var `autoUpdate`: Bool
+    var `checkedAt`: String? = nil
+    var `error`: String? = nil
+}
+
+struct PluginUpdateReview: Codable, Sendable, Equatable {
+    var `currentVersion`: String? = nil
+    var `sha256`: String
+    var `verified`: Bool
+    var `type`: String
+    var `label`: String
+    var `version`: String? = nil
+    var `update`: PluginUpdateChannel? = nil
+    var `requiresCredential`: Bool
+    var `credentialKind`: String? = nil
+    var `mediaKinds`: [String]
+    var `usesCategories`: Bool
+    var `seedsBack`: Bool
+    var `defaultBaseUrl`: String? = nil
+    var `baseUrlHint`: String? = nil
+    var `settingsFields`: [IndexerSettingsField]
+    var `source`: String
+    var `replaces`: Bool
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(`currentVersion`, forKey: .`currentVersion`)
+        try container.encode(`sha256`, forKey: .`sha256`)
+        try container.encode(`verified`, forKey: .`verified`)
+        try container.encode(`type`, forKey: .`type`)
+        try container.encode(`label`, forKey: .`label`)
+        try container.encodeIfPresent(`version`, forKey: .`version`)
+        try container.encodeIfPresent(`update`, forKey: .`update`)
+        try container.encode(`requiresCredential`, forKey: .`requiresCredential`)
+        try container.encode(`credentialKind`, forKey: .`credentialKind`)
+        try container.encode(`mediaKinds`, forKey: .`mediaKinds`)
+        try container.encode(`usesCategories`, forKey: .`usesCategories`)
+        try container.encode(`seedsBack`, forKey: .`seedsBack`)
+        try container.encodeIfPresent(`defaultBaseUrl`, forKey: .`defaultBaseUrl`)
+        try container.encodeIfPresent(`baseUrlHint`, forKey: .`baseUrlHint`)
+        try container.encode(`settingsFields`, forKey: .`settingsFields`)
+        try container.encode(`source`, forKey: .`source`)
+        try container.encode(`replaces`, forKey: .`replaces`)
+    }
+}
+
+struct IndexerManagerListResult: Codable, Sendable, Equatable {
+    var `managers`: [IndexerManagerItem]
+    var `encryptionConfigured`: Bool
+}
+
+struct IndexerManagerItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `color`: String? = nil
+    var `type`: String
+    var `enabled`: Bool
+    var `baseUrl`: String
+    var `hasCredential`: Bool
+    var `allowPrivateAddress`: Bool
+    var `syncNewIndexers`: Bool
+    var `perIndexerTimeoutSeconds`: Double
+    var `overallSearchBudgetSeconds`: Double
+    var `autoExpandCategories`: Bool
+    var `inheritSeedLimits`: Bool
+    var `networkProfile`: IndexerManagerItemNetworkProfile? = nil
+    var `lastTestedAt`: String? = nil
+    var `lastTestOk`: Bool? = nil
+    var `lastErrorMessage`: String? = nil
+    var `lastSyncedAt`: String? = nil
+    var `lastSyncOk`: Bool? = nil
+    var `lastSyncError`: String? = nil
+    var `version`: String? = nil
+    var `sources`: [IndexerManagerSourceItem]
+    var `createdAt`: String
+    var `updatedAt`: String
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`name`, forKey: .`name`)
+        try container.encode(`color`, forKey: .`color`)
+        try container.encode(`type`, forKey: .`type`)
+        try container.encode(`enabled`, forKey: .`enabled`)
+        try container.encode(`baseUrl`, forKey: .`baseUrl`)
+        try container.encode(`hasCredential`, forKey: .`hasCredential`)
+        try container.encode(`allowPrivateAddress`, forKey: .`allowPrivateAddress`)
+        try container.encode(`syncNewIndexers`, forKey: .`syncNewIndexers`)
+        try container.encode(`perIndexerTimeoutSeconds`, forKey: .`perIndexerTimeoutSeconds`)
+        try container.encode(`overallSearchBudgetSeconds`, forKey: .`overallSearchBudgetSeconds`)
+        try container.encode(`autoExpandCategories`, forKey: .`autoExpandCategories`)
+        try container.encode(`inheritSeedLimits`, forKey: .`inheritSeedLimits`)
+        try container.encode(`networkProfile`, forKey: .`networkProfile`)
+        try container.encode(`lastTestedAt`, forKey: .`lastTestedAt`)
+        try container.encode(`lastTestOk`, forKey: .`lastTestOk`)
+        try container.encode(`lastErrorMessage`, forKey: .`lastErrorMessage`)
+        try container.encode(`lastSyncedAt`, forKey: .`lastSyncedAt`)
+        try container.encode(`lastSyncOk`, forKey: .`lastSyncOk`)
+        try container.encode(`lastSyncError`, forKey: .`lastSyncError`)
+        try container.encode(`version`, forKey: .`version`)
+        try container.encode(`sources`, forKey: .`sources`)
+        try container.encode(`createdAt`, forKey: .`createdAt`)
+        try container.encode(`updatedAt`, forKey: .`updatedAt`)
+    }
+}
+
+struct IndexerManagerItemNetworkProfile: Codable, Sendable, Equatable {
+    var `resolvers`: [String]?
+    var `proxyUrl`: String?
+}
+
+struct IndexerManagerSourceItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `externalId`: String
+    var `name`: String
+    var `color`: String?
+    var `implementation`: String?
+    var `protocol`: String
+    var `adapterType`: String
+    var `enabled`: Bool
+    var `available`: Bool
+    var `priority`: Double?
+    var `lastSeenAt`: String?
+    var `lastSearchAt`: String?
+    var `lastSearchOk`: Bool?
+    var `lastSearchError`: String?
+    var `searchFailureStreak`: Double
+}
+
+struct IndexerManagerTestResult: Codable, Sendable, Equatable {
+    var `success`: Bool
+    var `version`: String? = nil
+    var `sourceCount`: Int? = nil
+    var `error`: String? = nil
+}
+
+struct IndexerManagerSyncResult: Codable, Sendable, Equatable {
+    var `manager`: IndexerManagerItem
+    var `discovered`: Double
+    var `created`: Double
+    var `updated`: Int
+    var `unavailable`: Double
+}
+
+struct CreateIndexerManagerPayload: Codable, Sendable, Equatable {
+    var `name`: String
+    var `type`: String
+    var `baseUrl`: String
+    var `color`: String? = nil
+    var `credential`: String
+    var `enabled`: Bool? = nil
+    var `allowPrivateAddress`: Bool? = nil
+    var `syncNewIndexers`: Bool? = nil
+    var `perIndexerTimeoutSeconds`: Double? = nil
+    var `overallSearchBudgetSeconds`: Double? = nil
+    var `autoExpandCategories`: Bool? = nil
+    var `inheritSeedLimits`: Bool? = nil
+    var `networkProfile`: CreateIndexerManagerPayloadNetworkProfile? = nil
+}
+
+struct CreateIndexerManagerPayloadNetworkProfile: Codable, Sendable, Equatable {
+    var `resolvers`: [String]?
+    var `proxyUrl`: String?
+}
+
+struct UpdateIndexerManagerPayload: Codable, Sendable, Equatable {
+    var `name`: String? = nil
+    var `color`: String? = nil
+    var `enabled`: Bool? = nil
+    var `baseUrl`: String? = nil
+    var `allowPrivateAddress`: Bool? = nil
+    var `credential`: String? = nil
+    var `syncNewIndexers`: Bool? = nil
+    var `perIndexerTimeoutSeconds`: Double? = nil
+    var `overallSearchBudgetSeconds`: Double? = nil
+    var `autoExpandCategories`: Bool? = nil
+    var `inheritSeedLimits`: Bool? = nil
+    var `networkProfile`: UpdateIndexerManagerPayloadNetworkProfile? = nil
+}
+
+struct UpdateIndexerManagerPayloadNetworkProfile: Codable, Sendable, Equatable {
+    var `resolvers`: [String]?
+    var `proxyUrl`: String?
+}
+
+struct UpdateIndexerManagerSourcePayload: Codable, Sendable, Equatable {
+    var `enabled`: Bool? = nil
+    var `color`: String? = nil
+}
+
+struct DownloadClientListResult: Codable, Sendable, Equatable {
+    var `clients`: [DownloadClientItem]
+    var `encryptionConfigured`: Bool
+}
+
+struct DownloadClientItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+    var `color`: String? = nil
+    var `adapterType`: String
+    var `enabled`: Bool
+    var `priority`: Double
+    var `baseUrl`: String
+    var `username`: String? = nil
+    var `hasPassword`: Bool
+    var `category`: String
+    var `useHardlinks`: Bool
+    var `allowPrivateAddress`: Bool
+    var `lastTestedAt`: String? = nil
+    var `lastTestOk`: Bool? = nil
+    var `lastErrorMessage`: String? = nil
+    var `pathMappings`: [DownloadClientPathMapping]
+    var `createdAt`: String
+    var `updatedAt`: String
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`name`, forKey: .`name`)
+        try container.encode(`color`, forKey: .`color`)
+        try container.encode(`adapterType`, forKey: .`adapterType`)
+        try container.encode(`enabled`, forKey: .`enabled`)
+        try container.encode(`priority`, forKey: .`priority`)
+        try container.encode(`baseUrl`, forKey: .`baseUrl`)
+        try container.encode(`username`, forKey: .`username`)
+        try container.encode(`hasPassword`, forKey: .`hasPassword`)
+        try container.encode(`category`, forKey: .`category`)
+        try container.encode(`useHardlinks`, forKey: .`useHardlinks`)
+        try container.encode(`allowPrivateAddress`, forKey: .`allowPrivateAddress`)
+        try container.encode(`lastTestedAt`, forKey: .`lastTestedAt`)
+        try container.encode(`lastTestOk`, forKey: .`lastTestOk`)
+        try container.encode(`lastErrorMessage`, forKey: .`lastErrorMessage`)
+        try container.encode(`pathMappings`, forKey: .`pathMappings`)
+        try container.encode(`createdAt`, forKey: .`createdAt`)
+        try container.encode(`updatedAt`, forKey: .`updatedAt`)
+    }
+}
+
+struct DownloadClientPathMapping: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `remotePath`: String
+    var `localPath`: String
+}
+
+struct DownloadClientTestResult: Codable, Sendable, Equatable {
+    var `success`: Bool
+    var `version`: String? = nil
+    var `error`: String? = nil
+}
+
+struct PathMappingHardlinkTestResult: Codable, Sendable, Equatable {
+    var `localPathExists`: Bool
+    var `bookDockPathExists`: Bool
+    var `hardlinkWorks`: Bool
+    var `failure`: String? = nil
+    var `errorCode`: String? = nil
+    var `error`: String? = nil
+}
+
+struct DownloadClientReconciliationResult: Codable, Sendable, Equatable {
+    var `clientId`: Int
+    var `supported`: Bool
+    var `ownershipMarker`: String
+    var `truncated`: Bool
+    var `items`: [DownloadClientReconciliationItem]
+    var `missingAttempts`: [DownloadClientReconciliationAttempt]
+}
+
+struct DownloadClientReconciliationItem: Codable, Sendable, Equatable {
+    var `clientKey`: String
+    var `name`: String
+    var `state`: String
+    var `progressPercent`: Double
+    var `trackedAttempt`: DownloadClientReconciliationAttempt? = nil
+    var `adoptableAttempts`: [DownloadClientReconciliationAttempt]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`clientKey`, forKey: .`clientKey`)
+        try container.encode(`name`, forKey: .`name`)
+        try container.encode(`state`, forKey: .`state`)
+        try container.encode(`progressPercent`, forKey: .`progressPercent`)
+        try container.encode(`trackedAttempt`, forKey: .`trackedAttempt`)
+        try container.encode(`adoptableAttempts`, forKey: .`adoptableAttempts`)
+    }
+}
+
+struct DownloadClientReconciliationAttempt: Codable, Sendable, Equatable {
+    var `downloadId`: Int
+    var `requestId`: Int
+    var `requestTitle`: String
+    var `status`: String
+}
+
+struct CreateDownloadClientPayload: Codable, Sendable, Equatable {
+    var `name`: String
+    var `color`: String? = nil
+    var `adapterType`: String
+    var `baseUrl`: String
+    var `username`: String? = nil
+    var `password`: String? = nil
+    var `enabled`: Bool? = nil
+    var `priority`: Double? = nil
+    var `category`: String? = nil
+    var `useHardlinks`: Bool? = nil
+    var `allowPrivateAddress`: Bool? = nil
+    var `pathMappings`: [DownloadClientPathMappingInput]? = nil
+}
+
+struct DownloadClientPathMappingInput: Codable, Sendable, Equatable {
+    var `remotePath`: String
+    var `localPath`: String
+}
+
+struct UpdateDownloadClientPayload: Codable, Sendable, Equatable {
+    var `name`: String? = nil
+    var `color`: String? = nil
+    var `enabled`: Bool? = nil
+    var `password`: String? = nil
+    var `username`: String? = nil
+    var `baseUrl`: String? = nil
+    var `priority`: Double? = nil
+    var `category`: String? = nil
+    var `useHardlinks`: Bool? = nil
+    var `allowPrivateAddress`: Bool? = nil
+    var `pathMappings`: [DownloadClientPathMappingInput]? = nil
+}
+
+struct BookRequestAutomationSettings: Codable, Sendable, Equatable {
+    var `autoGrabEnabled`: Bool
+    var `autoGrabMinScore`: Double
+    var `autoRetryEnabled`: Bool
+    var `maxAutoGrabAttempts`: Double
+    var `autoSearchEnabled`: Bool
+    var `autoSearchIntervalHours`: Double
+    var `autoSearchMaxAgeDays`: Double
+    var `verificationEnabled`: Bool
+    var `verificationThreshold`: Double
+    var `importFormats`: String
+    var `destinations`: BookRequestAutomationSettingsDestinations
+    var `profiles`: ReleaseProfiles
+}
+
+struct BookRequestAutomationSettingsDestinations: Codable, Sendable, Equatable {
+    var `ebook`: BookRequestAutomationSettingsDestinationsEbook
+    var `audiobook`: BookRequestAutomationSettingsDestinationsAudiobook
+    var `comic`: BookRequestAutomationSettingsDestinationsComic
+}
+
+struct BookRequestAutomationSettingsDestinationsEbook: Codable, Sendable, Equatable {
+    var `libraryId`: Int?
+    var `folderId`: Int?
+}
+
+struct BookRequestAutomationSettingsDestinationsAudiobook: Codable, Sendable, Equatable {
+    var `libraryId`: Int?
+    var `folderId`: Int?
+}
+
+struct BookRequestAutomationSettingsDestinationsComic: Codable, Sendable, Equatable {
+    var `libraryId`: Int?
+    var `folderId`: Int?
+}
+
+struct ReleaseProfiles: Codable, Sendable, Equatable {
+    var `ebook`: [ReleaseTier]
+    var `audiobook`: [ReleaseTier]
+    var `comic`: [ReleaseTier]
+}
+
+struct ReleaseTier: Codable, Sendable, Equatable, Identifiable {
+    var `id`: String
+    var `name`: String
+    var `conditions`: ReleaseTierConditions
+}
+
+struct ReleaseTierConditions: Codable, Sendable, Equatable {
+    var `formats`: [String]? = nil
+    var `fileLayout`: String? = nil
+    var `minBitrateKbps`: Double? = nil
+    var `channels`: Double? = nil
+    var `languages`: [String]? = nil
+    var `indexerIds`: [Int]? = nil
+    var `minSeeders`: Double? = nil
+    var `maxSizeBytes`: Int? = nil
+    var `freeleechOnly`: Bool? = nil
+    var `excludeVipOnly`: Bool? = nil
+}
+
+struct BookRequestPreferences: Codable, Sendable, Equatable {
+    var `defaultLanguage`: String? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`defaultLanguage`, forKey: .`defaultLanguage`)
+    }
+}
+
+struct UpdateBookRequestAutomationSettingsPayload: Codable, Sendable, Equatable {
+    var `autoGrabEnabled`: Bool? = nil
+    var `autoGrabMinScore`: Double? = nil
+    var `autoRetryEnabled`: Bool? = nil
+    var `maxAutoGrabAttempts`: Double? = nil
+    var `autoSearchEnabled`: Bool? = nil
+    var `autoSearchIntervalHours`: Double? = nil
+    var `autoSearchMaxAgeDays`: Double? = nil
+    var `verificationEnabled`: Bool? = nil
+    var `verificationThreshold`: Double? = nil
+    var `importFormats`: String? = nil
+    var `destinations`: UpdateBookRequestAutomationSettingsPayloadDestinations? = nil
+    var `profiles`: UpdateBookRequestAutomationSettingsPayloadProfiles? = nil
+}
+
+struct UpdateBookRequestAutomationSettingsPayloadDestinations: Codable, Sendable, Equatable {
+    var `ebook`: UpdateBookRequestAutomationSettingsPayloadDestinationsEbook?
+    var `audiobook`: UpdateBookRequestAutomationSettingsPayloadDestinationsAudiobook?
+    var `comic`: UpdateBookRequestAutomationSettingsPayloadDestinationsComic?
+}
+
+struct UpdateBookRequestAutomationSettingsPayloadDestinationsEbook: Codable, Sendable, Equatable {
+    var `libraryId`: Int?
+    var `folderId`: Int?
+}
+
+struct UpdateBookRequestAutomationSettingsPayloadDestinationsAudiobook: Codable, Sendable, Equatable {
+    var `libraryId`: Int?
+    var `folderId`: Int?
+}
+
+struct UpdateBookRequestAutomationSettingsPayloadDestinationsComic: Codable, Sendable, Equatable {
+    var `libraryId`: Int?
+    var `folderId`: Int?
+}
+
+struct UpdateBookRequestAutomationSettingsPayloadProfiles: Codable, Sendable, Equatable {
+    var `ebook`: [ReleaseTier]?
+    var `audiobook`: [ReleaseTier]?
+    var `comic`: [ReleaseTier]?
+}
+
+struct MigrationSourceApi: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `type`: String
+    var `name`: String
+    var `connectionConfig`: [String: JSONValue]
+    var `capabilities`: MigrationSourceCapabilities? = nil
+    var `lastValidatedAt`: String? = nil
+    var `createdAt`: String
+    var `updatedAt`: String
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`type`, forKey: .`type`)
+        try container.encode(`name`, forKey: .`name`)
+        try container.encode(`connectionConfig`, forKey: .`connectionConfig`)
+        try container.encode(`capabilities`, forKey: .`capabilities`)
+        try container.encode(`lastValidatedAt`, forKey: .`lastValidatedAt`)
+        try container.encode(`createdAt`, forKey: .`createdAt`)
+        try container.encode(`updatedAt`, forKey: .`updatedAt`)
+    }
+}
+
+struct MigrationSourceCapabilities: Codable, Sendable, Equatable {
+    var `ok`: Bool? = nil
+    var `sourceType`: String
+    var `sourceVersion`: String? = nil
+    var `missingTables`: [String]
+    var `warnings`: [String]
+    var `counts`: [String: Int]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(`ok`, forKey: .`ok`)
+        try container.encode(`sourceType`, forKey: .`sourceType`)
+        try container.encode(`sourceVersion`, forKey: .`sourceVersion`)
+        try container.encode(`missingTables`, forKey: .`missingTables`)
+        try container.encode(`warnings`, forKey: .`warnings`)
+        try container.encode(`counts`, forKey: .`counts`)
+    }
+}
+
+struct MigrationProfileApi: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `sourceId`: Int
+    var `name`: String
+    var `userMappings`: [MigrationProfileApiUserMappingsItem]
+    var `pathMappings`: [MigrationProfileApiPathMappingsItem]
+    var `scope`: [String: JSONValue]
+    var `createdAt`: String
+    var `updatedAt`: String
+}
+
+struct MigrationProfileApiUserMappingsItem: Codable, Sendable, Equatable {
+    var `sourceUserId`: String
+    var `targetUserId`: Int?
+}
+
+struct MigrationProfileApiPathMappingsItem: Codable, Sendable, Equatable {
+    var `sourcePrefix`: String
+    var `targetPrefix`: String
+}
+
+struct MigrationPlanArtifactApi: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `sourceId`: Int
+    var `profileId`: Int
+    var `plan`: [String: JSONValue]
+    var `summary`: MigrationPlanSummary
+    var `createdAt`: String
+    var `updatedAt`: String
+}
+
+struct MigrationPlanSummary: Codable, Sendable, Equatable {
+    var `generatedAt`: String? = nil
+    var `status`: String? = nil
+    var `matchedBooks`: Double? = nil
+    var `unresolvedBooks`: Double? = nil
+    var `duplicateBookMatches`: Double? = nil
+    var `unresolvedByReason`: [String: Double]? = nil
+    var `mappedUsers`: Double? = nil
+    var `perUserPreview`: [MigrationPlanSummaryPerUserPreviewItem]? = nil
+    var `artifactSizeBytes`: MigrationPlanSummaryArtifactSizeBytes? = nil
+}
+
+struct MigrationPlanSummaryPerUserPreviewItem: Codable, Sendable, Equatable {
+    var `sourceUserId`: String
+    var `targetUserId`: Int
+    var `username`: String
+    var `counts`: [String: Int]
+}
+
+struct MigrationPlanSummaryArtifactSizeBytes: Codable, Sendable, Equatable {
+    var `plan`: Double
+    var `sourceData`: Double
+    var `total`: Int
+}
+
+struct MigrationRunApi: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `sourceId`: Int
+    var `profileId`: Int
+    var `planArtifactId`: Int? = nil
+    var `state`: String
+    var `currentStage`: String? = nil
+    var `targetKey`: String
+    var `errorMessage`: String? = nil
+    var `startedAt`: String? = nil
+    var `endedAt`: String? = nil
+    var `createdAt`: String
+    var `updatedAt`: String
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`sourceId`, forKey: .`sourceId`)
+        try container.encode(`profileId`, forKey: .`profileId`)
+        try container.encode(`planArtifactId`, forKey: .`planArtifactId`)
+        try container.encode(`state`, forKey: .`state`)
+        try container.encode(`currentStage`, forKey: .`currentStage`)
+        try container.encode(`targetKey`, forKey: .`targetKey`)
+        try container.encode(`errorMessage`, forKey: .`errorMessage`)
+        try container.encode(`startedAt`, forKey: .`startedAt`)
+        try container.encode(`endedAt`, forKey: .`endedAt`)
+        try container.encode(`createdAt`, forKey: .`createdAt`)
+        try container.encode(`updatedAt`, forKey: .`updatedAt`)
+    }
+}
+
+struct MigrationRunMetricApi: Codable, Sendable, Equatable {
+    var `stage`: String
+    var `entityType`: String
+    var `processed`: Int
+    var `imported`: Int
+    var `skipped`: Int
+    var `unresolved`: Int
+    var `failed`: Int
+    var `updatedAt`: String
+}
+
+struct MigrationProgressEvent: Codable, Sendable, Equatable {
+    var `runId`: Int
+    var `state`: String
+    var `currentStage`: String? = nil
+    var `totals`: MigrationProgressEventTotals
+    var `metrics`: [MigrationRunMetricApi]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`runId`, forKey: .`runId`)
+        try container.encode(`state`, forKey: .`state`)
+        try container.encode(`currentStage`, forKey: .`currentStage`)
+        try container.encode(`totals`, forKey: .`totals`)
+        try container.encode(`metrics`, forKey: .`metrics`)
+    }
+}
+
+struct MigrationProgressEventTotals: Codable, Sendable, Equatable {
+    var `processed`: Int
+    var `imported`: Int
+    var `skipped`: Int
+    var `unresolved`: Int
+    var `failed`: Int
+}
+
+struct MigrationUserMapping: Codable, Sendable, Equatable {
+    var `sourceUserId`: String
+    var `targetUserId`: Int? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`sourceUserId`, forKey: .`sourceUserId`)
+        try container.encode(`targetUserId`, forKey: .`targetUserId`)
+    }
+}
+
+struct MigrationPathMapping: Codable, Sendable, Equatable {
+    var `sourcePrefix`: String
+    var `targetPrefix`: String
+}
+
+struct CreateMigrationSourcePayload: Codable, Sendable, Equatable {
+    var `type`: String
+    var `name`: String
+    var `connectionConfig`: [String: JSONValue]
+}
+
+struct CreateMigrationProfilePayload: Codable, Sendable, Equatable {
+    var `sourceId`: Int
+    var `name`: String
+    var `userMappings`: [MigrationUserMapping]
+    var `pathMappings`: [MigrationPathMapping]
+}
+
+struct CreateMigrationDryRunPayload: Codable, Sendable, Equatable {
+    var `profileId`: Int
+}
+
+struct StartMigrationRunPayload: Codable, Sendable, Equatable {
+    var `planArtifactId`: Int
+}
+
+struct ResolveMigrationDuplicatesPayload: Codable, Sendable, Equatable {
+    var `resolutions`: [ResolveMigrationDuplicatesPayloadResolutionsItem]
+}
+
+struct ResolveMigrationDuplicatesPayloadResolutionsItem: Codable, Sendable, Equatable {
+    var `targetBookId`: Int
+    var `selectedSourceBookId`: String
+}
+
+struct MigrationWorkflowStateApi: Codable, Sendable, Equatable {
+    var `active`: MigrationWorkflowStateApiActive? = nil
+    var `hasActiveRun`: Bool
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`active`, forKey: .`active`)
+        try container.encode(`hasActiveRun`, forKey: .`hasActiveRun`)
+    }
+}
+
+struct MigrationWorkflowStateApiActive: Codable, Sendable, Equatable {
+    var `source`: MigrationSourceApi
+    var `profile`: MigrationProfileApi?
+    var `plan`: MigrationPlanArtifactApi?
+    var `run`: MigrationRunApi?
+}
+
+struct MigrationTargetUser: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `username`: String
+    var `name`: String
+    var `email`: String? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`username`, forKey: .`username`)
+        try container.encode(`name`, forKey: .`name`)
+        try container.encode(`email`, forKey: .`email`)
+    }
+}
+
+struct MigrationMappingSuggestions: Codable, Sendable, Equatable {
+    var `sourceId`: Int
+    var `generatedAt`: String
+    var `suggestions`: [MigrationMappingSuggestionsSuggestionsItem]
+}
+
+struct MigrationMappingSuggestionsSuggestionsItem: Codable, Sendable, Equatable {
+    var `sourceUserId`: String
+    var `username`: String
+    var `suggestedTargetUserId`: Int?
+}
+
+struct MigrationRunProgressApi: Codable, Sendable, Equatable {
+    var `run`: MigrationRunApi
+    var `totals`: MigrationRunProgressApiTotals
+    var `metrics`: [MigrationRunMetricApi]
+}
+
+struct MigrationRunProgressApiTotals: Codable, Sendable, Equatable {
+    var `processed`: Int
+    var `imported`: Int
+    var `skipped`: Int
+    var `unresolved`: Int
+    var `failed`: Int
+}
+
+struct MigrationRunReportApi: Codable, Sendable, Equatable {
+    var `plan`: [String: JSONValue]? = nil
+    var `summary`: MigrationPlanSummary? = nil
+    var `details`: MigrationRunReportApiDetails
+    var `detailsPagination`: MigrationRunReportApiDetailsPagination
+    var `run`: MigrationRunApi
+    var `totals`: MigrationRunReportApiTotals
+    var `metrics`: [MigrationRunMetricApi]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`plan`, forKey: .`plan`)
+        try container.encode(`summary`, forKey: .`summary`)
+        try container.encode(`details`, forKey: .`details`)
+        try container.encode(`detailsPagination`, forKey: .`detailsPagination`)
+        try container.encode(`run`, forKey: .`run`)
+        try container.encode(`totals`, forKey: .`totals`)
+        try container.encode(`metrics`, forKey: .`metrics`)
+    }
+}
+
+struct MigrationRunReportApiDetails: Codable, Sendable, Equatable {
+    var `matchedBooks`: [MigrationReportMatchedBook]
+    var `unresolvedBooks`: [MigrationReportUnresolvedBook]
+    var `duplicateBookMatches`: [MigrationReportDuplicateMatch]
+    var `userPreview`: [MigrationReportUserPreview]
+}
+
+struct MigrationReportMatchedBook: Codable, Sendable, Equatable {
+    var `sourceBookId`: String
+    var `sourceTitle`: String? = nil
+    var `sourceAuthor`: String? = nil
+    var `targetBookId`: Int
+    var `targetTitle`: String? = nil
+    var `strategy`: String
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`sourceBookId`, forKey: .`sourceBookId`)
+        try container.encode(`sourceTitle`, forKey: .`sourceTitle`)
+        try container.encode(`sourceAuthor`, forKey: .`sourceAuthor`)
+        try container.encode(`targetBookId`, forKey: .`targetBookId`)
+        try container.encode(`targetTitle`, forKey: .`targetTitle`)
+        try container.encode(`strategy`, forKey: .`strategy`)
+    }
+}
+
+struct MigrationReportUnresolvedBook: Codable, Sendable, Equatable {
+    var `sourceBookId`: String
+    var `title`: String? = nil
+    var `author`: String? = nil
+    var `reason`: String
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`sourceBookId`, forKey: .`sourceBookId`)
+        try container.encode(`title`, forKey: .`title`)
+        try container.encode(`author`, forKey: .`author`)
+        try container.encode(`reason`, forKey: .`reason`)
+    }
+}
+
+struct MigrationReportDuplicateMatch: Codable, Sendable, Equatable {
+    var `targetBookId`: Int
+    var `targetTitle`: String? = nil
+    var `sourceBookIds`: [String]
+    var `sourceTitles`: [String?]
+    var `strategies`: [String]
+    var `reason`: String
+    var `candidatePagination`: MigrationPageCursor? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`targetBookId`, forKey: .`targetBookId`)
+        try container.encode(`targetTitle`, forKey: .`targetTitle`)
+        try container.encode(`sourceBookIds`, forKey: .`sourceBookIds`)
+        try container.encode(`sourceTitles`, forKey: .`sourceTitles`)
+        try container.encode(`strategies`, forKey: .`strategies`)
+        try container.encode(`reason`, forKey: .`reason`)
+        try container.encodeIfPresent(`candidatePagination`, forKey: .`candidatePagination`)
+    }
+}
+
+struct MigrationPageCursor: Codable, Sendable, Equatable {
+    var `total`: Int
+    var `limit`: Int
+    var `nextOffset`: Int? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`total`, forKey: .`total`)
+        try container.encode(`limit`, forKey: .`limit`)
+        try container.encode(`nextOffset`, forKey: .`nextOffset`)
+    }
+}
+
+struct MigrationReportUserPreview: Codable, Sendable, Equatable {
+    var `sourceUserId`: String
+    var `targetUserId`: Int
+    var `username`: String
+    var `counts`: MigrationReportUserPreviewCounts
+}
+
+struct MigrationReportUserPreviewCounts: Codable, Sendable, Equatable {
+    var `statuses`: Int
+    var `fileProgress`: Int
+    var `readingSessions`: Int
+    var `bookmarks`: Int
+    var `annotations`: Int
+    var `shelves`: Int
+}
+
+struct MigrationRunReportApiDetailsPagination: Codable, Sendable, Equatable {
+    var `matchedBooks`: MigrationPageCursor
+    var `unresolvedBooks`: MigrationPageCursor
+    var `duplicateBookMatches`: MigrationPageCursor
+    var `userPreview`: MigrationPageCursor
+}
+
+struct MigrationRunReportApiTotals: Codable, Sendable, Equatable {
+    var `processed`: Int
+    var `imported`: Int
+    var `skipped`: Int
+    var `unresolved`: Int
+    var `failed`: Int
+}
+
+struct MigrationPlanPageApi: Codable, Sendable, Equatable {
+    var `artifactId`: Int
+    var `kind`: String
+    var `offset`: Int
+    var `limit`: Int
+    var `total`: Int
+    var `nextOffset`: Int? = nil
+    var `items`: [[String: JSONValue]]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`artifactId`, forKey: .`artifactId`)
+        try container.encode(`kind`, forKey: .`kind`)
+        try container.encode(`offset`, forKey: .`offset`)
+        try container.encode(`limit`, forKey: .`limit`)
+        try container.encode(`total`, forKey: .`total`)
+        try container.encode(`nextOffset`, forKey: .`nextOffset`)
+        try container.encode(`items`, forKey: .`items`)
+    }
+}
+
+struct MigrationReportPageApi: Codable, Sendable, Equatable {
+    var `runId`: Int
+    var `kind`: String
+    var `offset`: Int
+    var `limit`: Int
+    var `total`: Int
+    var `nextOffset`: Int? = nil
+    var `items`: [[String: JSONValue]]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`runId`, forKey: .`runId`)
+        try container.encode(`kind`, forKey: .`kind`)
+        try container.encode(`offset`, forKey: .`offset`)
+        try container.encode(`limit`, forKey: .`limit`)
+        try container.encode(`total`, forKey: .`total`)
+        try container.encode(`nextOffset`, forKey: .`nextOffset`)
+        try container.encode(`items`, forKey: .`items`)
+    }
+}
+
+struct MigrationDuplicateCandidatePageApi: Codable, Sendable, Equatable {
+    var `artifactId`: Int
+    var `targetBookId`: Int
+    var `offset`: Int
+    var `limit`: Int
+    var `total`: Int
+    var `nextOffset`: Int? = nil
+    var `items`: [MigrationDuplicateCandidatePageApiItemsItem]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`artifactId`, forKey: .`artifactId`)
+        try container.encode(`targetBookId`, forKey: .`targetBookId`)
+        try container.encode(`offset`, forKey: .`offset`)
+        try container.encode(`limit`, forKey: .`limit`)
+        try container.encode(`total`, forKey: .`total`)
+        try container.encode(`nextOffset`, forKey: .`nextOffset`)
+        try container.encode(`items`, forKey: .`items`)
+    }
+}
+
+struct MigrationDuplicateCandidatePageApiItemsItem: Codable, Sendable, Equatable {
+    var `sourceBookId`: String
+    var `title`: String?
+    var `author`: String?
+    var `filePath`: String?
+    var `strategy`: String
+}
+
+struct BrowseEntityItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: StringOrNumber
+    var `name`: String
+    var `bookCount`: Int
+    var `sortName`: String? = nil
+    var `hasPhoto`: Bool? = nil
+}
+
+struct BrowseEntitiesResponse: Codable, Sendable, Equatable {
+    var `items`: [BrowseEntityItem]
+    var `total`: Int
+    var `page`: Int
+    var `pageSize`: Int
+}
+
+struct EntityInfo: Codable, Sendable, Equatable, Identifiable {
+    var `id`: StringOrNumber
+    var `name`: String
+    var `bookCount`: Int
+    var `bookTitles`: [String]
+}
+
+struct EntityMergeRequest: Codable, Sendable, Equatable {
+    var `targetEntityId`: Int? = nil
+    var `targetValue`: String? = nil
+    var `sourceEntityIds`: [Int]? = nil
+    var `sourceValues`: [String]? = nil
+    var `writeFiles`: Bool? = nil
+}
+
+struct EntityRenameRequest: Codable, Sendable, Equatable {
+    var `entityId`: Int? = nil
+    var `currentValue`: String? = nil
+    var `newName`: String
+    var `writeFiles`: Bool? = nil
+}
+
+struct EntityDeleteRequest: Codable, Sendable, Equatable {
+    var `entityId`: Int? = nil
+    var `value`: String? = nil
+    var `mode`: String? = nil
+    var `writeFiles`: Bool? = nil
+}
+
+struct EntityBulkDeleteRequest: Codable, Sendable, Equatable {
+    var `entityIds`: [Int]? = nil
+    var `values`: [String]? = nil
+    var `mode`: String? = nil
+    var `writeFiles`: Bool? = nil
+}
+
+struct EntitySplitRequest: Codable, Sendable, Equatable {
+    var `entityId`: Int
+    var `newNames`: [String]
+    var `writeFiles`: Bool? = nil
+}
+
+struct MergeResult: Codable, Sendable, Equatable {
+    var `targetId`: StringOrNumber
+    var `mergedIds`: [StringOrNumber]
+    var `affectedBookCount`: Int
+    var `imagePromoted`: Bool? = nil
+    var `fieldsResolved`: [String]? = nil
+}
+
+struct RenameResult: Codable, Sendable, Equatable {
+    var `entityId`: StringOrNumber
+    var `oldName`: String
+    var `newName`: String
+    var `affectedBookCount`: Int
+    var `wasImplicitMerge`: Bool
+    var `mergedEntityId`: StringOrNumber? = nil
+}
+
+struct DeleteResult: Codable, Sendable, Equatable {
+    var `entityId`: StringOrNumber
+    var `name`: String
+    var `affectedBookCount`: Int
+    var `mode`: String
+}
+
+struct BulkDeleteResult: Codable, Sendable, Equatable {
+    var `results`: [DeleteResult]
+    var `errors`: [BulkDeleteResultErrorsItem]
+}
+
+struct BulkDeleteResultErrorsItem: Codable, Sendable, Equatable {
+    var `entityId`: StringOrNumber
+    var `error`: String
+}
+
+struct SplitResult: Codable, Sendable, Equatable {
+    var `originalId`: Int
+    var `originalName`: String
+    var `newEntities`: [SplitResultNewEntitiesItem]
+    var `affectedBookCount`: Int
+}
+
+struct SplitResultNewEntitiesItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+}
+
+struct DuplicateCluster: Codable, Sendable, Equatable {
+    var `entityTotal`: Int? = nil
+    var `pairTotal`: Int? = nil
+    var `nextPage`: Int? = nil
+    var `detailsPageSize`: Int? = nil
+    var `clusterId`: String
+    var `entities`: [ClusterEntity]
+    var `averageSimilarity`: Double
+    var `suggestedTargetId`: StringOrNumber
+    var `pairDetails`: [PairDetail]
+}
+
+struct ClusterEntity: Codable, Sendable, Equatable, Identifiable {
+    var `id`: StringOrNumber
+    var `name`: String
+    var `bookCount`: Int
+    var `bookTitles`: [String]
+    var `sortName`: String? = nil
+    var `hasPhoto`: Bool? = nil
+}
+
+struct PairDetail: Codable, Sendable, Equatable {
+    var `nameA`: String? = nil
+    var `nameB`: String? = nil
+    var `idA`: StringOrNumber
+    var `idB`: StringOrNumber
+    var `similarity`: Double
+    var `reasons`: [String]
+}
+
+struct DuplicateScanResponse: Codable, Sendable, Equatable {
+    var `entityType`: String
+    var `clusters`: [DuplicateCluster]
+    var `totalEntities`: Double
+    var `total`: Int
+    var `page`: Int
+    var `pageSize`: Int
+}
+
+struct DuplicateScanStatus: Codable, Sendable, Equatable {
+    var `entityType`: String
+    var `state`: String
+    var `computedAt`: String? = nil
+    var `totalPairs`: Int? = nil
+    var `threshold`: Double? = nil
+    var `progressPct`: Double? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`entityType`, forKey: .`entityType`)
+        try container.encode(`state`, forKey: .`state`)
+        try container.encode(`computedAt`, forKey: .`computedAt`)
+        try container.encode(`totalPairs`, forKey: .`totalPairs`)
+        try container.encode(`threshold`, forKey: .`threshold`)
+        try container.encode(`progressPct`, forKey: .`progressPct`)
+    }
+}
+
+struct DismissedPairInfo: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `entityType`: String
+    var `nameA`: String
+    var `nameB`: String
+    var `idA`: StringOrNumber
+    var `idB`: StringOrNumber
+    var `reason`: String? = nil
+    var `dismissedAt`: String
+}
+
+struct EntityDismissPairRequest: Codable, Sendable, Equatable {
+    var `entityIdA`: Double? = nil
+    var `entityIdB`: Double? = nil
+    var `valueA`: String? = nil
+    var `valueB`: String? = nil
+    var `reason`: String? = nil
+}
+
+struct EntityUndismissPairRequest: Codable, Sendable, Equatable {
+    var `entityIdA`: Double? = nil
+    var `entityIdB`: Double? = nil
+    var `valueA`: String? = nil
+    var `valueB`: String? = nil
+}
+
+struct EntityRefreshDuplicatesRequest: Codable, Sendable, Equatable {
+    var `minSimilarity`: Double? = nil
+}
+
+struct EntityDismissedPairsPage: Codable, Sendable, Equatable {
+    var `items`: [DismissedPairInfo]
+    var `total`: Int
+    var `page`: Int
+    var `pageSize`: Int
+}
+
+struct EntityDuplicateClusterPage: Codable, Sendable, Equatable {
+    var `clusterId`: String
+    var `entities`: [ClusterEntity]
+    var `pairDetails`: [PairDetail]
+    var `entityTotal`: Int
+    var `pairTotal`: Int
+    var `page`: Int
+    var `pageSize`: Int
+    var `nextPage`: Int? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`clusterId`, forKey: .`clusterId`)
+        try container.encode(`entities`, forKey: .`entities`)
+        try container.encode(`pairDetails`, forKey: .`pairDetails`)
+        try container.encode(`entityTotal`, forKey: .`entityTotal`)
+        try container.encode(`pairTotal`, forKey: .`pairTotal`)
+        try container.encode(`page`, forKey: .`page`)
+        try container.encode(`pageSize`, forKey: .`pageSize`)
+        try container.encode(`nextPage`, forKey: .`nextPage`)
+    }
+}
+
+struct BookDuplicateScan: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `status`: String
+    var `libraryIds`: [Int]
+    var `requestedLibraryId`: Int? = nil
+    var `similarityPercent`: Double
+    var `processedBooks`: Int
+    var `totalBooks`: Int? = nil
+    var `progressPercent`: Double? = nil
+    var `totalGroups`: Int? = nil
+    var `totalExtraCopies`: Int? = nil
+    var `totalReclaimableBytes`: Int? = nil
+    var `errorCode`: String? = nil
+    var `createdAt`: String
+    var `completedAt`: String? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`status`, forKey: .`status`)
+        try container.encode(`libraryIds`, forKey: .`libraryIds`)
+        try container.encode(`requestedLibraryId`, forKey: .`requestedLibraryId`)
+        try container.encode(`similarityPercent`, forKey: .`similarityPercent`)
+        try container.encode(`processedBooks`, forKey: .`processedBooks`)
+        try container.encode(`totalBooks`, forKey: .`totalBooks`)
+        try container.encode(`progressPercent`, forKey: .`progressPercent`)
+        try container.encode(`totalGroups`, forKey: .`totalGroups`)
+        try container.encode(`totalExtraCopies`, forKey: .`totalExtraCopies`)
+        try container.encode(`totalReclaimableBytes`, forKey: .`totalReclaimableBytes`)
+        try container.encode(`errorCode`, forKey: .`errorCode`)
+        try container.encode(`createdAt`, forKey: .`createdAt`)
+        try container.encode(`completedAt`, forKey: .`completedAt`)
+    }
+}
+
+struct BookDuplicateGroup: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `reasons`: [String]
+    var `maxTitleSimilarity`: Double? = nil
+    var `reclaimableBytes`: Int
+    var `books`: [BookDuplicateCandidate]
+    var `pairs`: [BookDuplicatePair]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`reasons`, forKey: .`reasons`)
+        try container.encode(`maxTitleSimilarity`, forKey: .`maxTitleSimilarity`)
+        try container.encode(`reclaimableBytes`, forKey: .`reclaimableBytes`)
+        try container.encode(`books`, forKey: .`books`)
+        try container.encode(`pairs`, forKey: .`pairs`)
+    }
+}
+
+struct BookDuplicateCandidate: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `title`: String?
+    var `subtitle`: String?
+    var `authors`: [String]
+    var `libraryId`: Int
+    var `libraryName`: String
+    var `folderPath`: String
+    var `status`: String
+    var `files`: [BookDuplicateFile]
+    var `isbn10`: String?
+    var `isbn13`: String?
+    var `metadataScore`: Double?
+    var `readStatus`: UserBookStatus?
+    var `readingProgress`: Double?
+    var `collections`: [BookDuplicateCandidateCollectionsItem]
+    var `addedAt`: String
+    var `updatedAt`: String?
+    var `hasCover`: Bool
+}
+
+struct BookDuplicateFile: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `format`: String?
+    var `sizeBytes`: Double?
+    var `path`: String?
+}
+
+struct UserBookStatus: Codable, Sendable, Equatable {
+    var `status`: String
+    var `source`: String
+    var `startedAt`: String?
+    var `finishedAt`: String?
+    var `updatedAt`: String
+}
+
+struct BookDuplicateCandidateCollectionsItem: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `name`: String
+}
+
+struct BookDuplicatePair: Codable, Sendable, Equatable {
+    var `bookIdA`: Double
+    var `bookIdB`: Double
+    var `reasons`: [String]
+    var `titleSimilarity`: Double?
+}
+
+struct BookDuplicateGroupsResponse: Codable, Sendable, Equatable {
+    var `groups`: [BookDuplicateGroup]
+    var `total`: Int
+    var `page`: Int
+    var `pageSize`: Int
+}
+
+struct CreateBookDuplicateScanRequest: Codable, Sendable, Equatable {
+    var `libraryId`: Int? = nil
+    var `similarityPercent`: Double
+}
+
+struct CreateBookDuplicateDismissalRequest: Codable, Sendable, Equatable {
+    var `scanId`: Int
+    var `groupId`: Int
+}
+
+struct BulkRenamePreviewItem: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `title`: String
+    var `currentPath`: String
+    var `newPath`: String? = nil
+    var `status`: String
+    var `reason`: String? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`bookId`, forKey: .`bookId`)
+        try container.encode(`title`, forKey: .`title`)
+        try container.encode(`currentPath`, forKey: .`currentPath`)
+        try container.encode(`newPath`, forKey: .`newPath`)
+        try container.encode(`status`, forKey: .`status`)
+        try container.encodeIfPresent(`reason`, forKey: .`reason`)
+    }
+}
+
+struct BulkRenamePreviewPage: Codable, Sendable, Equatable {
+    var `items`: [BulkRenamePreviewItem]
+    var `total`: Int
+    var `totalByStatus`: BulkRenamePreviewPageTotalByStatus
+    var `pattern`: String
+}
+
+struct BulkRenamePreviewPageTotalByStatus: Codable, Sendable, Equatable {
+    var `error`: Double
+    var `will_rename`: Double
+    var `unchanged`: Double
+    var `collision`: Double
+    var `no_pattern`: Double
+}
+
+struct BulkRenameExecuteRequest: Codable, Sendable, Equatable {
+    var `excludeBookIds`: [Int]? = nil
+    var `includeBookIds`: [Int]? = nil
+}
+
+struct BulkRenameProgressEvent: Codable, Sendable, Equatable {
+    var `started`: Bool? = nil
+    var `total`: Int? = nil
+    var `bookId`: Int? = nil
+    var `status`: String? = nil
+    var `reason`: String? = nil
+    var `done`: Bool? = nil
+    var `processed`: Int? = nil
+    var `succeeded`: Int? = nil
+    var `failed`: Int? = nil
+    var `skipped`: Int? = nil
+}
+
+struct MissingResourcesSummary: Codable, Sendable, Equatable {
+    var `missingBooks`: Int
+    var `sweep`: CoverSweep? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`missingBooks`, forKey: .`missingBooks`)
+        try container.encode(`sweep`, forKey: .`sweep`)
+    }
+}
+
+struct CoverSweep: Codable, Sendable, Equatable {
+    var `status`: String
+    var `processedBooks`: Int
+    var `totalBooks`: Int? = nil
+    var `progressPercent`: Double? = nil
+    var `brokenCovers`: Int
+    var `orphanedCoverDirs`: Int
+    var `orphanedBytes`: Int
+    var `truncated`: Bool
+    var `errorCode`: String? = nil
+    var `startedAt`: String
+    var `completedAt`: String? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`status`, forKey: .`status`)
+        try container.encode(`processedBooks`, forKey: .`processedBooks`)
+        try container.encode(`totalBooks`, forKey: .`totalBooks`)
+        try container.encode(`progressPercent`, forKey: .`progressPercent`)
+        try container.encode(`brokenCovers`, forKey: .`brokenCovers`)
+        try container.encode(`orphanedCoverDirs`, forKey: .`orphanedCoverDirs`)
+        try container.encode(`orphanedBytes`, forKey: .`orphanedBytes`)
+        try container.encode(`truncated`, forKey: .`truncated`)
+        try container.encode(`errorCode`, forKey: .`errorCode`)
+        try container.encode(`startedAt`, forKey: .`startedAt`)
+        try container.encode(`completedAt`, forKey: .`completedAt`)
+    }
+}
+
+struct MissingBookEntry: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `title`: String? = nil
+    var `authors`: [String]
+    var `libraryId`: Int
+    var `libraryName`: String
+    var `folderPath`: String
+    var `formats`: [String]
+    var `updatedAt`: String? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`title`, forKey: .`title`)
+        try container.encode(`authors`, forKey: .`authors`)
+        try container.encode(`libraryId`, forKey: .`libraryId`)
+        try container.encode(`libraryName`, forKey: .`libraryName`)
+        try container.encode(`folderPath`, forKey: .`folderPath`)
+        try container.encode(`formats`, forKey: .`formats`)
+        try container.encode(`updatedAt`, forKey: .`updatedAt`)
+    }
+}
+
+struct BrokenCoverEntry: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `title`: String? = nil
+    var `authors`: [String]
+    var `libraryId`: Int
+    var `libraryName`: String
+    var `coverSource`: String
+    var `slots`: [BrokenCoverSlot]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`id`, forKey: .`id`)
+        try container.encode(`title`, forKey: .`title`)
+        try container.encode(`authors`, forKey: .`authors`)
+        try container.encode(`libraryId`, forKey: .`libraryId`)
+        try container.encode(`libraryName`, forKey: .`libraryName`)
+        try container.encode(`coverSource`, forKey: .`coverSource`)
+        try container.encode(`slots`, forKey: .`slots`)
+    }
+}
+
+struct BrokenCoverSlot: Codable, Sendable, Equatable {
+    var `medium`: String
+    var `source`: String
+}
+
+struct OrphanedCoverDirEntry: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `fileCount`: Int
+    var `sizeBytes`: Int
+    var `media`: [String]
+}
+
+struct MissingResourceCleanupRequest: Codable, Sendable, Equatable {
+    var `bookIds`: [Int]? = nil
+    var `all`: Bool? = nil
+}
+
+struct MissingResourceCleanupResult: Codable, Sendable, Equatable {
+    var `category`: String
+    var `requested`: Int
+    var `cleaned`: Int
+    var `skipped`: Int
+    var `remaining`: Int
+}
+
+struct BulkArrayEdit: Codable, Sendable, Equatable {
+    var `mode`: String
+    var `values`: [String]
+}
+
+struct BulkStringEdit: Codable, Sendable, Equatable {
+    var `value`: String? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`value`, forKey: .`value`)
+    }
+}
+
+struct BulkNumberEdit: Codable, Sendable, Equatable {
+    var `value`: Double? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`value`, forKey: .`value`)
+    }
+}
+
+struct BulkMetadataEditFields: Codable, Sendable, Equatable {
+    var `authors`: BulkArrayEdit? = nil
+    var `genres`: BulkArrayEdit? = nil
+    var `tags`: BulkArrayEdit? = nil
+    var `narrators`: BulkArrayEdit? = nil
+    var `seriesName`: BulkStringEdit? = nil
+    var `publisher`: BulkStringEdit? = nil
+    var `language`: BulkStringEdit? = nil
+    var `publishedYear`: BulkNumberEdit? = nil
+    var `customMetadata`: [CustomMetadataBookValueInput]? = nil
+}
+
+struct CustomMetadataBookValueInput: Codable, Sendable, Equatable {
+    var `fieldId`: Int
+    var `value`: CustomMetadataPrimitiveValue
+}
+
+enum CustomMetadataPrimitiveValue: Codable, Sendable, Equatable {
+    case string(String), number(Double), boolean(Bool), null
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null }
+        else if let value = try? container.decode(Bool.self) { self = .boolean(value) }
+        else if let value = try? container.decode(Double.self) { self = .number(value) }
+        else { self = .string(try container.decode(String.self)) }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .boolean(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        }
+    }
+}
+
+struct SelectedBulkMetadataRequest: Codable, Sendable, Equatable {
+    var `bookIds`: [Int]
+    var `fields`: BulkMetadataEditFields
+    var `expectedVersions`: [BulkMetadataVersion]? = nil
+}
+
+struct BulkMetadataVersion: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `updatedAt`: String
+}
+
+struct BulkMetadataPreview: Codable, Sendable, Equatable {
+    var `books`: [BulkMetadataPreviewBook]
+    var `fields`: [String: BulkEditFieldResult]
+}
+
+struct BulkMetadataPreviewBook: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `title`: String? = nil
+    var `updatedAt`: String
+    var `libraryId`: Int
+    var `lockedFields`: [String]
+    var `currentValues`: [BulkMetadataPreviewValue]
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`bookId`, forKey: .`bookId`)
+        try container.encode(`title`, forKey: .`title`)
+        try container.encode(`updatedAt`, forKey: .`updatedAt`)
+        try container.encode(`libraryId`, forKey: .`libraryId`)
+        try container.encode(`lockedFields`, forKey: .`lockedFields`)
+        try container.encode(`currentValues`, forKey: .`currentValues`)
+    }
+}
+
+struct BulkMetadataPreviewValue: Codable, Sendable, Equatable {
+    var `field`: String
+    var `value`: String?
+}
+
+struct BulkEditFieldResult: Codable, Sendable, Equatable {
+    var `updated`: Double
+    var `skippedLocked`: Double
+}
+
+struct BulkEditMetadataResult: Codable, Sendable, Equatable {
+    var `updatedBooks`: Int
+    var `fields`: [String: BulkEditFieldResult]
+}
+
+struct SelectedBookExportRequest: Codable, Sendable, Equatable {
+    var `bookIds`: [Int]
+    var `allFormats`: Bool? = nil
+    var `audioOnly`: Bool? = nil
+}
+
+struct SelectedMetadataExportRequest: Codable, Sendable, Equatable {
+    var `bookIds`: [Int]
+    var `format`: String
+    var `options`: SelectedMetadataExportOptions? = nil
+}
+
+struct SelectedMetadataExportOptions: Codable, Sendable, Equatable {
+    var `includePersonalData`: Bool?
+    var `includeFilePaths`: Bool?
+    var `includeContextMeta`: Bool?
+    var `columnsMode`: String?
+    var `visibleColumns`: [String]?
+}
+
+struct MetadataExportPreflight: Codable, Sendable, Equatable {
+    var `schemaVersion`: Int
+    var `rowCount`: Int
+    var `estimatedBytes`: Int
+    var `sizeCategory`: String
+    var `fileName`: String
+    var `scope`: String
+    var `format`: String
+}
+
+struct BookExportPreview: Codable, Sendable, Equatable {
+    var `bookCount`: Int
+    var `fileCount`: Int
+    var `projectedBytes`: Int
+    var `archiveFilename`: String
+}
+
+struct MissingFileRepairRequest: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `fileId`: Int
+    var `replacementPath`: String
+    var `previewToken`: String? = nil
+}
+
+struct MissingFileRepairPreview: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `fileId`: Int
+    var `currentPath`: String
+    var `replacementPath`: String
+    var `previewToken`: String
+    var `sizeBytes`: Int
+    var `alreadyApplied`: Bool
+}
+
+struct MissingFileRepairResult: Codable, Sendable, Equatable {
+    var `bookId`: Int
+    var `fileId`: Int
+    var `repaired`: Bool
+    var `alreadyApplied`: Bool
+}
+
+struct MissingResourcePage<TEntry: Codable & Sendable & Equatable>: Codable, Sendable, Equatable {
+    var `items`: [TEntry]
+    var `total`: Int
+    var `page`: Int
+    var `pageSize`: Int
+}
+
+struct MergeBooksRequest: Codable, Sendable, Equatable {
+    var `sourceBookId`: Int
+    var `targetBookId`: Int
+    var `previewToken`: String? = nil
+}
+
+struct MergeBooksPreview: Codable, Sendable, Equatable {
+    var `sourceBookId`: Int
+    var `targetBookId`: Int
+    var `previewToken`: String
+    var `canApply`: Bool
+    var `blockers`: [String]
+    var `warnings`: [String]
+    var `filesPreserved`: Double
+}
+
+struct MergeBooksResult: Codable, Sendable, Equatable {
+    var `sourceBookId`: Int
+    var `targetBookId`: Int
+    var `filesPreserved`: Double
+    var `alreadyApplied`: Bool
+}
+
+struct AppSettingResponse: Codable, Sendable, Equatable, Identifiable {
+    var `id`: Int
+    var `key`: String
+    var `value`: String
+    var `updatedAt`: String
+}
+
+struct UpdateAppSettingRequest: Codable, Sendable, Equatable {
+    var `value`: String
+}
+
+struct BookEmbeddingRebuildResult: Codable, Sendable, Equatable {
+    var `queued`: Int
+}
+
+struct AchievementBackfillResult: Codable, Sendable, Equatable {
+    var `usersProcessed`: Int
+    var `awardsGranted`: Int
+}
+
+struct MaintenanceOperationStatus: Codable, Sendable, Equatable {
+    var `runId`: String? = nil
+    var `status`: String
+    var `processed`: Int
+    var `failed`: Int
+    var `awardsGranted`: Int
+    var `startedAt`: String? = nil
+    var `completedAt`: String? = nil
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(`runId`, forKey: .`runId`)
+        try container.encode(`status`, forKey: .`status`)
+        try container.encode(`processed`, forKey: .`processed`)
+        try container.encode(`failed`, forKey: .`failed`)
+        try container.encode(`awardsGranted`, forKey: .`awardsGranted`)
+        try container.encode(`startedAt`, forKey: .`startedAt`)
+        try container.encode(`completedAt`, forKey: .`completedAt`)
+    }
+}
+
+typealias EntityType = String
+
+typealias MigrationRunState = String
+
+typealias MissingResourceCategory = String
+
+typealias MissingBooksPage = MissingResourcePage<MissingBookEntry>
+
+typealias BrokenCoversPage = MissingResourcePage<BrokenCoverEntry>
+
+typealias OrphanedCoverDirsPage = MissingResourcePage<OrphanedCoverDirEntry>
+
+enum BookRequestLanguageVocabulary {
+    static let codes: [String] = ["af", "ar", "bg", "bn", "bo", "bs", "ca", "cs", "cy", "da", "de", "el", "en", "eo", "es", "et", "eu", "fa", "fi", "fr", "ga", "gl", "he", "hi", "hr", "hu", "hy", "id", "is", "it", "ja", "ka", "ko", "la", "lb", "lt", "lv", "mi", "mk", "ms", "mt", "my", "nb", "nl", "nn", "no", "pl", "pt", "ro", "ru", "sk", "sl", "sq", "sr", "sv", "sw", "ta", "te", "th", "tr", "uk", "ur", "vi", "zh"]
+}
+
 struct NativeAnnotationItem: Codable, Sendable, Equatable, Identifiable {
     var `clientId`: String? = nil
     var `kind`: String
@@ -492,6 +3547,7 @@ struct Library: Codable, Sendable, Equatable, Identifiable {
     var `accessLevel`: String?
     var `name`: String
     var `bookCount`: Int?
+    var `folders`: [LibraryFolder]? = nil
 }
 
 struct BooksPage: Codable, Sendable, Equatable {
@@ -545,14 +3601,6 @@ struct EpubMediaOverlayCapability: Codable, Sendable, Equatable {
     var `durationSeconds`: Double?
 }
 
-struct UserBookStatus: Codable, Sendable, Equatable {
-    var `status`: String
-    var `source`: String
-    var `startedAt`: String?
-    var `finishedAt`: String?
-    var `updatedAt`: String
-}
-
 struct CustomMetadataBookValue: Codable, Sendable, Equatable {
     var `fieldId`: Int
     var `key`: String
@@ -560,28 +3608,6 @@ struct CustomMetadataBookValue: Codable, Sendable, Equatable {
     var `type`: String
     var `displayOrder`: Int
     var `value`: CustomMetadataPrimitiveValue
-}
-
-enum CustomMetadataPrimitiveValue: Codable, Sendable, Equatable {
-    case string(String), number(Double), boolean(Bool), null
-
-    init(from decoder: any Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if container.decodeNil() { self = .null }
-        else if let value = try? container.decode(Bool.self) { self = .boolean(value) }
-        else if let value = try? container.decode(Double.self) { self = .number(value) }
-        else { self = .string(try container.decode(String.self)) }
-    }
-
-    func encode(to encoder: any Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .string(let value): try container.encode(value)
-        case .number(let value): try container.encode(value)
-        case .boolean(let value): try container.encode(value)
-        case .null: try container.encodeNil()
-        }
-    }
 }
 
 struct CollapsedSeriesInfo: Codable, Sendable, Equatable {
@@ -704,11 +3730,6 @@ struct NarratorRef: Codable, Sendable, Equatable, Identifiable {
     var `displayOrder`: Int
 }
 
-struct AudiobookChapter: Codable, Sendable, Equatable {
-    var `title`: String
-    var `startMs`: Int
-}
-
 struct ReadAloudProgressSync: Codable, Sendable, Equatable {
     var `mode`: String
     var `state`: String
@@ -719,20 +3740,6 @@ struct ReadAloudProgressSync: Codable, Sendable, Equatable {
     var `durationDifferenceSeconds`: Double?
     var `durationDifferenceRatio`: Double?
     var `koreaderDownloadAvailable`: Bool
-}
-
-struct ComicMetadataFields: Codable, Sendable, Equatable {
-    var `issueNumber`: String?
-    var `volumeName`: String?
-    var `pencillers`: [String]?
-    var `inkers`: [String]?
-    var `colorists`: [String]?
-    var `letterers`: [String]?
-    var `coverArtists`: [String]?
-    var `characters`: [String]?
-    var `teams`: [String]?
-    var `locations`: [String]?
-    var `storyArcs`: [String]?
 }
 
 struct BookDetailFile: Codable, Sendable, Equatable, Identifiable {
@@ -1177,11 +4184,6 @@ struct BookMetadataUpdatePayload: Encodable, Sendable, Equatable {
     var `comicMetadata`: ComicMetadataUpdatePayload?
 }
 
-struct CustomMetadataBookValueInput: Codable, Sendable, Equatable {
-    var `fieldId`: Int
-    var `value`: CustomMetadataPrimitiveValue
-}
-
 struct BookSeriesMembershipUpdatePayload: Encodable, Sendable, Equatable {
     var `seriesName`: String
     var `seriesIndex`: FieldUpdate<String>?
@@ -1599,11 +4601,6 @@ struct MetadataCandidate: Codable, Sendable, Equatable {
     var `comicMetadata`: ComicMetadataFields?
     var `communityRating`: Double?
     var `communityRatingCount`: Int?
-}
-
-struct MetadataSeriesMembership: Codable, Sendable, Equatable {
-    var `seriesName`: String
-    var `seriesIndex`: String?
 }
 
 struct BookFileMetadataResponse: Codable, Sendable, Equatable {

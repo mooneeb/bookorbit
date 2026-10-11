@@ -3,7 +3,7 @@ import { and, asc, count, desc, eq, exists, inArray, notExists, or, sql } from '
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../../db';
-import { refreshPrimaryAuthorSortNamesForBooks } from '../../../db/book-author-sort-key';
+import { refreshPrimaryAuthorSortNamesForBookSelection } from '../../../db/book-author-sort-key';
 import * as schema from '../../../db/schema';
 import { authors, bookAuthors, books, bookMetadata } from '../../../db/schema';
 import { buildContentFilterClauses } from '../../../common/utils/content-filter-sql.utils';
@@ -33,6 +33,7 @@ import type {
   EntityBookScope,
 } from './entity-strategy.interface';
 import { assertEntityRelationsWithinLibraries, buildEntityBookScopeClauses } from './entity-book-scope';
+import { mutateEntityBooks } from './entity-mutation-books';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -218,69 +219,77 @@ export class AuthorStrategy implements EntityStrategy {
     const sourceIds = input.sourceIds as number[];
     const fieldsResolved: string[] = [];
 
-    await this.assertMutationScope([targetId, ...sourceIds], input.libraryIds ?? []);
-
-    const targetAuthor = await this.db
-      .select({ id: authors.id, sortName: authors.sortName, description: authors.description, hasPhoto: authors.hasPhoto })
-      .from(authors)
-      .where(eq(authors.id, targetId))
-      .limit(1);
-
-    if (!targetAuthor[0]) throw new NotFoundException('Target author not found');
-    const target = targetAuthor[0];
-
-    for (const sourceId of sourceIds) {
-      const [source] = await this.db
-        .select({ sortName: authors.sortName, description: authors.description })
-        .from(authors)
-        .where(eq(authors.id, sourceId))
-        .limit(1);
-      if (!source) continue;
-
-      const updates: Partial<{ sortName: string | null; description: string | null }> = {};
-      if (!target.sortName && source.sortName) {
-        updates.sortName = source.sortName;
-        target.sortName = source.sortName;
-        fieldsResolved.push('sortName');
-      }
-      if (!target.description && source.description) {
-        updates.description = source.description;
-        target.description = source.description;
-        fieldsResolved.push('description');
-      }
-      if (Object.keys(updates).length > 0) {
-        await this.authorsRepo.updateAuthorById(targetId, updates);
-      }
-    }
+    await this.assertScopedRelations([targetId, ...sourceIds], input.libraryIds ?? [], input.contentFilters);
 
     let imagePromoted = false;
-    if (!target.hasPhoto) {
-      for (const sourceId of sourceIds) {
-        const promoted = await this.authorImageStorage.promoteImage(sourceId, targetId);
-        if (promoted) {
-          await this.db.update(authors).set({ hasPhoto: true }).where(eq(authors.id, targetId));
-          imagePromoted = true;
-          fieldsResolved.push('photo');
-          break;
+    let targetHasPhoto = true;
+
+    const scope = { libraryIds: input.libraryIds ?? [], contentFilters: input.contentFilters };
+    const result = await mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks(sourceIds, scope),
+      async (tx) => {
+        const authorRows = await tx
+          .select({ id: authors.id, sortName: authors.sortName, description: authors.description, hasPhoto: authors.hasPhoto })
+          .from(authors)
+          .where(inArray(authors.id, [targetId, ...sourceIds]));
+        const target = authorRows.find((row) => row.id === targetId);
+        if (!target) throw new NotFoundException('Target author not found');
+        targetHasPhoto = target.hasPhoto;
+        const updates: Partial<{ sortName: string | null; description: string | null }> = {};
+        for (const sourceId of sourceIds) {
+          const source = authorRows.find((row) => row.id === sourceId);
+          if (!source) throw new NotFoundException('Source author not found');
+          if (!target.sortName && source.sortName) {
+            updates.sortName = source.sortName;
+            target.sortName = source.sortName;
+            fieldsResolved.push('sortName');
+          }
+          if (!target.description && source.description) {
+            updates.description = source.description;
+            target.description = source.description;
+            fieldsResolved.push('description');
+          }
+        }
+        if (Object.keys(updates).length > 0) await tx.update(authors).set(updates).where(eq(authors.id, targetId));
+
+        await tx.execute(sql`INSERT INTO book_authors (book_id, author_id, display_order)
+        SELECT DISTINCT ON (source.book_id) source.book_id, ${targetId}, source.display_order
+        FROM book_authors source JOIN entity_mutation_books affected ON affected.book_id = source.book_id
+        WHERE ${inArray(sql`source.author_id`, sourceIds)} ORDER BY source.book_id, source.display_order, source.author_id
+        ON CONFLICT DO NOTHING`);
+        await tx.delete(bookAuthors).where(inArray(bookAuthors.authorId, sourceIds));
+        await tx.delete(authors).where(inArray(authors.id, sourceIds));
+        await refreshPrimaryAuthorSortNamesForBookSelection(tx, sql`SELECT book_id FROM entity_mutation_books`);
+      },
+      (tx) => this.lockMutationEntities(tx, [targetId, ...sourceIds], scope),
+    );
+
+    try {
+      if (!targetHasPhoto) {
+        for (const sourceId of sourceIds) {
+          if (await this.authorImageStorage.promoteImage(sourceId, targetId)) {
+            await this.db.update(authors).set({ hasPhoto: true }).where(eq(authors.id, targetId));
+            imagePromoted = true;
+            fieldsResolved.push('photo');
+            break;
+          }
         }
       }
+      for (const sourceId of sourceIds) await this.authorImageStorage.deleteAuthorDir(sourceId);
+      await this.enrichmentOrchestrator.schedule(targetId, AUTHOR_ENRICHMENT_REASONS.AUTHOR_MERGE_TARGET);
+      return { ...result, imagePromoted, fieldsResolved: [...new Set(fieldsResolved)] };
+    } catch (error) {
+      await result.disposeAffectedBooks?.();
+      throw error;
     }
-
-    const affectedBookIds = await this.findAffectedBookIds(sourceIds);
-    await this.authorsRepo.mergeAuthors(targetId, sourceIds);
-
-    for (const sourceId of sourceIds) {
-      await this.authorImageStorage.deleteAuthorDir(sourceId);
-    }
-
-    await this.enrichmentOrchestrator.schedule(targetId, AUTHOR_ENRICHMENT_REASONS.AUTHOR_MERGE_TARGET);
-
-    return { affectedBookIds, imagePromoted, fieldsResolved: [...new Set(fieldsResolved)] };
   }
 
   async rename(input: RenameInput): Promise<StrategyRenameResult> {
     const entityId = input.entityId as number;
-    await this.assertMutationScope([entityId], input.libraryIds);
+    await this.assertScopedRelations([entityId], input.libraryIds, input.contentFilters);
     const [entity] = await this.db.select({ name: authors.name }).from(authors).where(eq(authors.id, entityId)).limit(1);
     if (!entity) throw new NotFoundException('Author not found');
 
@@ -300,87 +309,115 @@ export class AuthorStrategy implements EntityStrategy {
         sourceIds: [entityId],
         userId: input.userId,
         libraryIds: input.libraryIds ?? [],
+        contentFilters: input.contentFilters,
+        onBooksChanged: input.onBooksChanged,
+        spoolBookIds: input.spoolBookIds,
       });
-      return { oldName, affectedBookIds: mergeResult.affectedBookIds, wasImplicitMerge: true, mergedEntityId: mergeTarget.id };
+      return { ...mergeResult, oldName, wasImplicitMerge: true, mergedEntityId: mergeTarget.id };
     }
 
-    await this.authorsRepo.updateAuthorById(entityId, { name: displayName });
-    const affectedBookIds = await this.findAffectedBookIds([entityId]);
-    return { oldName, affectedBookIds, wasImplicitMerge: false };
+    const scope = { libraryIds: input.libraryIds, contentFilters: input.contentFilters };
+    const result = await mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks([entityId], scope),
+      async (tx) => {
+        await tx.update(authors).set({ name: displayName }).where(eq(authors.id, entityId));
+        await refreshPrimaryAuthorSortNamesForBookSelection(tx, sql`SELECT book_id FROM entity_mutation_books`);
+      },
+      (tx) => this.lockMutationEntities(tx, [entityId], scope),
+    );
+    return { ...result, oldName, wasImplicitMerge: false };
   }
 
   async deleteEntity(input: DeleteInput): Promise<StrategyDeleteResult> {
     const entityId = input.entityId as number;
-    await this.assertMutationScope([entityId], input.libraryIds);
+    await this.assertScopedRelations([entityId], input.libraryIds, input.contentFilters);
     const [entity] = await this.db.select({ name: authors.name }).from(authors).where(eq(authors.id, entityId)).limit(1);
     if (!entity) throw new NotFoundException('Author not found');
 
-    const affectedBookIds = await this.findAffectedBookIds([entityId]);
-
-    if (input.mode === 'soft') {
-      await this.db.delete(bookAuthors).where(eq(bookAuthors.authorId, entityId));
-      await refreshPrimaryAuthorSortNamesForBooks(this.db, affectedBookIds);
-    } else {
-      await this.authorsRepo.deleteAuthors([entityId]);
-      await this.authorImageStorage.deleteAuthorDir(entityId);
-    }
-
-    return { name: entity.name, affectedBookIds };
+    const scope = { libraryIds: input.libraryIds, contentFilters: input.contentFilters };
+    const result = await mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks([entityId], scope),
+      async (tx) => {
+        await tx.delete(bookAuthors).where(eq(bookAuthors.authorId, entityId));
+        if (input.mode !== 'soft') await tx.delete(authors).where(eq(authors.id, entityId));
+        await refreshPrimaryAuthorSortNamesForBookSelection(tx, sql`SELECT book_id FROM entity_mutation_books`);
+      },
+      (tx) => this.lockMutationEntities(tx, [entityId], scope),
+    );
+    if (input.mode !== 'soft') await this.authorImageStorage.deleteAuthorDir(entityId);
+    return { ...result, name: entity.name };
   }
 
   async split(input: SplitInput): Promise<StrategySplitResult> {
-    await this.assertMutationScope([input.entityId], input.libraryIds ?? []);
+    await this.assertScopedRelations([input.entityId], input.libraryIds ?? [], input.contentFilters);
     const [entity] = await this.db.select({ name: authors.name }).from(authors).where(eq(authors.id, input.entityId)).limit(1);
     if (!entity) throw new NotFoundException('Author not found');
 
-    const affectedBookIds = await this.findAffectedBookIds([input.entityId]);
     const newEntities: { id: number; name: string }[] = [];
+    const scope = { libraryIds: input.libraryIds ?? [], contentFilters: input.contentFilters };
+    const result = await mutateEntityBooks(
+      this.db,
+      input,
+      scope,
+      this.selectMutationBooks([input.entityId], scope),
+      async (tx) => {
+        const seenNewNames = new Set<string>();
+        for (const name of input.newNames) {
+          const displayName = normalizeMetadataText(name);
+          const normalizedName = normalizeMetadataTextKey(displayName);
+          if (!displayName || !normalizedName) continue;
+          if (seenNewNames.has(normalizedName)) continue;
+          seenNewNames.add(normalizedName);
 
-    await this.db.transaction(async (tx) => {
-      const seenNewNames = new Set<string>();
-      for (const name of input.newNames) {
-        const displayName = normalizeMetadataText(name);
-        const normalizedName = normalizeMetadataTextKey(displayName);
-        if (!displayName || !normalizedName) continue;
-        if (seenNewNames.has(normalizedName)) continue;
-        seenNewNames.add(normalizedName);
-
-        const existingRows = await tx
-          .select({ id: authors.id, name: authors.name })
-          .from(authors)
-          .where(eq(NORMALIZED_AUTHOR_NAME_SQL, normalizedName));
-        const existing = this.selectPreferredAuthorMatch(existingRows, input.entityId as number, displayName);
-        if (existing) {
-          newEntities.push({ id: existing.id, name: existing.name });
-        } else {
-          const [inserted] = await tx.insert(authors).values({ name: displayName }).returning({ id: authors.id });
-          newEntities.push({ id: inserted!.id, name: displayName });
+          const existingRows = await tx
+            .select({ id: authors.id, name: authors.name })
+            .from(authors)
+            .where(eq(NORMALIZED_AUTHOR_NAME_SQL, normalizedName));
+          const existing = this.selectPreferredAuthorMatch(existingRows, input.entityId as number, displayName);
+          if (existing) {
+            newEntities.push({ id: existing.id, name: existing.name });
+          } else {
+            const [inserted] = await tx.insert(authors).values({ name: displayName }).returning({ id: authors.id });
+            newEntities.push({ id: inserted!.id, name: displayName });
+          }
         }
-      }
-      if (newEntities.length === 0) throw new BadRequestException('At least one name is required');
+        if (newEntities.length === 0) throw new BadRequestException('At least one name is required');
 
-      const bookRows = await tx
-        .select({ bookId: bookAuthors.bookId, displayOrder: bookAuthors.displayOrder })
-        .from(bookAuthors)
-        .where(eq(bookAuthors.authorId, input.entityId));
-
-      for (const newEntity of newEntities) {
-        if (bookRows.length > 0) {
-          await tx
-            .insert(bookAuthors)
-            .values(bookRows.map((r) => ({ bookId: r.bookId, authorId: newEntity.id, displayOrder: r.displayOrder })))
-            .onConflictDoNothing();
+        for (const newEntity of newEntities) {
+          await tx.execute(sql`INSERT INTO book_authors (book_id, author_id, display_order)
+          SELECT source.book_id, ${newEntity.id}, source.display_order FROM book_authors source
+          JOIN entity_mutation_books affected ON affected.book_id = source.book_id
+          WHERE source.author_id = ${input.entityId} ON CONFLICT DO NOTHING`);
         }
-      }
 
-      await tx.delete(bookAuthors).where(eq(bookAuthors.authorId, input.entityId));
-      await tx.delete(authors).where(eq(authors.id, input.entityId));
-      await refreshPrimaryAuthorSortNamesForBooks(tx, affectedBookIds);
-    });
+        await tx.delete(bookAuthors).where(eq(bookAuthors.authorId, input.entityId));
+        await tx.delete(authors).where(eq(authors.id, input.entityId));
+        await refreshPrimaryAuthorSortNamesForBookSelection(tx, sql`SELECT book_id FROM entity_mutation_books`);
+      },
+      (tx) => this.lockMutationEntities(tx, [input.entityId], scope),
+    );
 
     await this.authorImageStorage.deleteAuthorDir(input.entityId);
 
-    return { originalName: entity.name, newEntities, affectedBookIds };
+    return { ...result, originalName: entity.name, newEntities };
+  }
+
+  private selectMutationBooks(ids: number[], scope: EntityBookScope) {
+    return sql`SELECT DISTINCT ${bookAuthors.bookId} FROM ${bookAuthors}
+      JOIN ${books} ON ${books.id} = ${bookAuthors.bookId}
+      WHERE ${inArray(bookAuthors.authorId, ids)} AND ${and(...buildEntityBookScopeClauses(this.db, scope))}`;
+  }
+
+  private async lockMutationEntities(tx: Db, ids: number[], scope: EntityBookScope): Promise<void> {
+    const rows = await tx.select({ id: authors.id }).from(authors).where(inArray(authors.id, ids)).orderBy(authors.id).for('update');
+    if (rows.length !== new Set(ids).size) throw new NotFoundException('Author not found');
+    await assertEntityRelationsWithinLibraries(tx, 'book_authors', 'author_id', ids, scope.libraryIds, scope.contentFilters);
   }
 
   private selectPreferredAuthorMatch(
@@ -391,8 +428,12 @@ export class AuthorStrategy implements EntityStrategy {
     return chooseCanonicalMetadataTextRow(rows, { desiredName: displayName, excludedId: excludedAuthorId });
   }
 
-  private assertMutationScope(entityIds: number[], libraryIds: number[]): Promise<void> {
-    return assertEntityRelationsWithinLibraries(this.db, 'book_authors', 'author_id', entityIds, libraryIds);
+  assertMutationScope(ids: (number | string)[], scope: EntityBookScope): Promise<void> {
+    return this.assertScopedRelations(ids as number[], scope.libraryIds, scope.contentFilters);
+  }
+
+  private assertScopedRelations(entityIds: number[], libraryIds: number[], contentFilters?: EntityBookScope['contentFilters']): Promise<void> {
+    return assertEntityRelationsWithinLibraries(this.db, 'book_authors', 'author_id', entityIds, libraryIds, contentFilters);
   }
 
   async findAffectedBookIds(ids: (number | string)[]): Promise<number[]> {

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, lte, max } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
@@ -46,7 +46,15 @@ export interface BulkRenameBookData {
 export class BulkRenameRepository {
   constructor(@Inject(DB) private readonly db: Db) {}
 
-  async findAllBooksForLibrary(libraryId: number): Promise<BulkRenameBookData[]> {
+  async findLastBookId(libraryId: number): Promise<number> {
+    const [row] = await this.db
+      .select({ id: max(books.id) })
+      .from(books)
+      .where(eq(books.libraryId, libraryId));
+    return row?.id ?? 0;
+  }
+
+  async findBooksPageForLibrary(libraryId: number, afterBookId: number, upToBookId: number, limit = 250): Promise<BulkRenameBookData[]> {
     const rows = await this.db
       .select({
         bookId: books.id,
@@ -74,12 +82,13 @@ export class BulkRenameRepository {
       .innerJoin(bookFiles, eq(bookFiles.id, books.primaryFileId))
       .innerJoin(libraryFolders, eq(libraryFolders.id, bookFiles.libraryFolderId))
       .innerJoin(libraries, eq(libraries.id, books.libraryId))
-      .where(eq(books.libraryId, libraryId))
-      .orderBy(asc(books.id));
+      .where(and(eq(books.libraryId, libraryId), gt(books.id, afterBookId), lte(books.id, upToBookId)))
+      .orderBy(asc(books.id))
+      .limit(Math.min(Math.max(limit, 1), 250));
 
     if (rows.length === 0) return [];
 
-    const libraryBookIds = this.db.select({ id: books.id }).from(books).where(eq(books.libraryId, libraryId));
+    const libraryBookIds = rows.map((row) => row.bookId);
 
     const [authorRows, narratorRows, fileRows] = await Promise.all([
       this.db

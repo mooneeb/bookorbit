@@ -21,6 +21,6 @@ import { UploadSessionService } from './upload-session.service';
   imports: [AppSettingsModule, BookCoverStoreModule, LibraryModule, MetadataModule, BookMetadataFetchModule, FileWriteModule, PathModule],
   controllers: [UploadController, BookFileUploadController, UploadSessionController],
   providers: [UploadService, UploadValidatorService, UploadStorageService, UploadProcessorService, UploadSessionRepository, UploadSessionService],
-  exports: [UploadValidatorService, UploadStorageService, UploadProcessorService, UploadService],
+  exports: [UploadSessionService, UploadValidatorService, UploadStorageService, UploadProcessorService, UploadService],
 })
 export class UploadModule {}

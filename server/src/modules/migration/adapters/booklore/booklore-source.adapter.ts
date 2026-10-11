@@ -169,6 +169,151 @@ export class BookloreSourceAdapter implements SourceAdapter<BookloreConnectionCo
     });
   }
 
+  async *exportDataBatches(config: BookloreConnectionConfig): AsyncGenerator<SourceExportData> {
+    yield* this.connector.withConnectionBatches(
+      config,
+      async function* (this: BookloreSourceAdapter, conn: mysql.Connection) {
+        const resolved = resolveTables(await this.connector.listTables(conn));
+        const availableDomains = this.buildAvailableDomains(resolved, config);
+        const empty = (books: SourceBook[] = []): SourceExportData => ({
+          availableDomains,
+          bookOverlays: false,
+          books,
+          users: [],
+          userBookStatuses: [],
+          userFileProgress: [],
+          readingSessions: [],
+          bookmarks: [],
+          annotations: [],
+          shelves: [],
+          shelfBooks: [],
+        });
+        const scoped = (bookIds?: string[], userIds?: string[], offset?: number, shelfIds?: string[], excludeProgressSql?: string) => {
+          const connector = Object.create(this.connector) as BookloreConnector;
+          let rowCount = 0;
+          let lastSql = '';
+          connector.queryRows = async (connection, sql, params = []) => {
+            const filters: string[] = [];
+            const nativeFilters: string[] = [];
+            const nativeParameters: unknown[] = [];
+            const outerParameters: unknown[] = [];
+            const include = (column: string, ids: string[]) => {
+              const expression = new RegExp(`CAST\\(([a-z]+\\.\\\`[a-zA-Z_]+\\\`) AS CHAR\\) AS ${column}\\b`).exec(sql)?.[1];
+              const placeholders = ids.map(() => '?').join(',') || 'NULL';
+              if (expression) {
+                nativeFilters.push(`${expression} IN (${placeholders})`);
+                nativeParameters.push(...ids);
+              } else {
+                filters.push(`source_scope.${column} IN (${placeholders})`);
+                outerParameters.push(...ids);
+              }
+            };
+            if (bookIds && /AS sourceBookId\b/.test(sql)) include('sourceBookId', bookIds);
+            else if (bookIds && /AS bookId\b/.test(sql)) include('bookId', bookIds);
+            if (userIds && /AS sourceUserId\b/.test(sql)) include('sourceUserId', userIds);
+            if (shelfIds && /AS sourceShelfId\b/.test(sql) && !/AS sourceBookId\b/.test(sql)) include('sourceShelfId', shelfIds);
+            if (excludeProgressSql)
+              filters.push(
+                `NOT EXISTS (SELECT 1 FROM (${excludeProgressSql}) file_progress WHERE file_progress.sourceBookId = source_scope.sourceBookId AND file_progress.sourceUserId = source_scope.sourceUserId AND (COALESCE(file_progress.percentage, 0) > 0 OR NULLIF(TRIM(file_progress.cfi), '') IS NOT NULL OR NULLIF(TRIM(file_progress.href), '') IS NOT NULL OR COALESCE(file_progress.pageNumber, 0) > 0 OR COALESCE(file_progress.positionSeconds, 0) > 0))`,
+              );
+            lastSql = sql;
+            const orderAt = sql.indexOf('ORDER BY');
+            const head = orderAt < 0 ? sql : sql.slice(0, orderAt);
+            const order = orderAt < 0 ? '' : sql.slice(orderAt);
+            const selected = nativeFilters.length
+              ? `${head} ${/\bWHERE\b/.test(head) ? 'AND' : 'WHERE'} ${nativeFilters.join(' AND ')} ${order}`
+              : sql;
+            const parameters = [...params, ...nativeParameters, ...outerParameters];
+            const query =
+              filters.length || offset != null
+                ? `SELECT * FROM (${selected}) source_scope ${filters.length ? `WHERE ${filters.join(' AND ')}` : ''} ${offset != null ? 'LIMIT 500 OFFSET ?' : ''}`
+                : selected;
+            if (offset != null) parameters.push(offset);
+            const rows = await this.connector.queryRows(connection, query, parameters);
+            rowCount = rows.length;
+            return rows;
+          };
+          return { adapter: new BookloreSourceAdapter(connector), rowCount: () => rowCount, lastSql: () => lastSql };
+        };
+        for (let offset = 0; ; offset += 500) {
+          const page = scoped(undefined, undefined, offset);
+          const users = await page.adapter.fetchUsers(conn, resolved.users);
+          if (!page.rowCount()) break;
+          yield { ...empty(), users };
+        }
+        if (!resolved.book) return;
+        const columns = await this.connector.listColumns(conn, resolved.book);
+        const idColumn = requiredColumn(columns, ['id', 'book_id']);
+        const deleted = firstColumn(columns, ['deleted']);
+        let lastBookId = '0';
+        while (true) {
+          const ids = await this.connector.queryRows(
+            conn,
+            `SELECT CAST(\`${idColumn}\` AS CHAR) AS id FROM \`${resolved.book}\` WHERE \`${idColumn}\` > ? ${deleted ? `AND (\`${deleted}\` = 0 OR \`${deleted}\` IS NULL)` : ''} ORDER BY \`${idColumn}\` LIMIT 100`,
+            [lastBookId],
+          );
+          if (!ids.length) break;
+          const bookIds = ids.map((row) => String(row.id));
+          lastBookId = bookIds.at(-1)!;
+          const metadata = scoped(bookIds);
+          const books = await metadata.adapter.fetchBooks(conn, resolved);
+          await metadata.adapter.attachCategoriesToBooks(conn, books, resolved.categories, resolved.categoryMapping);
+          await metadata.adapter.attachTagsToBooks(conn, books, resolved.tags, resolved.tagMapping);
+          yield { ...empty(books), bookOverlays: true };
+          const usersFor = async (ids: string[]) => scoped(undefined, [...new Set(ids)]).adapter.fetchUsers(conn, resolved.users);
+          const readers = [
+            ['userBookStatuses', (page: BookloreSourceAdapter) => page.fetchUserBookStatuses(conn, resolved.userBookProgress)],
+            ['readingSessions', (page: BookloreSourceAdapter) => page.fetchReadingSessions(conn, resolved.readingSessions)],
+            ['bookmarks', (page: BookloreSourceAdapter) => page.fetchBookmarks(conn, resolved.bookmarks)],
+            ['annotations', (page: BookloreSourceAdapter) => page.fetchAnnotations(conn, resolved.annotations)],
+          ] as const;
+          for (const [domain, fetch] of readers) {
+            for (let offset = 0; ; offset += 500) {
+              const page = scoped(bookIds, undefined, offset);
+              const rows = await fetch(page.adapter);
+              if (!page.rowCount()) break;
+              yield { ...empty(books), [domain]: rows, users: await usersFor(rows.map((row) => row.sourceUserId)) };
+            }
+          }
+          let fileProgressSql: string | undefined;
+          for (let offset = 0; ; offset += 500) {
+            const page = scoped(bookIds, undefined, offset);
+            const userFileProgress = await page.adapter.fetchUserFileProgress(conn, resolved.userBookFileProgress, resolved.bookFile);
+            fileProgressSql = page.lastSql() || undefined;
+            if (!page.rowCount()) break;
+            yield { ...empty(books), userFileProgress, users: await usersFor(userFileProgress.map((row) => row.sourceUserId)) };
+          }
+          for (let offset = 0; ; offset += 500) {
+            const page = scoped(bookIds, undefined, offset, undefined, fileProgressSql);
+            const userFileProgress = (await page.adapter.fetchBookLevelFileProgress(conn, resolved.userBookProgress)).filter(hasProgressSignal);
+            if (!page.rowCount()) break;
+            yield { ...empty(books), userFileProgress, users: await usersFor(userFileProgress.map((row) => row.sourceUserId)) };
+          }
+          for (let offset = 0; ; offset += 500) {
+            const page = scoped(bookIds, undefined, offset, []);
+            const { shelfBooks } = await page.adapter.fetchShelves(conn, resolved.shelves, resolved.shelfBooks, resolved.book);
+            if (!page.rowCount()) break;
+            const references = scoped([], undefined, undefined, [...new Set(shelfBooks.map((row) => row.sourceShelfId))]);
+            const { shelves } = await references.adapter.fetchShelves(conn, resolved.shelves, resolved.shelfBooks, resolved.book);
+            yield { ...empty(books), shelfBooks, shelves, users: await usersFor(shelves.map((row) => row.sourceUserId)) };
+          }
+        }
+        if (resolved.shelves) {
+          for (let offset = 0; ; offset += 500) {
+            const page = scoped([], undefined, offset);
+            const { shelves } = await page.adapter.fetchShelves(conn, resolved.shelves, resolved.shelfBooks, resolved.book);
+            if (!shelves.length) break;
+            yield {
+              ...empty(),
+              shelves,
+              users: await scoped(undefined, [...new Set(shelves.map((row) => row.sourceUserId))]).adapter.fetchUsers(conn, resolved.users),
+            };
+          }
+        }
+      }.bind(this),
+    );
+  }
+
   private buildAvailableDomains(resolved: TableResolution, config: BookloreConnectionConfig): SourceExportDomains {
     return {
       metadata: !!resolved.bookMetadata,

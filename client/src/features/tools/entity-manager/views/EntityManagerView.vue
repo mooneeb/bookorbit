@@ -89,10 +89,8 @@ function handleScanPage(value: number): void {
 }
 
 async function handleDismissCluster(cluster: DuplicateCluster): Promise<void> {
-  for (const pair of cluster.pairDetails) {
-    await em.dismissPair(pair.idA, pair.idB)
-  }
-  em.removeClustersByIds(cluster.entities.map((entity) => entity.id))
+  await em.dismissPairs(cluster.pairDetails)
+  await em.scan()
 }
 
 function handleUpdateSearch(value: string): void {
@@ -144,27 +142,23 @@ function handleUpdateBookCount(value: 'any' | 'empty'): void {
 
 async function handleMerge(targetId: number | string, sourceIds: (number | string)[], writeFiles: boolean): Promise<void> {
   await em.mergeEntities(targetId, sourceIds, writeFiles)
-  em.removeClustersByIds(sourceIds)
+  await em.scan()
 }
 
 async function handleDismissEntity(cluster: DuplicateCluster, entityId: number | string): Promise<void> {
   const pairs = cluster.pairDetails.filter((p) => p.idA === entityId || p.idB === entityId)
-  for (const pair of pairs) {
-    await em.dismissPair(pair.idA, pair.idB)
-  }
-  em.removeClustersByIds([entityId])
+  await em.dismissPairs(pairs)
+  await em.scan()
 }
 
 async function handleDismissPair(idA: number | string, idB: number | string): Promise<void> {
   await em.dismissPair(idA, idB)
-  em.removePairFromClusters(idA, idB)
+  await em.scan()
 }
 
 async function handleUndismiss(idA: number | string, idB: number | string): Promise<void> {
   await em.undismissPair(idA, idB)
-  if (em.clusters.value.length > 0) {
-    em.scan()
-  }
+  await em.scan()
 }
 
 function handleToggleDismissed(): void {
@@ -278,6 +272,7 @@ async function handleBulkDeleteConfirm(mode: 'soft' | 'hard' | 'inline', writeFi
     <!-- Duplicates mode -->
     <div v-if="em.mode.value === 'duplicates'" class="flex-1 min-h-0 overflow-hidden pt-3">
       <DuplicatesPanel
+        :entity-type="em.entityType.value"
         :clusters="em.clusters.value"
         :page="em.scanPage.value"
         :total-pages="em.scanTotalPages.value"
@@ -285,9 +280,15 @@ async function handleBulkDeleteConfirm(mode: 'soft' | 'hard' | 'inline', writeFi
         :has-scanned="em.hasScanned.value"
         :scan-error="em.scanError.value"
         :operation-loading="em.operationLoading.value"
+        :operation-error="em.operationError.value"
         :dismissed-pairs="em.dismissedPairs.value"
         :dismissed-loading="em.dismissedLoading.value"
         :show-dismissed="em.showDismissed.value"
+        :dismissed-page="em.dismissedPage.value"
+        :dismissed-total="em.dismissedTotal.value"
+        :dismissed-total-pages="em.dismissedTotalPages.value"
+        :dismissed-error="em.dismissedError.value"
+        @update:dismissed-page="em.changeDismissedPage"
         @update:page="handleScanPage"
         @merge="handleMerge"
         @dismiss-entity="handleDismissEntity"

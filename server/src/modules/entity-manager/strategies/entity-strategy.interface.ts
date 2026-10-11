@@ -1,4 +1,18 @@
 import type { BrowseEntityBookCountFilter, BrowseEntitySortBy, BrowseEntitySortOrder, ContentFilterRules, EntityType } from '@bookorbit/types';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type * as schema from '../../../db/schema';
+
+export type EntityMutationExecutor = Pick<NodePgDatabase<typeof schema>, 'execute'>;
+export interface EntityMutationBooks {
+  onBooksChanged?: (bookIds: number[], executor: EntityMutationExecutor) => Promise<void>;
+  spoolBookIds?: boolean;
+}
+export interface StrategyAffectedBooks {
+  affectedBookIds: number[];
+  affectedBookCount?: number;
+  affectedBookBatches?: () => AsyncIterable<number[]>;
+  disposeAffectedBooks?: () => Promise<void>;
+}
 
 export interface EntityBookScope {
   libraryIds: number[];
@@ -33,54 +47,54 @@ export interface BrowseResult {
   total: number;
 }
 
-export interface MergeInput {
+export interface MergeInput extends EntityMutationBooks {
   targetId: number | string;
   sourceIds: (number | string)[];
   userId: number;
   libraryIds?: number[];
+  contentFilters?: ContentFilterRules;
 }
 
-export interface StrategyMergeResult {
-  affectedBookIds: number[];
+export interface StrategyMergeResult extends StrategyAffectedBooks {
   imagePromoted?: boolean;
   fieldsResolved?: string[];
 }
 
-export interface RenameInput {
+export interface RenameInput extends EntityMutationBooks {
   entityId: number | string;
   newName: string;
   userId: number;
   libraryIds: number[];
+  contentFilters?: ContentFilterRules;
 }
 
-export interface StrategyRenameResult {
+export interface StrategyRenameResult extends StrategyAffectedBooks {
   oldName: string;
-  affectedBookIds: number[];
   wasImplicitMerge: boolean;
   mergedEntityId?: number | string;
 }
 
-export interface DeleteInput {
+export interface DeleteInput extends EntityMutationBooks {
   entityId: number | string;
   mode: 'soft' | 'hard' | 'inline';
   libraryIds: number[];
+  contentFilters?: ContentFilterRules;
 }
 
-export interface StrategyDeleteResult {
+export interface StrategyDeleteResult extends StrategyAffectedBooks {
   name: string;
-  affectedBookIds: number[];
 }
 
-export interface SplitInput {
+export interface SplitInput extends EntityMutationBooks {
   entityId: number;
   newNames: string[];
   libraryIds?: number[];
+  contentFilters?: ContentFilterRules;
 }
 
-export interface StrategySplitResult {
+export interface StrategySplitResult extends StrategyAffectedBooks {
   originalName: string;
   newEntities: { id: number; name: string }[];
-  affectedBookIds: number[];
 }
 
 export interface EntityStrategy {
@@ -94,6 +108,8 @@ export interface EntityStrategy {
   computeCandidatePairsForBatch?(outerIds: number[], minSimilarity: number): Promise<RawCandidatePair[]>;
 
   browse(params: BrowseParams): Promise<BrowseResult>;
+
+  assertMutationScope(ids: (number | string)[], scope: EntityBookScope): Promise<void>;
 
   merge(input: MergeInput): Promise<StrategyMergeResult>;
   rename(input: RenameInput): Promise<StrategyRenameResult>;

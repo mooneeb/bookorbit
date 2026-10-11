@@ -7,6 +7,7 @@ import { accentInsensitiveIlike } from '../../common/utils/accent-insensitive-se
 import * as schema from '../../db/schema';
 import {
   bookDockFiles,
+  bookDockFinalizeJobItems,
   bookDockUnitFiles,
   bookFiles,
   books,
@@ -83,6 +84,15 @@ export interface SelectionBatchOptions {
 @Injectable()
 export class BookDockRepository {
   constructor(@Inject(DB) private readonly db: Db) {}
+
+  async snapshotFinalizeSelection(jobId: number, createdAt: Date, opts: SelectionBatchOptions): Promise<void> {
+    const conditions = this.buildSelectionConditions(opts.status, opts.search, opts.userId, opts.canManageAll, opts.needsReview, opts.readyToFile);
+    conditions.push(sql`${bookDockFiles.createdAt} <= ${createdAt}`);
+    if (opts.excludedIds?.length) conditions.push(notInArray(bookDockFiles.id, opts.excludedIds));
+    await this.db.execute(sql`insert into ${bookDockFinalizeJobItems} (job_id, file_id)
+      select ${jobId}, ${bookDockFiles.id} from ${bookDockFiles} where ${and(...conditions)}
+      on conflict (job_id, file_id) do nothing`);
+  }
 
   async findAll(opts: ListOptions): Promise<{ items: BookDockFileRow[]; total: number }> {
     const conditions = this.buildSelectionConditions(opts.status, opts.search, opts.userId, opts.canManageAll, opts.needsReview, opts.readyToFile);
@@ -202,8 +212,17 @@ export class BookDockRepository {
     return claimed;
   }
 
-  async update(id: number, data: Partial<NewBookDockFileRow>): Promise<BookDockFileRow | undefined> {
-    const [row] = await this.db.update(bookDockFiles).set(data).where(eq(bookDockFiles.id, id)).returning();
+  async update(id: number, data: Partial<NewBookDockFileRow>, expectedUpdatedAt?: string): Promise<BookDockFileRow | undefined> {
+    const [row] = await this.db
+      .update(bookDockFiles)
+      .set(data)
+      .where(
+        and(
+          eq(bookDockFiles.id, id),
+          expectedUpdatedAt ? sql`date_trunc('milliseconds', ${bookDockFiles.updatedAt}) = ${new Date(expectedUpdatedAt)}` : undefined,
+        ),
+      )
+      .returning();
     return row;
   }
 

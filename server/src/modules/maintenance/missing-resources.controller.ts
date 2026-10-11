@@ -8,6 +8,8 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 import type { RequestUser } from '../../common/types/request-user';
 import { ListMissingResourcesDto, MissingResourceCleanupDto } from './dto/missing-resources.dto';
 import { MissingResourcesService } from './missing-resources.service';
+import { MissingFileRepairService } from './missing-file-repair.service';
+import { MissingFileRepairDto } from './dto/missing-file-repair.dto';
 
 function cleanupDescription(prefix: string) {
   return (_req: unknown, responseBody: unknown) => {
@@ -24,7 +26,23 @@ function cleanupMeta(_req: unknown, responseBody: unknown) {
 @Controller('maintenance/missing-resources')
 @RequirePermission(Permission.LibraryDeleteBooks)
 export class MissingResourcesController {
-  constructor(private readonly service: MissingResourcesService) {}
+  constructor(
+    private readonly service: MissingResourcesService,
+    private readonly repairService: MissingFileRepairService,
+  ) {}
+
+  @Post('files/preview')
+  @RequirePermission(Permission.LibraryDeleteBooks, Permission.ManageLibraries)
+  previewFileRepair(@Body() dto: MissingFileRepairDto, @CurrentUser() user: RequestUser) {
+    return this.repairService.preview(dto, user);
+  }
+
+  @Post('files/repair')
+  @RequirePermission(Permission.LibraryDeleteBooks, Permission.ManageLibraries)
+  @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot repair files')
+  repairFile(@Body() dto: MissingFileRepairDto, @CurrentUser() user: RequestUser) {
+    return this.repairService.repair(dto, user);
+  }
 
   @Get()
   getSummary(@CurrentUser() user: RequestUser) {

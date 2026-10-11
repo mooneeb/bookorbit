@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { asc, count, eq, gt, inArray } from 'drizzle-orm';
+import { asc, count, eq, gt, inArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
@@ -8,6 +8,7 @@ import { bookAuthors, bookGenres, bookMetadata, bookTags } from '../../db/schema
 import type { ScoreData } from './metadata-score.scorer';
 
 type Db = NodePgDatabase<typeof schema>;
+export type MetadataScoreExecutor = Pick<Db, 'execute'>;
 
 const METADATA_SCORE_BASE_SELECT = {
   title: bookMetadata.title,
@@ -113,5 +114,45 @@ export class MetadataScoreRepository {
 
   async updateMetadataScore(bookId: number, score: number): Promise<void> {
     await this.db.update(bookMetadata).set({ metadataScore: score }).where(eq(bookMetadata.bookId, bookId));
+  }
+
+  async loadScoreDataMany(bookIds: number[], executor: MetadataScoreExecutor = this.db): Promise<ScorePage['rows']> {
+    if (bookIds.length === 0) return [];
+    const ids = sql.join(
+      bookIds.map((id) => sql`${id}`),
+      sql`, `,
+    );
+    const textFields = Object.entries(METADATA_SCORE_BASE_SELECT)
+      .filter(([name]) => !['publishedYear', 'pageCount', 'seriesIndex', 'rating'].includes(name))
+      .map(
+        ([name, column]) =>
+          sql`CASE WHEN length(btrim(selected.${sql.identifier(column.name)}, ${' \t\r\n\v\f\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'})) > 0 THEN 'present' ELSE NULL END AS ${sql.identifier(name)}`,
+      );
+    const result = await executor.execute<ScoreData & { bookId: number }>(sql`
+      WITH selected AS MATERIALIZED (SELECT book_id, ${sql.join(
+        Object.values(METADATA_SCORE_BASE_SELECT).map((column) => sql.identifier(column.name)),
+        sql`, `,
+      )} FROM book_metadata WHERE book_id IN (${ids})),
+      author_counts AS (SELECT book_id, count(*)::int AS amount FROM book_authors WHERE book_id IN (${ids}) GROUP BY book_id),
+      genre_counts AS (SELECT book_id, count(*)::int AS amount FROM book_genres WHERE book_id IN (${ids}) GROUP BY book_id),
+      tag_counts AS (SELECT book_id, count(*)::int AS amount FROM book_tags WHERE book_id IN (${ids}) GROUP BY book_id)
+      SELECT selected.book_id AS "bookId", ${sql.join(textFields, sql`, `)},
+        selected.published_year AS "publishedYear", selected.page_count AS "pageCount",
+        selected.series_index AS "seriesIndex", selected.rating,
+        COALESCE(author_counts.amount, 0) AS "authorCount", COALESCE(genre_counts.amount, 0) AS "genreCount", COALESCE(tag_counts.amount, 0) AS "tagCount"
+      FROM selected
+      LEFT JOIN author_counts USING (book_id) LEFT JOIN genre_counts USING (book_id) LEFT JOIN tag_counts USING (book_id)
+    `);
+    return result.rows.map(({ bookId, ...data }) => ({ bookId, data }));
+  }
+
+  async updateMetadataScores(scores: { bookId: number; score: number }[], executor: MetadataScoreExecutor = this.db): Promise<void> {
+    if (scores.length === 0) return;
+    const values = sql.join(
+      scores.map(({ bookId, score }) => sql`(${bookId}::int, ${score}::int)`),
+      sql`, `,
+    );
+    await executor.execute(sql`UPDATE book_metadata SET metadata_score = scores.score
+      FROM (VALUES ${values}) AS scores(book_id, score) WHERE book_metadata.book_id = scores.book_id`);
   }
 }

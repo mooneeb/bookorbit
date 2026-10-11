@@ -184,24 +184,47 @@ export class CustomMetadataService {
     return valuesByBookId;
   }
 
+  async validateBookValues(libraryId: number, values: CustomMetadataValueDto[]) {
+    const enabledFields = await this.repository.findEnabledFieldsForLibrary(libraryId);
+    const fieldById = new Map(enabledFields.map((field) => [field.id, field]));
+    for (const item of values) {
+      const field = fieldById.get(item.fieldId);
+      if (!field) throw new BadRequestException(`Custom metadata field ${item.fieldId} is not enabled for this book`);
+      normalizeValue(field.type, item.value);
+    }
+  }
+
   async updateBookValues(
     bookId: number,
     libraryId: number,
     values: CustomMetadataValueDto[],
     executor?: Parameters<CustomMetadataRepository['upsertValue']>[3],
   ) {
-    if (values.length === 0) return;
-    const enabledFields = await this.repository.findEnabledFieldsForLibrary(libraryId);
-    const fieldById = new Map(enabledFields.map((field) => [field.id, field]));
+    return this.updateManyBookValues([{ id: bookId, libraryId }], values, executor);
+  }
 
-    for (const item of values) {
-      const field = fieldById.get(item.fieldId);
-      if (!field) throw new BadRequestException(`Custom metadata field ${item.fieldId} is not enabled for this book`);
-      const normalized = normalizeValue(field.type, item.value);
-      if (normalized === null) {
-        await this.repository.deleteValue(bookId, field.id, executor);
-      } else {
-        await this.repository.upsertValue(bookId, field.id, columnsForValue(field.type, normalized), executor);
+  async updateManyBookValues(
+    books: ReadonlyArray<{ id: number; libraryId: number }>,
+    values: CustomMetadataValueDto[],
+    executor?: Parameters<CustomMetadataRepository['upsertValue']>[3],
+  ) {
+    if (values.length === 0) return;
+    for (const libraryId of new Set(books.map((book) => book.libraryId))) {
+      const enabledFields = await this.repository.findEnabledFieldsForLibrary(libraryId);
+      const fieldById = new Map(enabledFields.map((field) => [field.id, field]));
+      const prepared = values.map((item) => {
+        const field = fieldById.get(item.fieldId);
+        if (!field) throw new BadRequestException(`Custom metadata field ${item.fieldId} is not enabled for this book`);
+        return { field, normalized: normalizeValue(field.type, item.value) };
+      });
+      for (const book of books.filter((book) => book.libraryId === libraryId)) {
+        for (const { field, normalized } of prepared) {
+          if (normalized === null) {
+            await this.repository.deleteValue(book.id, field.id, executor);
+          } else {
+            await this.repository.upsertValue(book.id, field.id, columnsForValue(field.type, normalized), executor);
+          }
+        }
       }
     }
   }

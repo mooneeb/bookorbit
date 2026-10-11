@@ -549,6 +549,26 @@ export class BookRepository {
     return this.db.transaction((tx) => callback(tx));
   }
 
+  async findBulkMetadataPreview(bookIds: number[], executor?: DbTransaction, lock = false) {
+    const query = (executor ?? this.db)
+      .select({
+        bookId: books.id,
+        libraryId: books.libraryId,
+        title: bookMetadata.title,
+        publisher: bookMetadata.publisher,
+        language: bookMetadata.language,
+        publishedYear: bookMetadata.publishedYear,
+        seriesName: bookMetadata.seriesName,
+        updatedAt: bookMetadata.updatedAt,
+        lockedFields: bookMetadata.lockedFields,
+      })
+      .from(books)
+      .innerJoin(bookMetadata, eq(bookMetadata.bookId, books.id))
+      .where(inArray(books.id, bookIds))
+      .orderBy(books.id);
+    return lock ? query.for('update', { of: bookMetadata }) : query;
+  }
+
   async findCards(opts: { where: SQL | undefined; orderBy: SQL[]; limit: number; offset: number; userId: number }) {
     const { where, orderBy, limit, offset, userId } = opts;
     const visibleWhere = this.visibleWhere(where);
@@ -1569,6 +1589,20 @@ export class BookRepository {
     return !!row;
   }
 
+  async bookIdsPassContentFilters(bookIds: number[], contentFilters: ContentFilterRules): Promise<boolean> {
+    const clauses = buildContentFilterClauses(contentFilters, this.db);
+    if (clauses.length === 0) return true;
+    for (let start = 0; start < bookIds.length; start += 250) {
+      const ids = bookIds.slice(start, start + 250);
+      const [row] = await this.db
+        .select({ count: count() })
+        .from(books)
+        .where(and(inArray(books.id, ids), ...clauses));
+      if (row.count !== ids.length) return false;
+    }
+    return true;
+  }
+
   async findFileById(fileId: number) {
     const [file] = await this.db
       .select({
@@ -2049,6 +2083,21 @@ export class BookRepository {
     return rows.map((r) => r.id);
   }
 
+  async embeddingScope(): Promise<{ maximumId: number; total: number }> {
+    const [row] = await this.db.select({ maximumId: sql<number>`coalesce(max(${books.id}), 0)::int`, total: count() }).from(books);
+    return row;
+  }
+
+  async embeddingIdsAfter(afterId: number, maximumId: number): Promise<number[]> {
+    const rows = await this.db
+      .select({ id: books.id })
+      .from(books)
+      .where(and(sql`${books.id} > ${afterId}`, lte(books.id, maximumId)))
+      .orderBy(asc(books.id))
+      .limit(50);
+    return rows.map((row) => row.id);
+  }
+
   async findIdsByWhere(where: SQL | undefined): Promise<number[]> {
     const rows = await this.db
       .select({ id: books.id })
@@ -2312,7 +2361,10 @@ export class BookRepository {
     const shouldSyncSeries =
       Object.prototype.hasOwnProperty.call(fields, 'seriesName') || Object.prototype.hasOwnProperty.call(fields, 'seriesIndex');
     const patch = (await this.seriesIdentity?.resolveMetadataPatch(fields, executor)) ?? fields;
-    await executor.update(bookMetadata).set(patch).where(eq(bookMetadata.bookId, bookId));
+    await executor
+      .update(bookMetadata)
+      .set({ ...patch, updatedAt: sql`greatest(clock_timestamp(), ${bookMetadata.updatedAt} + interval '1 millisecond')` })
+      .where(eq(bookMetadata.bookId, bookId));
     if (shouldSyncSeries) {
       await this.seriesMemberships?.syncPrimaryFromMetadata(bookId, executor);
     }
@@ -2364,7 +2416,10 @@ export class BookRepository {
     const shouldSyncSeries =
       Object.prototype.hasOwnProperty.call(fields, 'seriesName') || Object.prototype.hasOwnProperty.call(fields, 'seriesIndex');
     const patch = (await this.seriesIdentity?.resolveMetadataPatch(fields, executor)) ?? fields;
-    await executor.update(bookMetadata).set(patch).where(inArray(bookMetadata.bookId, bookIds));
+    await executor
+      .update(bookMetadata)
+      .set({ ...patch, updatedAt: sql`greatest(clock_timestamp(), ${bookMetadata.updatedAt} + interval '1 millisecond')` })
+      .where(inArray(bookMetadata.bookId, bookIds));
     if (shouldSyncSeries) {
       await this.seriesMemberships?.syncPrimaryFromMetadataForBooks(bookIds, executor);
     }

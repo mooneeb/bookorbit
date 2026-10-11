@@ -54,6 +54,10 @@ export interface BrowseEntitiesResponse {
 
 // Duplicate cluster
 export interface DuplicateCluster {
+  entityTotal?: number;
+  pairTotal?: number;
+  nextPage?: number | null;
+  detailsPageSize?: number;
   clusterId: string;
   entities: ClusterEntity[];
   averageSimilarity: number;
@@ -71,6 +75,8 @@ export interface ClusterEntity {
 }
 
 export interface PairDetail {
+  nameA?: string;
+  nameB?: string;
   idA: number | string;
   idB: number | string;
   similarity: number;
@@ -152,4 +158,76 @@ export interface EntityInfo {
   name: string;
   bookCount: number;
   bookTitles: string[];
+}
+
+export interface EntityMergeRequest {
+  targetEntityId?: number;
+  targetValue?: string;
+  sourceEntityIds?: number[];
+  sourceValues?: string[];
+  writeFiles?: boolean;
+}
+
+export interface EntityRenameRequest {
+  entityId?: number;
+  currentValue?: string;
+  newName: string;
+  writeFiles?: boolean;
+}
+
+export interface EntityDeleteRequest {
+  entityId?: number;
+  value?: string;
+  mode?: "soft" | "hard" | "inline";
+  writeFiles?: boolean;
+}
+
+export interface EntityBulkDeleteRequest {
+  entityIds?: number[];
+  values?: string[];
+  mode?: "soft" | "hard" | "inline";
+  writeFiles?: boolean;
+}
+
+export interface EntitySplitRequest {
+  entityId: number;
+  newNames: string[];
+  writeFiles?: boolean;
+}
+
+export interface EntityDismissPairRequest {
+  entityIdA?: number;
+  entityIdB?: number;
+  valueA?: string;
+  valueB?: string;
+  reason?: string;
+}
+
+export interface EntityUndismissPairRequest {
+  entityIdA?: number;
+  entityIdB?: number;
+  valueA?: string;
+  valueB?: string;
+}
+
+export interface EntityRefreshDuplicatesRequest {
+  minSimilarity?: number;
+}
+
+export interface EntityDismissedPairsPage {
+  items: DismissedPairInfo[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface EntityDuplicateClusterPage {
+  clusterId: string;
+  entities: ClusterEntity[];
+  pairDetails: PairDetail[];
+  entityTotal: number;
+  pairTotal: number;
+  page: number;
+  pageSize: number;
+  nextPage: number | null;
 }

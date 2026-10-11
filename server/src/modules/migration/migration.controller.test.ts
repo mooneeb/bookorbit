@@ -98,37 +98,38 @@ describe('MigrationController', () => {
 
     await expect(controller.listSupportedTypes()).resolves.toEqual(['booklore']);
     await expect(controller.testSource({ type: 'booklore' } as never)).resolves.toEqual({ ok: true });
-    await expect(controller.getWorkflowState()).resolves.toEqual({ running: false });
-    await expect(controller.listTargetUsers()).resolves.toEqual([{ id: 1 }]);
+    await expect(controller.getWorkflowState(user)).resolves.toEqual({ running: false });
+    await expect(controller.listTargetUsers(user)).resolves.toEqual([{ id: 1 }]);
 
     await expect(controller.createSource({ type: 'booklore' } as never, user)).resolves.toEqual({ id: 3 });
-    expect(sourceService.createSource).toHaveBeenCalledWith({ type: 'booklore' }, 7);
+    expect(sourceService.createSource).toHaveBeenCalledWith({ type: 'booklore' }, user);
 
-    await expect(controller.validateSourceById(3)).resolves.toEqual({ ok: true });
-    await expect(controller.resetSource(3)).resolves.toBeUndefined();
-    expect(sourceService.resetSource).toHaveBeenCalledWith(3);
-    await expect(controller.getSourcePathPrefixes(3)).resolves.toEqual(['/media/books']);
-    await expect(controller.suggestUserMappings(3)).resolves.toEqual([{ sourceUserId: 'u1', targetUserId: 1 }]);
-    await expect(controller.validatePathMappings(3, { pathMappings: [] } as never)).resolves.toEqual({ valid: true, sample: [] });
+    await expect(controller.validateSourceById(3, user)).resolves.toEqual({ ok: true });
+    await expect(controller.resetSource(3, user)).resolves.toBeUndefined();
+    expect(sourceService.resetSource).toHaveBeenCalledWith(3, user);
+    await expect(controller.getSourcePathPrefixes(3, user)).resolves.toEqual(['/media/books']);
+    await expect(controller.suggestUserMappings(3, user)).resolves.toEqual([{ sourceUserId: 'u1', targetUserId: 1 }]);
+    await expect(controller.validatePathMappings(3, { pathMappings: [] } as never, user)).resolves.toEqual({ valid: true, sample: [] });
     await expect(controller.createProfile({ sourceId: 3 } as never, user)).resolves.toEqual({ id: 5 });
-    expect(profileService.createProfile).toHaveBeenCalledWith({ sourceId: 3 }, 7);
+    expect(profileService.createProfile).toHaveBeenCalledWith({ sourceId: 3 }, user);
 
     await expect(controller.createDryRunPlan({ profileId: 5 } as never, user)).resolves.toEqual({ id: 9 });
-    expect(runService.createDryRunPlan).toHaveBeenCalledWith({ profileId: 5 }, 7);
+    expect(runService.createDryRunPlan).toHaveBeenCalledWith({ profileId: 5 }, user);
 
-    await expect(controller.resolveDuplicateMatches(9, { resolutions: [] } as never)).resolves.toEqual({ resolved: 1 });
+    await expect(controller.resolveDuplicateMatches(9, { resolutions: [] } as never, user)).resolves.toEqual({ resolved: 1 });
     await expect(controller.startLiveRun({ planArtifactId: 9 } as never, user)).resolves.toEqual({ id: 11 });
-    expect(runService.startLiveRun).toHaveBeenCalledWith({ planArtifactId: 9 }, 7);
+    expect(runService.startLiveRun).toHaveBeenCalledWith({ planArtifactId: 9 }, user);
 
-    await expect(controller.cancelRun(11)).resolves.toEqual({ cancelled: true });
-    await expect(controller.retryRun(11)).resolves.toEqual({ retried: true });
-    await expect(controller.getRunProgress(11)).resolves.toEqual({ state: 'running' });
-    await expect(controller.getRunReport(11)).resolves.toEqual({ runId: 11 });
+    await expect(controller.cancelRun(11, user)).resolves.toEqual({ cancelled: true });
+    await expect(controller.retryRun(11, user)).resolves.toEqual({ retried: true });
+    await expect(controller.getRunProgress(11, user)).resolves.toEqual({ state: 'running' });
+    await expect(controller.getRunReport(11, user)).resolves.toEqual({ runId: 11 });
   });
 
   it('exports run report with attachment headers from service response', async () => {
     const { controller, runService } = makeController();
     const { reply, headers } = makeReply();
+    const user = makeUser();
 
     runService.exportRunReport.mockResolvedValue({
       contentType: 'application/json',
@@ -136,9 +137,9 @@ describe('MigrationController', () => {
       content: '{"ok":true}',
     });
 
-    const result = await controller.exportRunReport(4, 'json', reply);
+    const result = await controller.exportRunReport(4, 'json', reply, user);
 
-    expect(runService.exportRunReport).toHaveBeenCalledWith(4, 'json');
+    expect(runService.exportRunReport).toHaveBeenCalledWith(4, 'json', user);
     expect(headers['Content-Type']).toBe('application/json');
     expect(headers['Content-Disposition']).toBe('attachment; filename="migration-run-4-report.json"');
     expect(result).toBe('{"ok":true}');
