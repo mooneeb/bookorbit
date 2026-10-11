@@ -149,18 +149,18 @@ jobs:
 
           validate_issue_exists "${GH_REPO}" "${branch_issue_number}" "Branch name"
 
-          closing_keyword_pattern='(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)'
-          issue_reference_pattern="(^|[^[:alnum:]_])${closing_keyword_pattern}([[:space:]]*:[[:space:]]*|[[:space:]]+)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[1-9][0-9]*"
+          issue_keyword_pattern='(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved|ref|related[[:space:]]+to)'
+          issue_reference_pattern="(^|[^[:alnum:]_])${issue_keyword_pattern}([[:space:]]*:[[:space:]]*|[[:space:]]+)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[1-9][0-9]*"
           issue_matches="$(printf '%s\n' "${PR_BODY}" | grep -Eio "${issue_reference_pattern}" || true)"
           if [[ -z "${issue_matches}" ]]; then
-            echo "::error::PR description must include at least one GitHub closing-keyword issue reference (for example: 'Closes #123', 'Fixes: #123', or 'RESOLVED owner/repo#123')."
+            echo "::error::PR description must include at least one issue reference (for example: 'Closes #123', 'Ref #123', or 'Related to owner/repo#123')."
             exit 1
           fi
 
           issue_refs="$(printf '%s\n' "${issue_matches}" \
             | tr '[:upper:]' '[:lower:]' \
             | sed -E 's/^[^a-z0-9_]*//' \
-            | sed -E "s/^${closing_keyword_pattern}([[:space:]]*:[[:space:]]*|[[:space:]]+)//" \
+            | sed -E "s/^${issue_keyword_pattern}([[:space:]]*:[[:space:]]*|[[:space:]]+)//" \
             | sort -u)"
           while IFS= read -r issue_ref; do
             [[ -z "${issue_ref}" ]] && continue
@@ -207,7 +207,7 @@ jobs:
           node "$validator" "$PR_BASE_SHA" "$PR_HEAD_SHA" "$IS_CROWDIN"
 
       - name: Test PR policy scripts
-        run: node --test scripts/validate-locale-pr.test.mjs
+        run: node --test scripts/validate-locale-pr.test.mjs scripts/validate-pr-issues.test.mjs
 
       - name: Lint PR title
         shell: bash

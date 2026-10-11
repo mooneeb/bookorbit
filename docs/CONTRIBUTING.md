@@ -198,7 +198,7 @@ When creating the PR:
   their real output, what you did while manually testing, end-to-end evidence, and an authorship note
   covering any AI assistance.
 - **Use a Conventional Commit-style PR title** (for example: `fix(reader): correct page count for multi-volume PDFs`).
-- **Link your issue** with a GitHub closing keyword in the description (`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved`) and an issue reference (`#123` or `owner/repo#123`).
+- **Link your issue** in the description using `Ref #123` or `Related to #123` for related or partial work that leaves the issue open. Use a GitHub closing keyword (`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved`) only when the PR completes the issue. Both forms support `owner/repo#123`, case-insensitive keywords, and an optional colon. CI and Release verify that the branch issue and every referenced issue exist and are issues rather than pull requests.
   Example:
 
   ```md

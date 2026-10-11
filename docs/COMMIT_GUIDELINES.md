@@ -139,13 +139,12 @@ Closes #123
 Fixes: #456
 RESOLVED owner/repo#789
 Ref #101
+Related to #102
 ```
 
 GitHub-supported closing keywords are: `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved` (case-insensitive; optional colon is allowed, for example `Closes: #123`).
 
-Use `Ref #<issue>` for a related issue that should stay open.
-
-`Ref` is valid for commit footers, but it does not satisfy the PR-description requirement in CI (PR descriptions must include a GitHub closing keyword).
+Use `Ref #<issue>` or `Related to #<issue>` for related or partial work when the issue should stay open. Both satisfy the PR-description requirement in CI and Release, alongside the closing keywords. References are case-insensitive, accept an optional colon, and support `owner/repo#<issue>` for another repository. Every referenced issue and the branch issue must exist; pull request numbers are rejected.
 
 ### Breaking changes
 
