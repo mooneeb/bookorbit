@@ -10,6 +10,8 @@ import { bookCovers, bookFiles, bookMetadata, books, libraries } from '../../db/
 type Db = NodePgDatabase<typeof schema>;
 type DbTransaction = Parameters<Parameters<Db['transaction']>[0]>[0];
 
+export const BOOK_COVER_WRITE_LOCK_NAMESPACE = 4106;
+
 export type BookCoverOrigin = 'embedded' | 'folder_image' | 'opf' | 'provider' | 'dock' | 'upload' | 'legacy';
 export type BookCoverSource = 'extracted' | 'custom';
 export type BookCoverSlotRow = typeof bookCovers.$inferSelect;
@@ -143,12 +145,12 @@ export function didKoboCoverChange(
 
 @Injectable()
 export class BookCoverStoreRepository {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(@Inject(DB) private readonly db: Db | DbTransaction) {}
 
-  async withBookWriteLock<T>(bookId: number, operation: () => Promise<T>): Promise<T> {
+  async withBookWriteLock<T>(bookId: number, operation: (repository: BookCoverStoreRepository) => Promise<T>): Promise<T> {
     return this.db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(4105, ${bookId})`);
-      return operation();
+      await tx.execute(sql`select pg_advisory_xact_lock(${BOOK_COVER_WRITE_LOCK_NAMESPACE}, ${bookId})`);
+      return operation(new BookCoverStoreRepository(tx));
     });
   }
 
