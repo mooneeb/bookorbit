@@ -245,10 +245,14 @@ final class ReadingPrivacyJourneyTests: XCTestCase {
     addTeardownBlock {
       let restored = try await ReadingPrivacyJourneyTests.cleanupData(
         restore, name: "P-N01-retained-retry-cleanup-restored")
-      XCTAssertEqual(try ReadingPrivacyJourneyTests.canonicalJSON(restored), original)
+      guard try ReadingPrivacyJourneyTests.canonicalJSON(restored) == original else {
+        throw CleanupError.canonicalStateMismatch
+      }
       let observed = try await ReadingPrivacyJourneyTests.cleanupData(
         observe, name: "P-N01-retained-retry-cleanup-restored-original-private")
-      XCTAssertEqual(try ReadingPrivacyJourneyTests.canonicalJSON(observed), original)
+      guard try ReadingPrivacyJourneyTests.canonicalJSON(observed) == original else {
+        throw CleanupError.canonicalStateMismatch
+      }
     }
     try await resetPrivacyFault()
     let app = launchPrivacy(username: "ipad-owner", serverURL: faultServer)
@@ -853,9 +857,9 @@ final class ReadingPrivacyJourneyTests: XCTestCase {
     try XCTSkipUnless(environment("IPAD_E04_TEARDOWN_PROBE", fallback: "") == "assertion")
     addTeardownBlock {
       await Task.yield()
-      ReadingPrivacyJourneyTests.attachCleanup(
-        Data("nonisolated async teardown completed".utf8), name: "teardown-probe-completed")
+      print("[privacy.teardown_probe] [end] completed=true - nonisolated async teardown completed")
     }
+    attach(["intentionalFailure": true], name: "P-N01-teardown-probe-primary")
     await Task.yield()
     XCTFail("Intentional teardown assertion probe")
   }
@@ -894,26 +898,28 @@ final class ReadingPrivacyJourneyTests: XCTestCase {
     return request
   }
 
-  private static func cleanupData(_ request: URLRequest, name: String) async throws -> Data {
-    let (data, response) = try await E04FixtureHTTP.data(for: request)
-    let status = try XCTUnwrap(response as? HTTPURLResponse).statusCode
-    let evidence = try JSONSerialization.data(
-      withJSONObject: [
-        "path": request.url?.path ?? "", "status": status,
-        "body": String(decoding: data, as: UTF8.self),
-      ], options: [.sortedKeys])
-    attachCleanup(evidence, name: name)
-    XCTAssertEqual(status, 200, "Cleanup HTTP status: \(request.url?.path ?? "")")
-    return data
+  private enum CleanupError: Error {
+    case invalidHTTPResponse
+    case unexpectedHTTPStatus(Int)
+    case canonicalStateMismatch
   }
 
-  private static func attachCleanup(_ data: Data, name: String) {
-    XCTContext.runActivity(named: name) { activity in
-      let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.data")
-      attachment.name = name
-      attachment.lifetime = .keepAlways
-      activity.add(attachment)
+  private static func cleanupData(_ request: URLRequest, name: String) async throws -> Data {
+    let (data, response) = try await E04FixtureHTTP.data(for: request)
+    guard let response = response as? HTTPURLResponse else {
+      throw CleanupError.invalidHTTPResponse
     }
+    let status = response.statusCode
+    let evidence = try JSONSerialization.data(
+      withJSONObject: [
+        "name": name, "path": request.url?.path ?? "", "status": status,
+        "body": String(decoding: data.prefix(2048), as: UTF8.self),
+      ], options: [.sortedKeys])
+    print(
+      "[privacy.cleanup] [\(status == 200 ? "end" : "fail")] receipt=\(String(decoding: evidence, as: UTF8.self)) - HTTP cleanup completed"
+    )
+    guard status == 200 else { throw CleanupError.unexpectedHTTPStatus(status) }
+    return data
   }
 
   private static func canonicalJSON(_ data: Data) throws -> Data {
