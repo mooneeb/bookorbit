@@ -299,11 +299,13 @@ export class ReadingAttemptService {
     finishThreshold: number;
     strongRereadEvidence: boolean;
     meaningfulActivity: boolean;
+    attemptId?: number | null;
   }): Promise<UserBookStatus | null> {
     let changed = false;
     const result = await this.repo.transaction<UserBookStatus | null>(async (tx) => {
       await this.repo.lockBook(tx, input.userId, input.bookId);
       let active: Awaited<ReturnType<ReadingAttemptRepository['findActive']>> | null = await this.repo.findActive(tx, input.userId, input.bookId);
+      if (input.attemptId !== undefined && (input.attemptId === null || active?.id !== input.attemptId)) return null;
       let latest = active ?? (await this.repo.findLatest(tx, input.userId, input.bookId));
       const hasCompleted = await this.repo.hasCompleted(tx, input.userId, input.bookId);
       const isFinished = hasReachedProgressThreshold(input.progress, input.finishThreshold);

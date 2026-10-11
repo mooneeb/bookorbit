@@ -29,6 +29,7 @@ export type AutoReadingActivity = {
   origin?: 'bookorbit' | 'kobo' | 'koreader';
   strongRereadEvidence?: boolean;
   meaningfulActivity?: boolean;
+  attemptId?: number | null;
 };
 
 @Injectable()
@@ -292,6 +293,7 @@ export class UserBookStatusService {
         finishThreshold: normalizedFinishThreshold,
         strongRereadEvidence: activity.strongRereadEvidence === true,
         meaningfulActivity: activity.meaningfulActivity === true,
+        attemptId: activity.attemptId,
       });
       if (updated && updated.status !== (existing?.status ?? null)) {
         this.achievementEvents.emit(ACHIEVEMENT_EVENT_BOOK_STATUS_CHANGED, {

@@ -102,6 +102,7 @@ export class ReadingSessionService {
             occurredAt: endedAt,
             timeZone: this.resolveUserTimeZone(user),
             meaningfulActivity: true,
+            attemptId: dto.attemptId,
           });
         }
         const contributedSeconds = result.kind === 'superseded' ? result.addedSeconds : durationSeconds;

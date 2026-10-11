@@ -1,5 +1,14 @@
 import { BadRequestException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Test } from '@nestjs/testing';
+import { readingAttempts, readingSessions, userReadingDailyStats } from '../../db/schema';
+import { readingSessionDeletions } from '../../db/schema/reading-session-deletions';
+import { makeFakeRepo } from '../../../test/helpers/reading-attempt-repository.fake';
+import { ReadingAttemptService } from '../user-book-status/reading-attempt.service';
+import { ReadingAttemptEventsService } from '../user-book-status/reading-attempt-events.service';
+import { UserBookStatusService } from '../user-book-status/user-book-status.service';
+import { AchievementEventsService, ACHIEVEMENT_EVENT_BOOK_STATUS_CHANGED } from '../achievement/achievement-events.service';
+import { UserStatisticsService } from '../user-statistics/user-statistics.service';
 
 import type { RequestUser } from '../../common/types/request-user';
 import { BookService } from '../book/book.service';
@@ -599,5 +608,157 @@ describe('ReadingSessionService - read status activity', () => {
     await saveFinishingSession(makeUser({ id: 12 }));
 
     expect(bookService.autoUpdateReadStatusForProgress.mock.calls[0]?.[3]?.timeZone).toBe('UTC');
+  });
+});
+
+describe('captured attempt progress isolation', () => {
+  async function setup() {
+    const fake = makeFakeRepo();
+    const attempts = new ReadingAttemptService(fake.repo as never, new ReadingAttemptEventsService());
+    const a = await fake.repo.create(
+      {},
+      {
+        userId: 7,
+        bookId: 10,
+        startedOn: '2026-04-01',
+        endedOn: '2026-04-15',
+        outcome: 'completed',
+        origin: 'bookorbit',
+      },
+    );
+    const b = await fake.repo.createActive({}, { userId: 7, bookId: 10, startedOn: '2026-04-16', origin: 'bookorbit' });
+    await fake.repo.project({}, 7, 10, { status: 'rereading', source: 'manual', startedAt: new Date('2026-04-16T00:00:00Z'), finishedAt: null });
+    const achievementEvents = { emit: vi.fn() };
+    const statuses = new UserBookStatusService(
+      { findOne: () => fake.repo.findStatus({}, 7, 10) } as never,
+      achievementEvents as never,
+      {} as never,
+      attempts,
+    );
+    const sessions: Array<typeof readingSessions.$inferInsert> = [];
+    const daily: Array<typeof userReadingDailyStats.$inferInsert> = [];
+    const tx = {
+      execute: vi.fn().mockResolvedValue(undefined),
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () => ({
+            limit: () => {
+              if (table === readingSessionDeletions) return Promise.resolve([]);
+              if (table === readingAttempts) return Promise.resolve([a, b]);
+              if (table === readingSessions) return Promise.resolve(sessions);
+              throw new Error('Unexpected select table');
+            },
+          }),
+        }),
+      }),
+      insert: (table: unknown) => ({
+        values: (values: unknown) => {
+          if (table === readingSessions) {
+            const row = values as typeof readingSessions.$inferInsert;
+            return {
+              onConflictDoNothing: () => ({
+                returning: () => {
+                  if (sessions.some((session) => session.sessionId === row.sessionId)) return Promise.resolve([]);
+                  sessions.push({ ...row, id: sessions.length + 1 });
+                  return Promise.resolve([{ id: sessions.length }]);
+                },
+              }),
+            };
+          }
+          if (table === userReadingDailyStats)
+            return {
+              onConflictDoUpdate: () => {
+                daily.push(...(values as Array<typeof userReadingDailyStats.$inferInsert>));
+                return Promise.resolve();
+              },
+            };
+          throw new Error('Unexpected insert table');
+        },
+      }),
+    };
+    const repo = new ReadingSessionRepository({
+      select: () => ({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: () => Promise.resolve([{ bookId: 10, libraryId: 11 }]) }) }) }) }),
+      transaction: async (operation: (context: typeof tx) => Promise<unknown>) => operation(tx),
+    } as never);
+    const book = {
+      verifyFileAccess: vi.fn().mockResolvedValue({ bookId: 10, libraryId: 11 }),
+      libraryService: { findOne: vi.fn().mockResolvedValue({ readingThreshold: 0.25, markAsFinishedPercentComplete: 98 }) },
+      userBookStatusService: statuses,
+      autoUpdateReadStatusForProgress: BookService.prototype.autoUpdateReadStatusForProgress,
+    };
+    const statistics = { invalidateUser: vi.fn() };
+    const module = await Test.createTestingModule({
+      providers: [
+        ReadingSessionService,
+        { provide: ReadingSessionRepository, useValue: repo },
+        { provide: BookService, useValue: book },
+        { provide: AchievementEventsService, useValue: achievementEvents },
+        { provide: UserStatisticsService, useValue: statistics },
+      ],
+    }).compile();
+    const service = module.get(ReadingSessionService);
+    const save = (attemptId: number) =>
+      service.save(
+        42,
+        {
+          sessionId: 'captured-offline',
+          startedAt: '2026-04-15T10:00:00.000Z',
+          endedAt: '2026-04-15T10:05:00.000Z',
+          durationSeconds: 300,
+          endProgress: 100,
+          progressDelta: 5,
+          attemptId,
+        },
+        makeUser(),
+        'ios',
+      );
+    return { fake, a, b, sessions, daily, save, statistics, achievementEvents, module };
+  }
+
+  it('retains delayed captured A time and count without completing current B', async () => {
+    const state = await setup();
+    const beforeB = { ...state.b };
+    await state.save(state.a.id);
+    expect(state.b).toEqual(beforeB);
+    expect(state.fake.projections).toHaveLength(1);
+    expect(state.fake.repo.update).not.toHaveBeenCalled();
+    expect(state.sessions).toHaveLength(1);
+    expect(state.sessions[0]).toMatchObject({ attemptId: state.a.id, durationSeconds: 300 });
+    expect(state.daily).toHaveLength(1);
+    expect(state.daily[0]).toMatchObject({ readingSeconds: 300, sessionsCount: 1 });
+    expect(state.statistics.invalidateUser).toHaveBeenCalledOnce();
+    await state.module.close();
+  });
+
+  it('completes captured current B exactly once and projects normal read status', async () => {
+    const state = await setup();
+    await state.save(state.b.id);
+    await state.save(state.b.id);
+    expect(state.fake.rows).toHaveLength(2);
+    expect(state.b).toMatchObject({ outcome: 'completed', endedOn: '2026-04-16' });
+    expect(state.fake.repo.update).toHaveBeenCalledOnce();
+    expect(state.fake.projections.at(-1)).toMatchObject({ status: 'read', source: 'auto' });
+    expect(state.achievementEvents.emit).toHaveBeenCalledWith(ACHIEVEMENT_EVENT_BOOK_STATUS_CHANGED, expect.objectContaining({ newStatus: 'read' }));
+    expect(state.sessions).toHaveLength(1);
+    expect(state.daily).toHaveLength(1);
+    await state.module.close();
+  });
+
+  it('keeps a lost-receipt retry of captured A at one row and unchanged B counters', async () => {
+    const state = await setup();
+    const beforeB = { ...state.b };
+    await state.save(state.a.id);
+    await state.save(state.a.id);
+    await state.save(state.a.id);
+    expect(state.sessions).toHaveLength(1);
+    expect(state.sessions[0]).toMatchObject({ attemptId: state.a.id, durationSeconds: 300 });
+    expect(state.daily).toHaveLength(1);
+    expect(state.daily[0]).toMatchObject({ readingSeconds: 300, sessionsCount: 1 });
+    expect(state.b).toEqual(beforeB);
+    expect(state.fake.repo.update).not.toHaveBeenCalled();
+    expect(state.fake.projections).toHaveLength(1);
+    expect(state.statistics.invalidateUser).toHaveBeenCalledOnce();
+    expect(state.achievementEvents.emit).toHaveBeenCalledOnce();
+    await state.module.close();
   });
 });
