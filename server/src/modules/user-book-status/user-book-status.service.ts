@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, Logger, Optional } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import type { ReadStatus, UserBookStatus } from '@bookorbit/types';
 import { UserBookStatusRepository } from './user-book-status.repository';
 import type { UserBookStatusRow } from '../../db/schema';
@@ -29,6 +29,7 @@ export type AutoReadingActivity = {
   origin?: 'bookorbit' | 'kobo' | 'koreader';
   strongRereadEvidence?: boolean;
   meaningfulActivity?: boolean;
+  attemptId?: number | null;
 };
 
 @Injectable()
@@ -52,12 +53,28 @@ export class UserBookStatusService {
     patch: ManualStatusPatch,
     dateKeys?: { startedOn?: string | null; endedOn?: string | null },
     timeZone?: string,
+    baseStatusUpdatedAt?: string | null,
   ): Promise<UserBookStatus> {
-    const { state, statusChanged } = await this.applyManualStatus(userId, bookId, patch, dateKeys, timeZone);
-    if (statusChanged) {
-      await this.projectToKobo(userId, [bookId], state.status);
+    const event = 'user_book_status.update_manual';
+    const startedAt = Date.now();
+    this.logger.log(
+      `[${event}] [start] userId=${userId} bookId=${bookId} conditional=${baseStatusUpdatedAt !== undefined} - manual reading status update started`,
+    );
+    try {
+      const { state, statusChanged } = await this.applyManualStatus(userId, bookId, patch, dateKeys, timeZone, baseStatusUpdatedAt);
+      if (statusChanged) await this.projectToKobo(userId, [bookId], state.status);
+      this.logger.log(
+        `[${event}] [end] userId=${userId} bookId=${bookId} durationMs=${Date.now() - startedAt} status=${state.status} statusChanged=${statusChanged} - manual reading status updated`,
+      );
+      return state;
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'unknown';
+      const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
+      this.logger.warn(
+        `[${event}] [fail] userId=${userId} bookId=${bookId} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${message}" - manual reading status update failed`,
+      );
+      throw error;
     }
-    return state;
   }
 
   private async applyManualStatus(
@@ -66,6 +83,7 @@ export class UserBookStatusService {
     patch: ManualStatusPatch,
     dateKeys?: { startedOn?: string | null; endedOn?: string | null },
     resolvedTimeZone?: string,
+    baseStatusUpdatedAt?: string | null,
   ): Promise<{ state: UserBookStatus; statusChanged: boolean }> {
     const existing = await this.repo.findOne(userId, bookId);
     const now = new Date();
@@ -84,7 +102,7 @@ export class UserBookStatusService {
         hasStartedAt ? (dateKeys?.startedOn ?? (patch.startedAt ? toDateKeyInTimeZone(patch.startedAt, timeZone) : null)) : undefined,
         hasFinishedAt ? (dateKeys?.endedOn ?? (patch.finishedAt ? toDateKeyInTimeZone(patch.finishedAt, timeZone) : null)) : undefined,
         today,
-        { statusWasExplicit: hasStatus },
+        { statusWasExplicit: hasStatus, ...(baseStatusUpdatedAt !== undefined ? { baseStatusUpdatedAt } : {}) },
       );
       const previousStatus = existing?.status ?? null;
       const statusChanged = updated.status !== (previousStatus ?? 'unread');
@@ -98,6 +116,8 @@ export class UserBookStatusService {
       }
       return { state: updated, statusChanged };
     }
+
+    if (baseStatusUpdatedAt !== undefined) throw new ServiceUnavailableException('Conditional reading status writes require reading history support');
 
     const nextStatus = patch.status ?? existing?.status ?? 'unread';
     let nextStartedAt = hasStartedAt ? (patch.startedAt ?? null) : (existing?.startedAt ?? null);
@@ -273,6 +293,7 @@ export class UserBookStatusService {
         finishThreshold: normalizedFinishThreshold,
         strongRereadEvidence: activity.strongRereadEvidence === true,
         meaningfulActivity: activity.meaningfulActivity === true,
+        attemptId: activity.attemptId,
       });
       if (updated && updated.status !== (existing?.status ?? null)) {
         this.achievementEvents.emit(ACHIEVEMENT_EVENT_BOOK_STATUS_CHANGED, {

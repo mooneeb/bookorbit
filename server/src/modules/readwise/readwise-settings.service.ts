@@ -1,6 +1,13 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 
-import type { ReadwiseSettings, ReadwiseSyncDisabledReason, ReadwiseTokenValidationResult, UpsertReadwiseSettingsPayload } from '@bookorbit/types';
+import type {
+  ReadwiseSettings,
+  ReadwiseSyncDisabledReason,
+  ReadwiseSyncState,
+  ReadwiseSyncStatus,
+  ReadwiseTokenValidationResult,
+  UpsertReadwiseSettingsPayload,
+} from '@bookorbit/types';
 
 import type { ReadwiseUserSetting } from '../../db/schema';
 import { ReadwiseAutoSyncSchedulerService } from './readwise-auto-sync-scheduler.service';
@@ -40,6 +47,13 @@ export class ReadwiseSettingsService {
       throw new BadRequestException('API token is required to connect Readwise');
     }
     const data: Parameters<ReadwiseRepository['upsertSettings']>[1] = {};
+    if (payload.includeExistingHighlights && existing?.syncLeaseUntil && existing.syncLeaseUntil.getTime() > Date.now()) {
+      throw new ConflictException('Wait for the current Readwise sync before exporting existing highlights');
+    }
+    if (rawToken === '') {
+      data.apiToken = null;
+      data.disabledReason = null;
+    }
     if (rawToken) {
       data.apiToken = rawToken;
       data.disabledReason = null; // clear auto-disable reason on new token
@@ -48,7 +62,9 @@ export class ReadwiseSettingsService {
       data.enabled = payload.enabled;
       if (payload.enabled) data.disabledReason = null; // user re-enabling clears stored reason
     }
-    if (this.shouldSeedWatermark(existing, rawToken, payload)) {
+    if (payload.includeExistingHighlights) {
+      data.lastSyncedAnnotationId = 0;
+    } else if (this.shouldSeedWatermark(existing, rawToken, payload)) {
       data.lastSyncedAnnotationId = await this.repo.findLatestAnnotationId(userId);
     }
     await this.repo.upsertSettings(userId, data);
@@ -61,6 +77,31 @@ export class ReadwiseSettingsService {
     const effective = token?.trim() || (await this.repo.findSettings(userId))?.apiToken;
     if (!effective) return { valid: false };
     return { valid: await this.client.validateToken(userId, effective) };
+  }
+
+  async getSyncStatus(userId: number): Promise<ReadwiseSyncStatus> {
+    const row = await this.repo.findSettings(userId);
+    let state = (row?.syncState ?? 'idle') as ReadwiseSyncState;
+    if (state === 'running' && (!row?.syncLeaseUntil || row.syncLeaseUntil.getTime() <= Date.now())) state = 'interrupted';
+    return {
+      state,
+      exportedHighlights: row?.syncExportedHighlights ?? 0,
+      pendingHighlights: await this.repo.countPendingHighlights(userId, row?.lastSyncedAnnotationId ?? 0),
+      startedAt: row?.syncStartedAt?.toISOString() ?? null,
+      finishedAt: row?.syncFinishedAt?.toISOString() ?? null,
+      error: row?.syncError ?? null,
+      receivedBookIds: row?.syncReceivedBookIds ?? [],
+    };
+  }
+
+  async requestSync(userId: number): Promise<ReadwiseSyncStatus> {
+    if (!(await this.getSettings(userId)).effectiveEnabled) throw new BadRequestException('Connect and enable Readwise before syncing');
+    const row = await this.repo.findSettings(userId);
+    if (!row?.syncLeaseUntil || row.syncLeaseUntil.getTime() <= Date.now()) {
+      await this.repo.upsertSettings(userId, { syncState: 'queued', syncError: null });
+    }
+    this.scheduler.requestSync(userId);
+    return this.getSyncStatus(userId);
   }
 
   private shouldSeedWatermark(

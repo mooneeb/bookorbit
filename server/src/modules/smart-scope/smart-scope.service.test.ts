@@ -12,7 +12,7 @@ import type { BookQuery } from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
 import type { SmartScope } from '../../db/schema/smart-scopes';
 import { SmartScopeService } from './smart-scope.service';
-import { EMPTY_CONTENT_FILTER_RULES, PODCAST_PLAYLIST_MAX_SAVED } from '@bookorbit/types';
+import { EMPTY_CONTENT_FILTER_RULES, PODCAST_PLAYLIST_MAX_SAVED, Permission } from '@bookorbit/types';
 
 function makeUser(overrides: Partial<RequestUser> = {}): RequestUser {
   return {
@@ -105,6 +105,38 @@ function makeService() {
 }
 
 describe('SmartScopeService', () => {
+  describe('Kobo subscription permission', () => {
+    it.each([true, false])('rejects dedicated subscription enabled=%s without Kobo permission', async (enabled) => {
+      const { service, smartScopeRepo } = makeService();
+      smartScopeRepo.findById.mockResolvedValue([makeSmartScope()]);
+      await expect(service.setKoboSync(5, makeUser(), enabled)).rejects.toThrow(ForbiddenException);
+      expect(smartScopeRepo.update).not.toHaveBeenCalled();
+      expect(smartScopeRepo.subscribeToKobo).not.toHaveBeenCalled();
+      expect(smartScopeRepo.unsubscribeFromKobo).not.toHaveBeenCalled();
+    });
+
+    it('rejects creating a Kobo-enabled book scope without Kobo permission', async () => {
+      const { service, smartScopeRepo } = makeService();
+      await expect(service.create({ name: 'Books', icon: 'BookOpen', syncToKobo: true }, makeUser())).rejects.toThrow(ForbiddenException);
+      expect(smartScopeRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it.each([true, false])('rejects changing a scope subscription to %s without Kobo permission', async (enabled) => {
+      const { service, smartScopeRepo } = makeService();
+      smartScopeRepo.findById.mockResolvedValue([makeSmartScope({ syncToKobo: !enabled })]);
+      await expect(service.update(5, { syncToKobo: enabled }, makeUser())).rejects.toThrow(ForbiddenException);
+      expect(smartScopeRepo.update).not.toHaveBeenCalled();
+    });
+
+    it.each([true, false])('allows ordinary edits carrying unchanged subscription %s without Kobo permission', async (enabled) => {
+      const { service, smartScopeRepo } = makeService();
+      const scope = makeSmartScope({ syncToKobo: enabled });
+      smartScopeRepo.findById.mockResolvedValue([scope]);
+      smartScopeRepo.update.mockResolvedValue([{ ...scope, name: 'Renamed' }]);
+      await expect(service.update(5, { name: 'Renamed', syncToKobo: enabled }, makeUser())).resolves.toMatchObject({ name: 'Renamed' });
+    });
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
   });
@@ -405,7 +437,7 @@ describe('SmartScopeService', () => {
       const { service, smartScopeRepo } = makeService();
       smartScopeRepo.findById.mockResolvedValue([podcastScope({ userId: 12 })]);
 
-      await expect(service.setKoboSync(9, makeUser({ id: 12 }), true)).rejects.toThrow(BadRequestException);
+      await expect(service.setKoboSync(9, makeUser({ id: 12, permissions: [Permission.KoboSync] }), true)).rejects.toThrow(BadRequestException);
     });
 
     it('requires a library when creating a podcast scope and refuses one for a book scope', async () => {
@@ -472,7 +504,7 @@ describe('SmartScopeService', () => {
       smartScopeRepo.findById.mockResolvedValue([own]);
       smartScopeRepo.update.mockResolvedValue([{ ...own, syncToKobo: true }]);
 
-      const result = await service.setKoboSync(5, makeUser({ id: 8 }), true);
+      const result = await service.setKoboSync(5, makeUser({ id: 8, permissions: [Permission.KoboSync] }), true);
 
       expect(smartScopeRepo.update).toHaveBeenCalledWith(5, 8, { syncToKobo: true });
       expect(smartScopeRepo.subscribeToKobo).not.toHaveBeenCalled();
@@ -484,7 +516,7 @@ describe('SmartScopeService', () => {
       const shared = makeSmartScope({ id: 6, userId: 20, isPublic: true, syncToKobo: false });
       smartScopeRepo.findById.mockResolvedValue([shared]);
 
-      const result = await service.setKoboSync(6, makeUser({ id: 8 }), true);
+      const result = await service.setKoboSync(6, makeUser({ id: 8, permissions: [Permission.KoboSync] }), true);
 
       expect(smartScopeRepo.subscribeToKobo).toHaveBeenCalledWith(8, 6);
       expect(smartScopeRepo.update).not.toHaveBeenCalled();
@@ -496,7 +528,7 @@ describe('SmartScopeService', () => {
       const shared = makeSmartScope({ id: 6, userId: 20, isPublic: true, syncToKobo: true });
       smartScopeRepo.findById.mockResolvedValue([shared]);
 
-      const result = await service.setKoboSync(6, makeUser({ id: 8 }), false);
+      const result = await service.setKoboSync(6, makeUser({ id: 8, permissions: [Permission.KoboSync] }), false);
 
       expect(smartScopeRepo.unsubscribeFromKobo).toHaveBeenCalledWith(8, 6);
       expect(smartScopeRepo.update).not.toHaveBeenCalled();
@@ -729,7 +761,7 @@ describe('SmartScopeService', () => {
       smartScopeRepo.findById.mockResolvedValue([existing]);
       smartScopeRepo.update.mockResolvedValue([updated]);
 
-      const result = await service.update(3, { isPublic: true, syncToKobo: true }, makeUser({ id: 12 }));
+      const result = await service.update(3, { isPublic: true, syncToKobo: true }, makeUser({ id: 12, permissions: [Permission.KoboSync] }));
 
       expect(smartScopeRepo.update).toHaveBeenCalledWith(3, 12, expect.objectContaining({ isPublic: true, syncToKobo: true }));
       expect(result).toEqual(expect.objectContaining({ isPublic: true, syncToKobo: true, koboSyncEnabled: true }));

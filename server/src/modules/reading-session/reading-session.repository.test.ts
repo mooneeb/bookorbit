@@ -1,18 +1,37 @@
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { readingSessions, userReadingDailyStats } from '../../db/schema';
+import { readingAttempts, readingSessions, userReadingDailyStats } from '../../db/schema';
+import { readingSessionDeletions } from '../../db/schema/reading-session-deletions';
 import { ReadingSessionRepository } from './reading-session.repository';
+
+function queryParams(condition: SQL): unknown[] {
+  return new PgDialect().sqlToQuery(condition).params;
+}
 
 function makeDbHarness(options?: {
   fileRow?: { bookId: number; libraryId: number } | null;
   insertedIds?: Array<{ id: number }>;
-  /// The row a conflicting sessionId already occupies. `saveSession` reads it to decide whether the
-  /// incoming write supersedes a checkpoint or is a sync-queue retry of one already stored.
-  existingSession?: { id: number; durationSeconds: number; progressDelta: number | null } | null;
+  existingSession?: Partial<typeof readingSessions.$inferSelect> | null;
+  deletedSessionId?: string;
+  capturedAttempt?: { id: number } | null;
+  recomputeRows?: Array<Pick<typeof readingSessions.$inferSelect, 'startedAt' | 'endedAt' | 'durationSeconds' | 'progressDelta'>>;
 }) {
   const fileRow = options?.fileRow === undefined ? { bookId: 7, libraryId: 11 } : options.fileRow;
   const insertedIds = options?.insertedIds ?? [{ id: 1 }];
-  const existingSession = options?.existingSession === undefined ? null : options.existingSession;
+  const existingSession = options?.existingSession
+    ? {
+        bookFileId: 8,
+        source: 'web',
+        sessionType: 'read',
+        startedAt: new Date('2026-04-15T10:00:00.000Z'),
+        endedAt: new Date('2026-04-15T10:01:00.000Z'),
+        attemptId: null,
+        ...options.existingSession,
+      }
+    : null;
 
   const limit = vi.fn().mockResolvedValue(fileRow == null ? [] : [fileRow]);
   const where = vi.fn().mockReturnValue({ limit });
@@ -29,8 +48,23 @@ function makeDbHarness(options?: {
 
   const existingLimit = vi.fn().mockResolvedValue(existingSession == null ? [] : [existingSession]);
   const existingWhere = vi.fn().mockReturnValue({ limit: existingLimit });
-  const existingFrom = vi.fn().mockReturnValue({ where: existingWhere });
-  const txSelect = vi.fn().mockReturnValue({ from: existingFrom });
+  const tombstoneWhere = vi.fn().mockReturnValue({
+    limit: vi.fn().mockResolvedValue(options?.deletedSessionId ? [{ sessionId: options.deletedSessionId }] : []),
+  });
+  const attemptWhere = vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue(options?.capturedAttempt ? [options.capturedAttempt] : []) });
+  const recomputeWhere = vi.fn().mockResolvedValue(options?.recomputeRows ?? []);
+  const txSelect = vi.fn((fields: Record<string, unknown>) => ({
+    from: vi.fn((table: unknown) => {
+      if (table === readingSessionDeletions) return { where: tombstoneWhere };
+      if (table === readingAttempts) return { where: attemptWhere };
+      if (table === readingSessions && 'id' in fields) return { where: existingWhere };
+      if (table === readingSessions) return { innerJoin: vi.fn().mockReturnValue({ where: recomputeWhere }) };
+      throw new Error('Unexpected table in select');
+    }),
+  }));
+
+  const deleteWhere = vi.fn().mockResolvedValue(undefined);
+  const deleteFn = vi.fn().mockReturnValue({ where: deleteWhere });
 
   const updateWhere = vi.fn().mockResolvedValue(undefined);
   const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
@@ -40,6 +74,7 @@ function makeDbHarness(options?: {
     execute: vi.fn().mockResolvedValue(undefined),
     select: txSelect,
     update: txUpdate,
+    delete: deleteFn,
     insert: vi.fn((table: unknown) => {
       if (table === readingSessions) return { values: sessionValues };
       if (table === userReadingDailyStats) return { values: dailyValues };
@@ -63,6 +98,11 @@ function makeDbHarness(options?: {
     dailyConflictUpdate,
     updateSet,
     updateWhere,
+    tombstoneWhere,
+    existingWhere,
+    attemptWhere,
+    recomputeWhere,
+    deleteWhere,
     tx,
   };
 }
@@ -131,6 +171,9 @@ describe('ReadingSessionRepository', () => {
       fileRow: { bookId: 9, libraryId: 3 },
       insertedIds: [],
       existingSession: { id: 77, durationSeconds: 17, progressDelta: 1.0 },
+      recomputeRows: [
+        { startedAt: new Date('2026-04-15T10:00:00.000Z'), endedAt: new Date('2026-04-15T10:01:00.000Z'), durationSeconds: 56, progressDelta: 4 },
+      ],
     });
 
     const result = await repo.saveSession(
@@ -146,12 +189,10 @@ describe('ReadingSessionRepository', () => {
 
     expect(result).toEqual({ kind: 'superseded', addedSeconds: 39 });
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ durationSeconds: 56 }));
-    // Daily stats accumulate, so only the difference may be added or the checkpoint's seconds are
-    // counted twice.
     expect(dailyValues).toHaveBeenCalled();
-    const segments = dailyValues.mock.calls[0][0] as Array<{ readingSeconds: number }>;
-    const added = segments.reduce((sum, segment) => sum + segment.readingSeconds, 0);
-    expect(added).toBe(39);
+    const segments = dailyValues.mock.calls[0][0] as Array<{ readingSeconds: number; sessionsCount: number }>;
+    expect(segments.reduce((sum, segment) => sum + segment.readingSeconds, 0)).toBe(56);
+    expect(segments.reduce((sum, segment) => sum + segment.sessionsCount, 0)).toBe(1);
   });
 
   it('does not let a stale retry shrink a session', async () => {
@@ -208,7 +249,7 @@ describe('ReadingSessionRepository', () => {
       }),
     );
     expect(sessionConflict).toHaveBeenCalledWith({ target: [readingSessions.userId, readingSessions.sessionId] });
-    expect(tx.execute).toHaveBeenCalledOnce();
+    expect(tx.execute).toHaveBeenCalledTimes(2);
     expect(dailyValues).toHaveBeenCalledWith([
       expect.objectContaining({
         userId: 2,
@@ -241,6 +282,155 @@ describe('ReadingSessionRepository', () => {
     expect(result).toEqual({ kind: 'saved' });
     expect(sessionValues).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'kobo-session', source: 'kobo' }));
   });
+
+  it('keeps deleted client session identities from being resurrected', async () => {
+    const { repo, sessionValues, dailyValues, tombstoneWhere, tx } = makeDbHarness({ deletedSessionId: 'deleted-id' });
+
+    await expect(
+      repo.saveSession(5, 8, 'deleted-id', new Date('2026-04-15T10:00:00.000Z'), new Date('2026-04-15T10:01:00.000Z'), 60, null, null),
+    ).resolves.toEqual({ kind: 'skipped', reason: 'deleted_session_id' });
+
+    expect(queryParams(tombstoneWhere.mock.calls[0][0])).toEqual([5, 'deleted-id']);
+    expect(tx.execute).toHaveBeenCalledOnce();
+    expect(sessionValues).not.toHaveBeenCalled();
+    expect(dailyValues).not.toHaveBeenCalled();
+  });
+
+  it.each([{ bookFileId: 99 }, { source: 'ios' }, { sessionType: 'listen' }, { startedAt: new Date('2026-04-15T10:00:01.000Z') }, { attemptId: 43 }])(
+    'rejects a reused checkpoint identity with conflicting fields %o',
+    async (conflictingFields) => {
+      const { repo, dailyValues, updateSet } = makeDbHarness({
+        insertedIds: [],
+        capturedAttempt: { id: 42 },
+        existingSession: { id: 77, durationSeconds: 17, progressDelta: 1, attemptId: 42, ...conflictingFields },
+      });
+
+      await expect(
+        repo.saveSession(
+          5,
+          8,
+          'checkpointed-id',
+          new Date('2026-04-15T10:00:00.000Z'),
+          new Date('2026-04-15T10:01:00.000Z'),
+          60,
+          null,
+          null,
+          'web',
+          'UTC',
+          undefined,
+          'read',
+          42,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(updateSet).not.toHaveBeenCalled();
+      expect(dailyValues).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([null, 42])('stores captured attribution %s without looking up a new active attempt', async (attemptId) => {
+    const { repo, sessionValues, attemptWhere } = makeDbHarness({ capturedAttempt: { id: 42 } });
+
+    await expect(
+      repo.saveSession(
+        5,
+        8,
+        'captured-id',
+        new Date('2026-04-15T10:00:00.000Z'),
+        new Date('2026-04-15T10:01:00.000Z'),
+        60,
+        null,
+        null,
+        'ios',
+        'UTC',
+        undefined,
+        'read',
+        attemptId,
+      ),
+    ).resolves.toEqual({ kind: 'saved' });
+    expect(sessionValues).toHaveBeenCalledWith(expect.objectContaining({ attemptId }));
+    if (attemptId === null) {
+      expect(attemptWhere).not.toHaveBeenCalled();
+    } else {
+      const query = new PgDialect().sqlToQuery(attemptWhere.mock.calls[0][0]);
+      expect(query.params).toEqual([42, 5, 7]);
+      expect(query.sql).toContain('"deleted_at" is null');
+      expect(query.sql).not.toContain('"outcome" is null');
+    }
+  });
+
+  it('rejects changing a checkpoint attempt to explicit null', async () => {
+    const { repo, dailyValues, updateSet } = makeDbHarness({
+      insertedIds: [],
+      existingSession: { id: 77, durationSeconds: 17, attemptId: 42 },
+    });
+
+    await expect(
+      repo.saveSession(
+        5,
+        8,
+        'checkpointed-id',
+        new Date('2026-04-15T10:00:00.000Z'),
+        new Date('2026-04-15T10:01:00.000Z'),
+        60,
+        null,
+        null,
+        'web',
+        'UTC',
+        undefined,
+        'read',
+        null,
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(dailyValues).not.toHaveBeenCalled();
+  });
+
+  it('rejects unavailable captured attribution without writing a session or daily stats', async () => {
+    const { repo, sessionValues, dailyValues } = makeDbHarness();
+
+    await expect(
+      repo.saveSession(
+        5,
+        8,
+        'unavailable-attempt',
+        new Date('2026-04-15T10:00:00.000Z'),
+        new Date('2026-04-15T10:01:00.000Z'),
+        60,
+        null,
+        null,
+        'ios',
+        'UTC',
+        undefined,
+        'read',
+        42,
+      ),
+    ).rejects.toThrow(ForbiddenException);
+    expect(sessionValues).not.toHaveBeenCalled();
+    expect(dailyValues).not.toHaveBeenCalled();
+  });
+
+  it('retains save-time active-attempt lookup for legacy omission', async () => {
+    const { repo, sessionValues } = makeDbHarness();
+
+    await repo.saveSession(5, 8, 'legacy-id', new Date('2026-04-15T10:00:00.000Z'), new Date('2026-04-15T10:01:00.000Z'), 60, null, null);
+
+    const attemptId = (sessionValues.mock.calls[0][0] as { attemptId: SQL }).attemptId;
+    expect(attemptId).toBeInstanceOf(SQL);
+    const query = new PgDialect().sqlToQuery(attemptId);
+    expect(query.params).toEqual([5, 7]);
+    expect(query.sql).toContain('outcome is null and deleted_at is null');
+  });
+
+  it('rejects the enclosing transaction if daily stats fail after inserting a session', async () => {
+    const { repo, transaction, dailyConflictUpdate } = makeDbHarness();
+    const failure = new Error('daily stats write failed');
+    dailyConflictUpdate.mockRejectedValueOnce(failure);
+
+    await expect(
+      repo.saveSession(5, 8, 'failed-id', new Date('2026-04-15T10:00:00.000Z'), new Date('2026-04-15T10:01:00.000Z'), 60, null, null),
+    ).rejects.toBe(failure);
+    await expect(transaction.mock.results[0].value).rejects.toBe(failure);
+  });
 });
 
 describe('ReadingSessionRepository - insertManualSession', () => {
@@ -248,15 +438,27 @@ describe('ReadingSessionRepository - insertManualSession', () => {
     vi.clearAllMocks();
   });
 
-  function makeManualHarness() {
+  function makeManualHarness(options?: { existingSession?: Partial<typeof readingSessions.$inferSelect>; deletedSessionId?: string }) {
     const sessionReturning = vi.fn().mockResolvedValue([{ id: 321 }]);
     const sessionValues = vi.fn().mockReturnValue({ returning: sessionReturning });
 
     const dailyConflictUpdate = vi.fn().mockResolvedValue(undefined);
     const dailyValues = vi.fn().mockReturnValue({ onConflictDoUpdate: dailyConflictUpdate });
 
+    const tombstoneWhere = vi.fn().mockReturnValue({
+      limit: vi.fn().mockResolvedValue(options?.deletedSessionId ? [{ sessionId: options.deletedSessionId }] : []),
+    });
+    const existingWhere = vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue(options?.existingSession ? [options.existingSession] : []) });
+
     const tx = {
       execute: vi.fn().mockResolvedValue(undefined),
+      select: vi.fn().mockReturnValue({
+        from: vi.fn((table: unknown) => {
+          if (table === readingSessionDeletions) return { where: tombstoneWhere };
+          if (table === readingSessions) return { where: existingWhere };
+          throw new Error('Unexpected table in select');
+        }),
+      }),
       insert: vi.fn((table: unknown) => {
         if (table === readingSessions) return { values: sessionValues };
         if (table === userReadingDailyStats) return { values: dailyValues };
@@ -268,7 +470,7 @@ describe('ReadingSessionRepository - insertManualSession', () => {
     const db = { transaction };
     const repo = new ReadingSessionRepository(db as never);
 
-    return { repo, sessionValues, dailyValues, dailyConflictUpdate, tx };
+    return { repo, sessionValues, dailyValues, dailyConflictUpdate, transaction, tx };
   }
 
   it('inserts with manual source and upserts daily stats in one transaction', async () => {
@@ -304,8 +506,50 @@ describe('ReadingSessionRepository - insertManualSession', () => {
     expect(dailyValues).toHaveBeenCalledWith([
       expect.objectContaining({ userId: 5, libraryId: 3, day: '2026-04-15', readingSeconds: 1800, progressDelta: 12.5, sessionsCount: 1 }),
     ]);
-    expect(tx.execute).toHaveBeenCalledOnce();
+    expect(tx.execute).toHaveBeenCalledTimes(2);
     expect(dailyConflictUpdate).toHaveBeenCalledOnce();
+  });
+
+  const manualParams = {
+    userId: 5,
+    bookId: 10,
+    libraryId: 3,
+    bookFileId: null,
+    sessionId: 'manual:abc',
+    startedAt: new Date('2026-04-15T10:00:00.000Z'),
+    endedAt: new Date('2026-04-15T10:30:00.000Z'),
+    durationSeconds: 1800,
+    progressDelta: 12.5,
+    endProgress: 60,
+    timeZone: 'UTC',
+  };
+
+  it('returns an existing identical manual entry without counting it again', async () => {
+    const { repo, sessionValues, dailyValues } = makeManualHarness({
+      existingSession: { ...manualParams, id: 321, attemptId: 42, source: 'manual' },
+    });
+
+    await expect(repo.insertManualSession(manualParams)).resolves.toEqual({ id: 321, attemptId: 42 });
+    expect(sessionValues).not.toHaveBeenCalled();
+    expect(dailyValues).not.toHaveBeenCalled();
+  });
+
+  it('rejects reuse of a manual identity for a different entry', async () => {
+    const { repo, sessionValues, dailyValues } = makeManualHarness({
+      existingSession: { ...manualParams, id: 321, source: 'manual', bookId: 99 },
+    });
+
+    await expect(repo.insertManualSession(manualParams)).rejects.toThrow(BadRequestException);
+    expect(sessionValues).not.toHaveBeenCalled();
+    expect(dailyValues).not.toHaveBeenCalled();
+  });
+
+  it('rejects replay of a deleted manual entry without recreating it', async () => {
+    const { repo, sessionValues, dailyValues } = makeManualHarness({ deletedSessionId: manualParams.sessionId });
+
+    await expect(repo.insertManualSession(manualParams)).rejects.toThrow(BadRequestException);
+    expect(sessionValues).not.toHaveBeenCalled();
+    expect(dailyValues).not.toHaveBeenCalled();
   });
 });
 
@@ -696,8 +940,11 @@ describe('ReadingSessionRepository - deleteSessionByBook', () => {
   function makeDeleteHarness(
     sessionRow: { id: number; startedAt: Date; endedAt: Date; durationSeconds: number; progressDelta: number | null; libraryId: number } | null,
     recomputeRows: Array<{ startedAt: Date; endedAt: Date; durationSeconds: number; progressDelta: number | null }> = [],
+    identityExists = sessionRow !== null,
   ) {
-    const limit = vi.fn().mockResolvedValue(sessionRow ? [sessionRow] : []);
+    const identityWhere = vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue(identityExists ? [{ sessionId: 'client-session-5' }] : []) });
+    const identityFrom = vi.fn().mockReturnValue({ where: identityWhere });
+    const limit = vi.fn().mockResolvedValue(sessionRow ? [{ ...sessionRow, clientSessionId: 'client-session-5' }] : []);
     const lookupWhere = vi.fn().mockReturnValue({ limit });
     const lookupInnerJoin = vi.fn().mockReturnValue({ where: lookupWhere });
     const lookupFrom = vi.fn().mockReturnValue({ innerJoin: lookupInnerJoin });
@@ -705,14 +952,20 @@ describe('ReadingSessionRepository - deleteSessionByBook', () => {
     const recomputeWhere = vi.fn().mockResolvedValue(recomputeRows);
     const recomputeInnerJoin = vi.fn().mockReturnValue({ where: recomputeWhere });
     const recomputeFrom = vi.fn().mockReturnValue({ innerJoin: recomputeInnerJoin });
-    const select = vi.fn().mockReturnValueOnce({ from: lookupFrom }).mockReturnValue({ from: recomputeFrom });
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({ from: identityFrom })
+      .mockReturnValueOnce({ from: lookupFrom })
+      .mockReturnValue({ from: recomputeFrom });
 
     const deleteWhere = vi.fn().mockResolvedValue(undefined);
     const deleteFn = vi.fn().mockReturnValue({ where: deleteWhere });
     const dailyConflictUpdate = vi.fn().mockResolvedValue(undefined);
     const dailyValues = vi.fn().mockReturnValue({ onConflictDoUpdate: dailyConflictUpdate });
+    const tombstoneValues = vi.fn().mockReturnValue({ onConflictDoNothing: vi.fn().mockResolvedValue(undefined) });
     const insert = vi.fn((table: unknown) => {
       if (table === userReadingDailyStats) return { values: dailyValues };
+      if (table === readingSessionDeletions) return { values: tombstoneValues };
       throw new Error('Unexpected table in insert');
     });
 
@@ -721,27 +974,50 @@ describe('ReadingSessionRepository - deleteSessionByBook', () => {
     const db = { transaction };
     const repo = new ReadingSessionRepository(db as never);
 
-    return { repo, innerJoin: lookupInnerJoin, deleteFn, dailyValues, transaction, tx };
+    return {
+      repo,
+      innerJoin: lookupInnerJoin,
+      identityWhere,
+      lookupWhere,
+      recomputeWhere,
+      deleteWhere,
+      deleteFn,
+      dailyValues,
+      tombstoneValues,
+      transaction,
+      tx,
+    };
   }
 
   it('returns { found: false } when session not found', async () => {
-    const { repo } = makeDeleteHarness(null);
+    const { repo, tx, tombstoneValues } = makeDeleteHarness(null);
 
     const result = await repo.deleteSessionByBook(1, 2, 99);
 
     expect(result).toEqual({ found: false });
+    expect(tx.execute).not.toHaveBeenCalled();
+    expect(tombstoneValues).not.toHaveBeenCalled();
   });
 
   it('looks up the session with a single books join', async () => {
-    const { repo, innerJoin } = makeDeleteHarness(null);
+    const { repo, innerJoin } = makeDeleteHarness(null, [], true);
 
     await repo.deleteSessionByBook(1, 2, 99);
 
     expect(innerJoin).toHaveBeenCalledOnce();
   });
 
+  it('does not delete or create a tombstone if the locked session has disappeared', async () => {
+    const { repo, deleteFn, tombstoneValues, tx } = makeDeleteHarness(null, [], true);
+
+    await expect(repo.deleteSessionByBook(1, 2, 5)).resolves.toEqual({ found: false });
+    expect(tx.execute).toHaveBeenCalledOnce();
+    expect(deleteFn).not.toHaveBeenCalled();
+    expect(tombstoneValues).not.toHaveBeenCalled();
+  });
+
   it('returns { found: true } and deletes when session found', async () => {
-    const { repo, deleteFn, tx } = makeDeleteHarness({
+    const { repo, deleteFn, tombstoneValues, tx } = makeDeleteHarness({
       id: 5,
       startedAt: new Date('2026-04-15T10:00:00.000Z'),
       endedAt: new Date('2026-04-15T10:30:00.000Z'),
@@ -754,11 +1030,12 @@ describe('ReadingSessionRepository - deleteSessionByBook', () => {
 
     expect(result).toEqual({ found: true });
     expect(deleteFn).toHaveBeenCalledWith(readingSessions);
-    expect(tx.execute).toHaveBeenCalledOnce();
+    expect(tombstoneValues).toHaveBeenCalledWith({ userId: 1, bookId: 2, sessionId: 'client-session-5' });
+    expect(tx.execute).toHaveBeenCalledTimes(2);
   });
 
   it('re-inserts re-aggregated daily stats after deletion when other sessions remain', async () => {
-    const { repo, dailyValues } = makeDeleteHarness(
+    const { repo, dailyValues, identityWhere, lookupWhere, recomputeWhere, deleteWhere } = makeDeleteHarness(
       {
         id: 5,
         startedAt: new Date('2026-04-15T10:00:00.000Z'),
@@ -782,6 +1059,11 @@ describe('ReadingSessionRepository - deleteSessionByBook', () => {
     expect(dailyValues).toHaveBeenCalledWith([
       expect.objectContaining({ day: '2026-04-15', readingSeconds: 1200, progressDelta: 2, sessionsCount: 1 }),
     ]);
+    expect(queryParams(identityWhere.mock.calls[0][0])).toEqual([5, 1, 2]);
+    expect(queryParams(lookupWhere.mock.calls[0][0])).toEqual([5, 1, 2]);
+    expect(queryParams(recomputeWhere.mock.calls[0][0]).slice(0, 2)).toEqual([1, 3]);
+    expect(queryParams(deleteWhere.mock.calls[0][0])).toEqual([5, 1]);
+    expect(queryParams(deleteWhere.mock.calls[1][0])).toEqual([1, 3, '2026-04-15']);
   });
 
   it('deletes the userReadingDailyStats row for the session day', async () => {

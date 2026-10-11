@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Param, ParseIntPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post } from '@nestjs/common';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/types/request-user';
@@ -8,6 +8,11 @@ import { ReadingSessionService } from './reading-session.service';
 @Controller('books/files')
 export class ReadingSessionController {
   constructor(private readonly service: ReadingSessionService) {}
+
+  @Get(':fileId/session-context')
+  sessionContext(@Param('fileId', ParseIntPipe) fileId: number, @CurrentUser() user: RequestUser) {
+    return this.service.sessionContext(fileId, user);
+  }
 
   @Post(':fileId/sessions')
   @HttpCode(204)

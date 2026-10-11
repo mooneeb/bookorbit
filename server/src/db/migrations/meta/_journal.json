@@ -841,6 +841,13 @@
       "when": 1791716735197,
       "tag": "0119_migration_plan_projections",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1791727892409,
+      "tag": "0120_e04_reading_sharing",
+      "breakpoints": true
     }
   ]
 }

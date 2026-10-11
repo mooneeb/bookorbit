@@ -48,7 +48,7 @@ export class EmailSendLogRepository {
   markSent(id: number) {
     return this.db
       .update(emailSendLog)
-      .set({ status: EMAIL_SEND_STATUS_SENT, sentAt: sql`now()`, errorMessage: null, updatedAt: sql`now()` })
+      .set({ status: EMAIL_SEND_STATUS_SENT, sentAt: sql`now()`, errorMessage: null, nextRetryAt: null, updatedAt: sql`now()` })
       .where(eq(emailSendLog.id, id))
       .returning();
   }

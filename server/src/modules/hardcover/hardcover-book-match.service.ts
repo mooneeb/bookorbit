@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadGatewayException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import type { HardcoverEdition as HardcoverEditionSummary, HardcoverEditionsResult } from '@bookorbit/types';
 
 import { parsePublishedDateKey } from '../../common/utils/published-date.utils';
@@ -313,7 +313,7 @@ export class HardcoverBookMatchService {
       this.logger.warn(
         `[hardcover.book_match] [fail] userId=${userId} bookId=${book.bookId} method=metadata_id error="${error}" - metadata_id lookup failed`,
       );
-      return null;
+      throw err;
     }
   }
 
@@ -335,7 +335,7 @@ export class HardcoverBookMatchService {
       this.logger.warn(
         `[hardcover.book_match] [fail] userId=${userId} bookId=${book.bookId} method=metadata_slug error="${error}" - metadata_slug lookup failed`,
       );
-      return null;
+      throw err;
     }
   }
 
@@ -356,7 +356,7 @@ export class HardcoverBookMatchService {
     } catch (err) {
       const error = sanitizeLogValue(err instanceof Error ? err.message : String(err));
       this.logger.warn(`[hardcover.book_match] [fail] userId=${userId} bookId=${bookId} method=isbn${version} error="${error}" - ISBN lookup failed`);
-      return null;
+      throw err;
     }
   }
 
@@ -373,11 +373,7 @@ export class HardcoverBookMatchService {
         query: `${title} ${author}`,
       });
       if (searchData.search?.error) {
-        const error = sanitizeLogValue(searchData.search.error);
-        this.logger.warn(
-          `[hardcover.book_match] [fail] userId=${userId} bookId=${book.bookId} method=title_author durationMs=${Date.now() - startedAt} errorClass=SearchError error="${error}" - title lookup failed`,
-        );
-        return null;
+        throw new BadGatewayException('Hardcover search failed. Retry after checking the connection.');
       }
       const ids = searchData.search?.ids?.filter((id) => Number.isInteger(id)).slice(0, 5) ?? [];
       if (ids.length === 0) return null;
@@ -400,7 +396,7 @@ export class HardcoverBookMatchService {
       this.logger.warn(
         `[hardcover.book_match] [fail] userId=${userId} bookId=${book.bookId} method=title_author durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${error}" - title lookup failed`,
       );
-      return null;
+      throw err;
     }
   }
 
@@ -504,7 +500,7 @@ export class HardcoverBookMatchService {
       this.logger.warn(
         `[hardcover.book_match] [fail] userId=${userId} bookId=${book.bookId} method=cached_edition error="${error}" - cached edition metrics lookup failed`,
       );
-      return { hardcoverEditionId: cachedEditionId, editionPages: null, editionAudioSeconds: null };
+      throw err;
     }
   }
 

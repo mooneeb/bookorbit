@@ -30,6 +30,8 @@ struct BookDetailView: View {
   @State private var isWritingFiles = false
   @State private var isChoosingOffline = false
   @State private var isReviewingSourceRecovery = false
+  @State private var isReviewingReadingHistory = false
+  @State private var sharingSelection: BookSharingActionsView.Selection?
 
   init(
     api: BookOrbitAPI, bookID: Int, canEditMetadata: Bool, canRead: Bool,
@@ -167,6 +169,13 @@ struct BookDetailView: View {
               } label: {
                 Text("Edit your reading").frame(minHeight: 44).contentShape(Rectangle())
               }.accessibilityIdentifier("editBookReading")
+              Button(String(localized: "Reading sessions and history")) {
+                isReviewingReadingHistory = true
+              }.frame(minHeight: 44).accessibilityIdentifier("openBookReadingHistory")
+            }
+            if userID > 0 {
+              BookSharingActionsView(
+                api: model.api, book: book, userID: userID, selection: $sharingSelection)
             }
             if !book.customMetadata.isEmpty {
               Section("Custom fields") {
@@ -208,11 +217,23 @@ struct BookDetailView: View {
       .toolbar { Button("Done", action: dismiss.callAsFunction) }
     }
     .task { await model.load() }
+    .sheet(item: $sharingSelection) { selection in
+      if let book = model.book, selection.user.id == userID, selection.bookID == book.id {
+        BookSharingActionsView.destinationView(api: model.api, book: book, selection: selection)
+      }
+    }
     .onChange(of: ObjectIdentifier(readAloudSyncRequestedAPI)) { _, _ in discardReadAloudSync() }
     .onChange(of: readAloudSyncRequestedBookID) { _, _ in discardReadAloudSync() }
-    .onChange(of: requestedBookID) { _, _ in addedAtContext = UUID() }
-    .onChange(of: ObjectIdentifier(requestedAPI)) { _, _ in addedAtContext = UUID() }
+    .onChange(of: requestedBookID) { _, _ in
+      addedAtContext = UUID()
+      sharingSelection = nil
+    }
+    .onChange(of: ObjectIdentifier(requestedAPI)) { _, _ in
+      addedAtContext = UUID()
+      sharingSelection = nil
+    }
     .onChange(of: userID) { _, _ in
+      sharingSelection = nil
       positionReset?.detach()
       positionReset = nil
       positionResetNotice = nil
@@ -229,6 +250,7 @@ struct BookDetailView: View {
       deletion = nil
       deletionOutcome = nil
       deletionNotice = nil
+      isReviewingReadingHistory = false
     }
     .sheet(item: $positionReset) { reset in
       NativePositionResetView(model: reset, closed: positionResetClosed)
@@ -238,6 +260,9 @@ struct BookDetailView: View {
     }
     .sheet(isPresented: $isReviewingSourceRecovery) {
       SourceRecoveryView(api: model.api, bookID: model.bookID)
+    }
+    .sheet(isPresented: $isReviewingReadingHistory) {
+      if let book = model.book { BookReadingHistoryView(api: model.api, book: book) }
     }
     .sheet(isPresented: $isChoosingOffline) {
       if let book = model.book { OfflineBookView(api: model.api, book: book) }

@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Que
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/types/request-user';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { Permission } from '@bookorbit/types';
 import { CreateManualReadingSessionDto } from './dto/create-manual-reading-session.dto';
 import { ListBookReadingSessionsDto } from './dto/list-book-reading-sessions.dto';
 import { ReadingSessionService } from './reading-session.service';
@@ -22,6 +24,7 @@ export class BookReadingSessionController {
 
   @Delete(':bookId/sessions/:sessionId')
   @HttpCode(204)
+  @RequirePermission(Permission.AnnotationManageOwn)
   async deleteSession(
     @Param('bookId', ParseIntPipe) bookId: number,
     @Param('sessionId', ParseIntPipe) sessionId: number,

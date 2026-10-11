@@ -113,7 +113,12 @@ export class KoreaderPluginService {
 
     const accessibleLibraryIds = await this.koreaderRepo.getAccessibleLibraryIds(user.id);
     const hashes = [...new Set(dto.hashes.map((hash) => hash.toLowerCase()))];
-    const resolved = await this.koreaderRepo.resolveBookFilesByHashes(hashes, accessibleLibraryIds, user.id);
+    const resolved = await this.koreaderRepo.resolveBookFilesByHashes(
+      hashes,
+      accessibleLibraryIds,
+      user.id,
+      user.isSuperuser ? undefined : user.contentFilters,
+    );
     const linked = await this.linkRequestedFileHashes(user, hashes, resolved, this.buildCandidateMap(dto), accessibleLibraryIds);
     for (const [hash, match] of linked) resolved.set(hash, match);
     const matchedHashes = [...resolved.keys()];
@@ -146,7 +151,12 @@ export class KoreaderPluginService {
     try {
       const accessibleLibraryIds = await this.koreaderRepo.getAccessibleLibraryIds(user.id);
       const hashes = [...new Set(dto.books.map((book) => book.hash.toLowerCase()))];
-      const matches = await this.koreaderRepo.resolveBookFilesByHashes(hashes, accessibleLibraryIds, user.id);
+      const matches = await this.koreaderRepo.resolveBookFilesByHashes(
+        hashes,
+        accessibleLibraryIds,
+        user.id,
+        user.isSuperuser ? undefined : user.contentFilters,
+      );
 
       const entries: { hash: string; book: BookStateDto; bookId: number; index: number }[] = [];
       const unmatched: string[] = [];
@@ -220,7 +230,12 @@ export class KoreaderPluginService {
     try {
       const accessibleLibraryIds = await this.koreaderRepo.getAccessibleLibraryIds(user.id);
       const hashes = [...new Set(dto.items.map((item) => item.hash.toLowerCase()))];
-      const matches = await this.koreaderRepo.resolveBookFilesByHashes(hashes, accessibleLibraryIds, user.id);
+      const matches = await this.koreaderRepo.resolveBookFilesByHashes(
+        hashes,
+        accessibleLibraryIds,
+        user.id,
+        user.isSuperuser ? undefined : user.contentFilters,
+      );
 
       const results: BulkProgressResult['results'] = [];
       const unmatched: string[] = [];
@@ -345,7 +360,9 @@ export class KoreaderPluginService {
       attempted.push(hash);
     }
     // Resolve committed links again, including a manual link created concurrently with access checks.
-    return attempted.length ? this.koreaderRepo.resolveBookFilesByHashes(attempted, accessibleLibraryIds, user.id) : new Map();
+    return attempted.length
+      ? this.koreaderRepo.resolveBookFilesByHashes(attempted, accessibleLibraryIds, user.id, user.isSuperuser ? undefined : user.contentFilters)
+      : new Map();
   }
 
   private buildUnmatchedCandidates(hashes: string[], matchedHashes: string[], dto: MatchCheckDto) {

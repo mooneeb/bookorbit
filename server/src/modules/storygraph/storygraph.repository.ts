@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Permission } from '@bookorbit/types';
-import type { ContentFilterRules, ReadStatus, StorygraphBookSyncMode } from '@bookorbit/types';
+import type { ContentFilterRules, ReadStatus, StorygraphActiveSyncStatus, StorygraphBookSyncMode } from '@bookorbit/types';
 import { and, asc, eq, gt, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
@@ -155,6 +155,14 @@ export class StorygraphRepository {
 
   async updateLastSyncedAt(userId: number, at: Date): Promise<void> {
     await this.db.update(schema.storygraphUserSettings).set({ lastSyncedAt: at }).where(eq(schema.storygraphUserSettings.userId, userId));
+  }
+
+  async saveSyncStatus(userId: number, status: StorygraphActiveSyncStatus): Promise<void> {
+    await this.db.update(schema.storygraphUserSettings).set({ lastSyncStatus: status }).where(eq(schema.storygraphUserSettings.userId, userId));
+  }
+
+  async currentReadingBooksPage(userId: number, accessScope: StorygraphBookAccessScope | undefined, afterBookId?: number): Promise<BookSyncData[]> {
+    return this.findBookSyncDataForUser(userId, { statuses: ['reading', 'rereading'], accessScope, afterBookId, limit: 41 });
   }
 
   async updateSessionCookie(userId: number, sessionCookie: string): Promise<void> {

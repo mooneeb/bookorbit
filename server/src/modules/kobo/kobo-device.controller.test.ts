@@ -1,10 +1,13 @@
 import { RequestMethod } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
+import { EventEmitter } from 'events';
 
 import { KoboDeviceController } from './kobo-device.controller';
 
 function makeReply() {
   return {
+    raw: Object.assign(new EventEmitter(), { writableFinished: false }),
+    sent: false,
     status: vi.fn().mockReturnThis(),
     send: vi.fn().mockReturnThis(),
     header: vi.fn().mockReturnThis(),
@@ -47,6 +50,11 @@ describe('KoboDeviceController', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    downloadService.streamBook.mockImplementation((_userId: number, _bookId: number, reply: ReturnType<typeof makeReply>) => {
+      reply.raw.writableFinished = true;
+      reply.raw.emit('finish');
+      return Promise.resolve();
+    });
     historyService.countsForBook.mockImplementation((_userId: number, bookId: number, counts: Record<string, unknown>) => ({
       ...counts,
       bookId,
@@ -141,8 +149,16 @@ describe('KoboDeviceController', () => {
     const req = { method: 'GET', url: '/api/v1/kobo/token/v1/books/9/download' };
     const reply = makeReply();
 
-    await controller.download('9', { id: 11 } as never, { deviceId: 4, deviceToken: 'dev-token' } as never, req as never, reply as never);
+    downloadService.streamBook.mockResolvedValueOnce(undefined);
+    const download = controller.download('9', { id: 11 } as never, { deviceId: 4, deviceToken: 'dev-token' } as never, req as never, reply as never);
 
+    await vi.waitFor(() => expect(downloadService.streamBook).toHaveBeenCalledWith(11, 9, reply));
+    expect(historyService.recordSuccess).not.toHaveBeenCalled();
+    reply.raw.writableFinished = true;
+    reply.raw.emit('finish');
+    await download;
+
+    expect(bookIdentityService.resolveBookIdByEntitlementId).toHaveBeenCalledWith(11, '9');
     expect(downloadService.streamBook).toHaveBeenCalledWith(11, 9, reply);
     expect(historyService.recordSuccess).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -153,6 +169,28 @@ describe('KoboDeviceController', () => {
       }),
     );
     expect(historyService.countsForBook).toHaveBeenCalledWith(11, 9, { downloads: 1 });
+    expect(reply.raw.eventNames()).toEqual([]);
+  });
+
+  it.each(['close', 'error'])('records a failed download when the response emits %s before finishing', async (event) => {
+    const req = { method: 'GET', url: '/api/v1/kobo/token/v1/books/9/download' };
+    const reply = makeReply();
+    const error = new Error('Connection failed');
+    downloadService.streamBook.mockResolvedValueOnce(undefined);
+    const download = controller.download('9', { id: 11 } as never, { deviceId: 4, deviceToken: 'dev-token' } as never, req as never, reply as never);
+
+    await vi.waitFor(() => expect(downloadService.streamBook).toHaveBeenCalled());
+    reply.sent = true;
+    reply.raw.emit(event, error);
+    await expect(download).resolves.toBeUndefined();
+
+    expect(historyService.recordSuccess).not.toHaveBeenCalled();
+    expect(historyService.countsForBook).not.toHaveBeenCalled();
+    expect(historyService.recordFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 11, deviceId: 4, event: 'book_download' }),
+      event === 'error' ? error : expect.objectContaining({ message: 'Kobo download interrupted before completion' }),
+    );
+    expect(reply.raw.eventNames()).toEqual([]);
   });
 
   it('records failed downloads before rethrowing', async () => {
@@ -178,6 +216,8 @@ describe('KoboDeviceController', () => {
     await controller.thumbnailSimple('kobo-cover-id', '355', '530', undefined, { id: 11 } as never, reply as never);
 
     expect(downloadService.streamBook).toHaveBeenCalledWith(11, 420, reply);
+    expect(bookIdentityService.resolveBookIdByEntitlementId).toHaveBeenCalledWith(11, 'kobo-entitlement-id');
+    expect(bookIdentityService.resolveBookIdByCoverImageId).toHaveBeenCalledWith(11, 'kobo-cover-id');
     expect(thumbnailService.serveThumbnail).toHaveBeenCalledWith(11, 420, undefined, reply);
   });
 

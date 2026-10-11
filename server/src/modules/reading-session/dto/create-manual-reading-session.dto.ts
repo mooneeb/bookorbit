@@ -1,6 +1,10 @@
-import { IsDateString, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsDateString, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 
 export class CreateManualReadingSessionDto {
+  @IsOptional()
+  @IsUUID()
+  clientId?: string;
+
   @IsDateString()
   startedAt!: string;
 

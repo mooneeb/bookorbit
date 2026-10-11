@@ -38,7 +38,12 @@ export class KoreaderPluginAnnotationService {
 
       const accessibleLibraryIds = await this.koreaderRepo.getAccessibleLibraryIds(user.id);
       const hashes = [...new Set(dto.books.map((book) => book.hash.toLowerCase()))];
-      const matches = await this.koreaderRepo.resolveBookFilesByHashes(hashes, accessibleLibraryIds, user.id);
+      const matches = await this.koreaderRepo.resolveBookFilesByHashes(
+        hashes,
+        accessibleLibraryIds,
+        user.id,
+        user.isSuperuser ? undefined : user.contentFilters,
+      );
 
       const results: { hash: string; upserted: number }[] = [];
       const unmatched: string[] = [];

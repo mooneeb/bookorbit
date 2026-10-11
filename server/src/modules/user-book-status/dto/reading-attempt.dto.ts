@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, Max, Min, ValidateIf } from 'class-validator';
-import type { ReadingAttemptOutcome } from '@bookorbit/types';
+import { IsBoolean, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Matches, Max, Min, ValidateIf } from 'class-validator';
+import type { CreateReadingAttemptPayload, ReadingAttemptOutcome, ReadingAttemptPatch } from '@bookorbit/types';
 import { READING_ATTEMPT_OUTCOMES } from '@bookorbit/types';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -20,7 +20,11 @@ export class ListReadingAttemptsDto {
   pageSize?: number;
 }
 
-export class CreateReadingAttemptDto {
+export class CreateReadingAttemptDto implements CreateReadingAttemptPayload {
+  @ValidateIf((_, value) => value !== undefined)
+  @IsUUID()
+  clientId?: string;
+
   @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsString()
   @Matches(DATE_PATTERN)
@@ -35,7 +39,11 @@ export class CreateReadingAttemptDto {
   outcome!: ReadingAttemptOutcome;
 }
 
-export class UpdateReadingAttemptDto {
+export class UpdateReadingAttemptDto implements ReadingAttemptPatch {
+  @ValidateIf((_, value) => value !== undefined)
+  @IsISO8601({ strict: true })
+  baseUpdatedAt?: string;
+
   @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsString()
   @Matches(DATE_PATTERN)

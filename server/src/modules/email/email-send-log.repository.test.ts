@@ -114,6 +114,7 @@ describe('EmailSendLogRepository', () => {
       status: 'sent',
       sentAt: expect.objectContaining({ op: 'sql', text: 'now()' }),
       errorMessage: null,
+      nextRetryAt: null,
       updatedAt: expect.objectContaining({ op: 'sql', text: 'now()' }),
     });
     expect(updateBuilder.where).toHaveBeenCalledWith({ op: 'eq', left: emailSendLog.id, right: 7 });

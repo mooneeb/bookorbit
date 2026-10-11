@@ -1,13 +1,17 @@
-vi.mock('fs/promises', () => ({ open: vi.fn(), stat: vi.fn(), mkdtemp: vi.fn(), rm: vi.fn() }));
+vi.mock('fs/promises', () => ({ open: vi.fn(), stat: vi.fn(), mkdtemp: vi.fn(), rm: vi.fn(), mkdir: vi.fn(), realpath: vi.fn() }));
 vi.mock('fs', () => ({ createReadStream: vi.fn() }));
 vi.mock('../../../common/utils/file-hash.utils', () => ({ computeFileHashFromHandle: vi.fn() }));
 
-import { ForbiddenException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, InternalServerErrorException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import type { ConfigType } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
+import { createHash } from 'crypto';
 import { EventEmitter } from 'events';
 import { createReadStream } from 'fs';
-import { mkdtemp, open, rm, stat } from 'fs/promises';
+import { mkdir, mkdtemp, open, realpath, rm, stat } from 'fs/promises';
+import { Readable } from 'stream';
 
+import { storageConfig } from '../../../config/config';
 import { computeFileHashFromHandle } from '../../../common/utils/file-hash.utils';
 import { AudiolessEpubService } from '../../book/audioless-epub.service';
 import { KoboDownloadRepository } from '../kobo-download.repository';
@@ -23,6 +27,8 @@ const TEMP_DIR = '/runtime-temp/kobo-download';
 const SOURCE = '/books/source.epub';
 const CONVERTED = '/app-data/.kepub-cache/11/converted.kepub.epub';
 const STRIPPED = `${TEMP_DIR}/book.epub`;
+const PDF_BYTES = Buffer.from('%PDF-1.7\nCurrent source bytes\n');
+const PDF_SOURCE_REVISION = `sha256:${createHash('sha256').update(PDF_BYTES).digest('hex')}`;
 const SOURCE_FILE = {
   id: 22,
   format: 'epub',
@@ -81,7 +87,13 @@ describe('KoboDownloadService', () => {
     handle = {
       stat: vi.fn().mockImplementation(() => statMock('' as never)),
       close: vi.fn().mockResolvedValue(undefined),
-      createReadStream: vi.fn().mockImplementation(() => readStreamMock(openMock.mock.calls.at(-1)![0] as never)),
+      createReadStream: vi
+        .fn()
+        .mockImplementation((options: { start: number; autoClose?: boolean }) =>
+          options.autoClose === false
+            ? Readable.from([PDF_BYTES.subarray(0, 8), PDF_BYTES.subarray(8)])
+            : readStreamMock(openMock.mock.calls.at(-1)![0] as never),
+        ),
     };
     openMock.mockResolvedValue(handle as never);
     statMock.mockResolvedValue({ size: 4096 } as never);
@@ -129,12 +141,19 @@ describe('KoboDownloadService', () => {
     expect(openMock).toHaveBeenCalledExactlyOnceWith(deliveredPath, 'r');
     expect(hashMock).toHaveBeenCalledExactlyOnceWith(handle);
     expect(handle.createReadStream).toHaveBeenCalledWith({ start: 0 });
+    expect(handle.createReadStream).toHaveBeenCalledTimes(format === 'pdf' ? 2 : 1);
     expect(deps.repository.registerDeliveredHash).toHaveBeenCalledExactlyOnceWith(22, DELIVERED_HASH);
     expect(readStreamMock).toHaveBeenCalledExactlyOnceWith(deliveredPath);
     expect(reply.send).toHaveBeenCalledWith(stream);
     expect(reply.type).toHaveBeenCalledWith(mime);
     expect(reply.header).toHaveBeenCalledWith('Content-Length', 4096);
     expect(reply.header).toHaveBeenCalledWith('Content-Disposition', `attachment; filename="book-22.${extension}"`);
+    expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
+    if (format === 'pdf') {
+      expect(handle.createReadStream).toHaveBeenNthCalledWith(1, { start: 0, autoClose: false });
+      expect(reply.header).toHaveBeenCalledWith('ETag', `"${PDF_SOURCE_REVISION}"`);
+      expect(reply.header).toHaveBeenCalledWith('X-BookOrbit-Source-Revision', PDF_SOURCE_REVISION);
+    }
     expect(deps.conversion.getKepubPath).toHaveBeenCalledTimes(conversion ? 1 : 0);
   });
 
@@ -282,13 +301,15 @@ describe('KoboDownloadService', () => {
     expect(reply.send).toHaveBeenCalled();
   });
 
-  it('waits for identity persistence before sending headers or bytes', async () => {
+  it('waits for identity persistence before dispatching the delivery stream or response', async () => {
     const registration = deferred<void>();
     deps.repository.registerDeliveredHash.mockReturnValue(registration.promise);
     const download = service.streamBook(7, 11, reply as never);
     await vi.waitFor(() => expect(deps.repository.registerDeliveredHash).toHaveBeenCalled());
-    expect(reply.header).not.toHaveBeenCalled();
+    expect(reply.header).toHaveBeenCalledExactlyOnceWith('Cache-Control', 'private, no-store');
+    expect(handle.createReadStream).not.toHaveBeenCalled();
     expect(readStreamMock).not.toHaveBeenCalled();
+    expect(reply.send).not.toHaveBeenCalled();
     registration.resolve();
     await download;
     expect(reply.send).toHaveBeenCalledWith(stream);
@@ -316,21 +337,64 @@ describe('KoboDownloadService', () => {
     expect(handle.close).toHaveBeenCalledTimes(1);
   });
 
-  it('continues streaming when identity registration unexpectedly rejects', async () => {
-    deps.repository.registerDeliveredHash.mockRejectedValue(new Error('Database unavailable'));
-    await expect(service.streamBook(7, 11, reply as never)).resolves.toBeUndefined();
-    expect(reply.send).toHaveBeenCalledWith(stream);
-    expect(handle.close).not.toHaveBeenCalled();
+  it('rejects unexpected identity registration failure before delivering bytes', async () => {
+    deps.repository.registerDeliveredHash.mockRejectedValue(new Error('Unexpected identity failure'));
+    await expect(service.streamBook(7, 11, reply as never)).rejects.toThrow(InternalServerErrorException);
+    expect(reply.send).not.toHaveBeenCalled();
+    expect(readStreamMock).not.toHaveBeenCalled();
+    expect(handle.createReadStream).not.toHaveBeenCalled();
+    expect(handle.close).toHaveBeenCalledExactlyOnceWith();
   });
 
-  it('streams narration-free files despite registration failure and cleans up after close', async () => {
+  function useDurableRegistration() {
+    const database = { registerDeliveredHash: vi.fn().mockRejectedValue(new Error('Database unavailable')) };
+    const registration = new KoboDownloadHashRegistrationService(
+      database as unknown as KoboDownloadRepository,
+      { appDataPath: '/app-data' } as ConfigType<typeof storageConfig>,
+    );
+    deps.repository.registerDeliveredHash.mockImplementation((fileId: number, hash: string) => registration.record(fileId, hash));
+    vi.mocked(realpath).mockImplementation((path) => Promise.resolve(String(path)));
+    vi.mocked(mkdir).mockResolvedValue(undefined);
+    return { database, registration };
+  }
+
+  it('rejects lost identity durability before sending and cleans narration-free preparation', async () => {
     setFile({ mediaOverlayAvailable: true });
-    deps.repository.registerDeliveredHash.mockRejectedValue(new Error('Database unavailable'));
-    vi.mocked(rm).mockRejectedValue(new Error('Cleanup failed'));
-    await expect(service.streamBook(7, 11, reply as never)).resolves.toBeUndefined();
-    expect(reply.send).toHaveBeenCalledWith(stream);
-    expect(rm).not.toHaveBeenCalled();
-    stream.emit('close');
+    useDurableRegistration();
+    openMock.mockImplementation((path) => {
+      if (path === CONVERTED) return Promise.resolve(handle as never);
+      return Promise.reject(errno('EACCES'));
+    });
+    await expect(service.streamBook(7, 11, reply as never)).rejects.toThrow(ServiceUnavailableException);
+    expect(reply.send).not.toHaveBeenCalled();
+    expect(readStreamMock).not.toHaveBeenCalled();
+    expect(handle.createReadStream).not.toHaveBeenCalled();
+    expect(handle.close).toHaveBeenCalledExactlyOnceWith();
     expect(rm).toHaveBeenCalledExactlyOnceWith(TEMP_DIR, { recursive: true, force: true });
+  });
+
+  it('dispatches after durable retry journal settles when database registration fails', async () => {
+    const { database } = useDurableRegistration();
+    const persisted = deferred<void>();
+    const entry = { sync: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) };
+    const directory = { sync: vi.fn().mockReturnValue(persisted.promise), close: vi.fn().mockResolvedValue(undefined) };
+    openMock.mockImplementation((path) => {
+      if (path === CONVERTED) return Promise.resolve(handle as never);
+      if (path === '/app-data/.kobo-download-hashes') return Promise.resolve(directory as never);
+      return Promise.resolve(entry as never);
+    });
+    const download = service.streamBook(7, 11, reply as never);
+    await vi.waitFor(() => expect(directory.sync).toHaveBeenCalled());
+    expect(database.registerDeliveredHash).toHaveBeenCalledExactlyOnceWith(22, DELIVERED_HASH);
+    expect(entry.sync).toHaveBeenCalledExactlyOnceWith();
+    expect(entry.close).toHaveBeenCalledExactlyOnceWith();
+    expect(directory.close).not.toHaveBeenCalled();
+    expect(handle.createReadStream).not.toHaveBeenCalled();
+    expect(reply.send).not.toHaveBeenCalled();
+    persisted.resolve();
+    await download;
+    expect(directory.close).toHaveBeenCalledExactlyOnceWith();
+    expect(reply.send).toHaveBeenCalledWith(stream);
+    expect(handle.close).not.toHaveBeenCalled();
   });
 });

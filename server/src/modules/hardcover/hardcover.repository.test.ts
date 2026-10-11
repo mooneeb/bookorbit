@@ -58,8 +58,10 @@ function makeRepository() {
     select: vi.fn().mockReturnValue({ from: bookIdFrom }),
   };
 
+  const userService = { findByIdWithPermissions: vi.fn().mockResolvedValue({ id: 7, active: true, isSuperuser: true }) };
   return {
-    repo: new HardcoverRepository(db as never),
+    userService,
+    repo: new HardcoverRepository(db as never, userService as never),
     db,
     settingsQuery,
     bookStateQuery,
@@ -179,7 +181,7 @@ describe('HardcoverRepository', () => {
     const { repo, db } = makeRepository();
     const selectArgs: Array<Record<string, unknown>> = [];
     const chain: Record<string, unknown> = {};
-    for (const method of ['from', 'innerJoin', 'leftJoin', 'where', 'groupBy', 'as']) {
+    for (const method of ['from', 'innerJoin', 'leftJoin', 'where', 'groupBy', 'as', 'orderBy', 'limit']) {
       chain[method] = vi.fn().mockReturnValue(chain);
     }
     chain.then = (resolve: (rows: unknown[]) => void) => resolve([]);
@@ -199,7 +201,7 @@ describe('HardcoverRepository', () => {
   it('uses audiobook progress for an audiobook sync snapshot', async () => {
     const { repo, db } = makeRepository();
     const chain: Record<string, unknown> = {};
-    for (const method of ['from', 'innerJoin', 'leftJoin', 'where', 'groupBy', 'as']) {
+    for (const method of ['from', 'innerJoin', 'leftJoin', 'where', 'groupBy', 'as', 'orderBy', 'limit']) {
       chain[method] = vi.fn().mockReturnValue(chain);
     }
     chain.then = (resolve: (rows: unknown[]) => void) => resolve([{ bookId: 42, format: 'm4b', readingProgress: null, audioProgress: 37.5 }]);
@@ -224,7 +226,7 @@ describe('HardcoverRepository', () => {
     const { repo, db } = makeRepository();
     const selectArgs: Array<Record<string, unknown>> = [];
     const chain: Record<string, unknown> = {};
-    for (const method of ['from', 'innerJoin', 'leftJoin', 'where', 'groupBy', 'as']) {
+    for (const method of ['from', 'innerJoin', 'leftJoin', 'where', 'groupBy', 'as', 'orderBy', 'limit']) {
       chain[method] = vi.fn().mockReturnValue(chain);
     }
     chain.then = (resolve: (rows: unknown[]) => void) => resolve([{ bookId: 42 }]);
@@ -254,7 +256,7 @@ describe('HardcoverRepository', () => {
     expect(chain.limit).toHaveBeenCalledWith(200);
   });
 
-  it('leaves the unbounded sync query without an order or limit', async () => {
+  it('bounds ordered sync pages and filters after the cursor', async () => {
     const { repo, db } = makeRepository();
     const chain: Record<string, unknown> = {};
     for (const method of ['from', 'innerJoin', 'leftJoin', 'where', 'groupBy', 'as', 'orderBy', 'limit']) {
@@ -263,10 +265,14 @@ describe('HardcoverRepository', () => {
     chain.then = (resolve: (rows: unknown[]) => void) => resolve([{ bookId: 42 }]);
     db.select.mockImplementation(() => chain);
 
-    await repo.findSyncableBooks(7);
+    await repo.findSyncableBooks(7, 41, 1000);
 
-    expect(chain.orderBy).not.toHaveBeenCalled();
-    expect(chain.limit).not.toHaveBeenCalled();
+    expect(chain.orderBy).toHaveBeenCalled();
+    expect(chain.limit).toHaveBeenCalledWith(100);
+    const filters = (chain.where as ReturnType<typeof vi.fn>).mock.calls;
+    const dialect = new PgDialect();
+    const queries = filters.filter(([value]) => value).map(([value]) => dialect.sqlToQuery(value));
+    expect(queries.some((value) => value.sql.includes('"books"."id" >') && value.params.includes(41))).toBe(true);
   });
 
   it('updateEditionIfLinked updates an existing link and returns true', async () => {

@@ -1,0 +1,96 @@
+{
+  "configurations": [
+    {
+      "id": "10E04001-0000-4000-8000-000000000001",
+      "name": "pro13-portrait-light",
+      "options": {
+        "environmentVariableEntries": [
+          {
+            "key": "IPAD_E04_PROFILE",
+            "value": "pro13-portrait-light"
+          },
+          {
+            "key": "IPAD_E02_PROFILE",
+            "value": "pro13-portrait-light"
+          }
+        ]
+      }
+    },
+    {
+      "id": "10E04001-0000-4000-8000-000000000002",
+      "name": "pro11-landscape-dark",
+      "options": {
+        "environmentVariableEntries": [
+          {
+            "key": "IPAD_E04_PROFILE",
+            "value": "pro11-landscape-dark"
+          },
+          {
+            "key": "IPAD_E02_PROFILE",
+            "value": "pro11-landscape-dark"
+          }
+        ]
+      }
+    },
+    {
+      "id": "10E04001-0000-4000-8000-000000000003",
+      "name": "pro11-portrait-large",
+      "options": {
+        "environmentVariableEntries": [
+          {
+            "key": "IPAD_E04_PROFILE",
+            "value": "pro11-portrait-large"
+          },
+          {
+            "key": "IPAD_E02_PROFILE",
+            "value": "pro11-portrait-large"
+          }
+        ]
+      }
+    },
+    {
+      "id": "10E04001-0000-4000-8000-000000000004",
+      "name": "pro13-landscape-dark-large",
+      "options": {
+        "environmentVariableEntries": [
+          {
+            "key": "IPAD_E04_PROFILE",
+            "value": "pro13-landscape-dark-large"
+          },
+          {
+            "key": "IPAD_E02_PROFILE",
+            "value": "pro13-landscape-dark-large"
+          }
+        ]
+      }
+    }
+  ],
+  "defaultOptions": {
+    "language": "en",
+    "region": "US",
+    "environmentVariableEntries": [
+      {
+        "key": "IPAD_E04",
+        "value": "1"
+      },
+      {
+        "key": "IPAD_E04_CASE",
+        "value": "$(IPAD_E04_CASE)"
+      },
+      {
+        "key": "IPAD_E04_SERVER_URL",
+        "value": "$(IPAD_E04_SERVER_URL)"
+      }
+    ]
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:BookOrbit.xcodeproj",
+        "identifier": "1BAB2232886937D277B391B8",
+        "name": "BookOrbitUITests"
+      }
+    }
+  ],
+  "version": 1
+}

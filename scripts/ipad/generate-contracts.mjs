@@ -7,6 +7,20 @@ const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(path.join(root, "server/package.json"));
 const ts = require("typescript");
 const entries = [
+  "account-activity",
+  "activity",
+  "achievement",
+  "content-filter",
+  "email",
+  "hardcover",
+  "kobo",
+  "koreader",
+  "opds",
+  "readwise",
+  "reading-session",
+  "shared-reading-insights",
+  "storygraph",
+  "user-statistics",
   "annotation",
   "audiobook",
   "auth",
@@ -65,7 +79,6 @@ const entries = [
   "display-preferences",
   "release-notes",
   "notification",
-  "shared-reading-insights",
   "metadata-preferences",
 ].map((name) => path.join(root, `packages/types/src/${name}.ts`));
 const program = ts.createProgram(entries, {
@@ -94,6 +107,24 @@ const symbols = new Map(
 
 // These audited projections decode existing responses without generating unused server data.
 const projections = {
+  AchievementItem: [
+    "key",
+    "groupKey",
+    "tier",
+    "category",
+    "name",
+    "description",
+    "iconName",
+    "rarity",
+    "threshold",
+    "hidden",
+    "sortOrder",
+    "earned",
+    "awardedAt",
+    "contextBookId",
+    "contextBookTitle",
+    "currentProgress",
+  ],
   BookmarkResponse: ["id", "bookId", "cfi", "title", "positionSeconds", "fileId", "pageNumber", "createdAt"],
   EpubBookmarkNavigationItem: [
     "chapterTitle",
@@ -227,7 +258,7 @@ const projections = {
   BookDetailFile: ["id", "format", "role", "filename", "sizeBytes", "durationSeconds", "mediaOverlay", "absolutePath"],
   BookQuery: ["filter", "sort", "pagination", "q", "collapseSeries", "randomSeed"],
   SmartScope: ["id", "userId", "mediaType", "name", "icon", "filter", "defaultSort", "isPublic", "syncToKobo", "koboSyncEnabled", "isOwner"],
-  Collection: ["id", "userId", "mediaType", "name", "icon", "isPublic", "isOwner", "bookCount", "memberCount"],
+  Collection: ["id", "userId", "mediaType", "name", "icon", "isPublic", "isOwner", "bookCount", "memberCount", "syncToKobo"],
   BookIdsSelection: ["bookIds"],
   BookMoveExplicitPreviewRequest: ["selection", "targetLibraryId", "targetFolderId"],
   BookMoveExplicitExecuteRequest: ["selection", "targetLibraryId", "targetFolderId", "collisionPolicy", "overrides"],
@@ -235,6 +266,59 @@ const projections = {
 };
 const aliases = { Collection: "BookCollection", SmartScope: "BookSmartScope" };
 const integerFields = new Set([
+  "hardcoverUserBookIds",
+  "hardcoverStatusId",
+  "totalHardcoverBooks",
+  "matchedBooks",
+  "willUpdate",
+  "needsReview",
+  "conflicts",
+  "unmatched",
+  "progressWillUpdate",
+  "progressConflicts",
+  "progressSkipped",
+  "applied",
+  "progressApplied",
+  "progressFailed",
+  "afterId",
+  "attemptId",
+  "providerId",
+  "recipientId",
+  "defaultProviderId",
+  "defaultRecipientId",
+  "defaultTemplateId",
+  "templateId",
+  "attemptCount",
+  "port",
+  "queued",
+  "runId",
+  "deviceId",
+  "contextBookId",
+  "privacySettingId",
+  "hardcoverBookId",
+  "hardcoverEditionId",
+  "hardcoverUserBookId",
+  "hardcoverReadId",
+  "localBookId",
+  "localPrimaryFileId",
+  "editionId",
+  "syncedBooks",
+  "skippedBooks",
+  "failedBooks",
+  "processedBooks",
+  "totalBooks",
+  "pendingBooks",
+  "pages",
+  "includeTagIds",
+  "excludeTagIds",
+  "includeGenreIds",
+  "excludeGenreIds",
+  "exemptRequestsFromUserId",
+  "recipientIds",
+  "logIds",
+  "exportedHighlights",
+  "pendingHighlights",
+  "receivedBookIds",
   "id",
   "bookIds",
   "userId",
@@ -570,6 +654,8 @@ const acquisitionModels = [
   "MaintenanceOperationStatus",
 ];
 const patchRequests = new Set([
+  "UpdateBookRatingPayload",
+  "ReadingAttemptPatch",
   "BookMetadataUpdatePayload",
   "AudioMetadataUpdatePayload",
   "ComicMetadataUpdatePayload",
@@ -608,6 +694,7 @@ function generateValueUnion(type, name) {
   const cases = type.types.map((part) => {
     if (part.flags & ts.TypeFlags.StringLike) return { name: "string", type: "String" };
     if (part.flags & ts.TypeFlags.NumberLike) return { name: "number", type: "Double" };
+    if (part.flags & ts.TypeFlags.BooleanLike) return { name: "boolean", type: "Bool" };
     if (checker.isArrayType(part)) {
       const item = checker.getTypeArguments(part)[0];
       if (item.flags & ts.TypeFlags.StringLike) return { name: "strings", type: "[String]" };
@@ -615,7 +702,9 @@ function generateValueUnion(type, name) {
     }
     throw new Error(`Unsupported value union in ${name}: ${checker.typeToString(type)}`);
   });
-  const caseOrder = ["string", "number", "numbers", "strings"];
+  const caseOrder = ["boolean", "string", "number", "numbers", "strings"];
+  const distinctCases = [...new Map(cases.map((value) => [value.name, value])).values()];
+  cases.splice(0, cases.length, ...distinctCases);
   cases.sort((left, right) => caseOrder.indexOf(left.name) - caseOrder.indexOf(right.name));
   if (new Set(cases.map((value) => value.name)).size !== cases.length) throw new Error(`Ambiguous union in ${name}`);
   declarations.set(
@@ -778,7 +867,8 @@ function swiftType(type, name, field) {
     return type.isUnion() ? "Int?" : "Int";
   }
   const nativeInteger =
-    name.startsWith("NativeAnnotation") && ["version", "baseVersion", "annotationId", "draftId", "pageno", "cursor"].includes(field);
+    (name.startsWith("NativeAnnotation") && ["version", "baseVersion", "annotationId", "draftId", "pageno", "cursor"].includes(field)) ||
+    (name.includes("Hardcover") && field === "limit");
   const drawingDouble = [
     "NativeInkStrokeWidth",
     "AnnotationRectWidth",
@@ -836,7 +926,11 @@ function swiftType(type, name, field) {
               : "Double";
     else if (values.every((part) => part.flags & ts.TypeFlags.BooleanLike)) value = "Bool";
     else if (values.length === 1) value = swiftType(values[0], name, field);
-    else if (type.aliasSymbol?.name === "RuleValue" || ["RuleValue", "RuleValueTo", "CoverSearchResultUrl"].includes(name))
+    else if (
+      type.aliasSymbol?.name === "RuleValue" ||
+      ["RuleValue", "RuleValueTo", "CoverSearchResultUrl"].includes(name) ||
+      (name.startsWith("Kobo") && name.endsWith("CountsValue"))
+    )
       value = generateValueUnion({ types: values }, name);
     else if (values.every((part) => part.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike))) value = generateStringOrNumber();
     else if (values.every((part) => part.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike)))
@@ -848,9 +942,7 @@ function swiftType(type, name, field) {
     )
       value = "String";
     else if (name === "GroupRuleRulesItem") value = generateRuleNode();
-    else if (type.aliasSymbol?.name === "RuleValue" || name === "RuleValue" || name === "RuleValueTo" || name === "CoverSearchResultUrl") {
-      value = generateValueUnion({ types: values }, name);
-    } else if (values.every((part) => part.flags & ts.TypeFlags.Object))
+    else if (values.every((part) => part.flags & ts.TypeFlags.Object))
       value = generateDiscriminatedUnion({ types: values }, type.aliasSymbol?.name ?? name);
     else throw new Error(`Unsupported union in ${name}: ${checker.typeToString(type)}`);
     return value + (optional ? "?" : "");
@@ -979,6 +1071,118 @@ declarations.set(
 );
 
 for (const name of [
+  "AccountActivityListResponse",
+  "NativeReadingSessionContext",
+  "UpdateBookRatingPayload",
+  "ActivityOverviewResponse",
+  "AchievementCatalogueResponse",
+  "AchievementCelebrationClaim",
+  "SaveReadingSessionPayload",
+  "CreateManualReadingSessionPayload",
+  "BookReadingSession",
+  "BookReadingSessionStats",
+  "BookReadingSessionListResponse",
+  "CreateReadingAttemptPayload",
+  "StartRereadPayload",
+  "ReadingAttempt",
+  "ReadingAttemptListResponse",
+  "ReadingAttemptPatch",
+  "ReadingInsightsSharingSettings",
+  "ReadingInsightsSharingLevel",
+  "ReadingInsightsAccessHistoryPage",
+  "SharedReadingInsightsSummary",
+  "SharedReadingInsightsDetail",
+  "SharedReadingInsightsViewSession",
+  "UpdateReadingInsightsSharingRequest",
+  "ContentFilterRules",
+  "ContentFilterRulesWithNames",
+  "SetContentFiltersRequest",
+  "UserRestrictionTarget",
+  "UserRestrictionTargetPage",
+  "KoreaderSyncStatus",
+  "CreateKoreaderCredentialsPayload",
+  "UpdateKoreaderCredentialsPayload",
+  "TestKoreaderConnectionResult",
+  "KoreaderBookSyncInfo",
+  "KoreaderUnmatchedBook",
+  "KoreaderManualHashLink",
+  "LinkKoreaderUnmatchedBookPayload",
+  "LinkKoreaderUnmatchedBookResult",
+  "UpdateKoreaderManualHashLinkPayload",
+  "UnlinkKoreaderManualHashLinkResult",
+  "DismissKoreaderUnmatchedBookResult",
+  "DismissAllKoreaderUnmatchedBooksResult",
+  "KoreaderFileNamingPattern",
+  "UpdateKoreaderDeviceFilePatternPayload",
+  "UpdateKoreaderDevicePayload",
+  "OpdsUser",
+  "CreateOpdsUserRequest",
+  "UpdateOpdsUserRequest",
+  "KoboDevice",
+  "KoboDeviceWithToken",
+  "KoboSyncSettings",
+  "UpdateKoboSyncSettingsRequest",
+  "CreateKoboDeviceRequest",
+  "RenameKoboDeviceRequest",
+  "KoboSyncHistoryEntry",
+  "BookKoboState",
+  "BookKoboReadingState",
+  "BookKoboSnapshotState",
+  "EmailProvider",
+  "EmailRecipient",
+  "EmailPreferences",
+  "EmailSendLogEntry",
+  "CreateEmailProviderPayload",
+  "CreateEmailRecipientPayload",
+  "UpdateEmailPreferencesPayload",
+  "EmailSelectedBookSendPayload",
+  "EmailSendAcceptedResponse",
+  "EmailProviderTestResponse",
+  "ValidateHardcoverTokenPayload",
+  "PreviewHardcoverImportPayload",
+  "HardcoverSettings",
+  "UpsertHardcoverSettingsPayload",
+  "HardcoverTokenValidationResult",
+  "HardcoverSyncPendingSummary",
+  "HardcoverBookSyncState",
+  "UpdateHardcoverBookSyncPayload",
+  "HardcoverBookSyncNowResult",
+  "HardcoverActiveSyncStatus",
+  "HardcoverSyncOutcome",
+  "HardcoverStartSyncResult",
+  "HardcoverImportPreviewRow",
+  "HardcoverImportSummary",
+  "HardcoverImportPreview",
+  "ApplyHardcoverImportPayload",
+  "HardcoverImportApplyResult",
+  "HardcoverEdition",
+  "HardcoverLinkedBook",
+  "HardcoverLinkedBooksResult",
+  "HardcoverEditionsResult",
+  "SetHardcoverEditionPayload",
+  "SetHardcoverEditionResult",
+  "ReadwiseSettings",
+  "UpsertReadwiseSettingsPayload",
+  "ReadwiseTokenValidationResult",
+  "ReadwiseSyncStatus",
+  "StorygraphSettings",
+  "UpsertStorygraphSettingsPayload",
+  "StorygraphCookieValidationResult",
+  "StorygraphSyncPendingSummary",
+  "StorygraphBookSyncState",
+  "UpdateStorygraphBookSyncPayload",
+  "StorygraphBookSyncNowResult",
+  "StorygraphActiveSyncStatus",
+  "StorygraphSyncFailure",
+  "StorygraphEdition",
+  "StorygraphLinkedBook",
+  "StorygraphLinkResult",
+  "StorygraphLinkedBooksPage",
+  "StorygraphSyncStartResult",
+  "StorygraphActionResult",
+  "StorygraphRematchResult",
+  "StorygraphLinkPayload",
+  "StorygraphEditionPayload",
   "NativeAnnotationItem",
   "NativeAnnotationPayload",
   "NativeAnnotationOperation",
@@ -1170,8 +1374,43 @@ for (const name of [
 ]) {
   const symbol = symbols.get(name);
   if (!symbol) throw new Error(`Missing shared contract: ${name}`);
-  generateModel(name, checker.getDeclaredTypeOfSymbol(symbol));
+  const type = checker.getDeclaredTypeOfSymbol(symbol);
+  if (type.isUnion() && type.types.every((part) => part.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike))) {
+    declarations.set(name, `typealias ${name} = ${swiftType(type, name, name)}`);
+  } else {
+    generateModel(name, type);
+  }
 }
+
+generateModel(
+  "SharedReadingInsightsPreviewDetail",
+  checker.getDeclaredTypeOfSymbol(symbols.get("ReadingInsightsPreview")).types.find((type) => checker.getPropertyOfType(type, "summary")),
+);
+declarations.set(
+  "ReadingInsightsPreview",
+  `enum ReadingInsightsPreview: Codable, Sendable, Equatable {
+    case settings(ReadingInsightsSharingSettings)
+    case summary(SharedReadingInsightsSummary)
+    case detailed(SharedReadingInsightsPreviewDetail)
+
+    private enum CodingKeys: String, CodingKey { case summary, periodDays }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if container.contains(.summary) { self = .detailed(try SharedReadingInsightsPreviewDetail(from: decoder)) }
+        else if container.contains(.periodDays) { self = .summary(try SharedReadingInsightsSummary(from: decoder)) }
+        else { self = .settings(try ReadingInsightsSharingSettings(from: decoder)) }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        switch self {
+        case .settings(let value): try value.encode(to: encoder)
+        case .summary(let value): try value.encode(to: encoder)
+        case .detailed(let value): try value.encode(to: encoder)
+        }
+    }
+}`,
+);
 
 generateModel("UserDashboardSettingsResponse", checker.getDeclaredTypeOfSymbol(symbols.get("AuthUser")));
 generateModel("UserReaderSettingsResponse", checker.getDeclaredTypeOfSymbol(symbols.get("AuthUser")));

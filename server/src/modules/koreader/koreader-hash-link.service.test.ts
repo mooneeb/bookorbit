@@ -132,7 +132,7 @@ describe('KoreaderHashLinkService', () => {
           lastSeenAt: '2026-06-02T11:00:00.000Z',
         },
       ]);
-      expect(mockRepo.resolveBookFilesByHashes).toHaveBeenCalledWith([HASH_A, HASH_B], [1, 2], 7);
+      expect(mockRepo.resolveBookFilesByHashes).toHaveBeenCalledWith([HASH_A, HASH_B], [1, 2], 7, null);
       expect(mockRepo.clearUnmatchedBooks).toHaveBeenCalledWith(7, [HASH_A]);
     });
 
@@ -143,7 +143,7 @@ describe('KoreaderHashLinkService', () => {
       expect(rows).toHaveLength(1);
       expect(rows[0]!.hash).toBe(HASH_A);
       expect(rows[0]).not.toHaveProperty('manualLinkRequested');
-      expect(mockRepo.resolveBookFilesByHashes).toHaveBeenCalledWith([], [1, 2], 7);
+      expect(mockRepo.resolveBookFilesByHashes).toHaveBeenCalledWith([], [1, 2], 7, null);
     });
 
     it('does not call clearUnmatchedBooks when nothing resolves', async () => {
@@ -277,7 +277,7 @@ describe('KoreaderHashLinkService', () => {
           updatedAt: '2026-06-02T11:00:00.000Z',
         },
       ]);
-      expect(mockRepo.listBookHashLinks).toHaveBeenCalledWith(7, 100, [1, 2]);
+      expect(mockRepo.listBookHashLinks).toHaveBeenCalledWith(7, 100, [1, 2], null);
     });
   });
 

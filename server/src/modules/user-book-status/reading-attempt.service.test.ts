@@ -222,17 +222,7 @@ describe('ReadingAttemptService', () => {
     });
 
     it('clears a completed attempt finish date without reopening it', async () => {
-      await fake.repo.create(
-        {},
-        {
-          userId: 1,
-          bookId: 10,
-          startedOn: '2026-01-10',
-          endedOn: '2026-02-01',
-          outcome: 'completed',
-          origin: 'manual',
-        },
-      );
+      await service.applyManualStatus(1, 10, 'read', '2026-01-10', '2026-02-01', '2026-07-12');
 
       const result = await service.applyManualStatus(1, 10, 'read', undefined, null, '2026-07-12', {
         statusWasExplicit: false,
@@ -244,17 +234,7 @@ describe('ReadingAttemptService', () => {
     });
 
     it('edits the start date of the latest completed attempt without reopening it', async () => {
-      await fake.repo.create(
-        {},
-        {
-          userId: 1,
-          bookId: 10,
-          startedOn: '2026-01-10',
-          endedOn: '2026-02-01',
-          outcome: 'completed',
-          origin: 'manual',
-        },
-      );
+      await service.applyManualStatus(1, 10, 'read', '2026-01-10', '2026-02-01', '2026-07-12');
 
       const result = await service.applyManualStatus(1, 10, 'read', '2026-01-05', undefined, '2026-07-12', {
         statusWasExplicit: false,

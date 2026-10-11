@@ -2,6 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, notExists, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
+import type { ContentFilterRules } from '@bookorbit/types';
+import { buildContentFilterClauses } from '../../common/utils/content-filter-sql.utils';
 import { chunk } from '../../common/utils/batch.utils';
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
@@ -112,10 +114,16 @@ export class KoreaderRepository {
 
   // KOReader's partial hash can collide for different files. Same-book matches have a safe
   // deterministic fallback, while a user-scoped hash link preserves the exact downloaded file.
-  async resolveBookFileByHash(hash: string, accessibleLibraryIds: number[] | null, userId?: number): Promise<ResolvedBookFileByHash | null> {
+  async resolveBookFileByHash(
+    hash: string,
+    accessibleLibraryIds: number[] | null,
+    userId?: number,
+    contentFilters?: ContentFilterRules,
+  ): Promise<ResolvedBookFileByHash | null> {
     if (accessibleLibraryIds !== null && accessibleLibraryIds.length === 0) return null;
 
     const libraryFilter = accessibleLibraryIds ? inArray(schema.books.libraryId, accessibleLibraryIds) : undefined;
+    const contentClauses = contentFilters ? buildContentFilterClauses(contentFilters, this.db) : [];
 
     const byFileHash = await this.db
       .selectDistinctOn([schema.bookFiles.bookId], {
@@ -126,7 +134,7 @@ export class KoreaderRepository {
       })
       .from(schema.bookFiles)
       .innerJoin(schema.books, eq(schema.books.id, schema.bookFiles.bookId))
-      .where(and(eq(schema.bookFiles.fileHash, hash), libraryFilter))
+      .where(and(eq(schema.bookFiles.fileHash, hash), libraryFilter, ...contentClauses))
       .orderBy(asc(schema.bookFiles.bookId), asc(schema.bookFiles.id))
       .limit(2);
 
@@ -140,7 +148,7 @@ export class KoreaderRepository {
       .from(schema.bookFileHashHistory)
       .innerJoin(schema.bookFiles, eq(schema.bookFiles.id, schema.bookFileHashHistory.bookFileId))
       .innerJoin(schema.books, eq(schema.books.id, schema.bookFiles.bookId))
-      .where(and(eq(schema.bookFileHashHistory.fileHash, hash), libraryFilter))
+      .where(and(eq(schema.bookFileHashHistory.fileHash, hash), libraryFilter, ...contentClauses))
       .orderBy(asc(schema.bookFiles.bookId), asc(schema.bookFiles.id))
       .limit(2);
 
@@ -151,7 +159,7 @@ export class KoreaderRepository {
       if (!candidates.some((candidate) => candidate.id === row.id)) candidates.push(row);
     }
     if (userId !== undefined) {
-      const manual = await this.resolveManualBookFileByHash(hash, accessibleLibraryIds, userId);
+      const manual = await this.resolveManualBookFileByHash(hash, accessibleLibraryIds, userId, contentFilters);
       if (manual) return manual;
     }
     const resolved = resolveUniqueBook(candidates);
@@ -162,12 +170,14 @@ export class KoreaderRepository {
     hashes: string[],
     accessibleLibraryIds: number[] | null,
     userId?: number,
+    contentFilters?: ContentFilterRules,
   ): Promise<Map<string, ResolvedBookFileByHashes>> {
     const result = new Map<string, ResolvedBookFileByHashes>();
     if (hashes.length === 0) return result;
     if (accessibleLibraryIds !== null && accessibleLibraryIds.length === 0) return result;
 
     const libraryFilter = accessibleLibraryIds ? inArray(schema.books.libraryId, accessibleLibraryIds) : undefined;
+    const contentClauses = contentFilters ? buildContentFilterClauses(contentFilters, this.db) : [];
 
     const direct = await this.db
       .select({
@@ -179,7 +189,7 @@ export class KoreaderRepository {
       })
       .from(schema.bookFiles)
       .innerJoin(schema.books, eq(schema.books.id, schema.bookFiles.bookId))
-      .where(and(inArray(schema.bookFiles.fileHash, hashes), libraryFilter))
+      .where(and(inArray(schema.bookFiles.fileHash, hashes), libraryFilter, ...contentClauses))
       .orderBy(asc(schema.bookFiles.id));
 
     const history = await this.db
@@ -193,7 +203,7 @@ export class KoreaderRepository {
       .from(schema.bookFileHashHistory)
       .innerJoin(schema.bookFiles, eq(schema.bookFiles.id, schema.bookFileHashHistory.bookFileId))
       .innerJoin(schema.books, eq(schema.books.id, schema.bookFiles.bookId))
-      .where(and(inArray(schema.bookFileHashHistory.fileHash, hashes), libraryFilter))
+      .where(and(inArray(schema.bookFileHashHistory.fileHash, hashes), libraryFilter, ...contentClauses))
       .orderBy(asc(schema.bookFiles.id));
 
     const uniqueFiles = new Map<string, HashedResolvedBookFile>();
@@ -216,7 +226,9 @@ export class KoreaderRepository {
       .from(schema.koreaderBookHashLinks)
       .innerJoin(schema.bookFiles, eq(schema.bookFiles.id, schema.koreaderBookHashLinks.bookFileId))
       .innerJoin(schema.books, eq(schema.books.id, schema.bookFiles.bookId))
-      .where(and(eq(schema.koreaderBookHashLinks.userId, userId), inArray(schema.koreaderBookHashLinks.hash, hashes), libraryFilter));
+      .where(
+        and(eq(schema.koreaderBookHashLinks.userId, userId), inArray(schema.koreaderBookHashLinks.hash, hashes), libraryFilter, ...contentClauses),
+      );
 
     for (const row of manualLinks) {
       result.set(row.hash, { bookFileId: row.bookFileId, bookId: row.bookId, libraryId: row.libraryId, format: row.format });
@@ -229,14 +241,16 @@ export class KoreaderRepository {
     hash: string,
     accessibleLibraryIds: number[] | null,
     userId: number,
+    contentFilters?: ContentFilterRules,
   ): Promise<ResolvedBookFileByHash | null> {
     const libraryFilter = accessibleLibraryIds ? inArray(schema.books.libraryId, accessibleLibraryIds) : undefined;
+    const contentClauses = contentFilters ? buildContentFilterClauses(contentFilters, this.db) : [];
     const [byManualLink] = await this.db
       .select({ id: schema.bookFiles.id, bookId: schema.bookFiles.bookId, libraryId: schema.books.libraryId, format: schema.bookFiles.format })
       .from(schema.koreaderBookHashLinks)
       .innerJoin(schema.bookFiles, eq(schema.bookFiles.id, schema.koreaderBookHashLinks.bookFileId))
       .innerJoin(schema.books, eq(schema.books.id, schema.bookFiles.bookId))
-      .where(and(eq(schema.koreaderBookHashLinks.userId, userId), eq(schema.koreaderBookHashLinks.hash, hash), libraryFilter))
+      .where(and(eq(schema.koreaderBookHashLinks.userId, userId), eq(schema.koreaderBookHashLinks.hash, hash), libraryFilter, ...contentClauses))
       .limit(1);
 
     return byManualLink ?? null;
@@ -386,10 +400,11 @@ export class KoreaderRepository {
     return row ?? null;
   }
 
-  async listBookHashLinks(userId: number, limit: number, accessibleLibraryIds: number[] | null) {
+  async listBookHashLinks(userId: number, limit: number, accessibleLibraryIds: number[] | null, contentFilters?: ContentFilterRules) {
     if (accessibleLibraryIds !== null && accessibleLibraryIds.length === 0) return [];
 
     const libraryFilter = accessibleLibraryIds ? inArray(schema.books.libraryId, accessibleLibraryIds) : undefined;
+    const contentClauses = contentFilters ? buildContentFilterClauses(contentFilters, this.db) : [];
     const rows = await this.db
       .select({
         hash: schema.koreaderBookHashLinks.hash,
@@ -406,7 +421,7 @@ export class KoreaderRepository {
       .innerJoin(schema.bookFiles, eq(schema.bookFiles.id, schema.koreaderBookHashLinks.bookFileId))
       .innerJoin(schema.books, eq(schema.books.id, schema.bookFiles.bookId))
       .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.books.id))
-      .where(and(eq(schema.koreaderBookHashLinks.userId, userId), libraryFilter))
+      .where(and(eq(schema.koreaderBookHashLinks.userId, userId), libraryFilter, ...contentClauses))
       .orderBy(desc(schema.koreaderBookHashLinks.updatedAt))
       .limit(limit);
 

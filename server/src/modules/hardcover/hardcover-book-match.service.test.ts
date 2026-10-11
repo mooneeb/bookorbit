@@ -1,3 +1,4 @@
+import { BadGatewayException } from '@nestjs/common';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { EDITION_DISPLAY_LIMIT, HardcoverBookMatchService } from './hardcover-book-match.service';
@@ -281,13 +282,27 @@ describe('HardcoverBookMatchService', () => {
     );
   });
 
-  it('falls back to isbn13 when metadata_id fails', async () => {
+  it('falls back to isbn13 only when the metadata lookup confirms absence', async () => {
     mockRepo.findBookState.mockResolvedValue(undefined);
-    mockClient.query.mockRejectedValueOnce(new Error('not found')).mockResolvedValueOnce({ books: [{ id: 88, editions: [{ id: 11 }] }] });
-    const book = { ...baseBook, hardcoverMetadataId: '99' };
-    const result = await makeService().matchBook(1, 'tok', book);
+    mockClient.query.mockResolvedValueOnce({ books: [] }).mockResolvedValueOnce({ books: [{ id: 88, editions: [{ id: 11 }] }] });
+    const result = await makeService().matchBook(1, 'tok', { ...baseBook, hardcoverMetadataId: '99' });
     expect(result?.hardcoverBookId).toBe(88);
     expect(result?.matchMethod).toBe('isbn');
+  });
+
+  it('preserves metadata transport failures without poisoning the cached match', async () => {
+    mockRepo.findBookState.mockResolvedValue(undefined);
+    mockClient.query.mockRejectedValueOnce(new Error('provider timeout'));
+    await expect(makeService().matchBook(1, 'tok', { ...baseBook, hardcoverMetadataId: '99' })).rejects.toThrow('provider timeout');
+    expect(mockClient.query).toHaveBeenCalledTimes(1);
+    expect(mockRepo.upsertBookState).not.toHaveBeenCalled();
+  });
+
+  it('preserves a cached mapping when its provider metrics cannot be verified', async () => {
+    mockRepo.findBookState.mockResolvedValue({ hardcoverBookId: 100, hardcoverEditionId: 200, matchError: null });
+    mockClient.query.mockRejectedValueOnce(new Error('provider timeout'));
+    await expect(makeService().matchBook(1, 'tok', baseBook)).rejects.toThrow('provider timeout');
+    expect(mockRepo.upsertBookState).not.toHaveBeenCalled();
   });
 
   it('falls back to title+author when isbn fails', async () => {
@@ -312,11 +327,11 @@ describe('HardcoverBookMatchService', () => {
     expect(searchQuery).not.toContain('weights:');
   });
 
-  it('logs payload-level errors returned by Hardcover search', async () => {
+  it('rejects payload-level search errors without storing a no-match result', async () => {
     mockRepo.findBookState.mockResolvedValue(undefined);
     mockClient.query.mockResolvedValueOnce({ books: [] }).mockResolvedValueOnce({
       search: {
-        error: 'Number of values in `num_typos` does not match number of `query_by` fields.',
+        error: 'Provider internals: secret-token\n"unsafe"',
         ids: null,
       },
     });
@@ -324,14 +339,27 @@ describe('HardcoverBookMatchService', () => {
     const logger = Reflect.get(service, 'logger') as { warn: (message: string) => void };
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
 
-    await expect(service.matchBook(1, 'tok', baseBook)).resolves.toBeNull();
+    const match = service.matchBook(1, 'tok', baseBook);
+    await expect(match).rejects.toBeInstanceOf(BadGatewayException);
+    await expect(match).rejects.toThrow('Hardcover search failed. Retry after checking the connection.');
 
+    expect(mockRepo.upsertBookState).not.toHaveBeenCalled();
     expect(mockClient.query).toHaveBeenCalledTimes(2);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringMatching(
-        /^\[hardcover\.book_match\] \[fail\] userId=1 bookId=42 method=title_author durationMs=\d+ errorClass=SearchError error="Number of values in `num_typos` does not match number of `query_by` fields\." - title lookup failed$/,
+        /^\[hardcover\.book_match\] \[fail\] userId=1 bookId=42 method=title_author durationMs=\d+ errorClass=BadGatewayException error="Hardcover search failed\. Retry after checking the connection\." - title lookup failed$/,
       ),
     );
+  });
+
+  it('stores no_match for a valid empty title search', async () => {
+    mockRepo.findBookState.mockResolvedValue(undefined);
+    mockClient.query.mockResolvedValueOnce({ search: { error: null, ids: [] } });
+
+    await expect(makeService().matchBook(1, 'tok', { ...baseBook, isbn13: null })).resolves.toBeNull();
+
+    expect(mockRepo.upsertBookState).toHaveBeenCalledWith({ userId: 1, bookId: 42, hardcoverBookId: null, matchError: 'no_match' });
+    expect(mockClient.query).toHaveBeenCalledTimes(1);
   });
 
   it('preserves Hardcover search ranking when hydrating title matches', async () => {

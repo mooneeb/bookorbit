@@ -23,6 +23,9 @@ import { FIXTURE_CLIENT_ID, FIXTURE_ISSUER, startOidcProvider } from './oidc-pro
 import { createComicFixture } from './comic-fixture';
 import { createOrganizationFixture } from './organization-fixture';
 import { SourcePdfFaultsModule } from './source-pdf-faults.module';
+import { createE04Fixture, ensureE04ActivityAccounts, initializeE04ReadingActivity } from './e04-fixture';
+import { createE04KoboScaleFixture } from './e04-kobo-scale-fixture';
+import { ensureE04ActivityMediaFixture } from './e04-activity-media-fixture';
 import { createE03Fixture } from './e03-fixture';
 import { BookDockFinalizeFaultsModule } from './book-dock-finalize-faults.module';
 import { MigrationFaultsModule } from './migration-faults.module';
@@ -52,21 +55,30 @@ async function main() {
     process.env.IPAD_PDF_RECOVERY_ONLY === '1'
       ? 10
       : 50_000;
-  console.log(`[ipad.harness] [start] runId=${process.pid} books=${fixtureBookCount} batchSize=500 - isolated harness starting`);
+  console.log(
+    `[ipad.harness] [start] runId=${process.pid} books=${fixtureBookCount} batchSize=500 restart=${process.env.IPAD_E04_RESTART === '1'} - isolated harness starting`,
+  );
   const database = new URL(process.env.DATABASE_URL ?? '');
   if (!['localhost', '127.0.0.1'].includes(database.hostname) || !/^bookorbit_ipad_[0-9]+_e2e$/.test(database.pathname.slice(1))) {
     throw new Error('The iPad harness requires its own localhost bookorbit_ipad_<run>_e2e database');
   }
-  const reuseFixture = process.env.IPAD_REUSE_FIXTURE === '1';
+  const e04Proof = process.env.IPAD_E04_PROOF === '1';
+  const e04Restart = process.env.IPAD_E04_RESTART === '1';
+  if (e04Proof && process.env.NODE_ENV !== 'test') throw new Error('E04 fixtures require the isolated test environment');
+  if (e04Restart && (!e04Proof || process.env.NODE_ENV !== 'test')) throw new Error('E04 restart requires the isolated test proof');
+  const reuseFixture = process.env.IPAD_REUSE_FIXTURE === '1' || e04Restart;
   const resumeFolder = process.env.IPAD_HARNESS_CONTENT_DIR;
   if (reuseFixture && (!resumeFolder || !resumeFolder.startsWith(join(tmpdir(), 'bookorbit-ipad-')))) {
     throw new Error('Fixture reuse requires an existing isolated temporary content folder');
   }
   const folder = reuseFixture ? resumeFolder! : await mkdtemp(join(tmpdir(), 'bookorbit-ipad-'));
-  if (!reuseFixture) disposableFixtureFolder = folder;
+  if (!reuseFixture || e04Restart) disposableFixtureFolder = folder;
   if (reuseFixture) await stat(folder);
   const progressOnly = process.env.IPAD_PROGRESS_ONLY === '1';
-  const apiPort = process.env.IPAD_E05_PROOF === '1' ? 16486 : progressOnly ? 16487 : 16482;
+  const e04ApiPort = Number(process.env.IPAD_E04_API_PORT ?? 16502);
+  if (e04Proof && (!Number.isInteger(e04ApiPort) || e04ApiPort < 1024 || e04ApiPort > 65535)) throw new Error('E04 API port is invalid');
+  const apiPort = process.env.IPAD_E05_PROOF === '1' ? 16486 : e04Proof ? e04ApiPort : progressOnly ? 16487 : 16482;
+  let e04Fixture: Awaited<ReturnType<typeof createE04Fixture>> | undefined;
   process.env.APP_DATA_PATH = join(folder, 'data');
   process.env.COVER_SLOTS_BACKFILL_MODE = 'skip';
   console.log(`[ipad.fixture] [start] runId=${process.pid} stage=application - constructing isolated application`);
@@ -79,9 +91,13 @@ async function main() {
   await app.register(fastifyMultipart as never, { limits: { fileSize: 20 * 1024 * 1024 } });
   const db = app.get<NodePgDatabase<typeof schema>>(DB);
   const coverFixtureFolder = process.env.IPAD_COVER_FIXTURE_DIR;
-  if (!coverFixtureFolder) throw new Error('The iPad harness requires its generated cover fixture folder');
+  if (!coverFixtureFolder && !e04Restart) throw new Error('The iPad harness requires its generated cover fixture folder');
   const oidc =
-    progressOnly || process.env.IPAD_E05_PROOF === '1' || process.env.IPAD_ANNOTATIONS_PROOF === '1' || process.env.IPAD_E03_PROOF === '1'
+    process.env.IPAD_E05_PROOF === '1' ||
+    e04Restart ||
+    progressOnly ||
+    process.env.IPAD_ANNOTATIONS_PROOF === '1' ||
+    process.env.IPAD_E03_PROOF === '1'
       ? undefined
       : await startOidcProvider();
 
@@ -114,7 +130,7 @@ async function main() {
       ])
       .returning({ id: schema.users.id });
     await db.insert(schema.userPermissions).values({ userId: editor.id, permissionName: Permission.LibraryEditMetadata });
-    if (process.env.IPAD_ANNOTATIONS_PROOF === '1') {
+    if (process.env.IPAD_ANNOTATIONS_PROOF === '1' || e04Proof) {
       await db.insert(schema.userPermissions).values({ userId: reader.id, permissionName: Permission.LibraryDownload });
     }
     const [provider] = await db
@@ -230,7 +246,7 @@ async function main() {
       const mixedPDF = join(folder, `cover-book-${bookId}.pdf`);
       const mixedAudio = join(folder, `cover-audio-${bookId}.m4a`);
       await copyFile(pdfPath, mixedPDF);
-      await copyFile(join(coverFixtureFolder, 'cover-audio.m4a'), mixedAudio);
+      await copyFile(join(coverFixtureFolder!, 'cover-audio.m4a'), mixedAudio);
       const mixedFiles = await db
         .insert(schema.bookFiles)
         .values([
@@ -271,15 +287,61 @@ async function main() {
       })
       .returning({ id: schema.bookFiles.id });
     await db.update(schema.books).set({ primaryFileId: comic.id }).where(eq(schema.books.id, 10));
+    if (e04Proof) {
+      e04Fixture = await createE04Fixture(db, {
+        libraryId: library.id,
+        ownerId: owner.id,
+        passwordHash,
+        smtpPort: Number(process.env.IPAD_E04_SMTP_PORT),
+      });
+    }
     if (process.env.IPAD_E03_PROOF === '1') await createE03Fixture(db, folder);
   }
   console.log(`[ipad.fixture] [start] runId=${process.pid} stage=listen - initializing HTTP listener`);
   await app.listen(apiPort, '127.0.0.1');
+  if (e04Fixture) {
+    const readingActivity = await initializeE04ReadingActivity(`http://127.0.0.1:${apiPort}/api/v1`, e04Fixture);
+    const fixtureArtifact = { ...e04Fixture, readingActivity, contentDirectory: folder };
+    await writeFile(join(folder, 'e04-fixture.json'), `${JSON.stringify(fixtureArtifact, null, 2)}\n`);
+    if (process.env.IPAD_E04_ARTIFACTS_DIR) {
+      await writeFile(join(process.env.IPAD_E04_ARTIFACTS_DIR, 'e04-fixture.json'), `${JSON.stringify(fixtureArtifact, null, 2)}\n`);
+    }
+  }
+  if (e04Proof && (process.env.IPAD_E04_ACTIVITY_FIXTURES === '1' || process.env.IPAD_KOBO_SCALE_FIXTURE === '1')) {
+    const artifactPath = join(folder, 'e04-fixture.json');
+    const fixtureArtifact = JSON.parse(await readFile(artifactPath, 'utf8')) as Record<string, unknown>;
+    fixtureArtifact.contentDirectory ??= folder;
+    if (process.env.IPAD_E04_ACTIVITY_FIXTURES === '1') {
+      const [book] = await db
+        .select({ libraryId: schema.books.libraryId, libraryFolderId: schema.books.libraryFolderId })
+        .from(schema.books)
+        .where(eq(schema.books.id, 1))
+        .limit(1);
+      if (!book) throw new Error('The E04 activity fixture library is absent');
+      const accounts = await ensureE04ActivityAccounts(db, { libraryId: book.libraryId, passwordHash: await hash('IpadFixture123', 4) });
+      const media = await ensureE04ActivityMediaFixture(db, {
+        contentDirectory: folder,
+        libraryId: book.libraryId,
+        libraryFolderId: book.libraryFolderId,
+      });
+      fixtureArtifact.activity = {
+        ...(fixtureArtifact.activity as Record<string, unknown> | undefined),
+        ...media,
+        accounts,
+        pdfBookId: 1,
+        pdfFileId: 1,
+      };
+    }
+    if (process.env.IPAD_KOBO_SCALE_FIXTURE === '1') fixtureArtifact.koboScale = await createE04KoboScaleFixture(db);
+    await writeFile(artifactPath, `${JSON.stringify(fixtureArtifact, null, 2)}\n`);
+    if (process.env.IPAD_E04_ARTIFACTS_DIR)
+      await writeFile(join(process.env.IPAD_E04_ARTIFACTS_DIR, 'e04-fixture.json'), `${JSON.stringify(fixtureArtifact, null, 2)}\n`);
+  }
   if (!reuseFixture) {
     const coverStore = app.get(BookCoverStore);
     for (const bookId of [6, 8]) {
       for (const medium of ['ebook', 'audio'] as const) {
-        await coverStore.saveExtracted(bookId, medium, await readFile(join(coverFixtureFolder, `${medium}-extracted.png`)), {
+        await coverStore.saveExtracted(bookId, medium, await readFile(join(coverFixtureFolder!, `${medium}-extracted.png`)), {
           origin: 'embedded',
           overwrite: true,
         });
@@ -287,16 +349,17 @@ async function main() {
     }
   }
   console.log(
-    `[ipad.harness] [end] runId=${process.pid} durationMs=${Date.now() - started} books=${fixtureBookCount} port=${apiPort} - localhost server ready`,
+    `[ipad.harness] [end] runId=${process.pid} durationMs=${Date.now() - started} books=${fixtureBookCount} port=${apiPort} reused=${reuseFixture} - localhost server ready`,
   );
-  const close = async () => {
+  const close = async ({ preserveFixture = false } = {}) => {
     await app.close();
     if (oidc) await new Promise<void>((resolve, reject) => oidc.close((error) => (error ? reject(error) : resolve())));
-    await cleanupFixture();
+    if (!preserveFixture) await cleanupFixture();
     process.exit(0);
   };
   process.once('SIGTERM', () => void close());
   process.once('SIGINT', () => void close());
+  if (e04Proof) process.once('SIGUSR2', () => void close({ preserveFixture: true }));
 }
 
 void main().catch(async (error: unknown) => {

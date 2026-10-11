@@ -22,6 +22,12 @@ export const appConfig = registerAs('app', () => ({
   swaggerEnabled: parseBooleanFlag(process.env.SWAGGER_ENABLED, false),
   koboCloudscraperPython: process.env.KOBO_CLOUDSCRAPER_PYTHON?.trim() || undefined,
   koreaderPluginSourcePath: process.env.KOREADER_PLUGIN_PATH?.trim() || undefined,
+  hardcoverGraphqlUrl: testProviderUrl('IPAD_TEST_HARDCOVER_GRAPHQL_URL', 'https://api.hardcover.app/v1/graphql'),
+  hardcoverRequestTimeoutMs: testProviderTimeout('IPAD_TEST_HARDCOVER_TIMEOUT_MS', 15_000),
+  readwiseBaseUrl: testProviderUrl('IPAD_TEST_READWISE_BASE_URL', 'https://readwise.io/api/v2'),
+  readwiseRequestTimeoutMs: testProviderTimeout('IPAD_TEST_READWISE_TIMEOUT_MS', 15_000),
+  storygraphBaseUrl: testProviderUrl('IPAD_TEST_STORYGRAPH_BASE_URL', 'https://app.thestorygraph.com'),
+  storygraphRequestTimeoutMs: testProviderTimeout('IPAD_TEST_STORYGRAPH_TIMEOUT_MS', 30_000),
 }));
 
 export const dbConfig = registerAs('db', () => ({
@@ -106,6 +112,34 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
     return fallback;
   }
   return Math.floor(parsed);
+}
+
+function testProviderUrl(key: string, fallback: string): string {
+  if (process.env.NODE_ENV !== 'test') return fallback;
+  const value = process.env[key]?.trim();
+  if (!value) return fallback;
+  try {
+    const url = new URL(value);
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    ) {
+      return fallback;
+    }
+    return url.toString().replace(/\/+$/, '');
+  } catch {
+    return fallback;
+  }
+}
+
+function testProviderTimeout(key: string, fallback: number): number {
+  if (process.env.NODE_ENV !== 'test') return fallback;
+  const value = Number(process.env[key]);
+  return Number.isInteger(value) && value >= 1 && value <= 30_000 ? value : fallback;
 }
 
 function parseBooleanFlag(value: string | undefined, fallback: boolean): boolean {

@@ -5,8 +5,13 @@ import type { SmartScope } from '@bookorbit/types'
 import CreateSmartScopeDialog from '../CreateSmartScopeDialog.vue'
 
 const mockState = vi.hoisted(() => ({
+  canSyncToKobo: true,
   createSmartScope: vi.fn<(payload: Record<string, unknown>) => Promise<SmartScope>>(),
   push: vi.fn<() => void>(),
+}))
+
+vi.mock('@/features/auth/composables/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: () => mockState.canSyncToKobo }),
 }))
 
 vi.mock('@/features/smart-scope/composables/useSmartScopes', () => ({
@@ -71,7 +76,13 @@ async function fillRequiredFields(wrapper: ReturnType<typeof mountDialog>, name:
 describe('CreateSmartScopeDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockState.canSyncToKobo = true
     mockState.createSmartScope.mockResolvedValue(makeSmartScope())
+  })
+
+  it('hides Kobo subscription creation without Kobo permission', () => {
+    mockState.canSyncToKobo = false
+    expect(mountDialog().findAll('input[type="checkbox"]')).toHaveLength(1)
   })
 
   it('labels the sharing checkbox with the message the editor panel also uses', () => {

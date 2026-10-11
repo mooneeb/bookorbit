@@ -74,7 +74,7 @@ export class KoreaderController {
   @UseGuards(KoreaderAuthGuard)
   @Get('syncs/progress/:document')
   async getProgress(@CurrentUser() user: RequestUser, @Param('document') document: string) {
-    const progress = await this.koreaderService.getProgress(user.id, document);
+    const progress = await this.koreaderService.getProgress(user.id, document, user.isSuperuser ? undefined : user.contentFilters);
     return progress ?? {};
   }
 

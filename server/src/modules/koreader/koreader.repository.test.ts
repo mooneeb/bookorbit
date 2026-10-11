@@ -56,6 +56,22 @@ describe('KoreaderRepository', () => {
     repo = await makeRepository(db);
   });
 
+  it.each(['single', 'batch', 'links'])('enforces content policy on every %s hash source in SQL', async (source) => {
+    const captured = createCapturingDb();
+    const repository = await makeRepository(captured.db);
+    const filters = { includeTagIds: [101], includeGenreIds: [], excludeTagIds: [102], excludeGenreIds: [103] };
+    if (source === 'single') await repository.resolveBookFileByHash('known', [31], 7, filters);
+    else if (source === 'batch') await repository.resolveBookFilesByHashes(['known'], [31], 7, filters);
+    else await repository.listBookHashLinks(7, 100, [31], filters);
+    expect(captured.queries).toHaveLength(source === 'links' ? 1 : 3);
+    for (const query of captured.queries) {
+      expect(query.sql).toContain('"book_tags"');
+      expect(query.sql).toContain('"book_genres"');
+      expect(query.sql).toContain('not exists');
+      expect(query.params).toEqual(expect.arrayContaining([31, 101, 102, 103]));
+    }
+  });
+
   describe('progress resets', () => {
     it('returns the reset timestamp when one is outstanding', async () => {
       const resetAt = new Date('2026-02-02T12:00:00.000Z');

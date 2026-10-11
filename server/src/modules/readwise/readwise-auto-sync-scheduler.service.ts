@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import {
@@ -8,6 +9,7 @@ import {
   READWISE_AUTO_SYNC_RETRY_BASE_MS,
 } from './readwise.constants';
 import { ReadwiseSyncService } from './readwise-sync.service';
+import { ReadwiseRepository } from './readwise.repository';
 
 interface AutoSyncState {
   userId: number;
@@ -24,9 +26,21 @@ const SCHEDULER_EVENT = 'readwise.scheduler';
 export class ReadwiseAutoSyncSchedulerService {
   private readonly logger = new Logger(ReadwiseAutoSyncSchedulerService.name);
   private readonly states = new Map<number, AutoSyncState>();
-  private readonly userSyncQueues = new Map<number, Promise<void>>();
+  private readonly userSyncQueues = new Map<number, Promise<boolean>>();
+  private reconciliationCursor = 0;
 
-  constructor(private readonly syncService: ReadwiseSyncService) {}
+  constructor(
+    private readonly syncService: ReadwiseSyncService,
+    @Optional() private readonly repo?: ReadwiseRepository,
+  ) {}
+
+  @Interval(60_000)
+  async reconcileMissedEvents(): Promise<void> {
+    if (!this.repo) return;
+    const users = await this.repo.findSyncCandidates(this.reconciliationCursor, 50);
+    this.reconciliationCursor = users.length === 50 ? users[users.length - 1]! : 0;
+    for (const userId of users) this.requestSync(userId);
+  }
 
   requestSync(userId: number): void {
     const state = this.states.get(userId) ?? {
@@ -63,7 +77,10 @@ export class ReadwiseAutoSyncSchedulerService {
     let nextDelayMs = READWISE_AUTO_SYNC_DEBOUNCE_MS;
     const startedAtMs = Date.now();
     try {
-      await this.enqueue(userId, () => this.syncService.flush(userId));
+      if (await this.enqueue(userId, () => this.syncService.flush(userId))) {
+        state.pending = true;
+        state.firstPendingAtMs = Date.now();
+      }
       state.retryAttempt = 0;
     } catch (err) {
       const durationMs = Date.now() - startedAtMs;
@@ -95,8 +112,8 @@ export class ReadwiseAutoSyncSchedulerService {
     return Math.max(0, READWISE_AUTO_SYNC_MAX_WAIT_MS - elapsedMs);
   }
 
-  private enqueue(userId: number, task: () => Promise<void>): Promise<void> {
-    const previous = this.userSyncQueues.get(userId) ?? Promise.resolve();
+  private enqueue(userId: number, task: () => Promise<boolean>): Promise<boolean> {
+    const previous = this.userSyncQueues.get(userId) ?? Promise.resolve(false);
     const current = previous.catch(() => undefined).then(task);
     this.userSyncQueues.set(userId, current);
     current

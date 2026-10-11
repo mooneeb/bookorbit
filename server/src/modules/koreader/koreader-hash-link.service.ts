@@ -40,7 +40,12 @@ export class KoreaderHashLinkService {
 
     const accessibleLibraryIds = await this.repo.getAccessibleLibraryIds(user.id);
     const hashes = rows.filter((row) => !row.manualLinkRequested).map((row) => row.hash);
-    const resolved = await this.repo.resolveBookFilesByHashes(hashes, accessibleLibraryIds, user.id);
+    const resolved = await this.repo.resolveBookFilesByHashes(
+      hashes,
+      accessibleLibraryIds,
+      user.id,
+      user.isSuperuser ? undefined : user.contentFilters,
+    );
     if (resolved.size > 0) {
       await this.repo.clearUnmatchedBooks(
         user.id,
@@ -94,7 +99,12 @@ export class KoreaderHashLinkService {
 
   async listManualHashLinks(user: RequestUser): Promise<KoreaderManualHashLink[]> {
     const accessibleLibraryIds = await this.repo.getAccessibleLibraryIds(user.id);
-    const rows = await this.repo.listBookHashLinks(user.id, MANUAL_HASH_LINK_LIMIT, accessibleLibraryIds);
+    const rows = await this.repo.listBookHashLinks(
+      user.id,
+      MANUAL_HASH_LINK_LIMIT,
+      accessibleLibraryIds,
+      user.isSuperuser ? undefined : user.contentFilters,
+    );
 
     return rows.map((row) => ({
       hash: row.hash,

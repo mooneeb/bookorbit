@@ -1,6 +1,6 @@
-import { Logger } from '@nestjs/common';
+import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { mkdir, mkdtemp, opendir, readFile, readdir, rm, symlink, writeFile } from 'fs/promises';
+import { mkdir, mkdtemp, open, opendir, readFile, readdir, rm, symlink, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -12,7 +12,7 @@ const HASH = 'a'.repeat(32);
 
 vi.mock('fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs/promises')>();
-  return { ...actual, opendir: vi.fn(actual.opendir) };
+  return { ...actual, open: vi.fn(actual.open), opendir: vi.fn(actual.opendir) };
 });
 
 describe('KoboDownloadHashRegistrationService', () => {
@@ -38,6 +38,7 @@ describe('KoboDownloadHashRegistrationService', () => {
 
   beforeEach(async () => {
     services = [];
+    vi.mocked(open).mockClear();
     vi.mocked(opendir).mockClear();
     root = await mkdtemp(join(tmpdir(), 'kobo-hash-registration-'));
     directory = join(root, '.kobo-download-hashes');
@@ -72,6 +73,15 @@ describe('KoboDownloadHashRegistrationService', () => {
     expect(await readdir(directory)).toEqual([`22-${HASH}`]);
   });
 
+  it('rejects when the retry file cannot be synced and closes its handle', async () => {
+    repository.registerDeliveredHash.mockRejectedValue(new Error('Database unavailable'));
+    const entry = { sync: vi.fn().mockRejectedValue(new Error('Disk unavailable')), close: vi.fn().mockResolvedValue(undefined) };
+    vi.mocked(open).mockResolvedValueOnce(entry as never);
+    await expect(service.record(22, HASH)).rejects.toThrow(ServiceUnavailableException);
+    expect(entry.close).toHaveBeenCalledExactlyOnceWith();
+    expect(warnings).toHaveBeenCalledTimes(2);
+  });
+
   it('retains different source files and variants independently', async () => {
     repository.registerDeliveredHash.mockRejectedValue(new Error('Database unavailable'));
     await service.record(22, HASH);
@@ -85,6 +95,8 @@ describe('KoboDownloadHashRegistrationService', () => {
     await service.record(22, HASH);
     const restarted = await createService();
     await restarted.replay();
+    await restarted.replay();
+    expect(repository.registerDeliveredHash).toHaveBeenCalledTimes(2);
     expect(repository.registerDeliveredHash).toHaveBeenLastCalledWith(22, HASH);
     expect(await readdir(directory)).toEqual([]);
   });
@@ -199,21 +211,21 @@ describe('KoboDownloadHashRegistrationService', () => {
     expect(opendir).toHaveBeenCalledTimes(1);
   });
 
-  it('does not write through a symlink retry directory and still allows the download', async () => {
+  it('rejects lost durability without writing through a symlink retry directory', async () => {
     const outside = join(root, 'outside');
     await mkdir(outside);
     await symlink(outside, directory);
     repository.registerDeliveredHash.mockRejectedValue(new Error('Database unavailable'));
-    await expect(service.record(22, HASH)).resolves.toBeUndefined();
+    await expect(service.record(22, HASH)).rejects.toThrow(ServiceUnavailableException);
     await service.replay();
     expect(await readdir(outside)).toEqual([]);
     expect(warnings).toHaveBeenCalledWith(expect.stringContaining('symbolic link'));
   });
 
-  it('allows downloads when both database and retry storage are unavailable and logs both failures', async () => {
+  it('rejects downloads when both database and retry storage are unavailable and logs both failures', async () => {
     await writeFile(directory, 'not a directory');
     repository.registerDeliveredHash.mockRejectedValue(new Error('Database unavailable'));
-    await expect(service.record(22, HASH)).resolves.toBeUndefined();
+    await expect(service.record(22, HASH)).rejects.toThrow(ServiceUnavailableException);
     expect(warnings).toHaveBeenCalledTimes(2);
     expect(warnings).toHaveBeenLastCalledWith(expect.stringContaining('identity retry could not be persisted'));
   });
@@ -224,7 +236,7 @@ describe('KoboDownloadHashRegistrationService', () => {
     [2147483648, HASH],
   ])('does not persist invalid identity %s/%s', async (id, hash) => {
     repository.registerDeliveredHash.mockRejectedValue(new Error('Database unavailable'));
-    await service.record(id as number, hash as string);
+    await expect(service.record(id as number, hash as string)).rejects.toThrow(ServiceUnavailableException);
     await expect(readdir(directory)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 

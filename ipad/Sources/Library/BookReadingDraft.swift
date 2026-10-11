@@ -7,10 +7,12 @@ final class BookReadingDraft {
   var started: String
   var finished: String
   var note: String
+  var rating: Double?
   private var originalStatus: String
   private var originalStarted: String
   private var originalFinished: String
   private var originalNote: String
+  private var originalRating: Double?
   let timeZone: TimeZone
 
   init(book: BookDetail, timeZone: TimeZone) {
@@ -23,14 +25,23 @@ final class BookReadingDraft {
     self.started = started
     self.finished = finished
     self.note = note
+    rating = book.rating
     originalStatus = status
     originalStarted = started
     originalFinished = finished
     originalNote = Self.normalized(note)
+    originalRating = book.rating
   }
 
   var noteChanged: Bool { Self.normalized(note) != originalNote }
-  var hasChanges: Bool { statusPayload != nil || noteChanged }
+  var ratingChanged: Bool { rating != originalRating }
+  var hasChanges: Bool { statusPayload != nil || noteChanged || ratingChanged }
+
+  var ratingPayload: UpdateBookRatingPayload {
+    var value = UpdateBookRatingPayload()
+    value.rating = rating.map { .set($0) } ?? .clear
+    return value
+  }
 
   var statusPayload: SetBookReadingStatusPayload? {
     let started = started.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -49,6 +60,9 @@ final class BookReadingDraft {
   }
 
   var validationError: String? {
+    if let rating, !rating.isFinite || rating < 0 || rating > 5 {
+      return "Choose a rating between zero and five stars."
+    }
     guard BookReadingVocabulary.statuses.contains(status) else { return "Choose a reading status." }
     let today = ReadingDate.format(Date(), timeZone: timeZone)
     let started = started.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -101,6 +115,11 @@ final class BookReadingDraft {
   func acknowledgeNote(_ value: String?) {
     note = value ?? ""
     originalNote = Self.normalized(note)
+  }
+
+  func acknowledgeRating(_ value: Double?) {
+    rating = value
+    originalRating = value
   }
 
   static func label(_ status: String) -> String {

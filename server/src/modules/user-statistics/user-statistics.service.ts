@@ -284,10 +284,15 @@ export class UserStatisticsService implements OnModuleInit, OnModuleDestroy {
     const timeZone = resolveTimeZone(user.settings?.timezone, 'UTC');
     const today = toDateKeyInTimeZone(new Date(), timeZone);
     const year = Number(today.slice(0, 4));
+    const goalBooksValue = (user.settings?.dashboardConfig as { readingGoal?: unknown } | undefined)?.readingGoal;
+    const goalBooks = typeof goalBooksValue === 'number' && Number.isFinite(goalBooksValue) && goalBooksValue > 0 ? Math.round(goalBooksValue) : null;
+    const achievementsEnabled = (user.settings?.achievementPreferences as { enabled?: unknown } | undefined)?.enabled !== false;
     const key = this.buildUserCacheKey('activity-overview', user, {
       libraries: this.normalizeLibraryIds(query.libraryIds),
       timeZone,
       today,
+      goalBooks: goalBooks ?? 0,
+      achievementsEnabled: achievementsEnabled ? 1 : 0,
     });
 
     this.readingAttemptEvents.flushPendingChanges(user.id);
@@ -359,9 +364,6 @@ export class UserStatisticsService implements OnModuleInit, OnModuleDestroy {
       }
 
       let completedBooks = 0;
-      const goalBooksValue = (user.settings?.dashboardConfig as { readingGoal?: unknown } | undefined)?.readingGoal;
-      const goalBooks =
-        typeof goalBooksValue === 'number' && Number.isFinite(goalBooksValue) && goalBooksValue > 0 ? Math.round(goalBooksValue) : null;
       const goalPoints = Array.from({ length: 12 }, (_, index) => {
         const month = index + 1;
         completedBooks += completionByMonth.get(`${year}-${month}`) ?? 0;
@@ -435,7 +437,7 @@ export class UserStatisticsService implements OnModuleInit, OnModuleDestroy {
         generatedAt: new Date().toISOString(),
         timezone: timeZone,
         libraryIds: query.libraryIds?.length ? [...(libraryIds ?? [])].sort((a, b) => a - b) : [],
-        achievementsEnabled: (user.settings?.achievementPreferences as { enabled?: unknown } | undefined)?.enabled !== false,
+        achievementsEnabled,
         snapshot: {
           today: this.sumDays(allDays.slice(-1)),
           lastSevenDays: this.sumDays(allDays.slice(-7)),

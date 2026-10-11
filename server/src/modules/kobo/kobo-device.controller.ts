@@ -6,6 +6,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   Param,
@@ -96,8 +97,32 @@ export class KoboDeviceController {
     const id = await this.bookIdentityService.resolveBookIdByEntitlementId(user.id, bookId);
     if (id === null) return this.proxyService.forward(req, reply, device.deviceToken);
     const startedAt = Date.now();
+    const completion = new Promise<{ error?: Error }>((resolve) => {
+      const cleanup = () => {
+        reply.raw.off('finish', finish);
+        reply.raw.off('close', close);
+        reply.raw.off('error', fail);
+      };
+      const finish = () => {
+        cleanup();
+        resolve({});
+      };
+      const close = () => {
+        cleanup();
+        resolve(reply.raw.writableFinished ? {} : { error: new InternalServerErrorException('Kobo download interrupted before completion') });
+      };
+      const fail = (error: Error) => {
+        cleanup();
+        resolve({ error });
+      };
+      reply.raw.once('finish', finish);
+      reply.raw.once('close', close);
+      reply.raw.once('error', fail);
+    });
     try {
       await this.downloadService.streamBook(user.id, id, reply);
+      const outcome = await completion;
+      if (outcome.error) throw outcome.error;
       await this.historyService.recordSuccess({
         userId: user.id,
         deviceId: device.deviceId,
@@ -115,7 +140,7 @@ export class KoboDeviceController {
         },
         error,
       );
-      throw error;
+      if (!reply.sent) throw error;
     }
   }
 

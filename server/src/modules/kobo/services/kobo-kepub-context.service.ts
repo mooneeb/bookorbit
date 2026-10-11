@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 
 import { KepubContext } from '../../position-converter/kobo-span-converter.service';
 import { BookReadService } from '../../book/book-read.service';
@@ -38,11 +38,22 @@ export class KoboKepubContextService {
     return file ?? null;
   }
 
+  async resolveReaderFiles(bookIds: number[]): Promise<Map<number, KepubReaderFile>> {
+    if (bookIds.length > 100) throw new BadRequestException('Kobo reader-file batches require at most 100 book IDs');
+    if (bookIds.length === 0) return new Map();
+    const files = await this.bookReadService.findPrimaryReaderFilesByBookIds(bookIds);
+    return new Map(files.map((file) => [file.bookId, file]));
+  }
+
   async resolveForBook(userId: number, bookId: number): Promise<KepubContextResult> {
     const file = await this.resolveReaderFile(bookId);
     if (!file) return { ok: false, reason: 'no_reader_file', settings: null };
 
     const settings = await this.koboSettingsService.getSettings(userId);
+    return this.resolveForReaderFile(file, settings);
+  }
+
+  async resolveForReaderFile(file: KepubReaderFile, settings: KoboSettings): Promise<KepubContextResult> {
     if (file.format === 'kepub') {
       return {
         ok: true,
@@ -59,7 +70,7 @@ export class KoboKepubContextService {
       kepubPath = await this.kepubConversionService.getKepubPath({
         sourcePath: file.absolutePath,
         fileHash: file.fileHash,
-        bookId,
+        bookId: file.bookId,
         hyphenate: settings.forceEnableHyphenation,
       });
     } catch {

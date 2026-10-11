@@ -502,6 +502,7 @@ export class KoreaderCatalogService {
     if (file.role !== 'content') {
       throw new NotFoundException('File not found');
     }
+    reply.header('Cache-Control', 'private, no-store');
 
     if (file.format?.toLowerCase() === 'epub' && file.mediaOverlayAvailable === true) {
       try {
@@ -533,9 +534,10 @@ export class KoreaderCatalogService {
     });
 
     try {
-      const { size } = await stat(file.absolutePath);
+      const { size, mtimeMs } = await stat(file.absolutePath);
       reply.header('Content-Disposition', contentDispositionHeader('attachment', filename, 'download'));
       reply.header('Content-Length', size);
+      reply.header('ETag', `W/"${size}-${mtimeMs}"`);
       reply.type(fileMimeType(format));
       reply.send(createReadStream(file.absolutePath));
     } catch {

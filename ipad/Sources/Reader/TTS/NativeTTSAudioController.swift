@@ -32,6 +32,11 @@ final class NativeTTSAudioController {
   private(set) var captions: [Caption] = []
   var elapsed: Double { player?.currentTime ?? 0 }
   var isPrepared: Bool { player != nil }
+  var readingActivityEvidence: NativeReadingPlaybackEvidence {
+    NativeReadingPlaybackEvidence(
+      isPlaying: player?.isPlaying == true, positionSeconds: elapsed,
+      rate: Double(player?.rate ?? 1))
+  }
   var hasWordTimings: Bool { !captions.isEmpty }
 
   func prepare(

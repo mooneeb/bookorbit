@@ -898,6 +898,7 @@ describe('KoreaderCatalogService', () => {
       `attachment; filename="Dune - Frank Herbert.epub"; filename*=UTF-8''Dune%20-%20Frank%20Herbert.epub`,
     );
     expect(reply.header).toHaveBeenCalledWith('Content-Length', 1234);
+    expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
     expect(reply.type).toHaveBeenCalledWith('application/epub+zip');
     expect(mockCreateReadStream).toHaveBeenCalledWith('/path/to/library/dune.epub');
   });

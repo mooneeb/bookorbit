@@ -1,12 +1,8 @@
 import { ref } from 'vue'
 import { api } from '@/lib/api'
 
-export interface EmailPreferences {
-  userId: number
-  defaultProviderId: number | null
-  defaultRecipientId: number | null
-  defaultTemplateId: number | null
-}
+import type { EmailPreferences } from '@bookorbit/types'
+export type { EmailPreferences } from '@bookorbit/types'
 
 const preferences = ref<EmailPreferences | null>(null)
 

@@ -25,6 +25,7 @@ final class NativeTTSServerSpeech {
   init(api: BookOrbitAPI) { self.api = api }
 
   var isPrepared: Bool { audio.isPrepared && !isPreviewing && !isLoadingPreview }
+  var readingActivityEvidence: NativeReadingPlaybackEvidence { audio.readingActivityEvidence }
 
   func prepare(
     chunk: EPUBSpeechChunk, providerID: String, voiceID: String, speed: Double,

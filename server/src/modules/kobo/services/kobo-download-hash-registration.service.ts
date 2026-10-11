@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import { Interval } from '@nestjs/schedule';
 import { mkdir, open, opendir, realpath, unlink } from 'fs/promises';
@@ -45,7 +45,7 @@ export class KoboDownloadHashRegistrationService implements OnApplicationBootstr
     }
     try {
       if (!Number.isSafeInteger(fileId) || fileId <= 0 || fileId > 2_147_483_647 || !/^[0-9a-f]{32}$/.test(hash)) {
-        throw new Error('Invalid delivered identity');
+        throw new ServiceUnavailableException('Invalid delivered identity');
       }
       const directory = await this.pendingDirectory(true);
       // The immutable filename carries the identity, so recovery never needs the temporary book.
@@ -68,6 +68,7 @@ export class KoboDownloadHashRegistrationService implements OnApplicationBootstr
       }
     } catch (error) {
       this.logFailure(error, startedAt, fileId, 'identity retry could not be persisted');
+      throw new ServiceUnavailableException('Unable to persist delivered book identity');
     }
   }
 

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, pgTable, real, serial, text, timestamp, unique, varchar } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, real, serial, text, timestamp, unique, varchar } from 'drizzle-orm/pg-core';
+import type { StorygraphActiveSyncStatus } from '@bookorbit/types';
 
 import { books } from './books';
 import { users } from './auth';
@@ -17,6 +18,7 @@ export const storygraphUserSettings = pgTable('storygraph_user_settings', {
   autoSyncOnStatusChange: boolean('auto_sync_on_status_change').notNull().default(true),
   autoSyncOnProgressUpdate: boolean('auto_sync_on_progress_update').notNull().default(true),
   lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+  lastSyncStatus: jsonb('last_sync_status').$type<StorygraphActiveSyncStatus>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .defaultNow()

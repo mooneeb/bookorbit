@@ -2287,6 +2287,22 @@ export class BookRepository {
       });
   }
 
+  async setRatingConditionally(bookId: number, rating: number | null, userId: number, baseRating: number | null): Promise<boolean> {
+    const result = await this.db.execute(sql`
+      insert into ${userBookRatings} (user_id, book_id, rating, updated_at)
+      select ${userId}, ${bookId}, ${rating}::integer, ${new Date()}
+      where ${baseRating}::integer is null or exists (
+        select 1 from ${userBookRatings}
+        where user_id = ${userId} and book_id = ${bookId} and rating is not distinct from ${baseRating}::integer
+      )
+      on conflict (user_id, book_id) do update
+      set rating = excluded.rating, updated_at = excluded.updated_at
+      where ${userBookRatings.rating} is not distinct from ${baseRating}::integer
+      returning book_id
+    `);
+    return result.rows.length > 0;
+  }
+
   async findTagsByBookIds(bookIds: number[], executor: MetadataReadExecutor = this.db): Promise<Map<number, string[]>> {
     if (bookIds.length === 0) return new Map();
     const rows = await executor

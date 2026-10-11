@@ -70,7 +70,10 @@
     "ipad:test:pdf-reader": "node scripts/ipad/run-harness.mjs --ui --web --pdf-reader",
     "ipad:test:reader-proof": "node scripts/ipad/run-harness.mjs --ui --reader-proof",
     "ipad:test:reader-cross-client": "node scripts/ipad/run-harness.mjs --ui --web --reader-proof",
-    "ipad:test:epub-proof": "node scripts/ipad/run-harness.mjs --ui --reader-proof --epub-proof"
+    "ipad:test:epub-proof": "node scripts/ipad/run-harness.mjs --ui --reader-proof --epub-proof",
+    "ipad:test:reading-sharing": "node scripts/ipad/run-harness.mjs --reading-sharing --ui --web",
+    "ipad:test:reading-sharing:http": "node scripts/ipad/run-harness.mjs --reading-sharing",
+    "ipad:test:reading-sharing:list": "node scripts/ipad/e04-selection.mjs"
   },
   "engines": {
     "node": ">=24",
