@@ -15,7 +15,9 @@
 >
 > Maintainers may ask you to explain the diff or personally demonstrate selected behavior.
 
-Closes #
+<!-- Use Closes #<issue> when this PR completes the issue. For partial or related work, use Ref #<issue> or Related to #<issue> so it stays open. -->
+
+Ref #
 
 - **Maintainer approval:** (link to the approval comment)
 - **Assigned contributor:** @

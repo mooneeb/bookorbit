@@ -1,0 +1,88 @@
+{
+  "sourceRevision": "9546034bc023891af5ce30709de6ae2dcf264628",
+  "sourceStatus": [" M go.mod", " M go.sum"],
+  "toolchainArchive": "go1.27.2.linux-amd64.tar.gz",
+  "toolchainArchiveSHA256": "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5",
+  "dependencyLockSHA256": {
+    "go.mod": "46381a840cf35c06d0a5be2725f599312efab91f65ccb145ae215c21de8552c8",
+    "go.sum": "3c06f8d0bc5b5c23ea1faaf9cfde47e044e9f9d0e00d3791943e23856b551119"
+  },
+  "mainModuleVersion": "v4.0.5-0.20220522015003-9546034bc023+dirty",
+  "oldMainModuleVersion": "v4.0.0-20220522015003-9546034bc023+dirty",
+  "CLI": "kepubify v4-dev",
+  "buildFlags": "CGO_ENABLED=0 GOTOOLCHAIN=local GOMAXPROCS=2 GOMEMLIMIT=1GiB nice -n 10 go build -mod=readonly -p 2 -trimpath -ldflags=-s -w",
+  "artifacts": [
+    {
+      "name": "kepubify-darwin-64bit",
+      "sha256": "9c1b4a308078e7ec229b947120dfbc27be40685f824b79be22f42dcbab837f12",
+      "size": 4295584,
+      "goos": "darwin",
+      "goarch": "amd64",
+      "goVersion": "go1.27.2",
+      "metadataSourceDependenciesAndBuildFlagsMatchOld": true
+    },
+    {
+      "name": "kepubify-darwin-arm64",
+      "sha256": "6bbdd844590e96d60e07632ef114b7edd56e3849bb486af04fd7a23be3367372",
+      "size": 4147522,
+      "goos": "darwin",
+      "goarch": "arm64",
+      "goVersion": "go1.27.2",
+      "metadataSourceDependenciesAndBuildFlagsMatchOld": true
+    },
+    {
+      "name": "kepubify-linux-32bit",
+      "sha256": "cc1fc8c66c3f66762d45c738ef1803c24cbd5591169f3f43ed86757d18552355",
+      "size": 3965088,
+      "goos": "linux",
+      "goarch": "386",
+      "goVersion": "go1.27.2",
+      "metadataSourceDependenciesAndBuildFlagsMatchOld": true
+    },
+    {
+      "name": "kepubify-linux-64bit",
+      "sha256": "f21bdaa7921d857d5834adc1a9e5f14974b890323aced17b3688e8b889bc9777",
+      "size": 4214944,
+      "goos": "linux",
+      "goarch": "amd64",
+      "goVersion": "go1.27.2",
+      "metadataSourceDependenciesAndBuildFlagsMatchOld": true
+    },
+    {
+      "name": "kepubify-linux-arm",
+      "sha256": "5a055cca40a6139b11b1c313217f68f31ed99e9dfa212c97984ccd5ee6b8999f",
+      "size": 4194464,
+      "goos": "linux",
+      "goarch": "arm",
+      "goVersion": "go1.27.2",
+      "metadataSourceDependenciesAndBuildFlagsMatchOld": true
+    },
+    {
+      "name": "kepubify-linux-arm64",
+      "sha256": "5e755aa4b578d16535e58f1c26515754a42c4b8299e99dde8690fe04254040fe",
+      "size": 4128928,
+      "goos": "linux",
+      "goarch": "arm64",
+      "goVersion": "go1.27.2",
+      "metadataSourceDependenciesAndBuildFlagsMatchOld": true
+    }
+  ],
+  "linuxGolden": [
+    {
+      "fixture": "fixed",
+      "entries": 5,
+      "decompressedEntriesIdentical": true,
+      "validZip": true,
+      "renditionLayout": ["pre-paginated"],
+      "koboSpanCount": 2
+    },
+    {
+      "fixture": "reflowable",
+      "entries": 5,
+      "decompressedEntriesIdentical": true,
+      "validZip": true,
+      "renditionLayout": [],
+      "koboSpanCount": 2
+    }
+  ]
+}

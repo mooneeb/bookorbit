@@ -1714,7 +1714,7 @@ describe('BookDockFinalizeService', () => {
     );
 
     expect(metadataService.saveExtractedCoverBytes).toHaveBeenCalledOnce();
-    expect(metadataService.saveExtractedCoverBytes).toHaveBeenCalledWith(31, Buffer.from('square-art'), 'audio');
+    expect(metadataService.saveExtractedCoverBytes).toHaveBeenCalledWith(31, Buffer.from('square-art'), 'audio', undefined);
   });
 
   it('applyMetadata falls back to extracted cover bytes when cover download is unavailable', async () => {
@@ -1736,7 +1736,7 @@ describe('BookDockFinalizeService', () => {
       }),
     );
 
-    expect(metadataService.saveExtractedCoverBytes).toHaveBeenCalledWith(21, Buffer.from('cover-bytes'), 'ebook');
+    expect(metadataService.saveExtractedCoverBytes).toHaveBeenCalledWith(21, Buffer.from('cover-bytes'), 'ebook', undefined);
   });
 
   describe('multi-file units', () => {

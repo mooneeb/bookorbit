@@ -31,6 +31,7 @@ describe('UploadModule', () => {
       UploadSessionService,
     ]);
     expect(Reflect.getMetadata('exports', UploadModule)).toEqual([
+      UploadSessionService,
       UploadValidatorService,
       UploadStorageService,
       UploadProcessorService,

@@ -10,6 +10,7 @@ vi.mock('../achievement/achievement.module', () => ({ AchievementModule: class A
 import { AchievementModule } from '../achievement/achievement.module';
 import { AuthModule } from '../auth/auth.module';
 import { BookCoverStoreModule } from '../book-cover-store/book-cover-store.module';
+import { BookMergeScanModule } from '../book-duplicates/book-merge-scan.module';
 import { BookMetadataFetchModule } from '../book-metadata-fetch/book-metadata-fetch.module';
 import { MetadataModule } from '../metadata/metadata.module';
 import { NotificationModule } from '../notification/notification.module';
@@ -27,12 +28,13 @@ describe('ScannerModule', () => {
     const imports = Reflect.getMetadata('imports', ScannerModule) as unknown[];
     expect(imports[0]).toBe(MetadataModule);
     expect(imports[1]).toBe(BookCoverStoreModule);
-    expect(imports[2]).toBe(AuthModule);
-    expect(imports[3]).toBe(AchievementModule);
-    expect(imports[4]).toBe(SelfWriteRegistryModule);
-    expect(imports[5]).toEqual(expect.objectContaining({ forwardRef: expect.any(Function) }));
+    expect(imports[2]).toBe(BookMergeScanModule);
+    expect(imports[3]).toBe(AuthModule);
+    expect(imports[4]).toBe(AchievementModule);
+    expect(imports[5]).toBe(SelfWriteRegistryModule);
     expect(imports[6]).toEqual(expect.objectContaining({ forwardRef: expect.any(Function) }));
-    expect(imports[7]).toEqual(expect.objectContaining({ module: expect.any(Function) }));
+    expect(imports[7]).toEqual(expect.objectContaining({ forwardRef: expect.any(Function) }));
+    expect(imports[8]).toEqual(expect.objectContaining({ module: expect.any(Function) }));
 
     expect(Reflect.getMetadata('controllers', ScannerModule)).toEqual([ScannerController]);
     expect(Reflect.getMetadata('providers', ScannerModule)).toEqual([
