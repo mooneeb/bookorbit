@@ -2,9 +2,15 @@
 
 Throwaway logic prototype for [Validate the reading and Pencil interaction model](https://github.com/mooneeb/bookorbit/issues/6), part of the [personal iPad reader map](https://github.com/mooneeb/bookorbit/issues/1).
 
+## Review status
+
+The user completed all ten scenarios and supplied [their verdicts and revised requirements](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289173037). The HTML is retained as the reviewed primary source. It includes rejected proposals: hiding page ink in reading, frozen-view EPUB reflow, automatic Pencil entry, and the old finger-navigation rule. Do not treat the demonstrated behavior as the current specification or ask the user to repeat accepted scenarios.
+
+Future prototype work must validate [text-following ink through actual EPUB reflow](https://github.com/mooneeb/bookorbit/issues/17), preserving the clear aim, independent scenarios, local controls, checklists, and separate reactions used here.
+
 Open `reader-interaction.prototype.html` by double-clicking it. Nothing needs installation. Progress stays in memory while the page is open; reloading starts over. Source lives on the throwaway prototype branch, outside production readers.
 
-## Aim and review process
+## Original aim and review process
 
 Decide whether the proposed reading and note flows make sense to the reader. The overview explains the purpose and offers one starting action. Only one scenario is shown at a time. There is no global reader, shared settings panel, or raw state dashboard.
 

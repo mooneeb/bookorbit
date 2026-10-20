@@ -17,5 +17,11 @@ A typed or handwritten note associated with a particular passage in a book.
 **Page ink**:
 Handwriting or drawings placed directly over the book's displayed content.
 
+**Text-anchored ink**:
+Page ink associated with specific book text, preserving its intended relationship to that text across reading layouts.
+
+**Writing mode**:
+A reader state in which Pencil input creates or edits ink.
+
 **Annotated view**:
-A preserved view of book content in the layout in which page ink was created, together with its editable ink.
+A preserved view of book content in the layout in which page ink was created, together with its editable ink and original context.
