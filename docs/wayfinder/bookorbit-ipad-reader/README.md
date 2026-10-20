@@ -26,8 +26,9 @@ Page ink must appear directly inside both browser readers. Browser previews alon
 ## Installation and test targets
 
 - [Resolved personal installation, runtime and maintenance policy](https://github.com/mooneeb/bookorbit/issues/11#issuecomment-6291346758)
+- [SideStore preferred for free on-device renewal, with Xcode fallback](https://github.com/mooneeb/bookorbit/issues/11#issuecomment-6291640322)
 
-Use the confirmed current iPadOS baseline and selected Mac/Android browsers. Free signing requires renewal within seven days of profile issuance, so fully disconnected use is bounded by the remaining signing lifetime. Device installation, in-place data preservation and reader compatibility still need actual validation.
+Use the confirmed current iPadOS baseline and selected Mac/Android browsers. Prefer SideStore for routine on-device refresh after validation; retain Xcode for build/bootstrap and fallback. Free signing requires renewal within seven days of profile issuance, so fully disconnected use is bounded by the remaining signing lifetime. Device installation, refresh/update data preservation and reader compatibility still need actual validation.
 
 ## Research evidence
 

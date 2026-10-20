@@ -38,9 +38,9 @@ The [native-to-browser compatibility investigation](https://github.com/mooneeb/b
 
 ## Installation and runtime policy
 
-The [resolved installation and maintenance decision](https://github.com/mooneeb/bookorbit/issues/11#issuecomment-6291346758) selects the current iPadOS 26.6.1 runtime on the iPad Air 13-inch (M2), free Xcode Personal Team installation and renewal within seven days of profile issuance. Fully disconnected use is limited to the remaining signing lifetime. The earlier 30-day no-internet/no-Mac launch target was explicitly replaced by the user's choice to stay free.
+The [amended renewal decision](https://github.com/mooneeb/bookorbit/issues/11#issuecomment-6291640322) prefers SideStore for free on-device refresh, subject to compatibility and data-preservation testing on the iPad Air 13-inch (M2), iPadOS 26.6.1. Xcode remains the build/bootstrap and fallback route. Free signing still requires renewal within seven days of profile issuance; fully disconnected use is limited to the remaining signing lifetime. The earlier 30-day no-internet/no-Mac launch target was explicitly replaced by the user's choice to stay free.
 
-The resolution records the selected Mac and Android browser targets, existing HTTPS server access, reviewed upgrades and protection of local notes during incompatible sync. Initial install, offline launch and preservation of unsynced ink across normal in-place renewal still require device validation. The native and browser proof tickets remain the technical evidence gates.
+The [runtime and maintenance resolution](https://github.com/mooneeb/bookorbit/issues/11#issuecomment-6291346758) records the selected Mac and Android browser targets, existing HTTPS server access, reviewed upgrades and protection of local notes during incompatible sync. Initial install, on-device refresh, offline launch and preservation of unsynced ink across normal updates and signing-workflow transitions still require device validation. The native and browser proof tickets remain the technical evidence gates.
 
 ## Known facts from initial repository inspection
 
