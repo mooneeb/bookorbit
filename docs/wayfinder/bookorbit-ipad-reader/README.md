@@ -25,6 +25,7 @@ Page ink must appear directly inside both browser readers. Browser previews alon
 
 ## Research evidence
 
+- [Native-to-browser inline ink compatibility](research/browser-inline-ink-compatibility.md)
 - [Text-anchored EPUB ink through reflow](research/text-anchored-ink-reflow.md)
 
 - [BookOrbit sync foundations for a personal iPad reader](research/bookorbit-sync-foundations.md)
