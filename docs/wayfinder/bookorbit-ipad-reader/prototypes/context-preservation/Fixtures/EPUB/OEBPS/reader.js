@@ -9,7 +9,13 @@ async function prepareResources(mode) {
   document.documentElement.className = mode === "columns" ? "columns" : "";
   await document.fonts.load("20px FixtureSerif");
   await document.fonts.ready;
-  await Promise.all(Array.from(document.images, (image) => image.decode()));
+  await Promise.all(
+    Array.from(document.images, (image) =>
+      image.decode().catch((error) => {
+        if (mode !== "missing") throw error;
+      }),
+    ),
+  );
   if (!document.fonts.check("20px FixtureSerif")) throw new Error("Required font unavailable");
   const target = document.getElementById("target");
   const rect = target.getBoundingClientRect();
@@ -36,6 +42,6 @@ async function prepareResources(mode) {
     quote: target.textContent,
     href: "OEBPS/chapter.xhtml#target",
     prefix: "At the next gate, the reader stops to write.",
-    suffix: "After capture, remove the local source copy and restart the app.",
+    suffix: "The reader closes the notebook and continues along the path.",
   };
 }

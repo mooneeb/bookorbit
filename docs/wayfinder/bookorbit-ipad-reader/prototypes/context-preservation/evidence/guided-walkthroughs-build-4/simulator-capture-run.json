@@ -1,0 +1,20 @@
+{
+  "capturedWalkthroughs": [
+    "scroll",
+    "columns",
+    "pdf",
+    "offlineEPUB",
+    "offlinePDF",
+    "browserEPUB",
+    "browserColumns",
+    "browserPDF",
+    "replacement",
+    "maintenance"
+  ],
+  "failures": [],
+  "launchID": "3D7657EB-6E50-425E-9903-46AB477EF9AD",
+  "missingArchiveAbsent": true,
+  "missingResourceError": "message(\"This page was not saved because its required picture is missing. Your handwriting is still saved on the iPad.\")",
+  "os": "26.0",
+  "syntheticInkOnly": true
+}

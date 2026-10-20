@@ -4,47 +4,6 @@ import PencilKit
 import UIKit
 import WebKit
 
-enum Scenario: String, CaseIterable, Codable {
-  case scroll, columns, pdf, missing
-
-  var title: String {
-    switch self {
-    case .scroll: "EPUB: original scrolled excerpt"
-    case .columns: "EPUB: original column excerpt"
-    case .pdf: "PDF: cropped and rotated page"
-    case .missing: "EPUB: missing image blocks capture"
-    }
-  }
-
-  var aim: String {
-    switch self {
-    case .scroll:
-      "Circle useful and write in the margin. Compare two captures of this middle-of-chapter excerpt."
-    case .columns:
-      "Mark useful and the margin. Check that both captures retain these columns at a nonzero horizontal offset."
-    case .pdf:
-      "Mark the word and page corners. Check the crop and rotation in both retained candidates."
-    case .missing:
-      "The illustration is deliberately missing. Write a mark, then try capture. It must not claim the excerpt is preserved."
-    }
-  }
-
-  var checks: [String] {
-    if self == .missing {
-      return [
-        "I saw the missing-resource failure.",
-        "No complete archive or source-removal action was offered.",
-        "My scratch ink remains after reopening this scenario.",
-      ]
-    }
-    return [
-      "I compared Page image and PDF copy at 1x, 2x, and 4x, including margins and ink alignment.",
-      "After removing the scratch source and fully restarting, I could read the excerpt and edit/erase/undo ink.",
-      "I checked the current exported preview in my Mac and Android browsers, including quote context.",
-    ]
-  }
-}
-
 struct ArchiveRecord: Codable {
   var scenario: Scenario
   var os: String
@@ -78,8 +37,9 @@ enum ExperimentFailure: LocalizedError {
 
 struct ScratchStore {
   static let root = URL.documentsDirectory.appending(path: "PROTOTYPE-WIPE-ME")
+  static let guidedRoot = root.appending(path: "guided-walkthroughs")
   let scenario: Scenario
-  var folder: URL { Self.root.appending(path: scenario.rawValue) }
+  var folder: URL { Self.guidedRoot.appending(path: scenario.rawValue) }
   var source: URL { folder.appending(path: "source") }
   var retained: URL { folder.appending(path: "retained") }
   var hasSource: Bool { FileManager.default.fileExists(atPath: source.path) }
@@ -141,9 +101,9 @@ func fixturePDF() -> Data {
     let attributes: [NSAttributedString.Key: Any] = [
       .font: UIFont.systemFont(ofSize: 26), .foregroundColor: UIColor.black,
     ]
-    ("ORIGINAL PDF: useful observation" as NSString).draw(
+    ("A useful observation" as NSString).draw(
       at: CGPoint(x: 80, y: 90), withAttributes: attributes)
-    ("Crop origin (48, 36). Intrinsic rotation 90 degrees." as NSString).draw(
+    ("A small note can bring an old idea back into focus." as NSString).draw(
       at: CGPoint(x: 80, y: 140), withAttributes: [.font: UIFont.systemFont(ofSize: 18)])
     UIColor.systemGreen.withAlphaComponent(0.25).setFill()
     context.fill(CGRect(x: 90, y: 220, width: 350, height: 140))
@@ -235,10 +195,19 @@ final class CaptureSurface: UIView, UIScrollViewDelegate {
     fit = min(bounds.width / 640, bounds.height / 480, 1)
     scroll.minimumZoomScale = fit
     if scroll.zoomScale < fit { scroll.zoomScale = fit }
-    scroll.contentSize = page.bounds.size
+    scroll.contentSize = CGSize(width: 640 * scroll.zoomScale, height: 480 * scroll.zoomScale)
+    centerPage()
   }
 
   func viewForZooming(in scrollView: UIScrollView) -> UIView? { page }
+
+  func scrollViewDidZoom(_ scrollView: UIScrollView) { centerPage() }
+
+  func centerPage() {
+    scroll.contentInset = UIEdgeInsets(
+      top: max(0, (bounds.height - scroll.contentSize.height) / 2),
+      left: max(0, (bounds.width - scroll.contentSize.width) / 2), bottom: 0, right: 0)
+  }
 
   func attachWeb() -> WKWebView {
     removeWeb()
@@ -288,139 +257,418 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
 {
   let surface = CaptureSurface()
   let picker = PKToolPicker()
+  let pageScroll = UIScrollView()
+  let stack = UIStackView()
   let status = UILabel()
-  let aim = UILabel()
-  let contextLabel = UILabel()
-  let progress = UILabel()
-  let scenarioButton = UIButton(type: .system)
   let primary = UIButton(type: .system)
   let writeButton = UIButton(type: .system)
-  let candidates = UISegmentedControl(items: ["Page image", "PDF copy"])
-  let zoom = UISegmentedControl(items: ["1x", "2x", "4x"])
-  let review = UIStackView()
-  let verdict = UISegmentedControl(items: ["Keep", "Change", "Cannot judge"])
   let feedback = UITextView()
-  var checkButtons: [UIButton] = []
+  var checkControls: [UIButton] = []
+  var answerControls: [(UIButton, String)] = []
   var scenario = Scenario.scroll
   var store: ScratchStore { ScratchStore(scenario: scenario) }
   var record: ArchiveRecord?
+  var walkthrough = WalkthroughReview()
   var ready = false
   var writing = false
   var suppressInkSave = false
+  var loading = false
+  var showingHome = false
   var details: [String: Any] = [:]
-  var primaryAction: (() async throws -> Void)?
   let launchID = UUID().uuidString
   var automatic = ProcessInfo.processInfo.arguments.contains("--capture-fixtures")
   var webContinuation: CheckedContinuation<Void, Error>?
+  var step: WalkthroughStep { scenario.steps[min(walkthrough.stepIndex, scenario.steps.count - 1)] }
+  let activeURL = ScratchStore.root.appending(path: "active-walkthrough.txt")
 
   override func viewDidLoad() {
     super.viewDidLoad()
     view.backgroundColor = .systemBackground
-    let scroll = UIScrollView()
-    scroll.translatesAutoresizingMaskIntoConstraints = false
-    view.addSubview(scroll)
+    pageScroll.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(pageScroll)
     NSLayoutConstraint.activate([
-      scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-      scroll.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-      scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-      scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      pageScroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+      pageScroll.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+      pageScroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+      pageScroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
     ])
-    let stack = UIStackView()
     stack.axis = .vertical
-    stack.spacing = 12
+    stack.spacing = 16
     stack.translatesAutoresizingMaskIntoConstraints = false
-    scroll.addSubview(stack)
+    pageScroll.addSubview(stack)
     NSLayoutConstraint.activate([
-      stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 20),
-      stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -30),
-      stack.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor, constant: 24),
+      stack.topAnchor.constraint(equalTo: pageScroll.contentLayoutGuide.topAnchor, constant: 20),
+      stack.bottomAnchor.constraint(
+        equalTo: pageScroll.contentLayoutGuide.bottomAnchor, constant: -30),
+      stack.leadingAnchor.constraint(
+        equalTo: pageScroll.frameLayoutGuide.leadingAnchor, constant: 28),
       stack.trailingAnchor.constraint(
-        equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -24),
+        equalTo: pageScroll.frameLayoutGuide.trailingAnchor, constant: -28),
     ])
-    func label(_ text: String, _ style: UIFont.TextStyle) -> UILabel {
-      let label = UILabel()
-      label.text = text
-      label.numberOfLines = 0
-      label.font = .preferredFont(forTextStyle: style)
-      return label
-    }
-    stack.addArrangedSubview(label("Keep old notes readable", .title1))
-    stack.addArrangedSubview(
-      label(
-        "PROTOTYPE: after a book is replaced, can its original excerpt and editable ink still reopen? Each scenario is independent. This does not test normal EPUB reflow.",
-        .body))
-    progress.font = .preferredFont(forTextStyle: .footnote)
-    stack.addArrangedSubview(progress)
-    scenarioButton.showsMenuAsPrimaryAction = true
-    scenarioButton.contentHorizontalAlignment = .leading
-    scenarioButton.menu = UIMenu(
-      children: Scenario.allCases.map { item in
-        UIAction(title: item.title) { [weak self] _ in self?.start(item) }
-      })
-    stack.addArrangedSubview(scenarioButton)
-    aim.numberOfLines = 0
-    stack.addArrangedSubview(aim)
-    status.numberOfLines = 0
-    status.font = .preferredFont(forTextStyle: .callout)
-    stack.addArrangedSubview(status)
+    surface.heightAnchor.constraint(equalToConstant: 380).isActive = true
     primary.configuration = .filled()
+    primary.titleLabel?.numberOfLines = 0
     primary.addAction(UIAction { [weak self] _ in self?.performPrimary() }, for: .touchUpInside)
     writeButton.addAction(UIAction { [weak self] _ in self?.toggleWriting() }, for: .touchUpInside)
-    let reset = UIButton(type: .system)
-    reset.setTitle("Restart this scenario", for: .normal)
-    reset.addAction(UIAction { [weak self] _ in self?.confirmReset() }, for: .touchUpInside)
-    let actions = UIStackView(arrangedSubviews: [primary, writeButton, reset])
-    actions.spacing = 16
-    stack.addArrangedSubview(actions)
-    surface.heightAnchor.constraint(equalToConstant: 500).isActive = true
-    stack.addArrangedSubview(surface)
-    candidates.selectedSegmentIndex = 0
-    candidates.addAction(UIAction { [weak self] _ in self?.showCandidate() }, for: .valueChanged)
-    zoom.selectedSegmentIndex = 0
-    zoom.addAction(UIAction { [weak self] _ in self?.setZoom() }, for: .valueChanged)
-    let comparison = UIStackView(arrangedSubviews: [candidates, zoom])
-    comparison.spacing = 16
-    stack.addArrangedSubview(comparison)
-    stack.addArrangedSubview(
-      label(
-        "Both keep the same page with separately editable ink. The PDF copy may keep text sharper when enlarged.",
-        .footnote))
-    contextLabel.numberOfLines = 0
-    contextLabel.font = .preferredFont(forTextStyle: .footnote)
-    stack.addArrangedSubview(contextLabel)
-    review.axis = .vertical
-    review.spacing = 10
-    stack.addArrangedSubview(review)
-    verdict.addAction(UIAction { [weak self] _ in self?.saveReview() }, for: .valueChanged)
-    stack.addArrangedSubview(
-      label(
-        "Your verdict is separate from the checks. Which candidate looks acceptable, at what zoom, and what should happen on failure?",
-        .body))
-    stack.addArrangedSubview(verdict)
-    feedback.heightAnchor.constraint(equalToConstant: 90).isActive = true
+    feedback.heightAnchor.constraint(equalToConstant: 88).isActive = true
     feedback.backgroundColor = .secondarySystemBackground
     feedback.font = .preferredFont(forTextStyle: .body)
     feedback.delegate = self
-    stack.addArrangedSubview(feedback)
-    let export = UIButton(type: .system)
-    export.setTitle("Export current preview and review", for: .normal)
-    export.addAction(UIAction { [weak self] _ in self?.sharePreview() }, for: .touchUpInside)
-    stack.addArrangedSubview(export)
-    let replacement = UIButton(type: .system)
-    replacement.setTitle("Inspect revised quote without moving this note", for: .normal)
-    replacement.addAction(
-      UIAction { [weak self] _ in self?.inspectReplacement() }, for: .touchUpInside)
-    stack.addArrangedSubview(replacement)
     surface.canvas.delegate = self
     picker.addObserver(surface.canvas)
     Task { await runInitial() }
   }
 
+  func label(_ text: String, _ style: UIFont.TextStyle = .body) -> UILabel {
+    let label = UILabel()
+    label.text = text
+    label.numberOfLines = 0
+    label.font = .preferredFont(forTextStyle: style)
+    label.adjustsFontForContentSizeCategory = true
+    return label
+  }
+
+  func button(_ text: String, action: @escaping () -> Void) -> UIButton {
+    let button = UIButton(type: .system)
+    button.configuration = .tinted()
+    button.contentHorizontalAlignment = .leading
+    button.titleLabel?.numberOfLines = 0
+    button.setTitle(text, for: .normal)
+    button.addAction(UIAction { _ in action() }, for: .touchUpInside)
+    return button
+  }
+
+  func clearScreen() {
+    writing = false
+    setWriting()
+    for child in stack.arrangedSubviews {
+      stack.removeArrangedSubview(child)
+      child.removeFromSuperview()
+    }
+    pageScroll.setContentOffset(.zero, animated: false)
+  }
+
+  func showHome() {
+    guard !loading else { return }
+    showingHome = true
+    try? FileManager.default.removeItem(at: activeURL)
+    clearScreen()
+    stack.addArrangedSubview(label("Saved pages and handwriting", .largeTitle))
+    stack.addArrangedSubview(
+      label("PROTOTYPE: can an old note stay readable when its book changes?"))
+    stack.addArrangedSubview(
+      label(
+        "Choose one walkthrough. It gives you its own sample page, instructions and questions. You can do them in any order. Nothing connects to your real library.",
+        .callout))
+    let finished = Scenario.allCases.filter {
+      (try? ScratchStore(scenario: $0).readWalkthrough().finished) == true
+    }.count
+    stack.addArrangedSubview(
+      label("\(finished) of \(Scenario.allCases.count) walkthroughs finished", .subheadline))
+    stack.addArrangedSubview(
+      label(
+        "Start here: Check a saved EPUB page. It only asks you to write, save, and inspect the result. Offline checks are separate.",
+        .callout))
+    for (index, item) in Scenario.allCases.enumerated() {
+      let heading: String? =
+        switch index {
+        case 0: "Page clarity"
+        case 3: "Offline recovery"
+        case 5: "When saving fails"
+        case 6: "Viewing on other devices"
+        case 9: "Original words"
+        case 10: "App installation"
+        default: nil
+        }
+      if let heading { stack.addArrangedSubview(label(heading, .headline)) }
+      let saved = try? ScratchStore(scenario: item).readWalkthrough()
+      let state =
+        saved?.finished == true ? "Reviewed" : (saved?.stepIndex ?? 0) > 0 ? "In progress" : "Ready"
+      stack.addArrangedSubview(
+        button("\(index + 1). \(item.title)  ·  \(state)") { [weak self] in self?.start(item) })
+    }
+    let earlier = [Scenario.scroll, .columns, .pdf].filter {
+      FileManager.default.fileExists(
+        atPath: ScratchStore.root.appending(path: "\($0.rawValue)/retained/background.png").path)
+    }
+    if !earlier.isEmpty {
+      stack.addArrangedSubview(label("Earlier prototype notes", .headline))
+      stack.addArrangedSubview(
+        label("Your earlier ink is kept. The new walkthroughs use fresh samples.", .footnote))
+      for item in earlier {
+        stack.addArrangedSubview(
+          button(
+            "View earlier \(item.fixture == .pdf ? "PDF" : item.fixture == .columns ? "column EPUB" : "EPUB") note"
+          ) { [weak self] in self?.showEarlierNote(item) })
+      }
+    }
+  }
+
+  func showEarlierNote(_ item: Scenario) {
+    let folder = ScratchStore.root.appending(path: "\(item.rawValue)/retained")
+    let controller = UIViewController()
+    controller.view.backgroundColor = .systemBackground
+    let content = UIStackView()
+    content.axis = .vertical
+    content.spacing = 20
+    content.translatesAutoresizingMaskIntoConstraints = false
+    controller.view.addSubview(content)
+    NSLayoutConstraint.activate([
+      content.topAnchor.constraint(
+        equalTo: controller.view.safeAreaLayoutGuide.topAnchor, constant: 24),
+      content.leadingAnchor.constraint(equalTo: controller.view.leadingAnchor, constant: 24),
+      content.trailingAnchor.constraint(equalTo: controller.view.trailingAnchor, constant: -24),
+    ])
+    content.addArrangedSubview(label("Earlier saved note", .title1))
+    content.addArrangedSubview(
+      label(
+        "This is your page from before the walkthrough redesign. This viewing copy and its original editable ink file have been kept.",
+        .callout))
+    let saved = CaptureSurface()
+    saved.heightAnchor.constraint(equalToConstant: 400).isActive = true
+    if let image = UIImage(contentsOfFile: folder.appending(path: "background.png").path) {
+      saved.show(image)
+    }
+    if let data = try? Data(contentsOf: folder.appending(path: "ink.drawing")),
+      let ink = try? PKDrawing(data: data)
+    {
+      saved.canvas.drawing = ink
+    }
+    saved.canvas.isUserInteractionEnabled = false
+    content.addArrangedSubview(saved)
+    content.addArrangedSubview(
+      button("Close earlier note") { [weak controller] in controller?.dismiss(animated: true) })
+    present(controller, animated: true)
+  }
+
+  func renderStep() {
+    guard !automatic, !showingHome else { return }
+    clearScreen()
+    checkControls = []
+    answerControls = []
+    stack.addArrangedSubview(button("‹ All walkthroughs") { [weak self] in self?.showHome() })
+    stack.addArrangedSubview(label(scenario.title, .title1))
+    stack.addArrangedSubview(label("Testing: \(scenario.aim)", .callout))
+    if walkthrough.finished {
+      stack.addArrangedSubview(label("Walkthrough finished", .title2))
+      stack.addArrangedSubview(
+        label(
+          "Your answers are saved on this iPad. A reported problem still counts as a completed check."
+        ))
+      for item in scenario.steps where !item.question.isEmpty {
+        if let answer = walkthrough.answers[item.id] {
+          stack.addArrangedSubview(label(item.title, .headline))
+          stack.addArrangedSubview(label(answer))
+          if let comment = walkthrough.comments[item.id], !comment.isEmpty {
+            stack.addArrangedSubview(label(comment, .callout))
+          }
+        }
+      }
+      if let problem = walkthrough.answers["save-problem"] {
+        stack.addArrangedSubview(label("Could not finish saving: \(problem)"))
+      }
+      stack.addArrangedSubview(
+        button("Review my steps and answers") { [weak self] in
+          guard let self else { return }
+          walkthrough.finished = false
+          walkthrough.stepIndex = 0
+          persistWalkthrough()
+          renderStep()
+        })
+      addRestart()
+      return
+    }
+    let current = step
+    stack.addArrangedSubview(
+      label(
+        "Step \(walkthrough.stepIndex + 1) of \(scenario.steps.count): \(current.title)", .title2))
+    stack.addArrangedSubview(label(current.instruction))
+    status.numberOfLines = 0
+    status.font = .preferredFont(forTextStyle: .callout)
+    status.textColor = .secondaryLabel
+    status.text = stateDescription()
+    stack.addArrangedSubview(status)
+    if case .share = current.kind {
+    } else if case .browser = current.kind {
+    } else {
+      stack.addArrangedSubview(surface)
+    }
+    switch current.kind {
+    case .write, .edit, .maintenance:
+      stack.addArrangedSubview(writeButton)
+    case .failure:
+      stack.addArrangedSubview(
+        button("Reopen this sample") { [weak self] in
+          guard let self else { return }
+          Task {
+            do {
+              try await loadScenario()
+              walkthrough.actions["failure-reopened"] = true
+              persistWalkthrough()
+              renderStep()
+            } catch { showFailure(error) }
+          }
+        })
+    case .share:
+      stack.addArrangedSubview(button("Share saved page") { [weak self] in self?.sharePreview() })
+    case .quote:
+      stack.addArrangedSubview(
+        button("Show revised sentence") { [weak self] in self?.inspectReplacement() })
+    default: break
+    }
+    if !current.checks.isEmpty {
+      stack.addArrangedSubview(
+        label("Try each item, then tick it. Tick it even if you found a problem.", .footnote))
+      let checked =
+        walkthrough.checks[current.id] ?? Array(repeating: false, count: current.checks.count)
+      for (index, text) in current.checks.enumerated() {
+        let control = button(text) { [weak self] in self?.toggleCheck(index) }
+        control.setImage(
+          UIImage(systemName: checked[index] ? "checkmark.square.fill" : "square"), for: .normal)
+        checkControls.append(control)
+        stack.addArrangedSubview(control)
+      }
+      stack.addArrangedSubview(label(current.question, .headline))
+      for answer in current.answers {
+        let selected = walkthrough.answers[current.id] == answer
+        let control = button(answer) { [weak self] in self?.chooseAnswer(answer) }
+        control.setImage(
+          UIImage(systemName: selected ? "largecircle.fill.circle" : "circle"), for: .normal)
+        answerControls.append((control, answer))
+        stack.addArrangedSubview(control)
+      }
+      stack.addArrangedSubview(label(current.commentPrompt, .footnote))
+      feedback.text = walkthrough.comments[current.id] ?? ""
+      stack.addArrangedSubview(feedback)
+    }
+    primary.setTitle(primaryTitle(), for: .normal)
+    primary.isEnabled = mayContinue()
+    stack.addArrangedSubview(primary)
+    if walkthrough.stepIndex > 0 {
+      stack.addArrangedSubview(
+        button("Previous step") { [weak self] in
+          guard let self else { return }
+          walkthrough.stepIndex -= 1
+          persistWalkthrough()
+          renderStep()
+        })
+    }
+    addRestart()
+    setWriting()
+    view.layoutIfNeeded()
+    showCandidate()
+  }
+
+  func addRestart() {
+    stack.addArrangedSubview(
+      button("Start this walkthrough again…") { [weak self] in self?.confirmReset() })
+  }
+
+  func stateDescription() -> String {
+    switch step.kind {
+    case .write:
+      if record != nil {
+        return
+          "This walkthrough already has your saved page and ink. Continue with it, or add ink before continuing."
+      }
+      return scenario == .missing
+        ? "The empty picture is deliberate. Saving should be refused, while your handwriting is kept."
+        : "This sample belongs only to this walkthrough. Saving keeps this visible page and your editable handwriting together."
+    case .view(let pdf, let scale):
+      return
+        "Saved as \(pdf ? "PDF copy" : "page image") · \(scale)x. You are inspecting this saved view, not changing the book's font size."
+    case .offline:
+      let cold = record?.launchID != launchID
+      return
+        "Sample book: \(store.hasSource ? "still present" : "removed"). App reopened since saving: \(cold ? "yes" : "not yet"). Confirm the iPad's internet setting yourself."
+    case .failure:
+      return
+        "\(walkthrough.lastMessage) Reopened sample: \(walkthrough.actions["failure-reopened"] == true ? "yes" : "not yet"). Your writing is saved locally."
+    case .maintenance:
+      let marker = FileManager.default.fileExists(
+        atPath: store.retained.appending(path: "local-unsent-marker.txt").path)
+      return
+        "Local unsent-note marker: \(marker ? "present" : "missing"). App reopened since saving: \(record?.launchID != launchID ? "yes" : "not yet"). Original sentence: \(record?.context["quote"] ?? "unavailable")."
+    case .quote: return "Original sentence: \(record?.context["quote"] ?? "unavailable")."
+    case .share, .browser:
+      return "The exported file is a viewing copy. Editable handwriting stays on your iPad."
+    default: return "This walkthrough uses only its own saved page and handwriting."
+    }
+  }
+
+  func primaryTitle() -> String {
+    switch step.kind {
+    case .write:
+      if scenario == .missing { return "Check saving this incomplete page" }
+      return record == nil ? "Save this page and my handwriting" : "Continue with this saved page"
+    case .remove: return "Remove sample book, keep my saved page"
+    default:
+      return walkthrough.stepIndex == scenario.steps.count - 1
+        ? "Finish this walkthrough" : "Next step"
+    }
+  }
+
+  func mayContinue() -> Bool {
+    if loading { return false }
+    if case .write = step.kind {
+      return (ready || scenario == .missing) && !surface.canvas.drawing.strokes.isEmpty
+    }
+    if case .remove = step.kind { return record != nil }
+    return step.checks.isEmpty
+      || ((walkthrough.checks[step.id] ?? []).count == step.checks.count
+        && walkthrough.checks[step.id]?.allSatisfy { $0 } == true
+        && walkthrough.answers[step.id] != nil)
+  }
+
+  func toggleCheck(_ index: Int) {
+    var checked = walkthrough.checks[step.id] ?? Array(repeating: false, count: step.checks.count)
+    checked[index].toggle()
+    walkthrough.checks[step.id] = checked
+    persistWalkthrough()
+    checkControls[index].setImage(
+      UIImage(systemName: checked[index] ? "checkmark.square.fill" : "square"), for: .normal)
+    primary.isEnabled = mayContinue()
+  }
+
+  func chooseAnswer(_ answer: String) {
+    walkthrough.answers[step.id] = answer
+    persistWalkthrough()
+    for (control, option) in answerControls {
+      control.setImage(
+        UIImage(systemName: answer == option ? "largecircle.fill.circle" : "circle"), for: .normal)
+    }
+    primary.isEnabled = mayContinue()
+  }
+
+  func textViewDidChange(_ textView: UITextView) {
+    walkthrough.comments[step.id] = textView.text
+    persistWalkthrough()
+  }
+
+  func persistWalkthrough() {
+    do { try store.writeWalkthrough(walkthrough) } catch {
+      status.text = "Could not save your answers: \(error.localizedDescription)"
+    }
+  }
+
+  func advance() {
+    if walkthrough.stepIndex == scenario.steps.count - 1 {
+      walkthrough.finished = true
+    } else {
+      walkthrough.stepIndex += 1
+    }
+    persistWalkthrough()
+    renderStep()
+  }
+
   func runInitial() async {
     if automatic {
+      stack.addArrangedSubview(label("Preparing local example pages…", .title2))
+      stack.addArrangedSubview(surface)
       var failures: [String] = []
+      var captured: [String] = []
       var missingResourceError = ""
-      for item in [Scenario.scroll, .columns, .pdf] {
+      for item in Scenario.allCases where item != .missing {
         do {
           scenario = item
           try store.reset()
@@ -429,19 +677,23 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
           try saveInk()
           try await capture()
           try removeSource()
+          captured.append(item.rawValue)
         } catch { failures.append("\(item.rawValue): \(error.localizedDescription)") }
       }
       scenario = .missing
       do {
         try store.reset()
         try await loadScenario()
-        failures.append("missing: resource error was not detected")
+        surface.canvas.drawing = syntheticInk()
+        try await capture()
+        failures.append("missing: incomplete page was unexpectedly saved")
       } catch {
         missingResourceError = String(describing: error)
         status.text = "Expected readiness failure: \(error.localizedDescription)"
       }
       let output: [String: Any] = [
         "os": UIDevice.current.systemVersion, "syntheticInkOnly": true, "failures": failures,
+        "capturedWalkthroughs": captured,
         "launchID": launchID,
         "missingResourceError": missingResourceError,
         "missingArchiveAbsent": !FileManager.default.fileExists(
@@ -469,36 +721,55 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
       try? JSONSerialization.data(withJSONObject: outputs, options: [.prettyPrinted, .sortedKeys])
         .write(to: ScratchStore.root.appending(path: "cold-reopen-run.json"), options: .atomic)
       start(.scroll)
+    } else if ProcessInfo.processInfo.arguments.contains("--walkthrough-home") {
+      showHome()
     } else {
       let argument = ProcessInfo.processInfo.arguments.first { $0.hasPrefix("--scenario=") }
-      start(argument.flatMap { Scenario(rawValue: String($0.dropFirst(11))) } ?? .scroll)
+      let selected =
+        argument.map { String($0.dropFirst(11)) }
+        ?? (try? String(contentsOf: activeURL, encoding: .utf8))
+      if let selected, let item = Scenario(rawValue: selected) { start(item) } else { showHome() }
     }
   }
 
   func start(_ item: Scenario) {
+    guard !loading else { return }
+    showingHome = false
     Task {
       scenario = item
-      do { try await loadScenario() } catch { showFailure(error) }
+      clearScreen()
+      stack.addArrangedSubview(label("Opening \(item.title.lowercased())…", .title2))
+      stack.addArrangedSubview(surface)
+      do {
+        try FileManager.default.createDirectory(
+          at: ScratchStore.root, withIntermediateDirectories: true)
+        try Data(item.rawValue.utf8).write(to: activeURL, options: .atomic)
+        try await loadScenario()
+        #if targetEnvironment(simulator)
+          if let argument = ProcessInfo.processInfo.arguments.first(where: {
+            $0.hasPrefix("--inspect-step=")
+          }),
+            let index = Int(argument.dropFirst(15)), scenario.steps.indices.contains(index)
+          {
+            walkthrough.stepIndex = index
+            walkthrough.finished = false
+          }
+        #endif
+        renderStep()
+      } catch { showFailure(error) }
     }
   }
 
   func loadScenario() async throws {
-    primary.isEnabled = false
-    scenarioButton.isEnabled = false
-    primaryAction = nil
-    contextLabel.text = ""
-    candidates.isEnabled = false
+    loading = true
+    defer { loading = false }
     ready = false
     record = nil
     writing = false
+    setWriting()
     surface.removeWeb()
     surface.background.image = nil
     surface.scroll.setZoomScale(surface.fit, animated: false)
-    candidates.selectedSegmentIndex = 0
-    zoom.selectedSegmentIndex = 0
-    scenarioButton.setTitle(scenario.title, for: .normal)
-    aim.text = scenario.aim
-    status.text = "Opening this scenario's own scratch files..."
     details = [:]
     try store.prepareDirectories()
     record = try store.readRecord()
@@ -513,7 +784,7 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     suppressInkSave = true
     surface.canvas.drawing = try store.drawing()
     suppressInkSave = false
-    buildReview()
+    walkthrough = try store.readWalkthrough()
     setWriting()
     if var existing = record {
       if !existing.reopenedLaunchIDs.contains(launchID) {
@@ -522,14 +793,13 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
         try store.writeRecord(existing)
       }
       ready = true
+      details = existing.geometry
       showCandidate()
-      refreshArchiveState()
-      scenarioButton.isEnabled = true
       return
     }
     if !store.hasSource {
       try FileManager.default.createDirectory(at: store.source, withIntermediateDirectories: true)
-      if scenario == .pdf {
+      if scenario.fixture == .pdf {
         try fixturePDF().write(to: store.source.appending(path: "original.pdf"), options: .atomic)
       } else {
         guard let seedFolder = Bundle.main.url(forResource: "Fixtures", withExtension: nil) else {
@@ -545,13 +815,13 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
         }
       }
     }
-    if scenario == .pdf {
+    if scenario.fixture == .pdf {
       let data = try Data(contentsOf: store.source.appending(path: "original.pdf"))
       surface.show(try pdfImage(data, size: surface.page.bounds.size))
       details = [
-        "quote": "ORIGINAL PDF: useful observation", "href": "original.pdf#page=1",
+        "quote": "A useful observation", "href": "original.pdf#page=1",
         "prefix": "Original self-authored PDF",
-        "suffix": "Crop origin (48, 36). Intrinsic rotation 90 degrees.",
+        "suffix": "A small note can bring an old idea back into focus.",
       ]
     } else {
       let web = surface.attachWeb()
@@ -562,7 +832,9 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
           store.source.appending(path: "EPUB/OEBPS/chapter.xhtml"),
           allowingReadAccessTo: store.source)
       }
-      let mode = scenario == .columns ? "columns" : "scroll"
+      let mode =
+        scenario.fixture == .missing
+        ? "missing" : scenario.fixture == .columns ? "columns" : "scroll"
       let result = try await web.callAsyncJavaScript(
         "return await prepareFixture(mode)", arguments: ["mode": mode], in: nil, contentWorld: .page
       )
@@ -573,21 +845,12 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
       try store.write(
         JSONSerialization.data(withJSONObject: details, options: [.prettyPrinted, .sortedKeys]),
         "readiness.json")
-      let offset = (details[scenario == .columns ? "scrollX" : "scrollY"] as? Double) ?? 0
+      let offset = (details[scenario.fixture == .columns ? "scrollX" : "scrollY"] as? Double) ?? 0
       guard offset > 0 else {
         throw ExperimentFailure.message("Fixture did not reach its required nonzero offset.")
       }
     }
-    ready = true
-    status.text =
-      "1. Turn Ink ON and write a mark. Then capture both candidates. Original source is present."
-    primary.setTitle("2. Capture both candidates", for: .normal)
-    primaryAction = { [weak self] in try await self?.capture() }
-    primary.isEnabled = true
-    scenarioButton.isEnabled = true
-    candidates.isEnabled = false
-    contextLabel.text =
-      "Only this 640 x 480 point excerpt is captured. Ink is stored separately. No BookOrbit connection."
+    ready = scenario != .missing
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -610,19 +873,20 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
   func capture() async throws {
     guard ready else {
       throw ExperimentFailure.message(
-        "Required resources are not ready. No complete archive was saved. Scratch ink is kept.")
+        "This page was not saved because its required picture is missing. Your handwriting is still saved on the iPad."
+      )
     }
     guard !surface.canvas.drawing.strokes.isEmpty else {
-      throw ExperimentFailure.message("Write at least one mark before comparing captures.")
+      throw ExperimentFailure.message("Write at least one mark before saving this page.")
     }
     primary.isEnabled = false
-    status.text = "Capturing the background without flattening the editable ink..."
+    status.text = "Saving this page and your editable handwriting…"
     let started = Date()
     let memoryBefore = processLifetimePeakRSS()
     let image: UIImage
     var fixed: Data?
     var fixedError: String?
-    if scenario == .pdf {
+    if scenario.fixture == .pdf {
       let data = try Data(contentsOf: store.source.appending(path: "original.pdf"))
       image = try pdfImage(data, size: surface.page.bounds.size)
       fixed = PDFDocument(data: data)?.page(at: 0)?.dataRepresentation
@@ -650,7 +914,7 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     if let fixed { try store.write(fixed, "background.pdf") }
     if fixed == nil && fixedError == nil { fixedError = "No PDF copy was returned." }
     let sourceFile =
-      scenario == .pdf
+      scenario.fixture == .pdf
       ? store.source.appending(path: "original.pdf")
       : store.source.appending(path: "EPUB/OEBPS/chapter.xhtml")
     let context = details.reduce(into: [String: String]()) { result, pair in
@@ -663,7 +927,7 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     }
     geometry["canvasWidth"] = 640
     geometry["canvasHeight"] = 480
-    if scenario == .pdf {
+    if scenario.fixture == .pdf {
       geometry.merge([
         "cropX": 48, "cropY": 36, "cropWidth": 624, "cropHeight": 468, "intrinsicRotation": 90,
       ]) { _, new in new }
@@ -684,7 +948,9 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     try store.writeRecord(record!)
     surface.show(image)
     try exportPreview()
-    refreshArchiveState()
+    if scenario == .maintenance {
+      try store.write(Data("Saved locally; not sent to a server".utf8), "local-unsent-marker.txt")
+    }
   }
 
   func removeSource() throws {
@@ -696,61 +962,54 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     record?.sourceRemoved = true
     try store.writeRecord(record!)
     try exportPreview()
-    refreshArchiveState()
-  }
-
-  func refreshArchiveState() {
-    guard let record else { return }
-    candidates.isEnabled = true
-    primary.isEnabled = true
-    let cold = record.launchID != launchID
-    if store.hasSource {
-      status.text =
-        "2. Compare Page image and PDF copy below. Then remove this scenario's original scratch source."
-      primary.setTitle("3. Remove scratch source", for: .normal)
-      primaryAction = { [weak self] in try self?.removeSource() }
-    } else {
-      status.text =
-        cold
-        ? "3. Reopened in a new app process. Source is absent. Read, erase, add ink, and Undo. Then export the current preview."
-        : "3. Source removed. Fully close the app in the app switcher, then reopen it offline. Do not reinstall or restart the scenario."
-      primary.setTitle("Reopen retained files", for: .normal)
-      primaryAction = { [weak self] in try await self?.loadScenario() }
-    }
-    let failure = record.fixedPageError.map { " The PDF copy is unavailable: \($0)" } ?? ""
-    contextLabel.text =
-      "Original quote: \(record.context["quote"] ?? "missing")\nThis note still belongs to the original content. Ink is saved locally; export again after changing it.\(failure)"
-    updateProgress()
   }
 
   func showCandidate() {
     guard let record else { return }
     do {
       let image: UIImage
-      if candidates.selectedSegmentIndex == 0 {
-        guard
-          let raster = UIImage(
-            contentsOfFile: store.retained.appending(path: "background.png").path)
-        else { throw ExperimentFailure.message("Retained raster is missing.") }
-        image = raster
+      let scale: Int
+      if case .view(let pdf, let zoom) = step.kind {
+        scale = zoom
+        if pdf {
+          if let failure = record.fixedPageError { throw ExperimentFailure.message(failure) }
+          image = try pdfImage(
+            Data(contentsOf: store.retained.appending(path: "background.pdf")),
+            size: surface.page.bounds.size, scale: CGFloat(max(2, zoom)))
+        } else {
+          guard
+            let saved = UIImage(
+              contentsOfFile: store.retained.appending(path: "background.png").path)
+          else {
+            throw ExperimentFailure.message("The saved page image is missing.")
+          }
+          image = saved
+        }
       } else {
-        if let failure = record.fixedPageError { throw ExperimentFailure.message(failure) }
-        image = try pdfImage(
-          Data(contentsOf: store.retained.appending(path: "background.pdf")),
-          size: surface.page.bounds.size, scale: max(2, pow(2, Double(zoom.selectedSegmentIndex))))
+        scale = 1
+        guard
+          let saved = UIImage(contentsOfFile: store.retained.appending(path: "background.png").path)
+        else {
+          throw ExperimentFailure.message("The saved page image is missing.")
+        }
+        image = saved
       }
       surface.show(image)
-      refreshArchiveState()
+      surface.layoutIfNeeded()
+      surface.scroll.setZoomScale(surface.fit * CGFloat(scale), animated: false)
+      if scale > 1 {
+        let x = CGFloat(record.geometry["wordX"] ?? 180) * surface.scroll.zoomScale - 100
+        let y = CGFloat(record.geometry["wordY"] ?? 120) * surface.scroll.zoomScale - 80
+        surface.scroll.setContentOffset(
+          CGPoint(
+            x: max(0, min(x, surface.scroll.contentSize.width - surface.bounds.width)),
+            y: max(0, min(y, surface.scroll.contentSize.height - surface.bounds.height))),
+          animated: false)
+      }
     } catch {
       status.text =
-        "This candidate failed: \(error.localizedDescription). The other candidate and ink remain available."
+        "This saved view could not open: \(error.localizedDescription). Choose the problem answer below; your other saved files and ink are kept."
     }
-  }
-
-  func setZoom() {
-    surface.scroll.setZoomScale(
-      surface.fit * pow(2, Double(zoom.selectedSegmentIndex)), animated: false)
-    if record != nil { showCandidate() }
   }
 
   func toggleWriting() {
@@ -758,7 +1017,7 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     setWriting()
   }
   func setWriting() {
-    writeButton.setTitle(writing ? "Ink ON" : "Ink OFF", for: .normal)
+    writeButton.setTitle(writing ? "Turn writing off" : "Turn writing on", for: .normal)
     surface.canvas.isUserInteractionEnabled = writing
     picker.setVisible(writing, forFirstResponder: surface.canvas)
     if writing {
@@ -772,7 +1031,7 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     guard !suppressInkSave else { return }
     do {
       try saveInk()
-      if record != nil { refreshArchiveState() }
+      primary.isEnabled = mayContinue()
     } catch { showFailure(error) }
   }
 
@@ -786,33 +1045,66 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
   }
 
   func performPrimary() {
+    guard mayContinue() else { return }
     Task {
-      do { try await primaryAction?() } catch { showFailure(error) }
+      do {
+        switch step.kind {
+        case .write:
+          writing = false
+          setWriting()
+          if scenario == .missing {
+            do {
+              try await capture()
+              walkthrough.lastMessage =
+                "Unexpected result: the incomplete page was saved. Report this as a problem."
+            } catch {
+              walkthrough.lastMessage = error.localizedDescription
+            }
+          } else if record == nil {
+            try await capture()
+          }
+        case .remove:
+          try removeSource()
+        default: break
+        }
+        advance()
+      } catch { showFailure(error) }
     }
   }
 
   func showFailure(_ error: Error) {
-    scenarioButton.isEnabled = true
-    let javascriptMessage = (error as NSError).userInfo["WKJavaScriptExceptionMessage"] as? String
     let explanation =
-      javascriptMessage?.contains("EncodingError") == true
-      ? "The required illustration is missing or could not load." : error.localizedDescription
-    status.text = "Excerpt not preserved: \(explanation) Your scratch ink is kept."
-    primary.setTitle("Try capture", for: .normal)
-    primaryAction = { [weak self] in try await self?.capture() }
-    primary.isEnabled = true
-    candidates.isEnabled = record != nil
+      (error as NSError).userInfo["WKJavaScriptExceptionMessage"] as? String
+      ?? error.localizedDescription
+    let alert = UIAlertController(
+      title: "This step could not finish",
+      message:
+        "\(explanation)\n\nYour saved handwriting has not been deleted. You can go back or record this problem.",
+      preferredStyle: .alert)
+    alert.addAction(
+      UIAlertAction(title: "Return to walkthroughs", style: .cancel) { [weak self] _ in
+        self?.showHome()
+      })
+    alert.addAction(
+      UIAlertAction(title: "Record problem and finish", style: .default) { [weak self] _ in
+        guard let self else { return }
+        walkthrough.answers["save-problem"] = explanation
+        walkthrough.finished = true
+        persistWalkthrough()
+        renderStep()
+      })
+    present(alert, animated: true)
   }
 
   func confirmReset() {
     let alert = UIAlertController(
-      title: "Restart only this scenario?",
+      title: "Start this walkthrough again?",
       message:
-        "This deletes its PROTOTYPE scratch ink, retained files, and review. Other scenarios are kept.",
+        "This deletes only this walkthrough's sample page, ink and answers. Every other walkthrough is kept.",
       preferredStyle: .alert)
     alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
     alert.addAction(
-      UIAlertAction(title: "Restart", style: .destructive) { [weak self] _ in
+      UIAlertAction(title: "Delete this sample and restart", style: .destructive) { [weak self] _ in
         guard let self else { return }
         do {
           try store.reset()
@@ -822,97 +1114,9 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     present(alert, animated: true)
   }
 
-  func buildReview() {
-    for child in review.arrangedSubviews {
-      review.removeArrangedSubview(child)
-      child.removeFromSuperview()
-    }
-    checkButtons = scenario.checks.enumerated().map { index, text in
-      let button = UIButton(type: .system)
-      button.contentHorizontalAlignment = .leading
-      button.titleLabel?.numberOfLines = 0
-      button.setTitle(text, for: .normal)
-      button.isSelected = record?.checks[index] ?? false
-      button.setImage(
-        UIImage(systemName: button.isSelected ? "checkmark.square" : "square"), for: .normal)
-      button.addAction(
-        UIAction { [weak self, weak button] _ in
-          button?.isSelected.toggle()
-          button?.setImage(
-            UIImage(systemName: button?.isSelected == true ? "checkmark.square" : "square"),
-            for: .normal)
-          self?.saveReview()
-        }, for: .touchUpInside)
-      review.addArrangedSubview(button)
-      return button
-    }
-    verdict.selectedSegmentIndex =
-      ["Keep", "Change", "Cannot judge"].firstIndex(of: record?.verdict ?? "")
-      ?? UISegmentedControl.noSegment
-    feedback.text = record?.feedback ?? ""
-    if record == nil,
-      let data = try? Data(contentsOf: store.retained.appending(path: "failure-review.json")),
-      let review = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    {
-      let checks = review["checks"] as? [Bool] ?? [false, false, false]
-      for (index, button) in checkButtons.enumerated() {
-        button.isSelected = checks[index]
-        button.setImage(
-          UIImage(systemName: checks[index] ? "checkmark.square" : "square"), for: .normal)
-      }
-      verdict.selectedSegmentIndex =
-        ["Keep", "Change", "Cannot judge"].firstIndex(of: review["verdict"] as? String ?? "")
-        ?? UISegmentedControl.noSegment
-      feedback.text = review["feedback"] as? String ?? ""
-    }
-    updateProgress()
-  }
-
-  func textViewDidChange(_ textView: UITextView) { saveReview() }
-  func saveReview() {
-    do {
-      let result =
-        verdict.selectedSegmentIndex < 0
-        ? "Not reviewed" : verdict.titleForSegment(at: verdict.selectedSegmentIndex)!
-      if record != nil {
-        record?.checks = checkButtons.map(\.isSelected)
-        record?.verdict = result
-        record?.feedback = feedback.text
-        try store.writeRecord(record!)
-      } else {
-        let review: [String: Any] = [
-          "checks": checkButtons.map(\.isSelected), "verdict": result,
-          "feedback": feedback.text ?? "",
-        ]
-        try store.write(
-          JSONSerialization.data(withJSONObject: review, options: [.prettyPrinted, .sortedKeys]),
-          "failure-review.json")
-      }
-      updateProgress()
-    } catch { showFailure(error) }
-  }
-
-  func updateProgress() {
-    let reviewed = Scenario.allCases.filter { item in
-      let scratch = ScratchStore(scenario: item)
-      if let existing = try? scratch.readRecord() {
-        return existing.checks.allSatisfy { $0 } && existing.verdict != "Not reviewed"
-      }
-      if let data = try? Data(contentsOf: scratch.retained.appending(path: "failure-review.json")),
-        let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-      {
-        return (result["checks"] as? [Bool])?.allSatisfy { $0 } == true
-          && result["verdict"] as? String != "Not reviewed"
-      }
-      return false
-    }.count
-    progress.text =
-      "\(reviewed) of 4 scenarios reviewed. Checks mean tried, including failures. Keep/Change records your reaction."
-  }
-
   func exportPreview() throws {
     guard let record else {
-      throw ExperimentFailure.message("Capture this scenario before exporting a preview.")
+      throw ExperimentFailure.message("Save this page before sharing a preview.")
     }
     let rect = surface.page.bounds
     let ink = surface.canvas.drawing.image(from: rect, scale: 2)
@@ -940,8 +1144,8 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
         <p>Input evidence: \(htmlEscape(record.inputEvidence ?? "Not recorded; do not treat this as physical Pencil evidence"))</p>
       <p>Compare both examples. Check the text, illustration, margins and translucent ink. Use browser zoom or horizontal scrolling to inspect enlarged display. The iPad can show the PDF copy with more detail than this 2x preview image.</p>
       \(figure(background, inkData, title: "Page image with current ink"))\(fixedHTML)
-      <h2>Original context</h2><p>\(htmlEscape(record.context["quote"] ?? ""))</p><p>Before: \(htmlEscape(record.context["prefix"] ?? ""))<br>After: \(htmlEscape(record.context["suffix"] ?? ""))</p><p>Original anchor: \(htmlEscape(record.context["href"] ?? "")). This note has not been moved to a revised edition.</p>
-      <h2>Your review</h2><p>\(htmlEscape(record.verdict)): \(htmlEscape(record.feedback))</p><p>Report browser/version, preferred candidate, acceptable zoom, visual defects, and whether the failure message is clear. Viewing this file does not tick the native checklist.</p></html>
+      <h2>Original sentence</h2><p>\(htmlEscape(record.context["quote"] ?? ""))</p><p>Before: \(htmlEscape(record.context["prefix"] ?? ""))<br>After: \(htmlEscape(record.context["suffix"] ?? ""))</p><p>Original anchor: \(htmlEscape(record.context["href"] ?? "")). This note has not been moved to a revised edition.</p>
+      <h2>Walkthrough answers</h2>\(scenario.steps.filter { walkthrough.answers[$0.id] != nil }.map { "<p><strong>\(htmlEscape($0.question))</strong><br>\(htmlEscape(walkthrough.answers[$0.id] ?? ""))<br>\(htmlEscape(walkthrough.comments[$0.id] ?? ""))</p>" }.joined())<p>Record the result for each named browser in the iPad walkthrough. Viewing this file does not answer the questions automatically.</p></html>
       """
     try store.write(Data(html.utf8), "preview.html")
   }
@@ -952,21 +1156,11 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
 
   func sharePreview() {
     do {
-      let files: [URL]
-      if scenario == .missing && record == nil {
-        saveReview()
-        files = [
-          store.retained.appending(path: "failure-review.json"),
-          store.retained.appending(path: "ink.drawing"),
-        ].filter { FileManager.default.fileExists(atPath: $0.path) }
-      } else {
-        try exportPreview()
-        files = [
-          store.retained.appending(path: "preview.html"),
-          store.retained.appending(path: "record.json"),
-        ]
-      }
-      let controller = UIActivityViewController(activityItems: files, applicationActivities: nil)
+      try exportPreview()
+      walkthrough.actions["shared"] = true
+      persistWalkthrough()
+      let controller = UIActivityViewController(
+        activityItems: [store.retained.appending(path: "preview.html")], applicationActivities: nil)
       controller.popoverPresentationController?.sourceView = view
       controller.popoverPresentationController?.sourceRect = CGRect(
         x: view.bounds.midX, y: view.bounds.maxY - 50, width: 1, height: 1)
@@ -975,20 +1169,19 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
   }
 
   func inspectReplacement() {
-    guard let record else {
-      status.text = "Capture this scenario before comparing revised context."
-      return
-    }
+    guard let record else { return }
     let original = record.context["quote"] ?? ""
     let revised = original.replacingOccurrences(of: "useful", with: "revised")
     do {
       try store.write(Data(revised.utf8), "revised-quote.txt")
+      walkthrough.actions["quote-opened"] = true
+      persistWalkthrough()
       let alert = UIAlertController(
-        title: "This note still belongs to the original",
+        title: "Your note stays with the original sentence",
         message:
-          "Original quote:\n\(original)\n\nRevised quote:\n\(revised)\n\nThe preserved page and ink have not moved. This experiment has no relink action; approval and migration behavior are still a later decision.",
+          "Original:\n\(original)\n\nRevised example:\n\(revised)\n\nThe saved page and ink still belong to the original words. No note has been moved.",
         preferredStyle: .alert)
-      alert.addAction(UIAlertAction(title: "Keep original context", style: .default))
+      alert.addAction(UIAlertAction(title: "Back to my original note", style: .default))
       present(alert, animated: true)
     } catch { showFailure(error) }
   }

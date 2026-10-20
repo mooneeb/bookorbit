@@ -2,6 +2,18 @@
 
 Recorded 2026-10-20. [Decision remains open](https://github.com/mooneeb/bookorbit/issues/15). [Run the native walkthrough](../README.md) before giving a fidelity verdict.
 
+## Walkthrough redesign after the user review
+
+The user rejected the build 2 review structure as confusing. Merely renaming Raster and Fixed page did not solve the problem: saving, offline recovery, browser viewing, zoom and a generic verdict were still mixed together. They explicitly requested fixing that experience before resuming the offline question. No fidelity or offline approval was inferred.
+
+Build 4 replaces that screen with eleven independent guided walkthroughs. The [walkthrough inventory](../README.md#independent-walkthroughs-and-coverage) maps each one to a single question and its complete task. Each has its own source, ink, progress, per-step tried checkboxes, concrete answer choices and reset. Page-clarity steps each show one format at one zoom level; their answers name readability and alignment. Other walkthroughs own offline recovery, the missing-picture refusal, specific browser checks, original/revised sentence context and installation maintenance.
+
+Old `record.json` checks, verdicts, saved pages and ink remain intact in their original folders, with a viewing entry on the walkthrough list. New tasks use their own `guided-walkthroughs/<scenario>` folders and neutral sample text, so old book text cannot contradict the current instructions. New human responses live separately in each `walkthrough.json`; no previous response is automatically approved. A walkthrough with a reported problem may finish as reviewed without being counted as successful. The offline review remains pending until the user returns to its separate task.
+
+The [build 4 verification record](guided-walkthroughs-build-4/physical-update.json) confirms a signed in-place installation on the intended iPad and byte-for-byte retention of all 17 prior scratch files. Remote launch was refused because the iPad was locked, so physical presentation of the revised UI still needs the user to unlock and open it. The same free profile was reused.
+
+The [simulator fixture run](guided-walkthroughs-build-4/simulator-capture-run.json) created each of the ten successful walkthrough archives independently and refused the incomplete eleventh sample. [Fixture checks](guided-walkthroughs-build-4/standalone-fixtures.json) found separate folders and no supplied human answers. The [walkthrough list](guided-walkthroughs-build-4/walkthrough-list.png), [one page-image inspection step](guided-walkthroughs-build-4/page-image-1x.png) and [one enlarged PDF inspection step](guided-walkthroughs-build-4/pdf-copy-4x.png) are actual simulator screenshots. These demonstrate presentation and runnable fixture paths, not the user's approval of clarity or physical Pencil fidelity.
+
 ## Physical iPad installation and first capture
 
 The intended **iPad Air 13-inch (M2), iPadOS 26.6.1**, is now connected. The user selected their Personal Team in Xcode, trusted the Developer App on the iPad, and confirmed the prototype opens. Strict code-signature validation and profile/device membership checks passed. [Installation metadata](physical-ipad-26.6.1/installation.json) records the initial launch rejection before trust, then the successful trusted launch. Account, device and team identifiers and raw profiles are excluded.
@@ -78,7 +90,7 @@ The native bench caps the viewport, active canvas/capture count, written artifac
 
 ## Reproduce the measurements
 
-From the prototype directory, build with `./run.sh simulator`. Install on an iPad simulator, then launch the dedicated `dev.mooneeb.bookorbit.contextprototype` app with `--capture-fixtures`. **That argument resets only this prototype's fixture scenarios. Do not use it after adding review ink you want to keep.** It writes `capture-run.json`, the retained assets and exports under Documents/`PROTOTYPE-WIPE-ME`.
+From the prototype directory, build with `./run.sh simulator`. Install on an iPad simulator, then launch the dedicated `dev.mooneeb.bookorbit.contextprototype` app with `--capture-fixtures`. **That argument resets only this prototype's fixture scenarios. Do not use it after adding review ink you want to keep.** It writes `capture-run.json` under Documents/`PROTOTYPE-WIPE-ME` and retained assets under its `guided-walkthroughs/<scenario>` folders. Current builds exercise all ten successful walkthrough fixtures plus the deliberately incomplete eleventh sample. Historical build 1 simulator evidence below used the original three sample folders.
 
 Record SHA-256 values for `background.png`, `background.pdf` and `ink.drawing`, plus each original context. Terminate the app. Copy the unsigned simulator app to a separate build directory, remove that copy's `Fixtures` directory, and advance its Info.plist build version. Remove any remaining `*/source` scratch folders. Install the copied app in place, then launch with `--reopen-fixtures`. Compare the new container's assets and context against the recorded values. Do not uninstall or reset the prototype between those steps.
 

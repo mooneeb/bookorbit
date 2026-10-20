@@ -8,23 +8,42 @@ This is a capture bench for source replacement. Ordinary EPUB reading still requ
 
 ## Start here
 
-From this directory, run `./run.sh project`. XcodeGen 2.46.0 and Xcode are required. Open the generated app in an iPad simulator first, or select your iPad and your own Personal Team in Xcode for the physical review. The deployment target is iPadOS 26.0; no iPadOS 27-only drawing APIs are used.
+Open **Orbit Context PROTOTYPE** on the iPad. It opens a list of walkthroughs, or returns to the exact step you left open. Choose **Check a saved EPUB page** first.
 
-On launch, the app explains the aim and shows one scenario. Choose a scenario from its title. Each has its own source, ink, archive, reset, checks, verdict and feedback. There is no shared settings dashboard. Ink starts OFF. The native tool picker appears after you explicitly enable ink. The page is a fixed capture surface, not the final reader's navigation model.
+The first walkthrough has one purpose: decide whether a saved page and your ink remain readable when enlarged. It does not ask you to remove a book, go offline, use another device, or judge failure handling.
 
-For each of the first three scenarios:
+1. **Write on this sample page.** Turn writing on, circle useful, draw an arrow, and write important. Turn writing off. The ink stays visible. Press **Save this page and my handwriting**. If you return to a page already saved in this walkthrough, the button says **Continue with this saved page**.
+2. **Inspect one saved view at a time.** The app takes you through page image at 1x, 2x and 4x, then PDF copy at those same sizes. Each step names the format and size on screen. Drag with a finger to look around an enlarged page.
+3. **Answer that step's specific question.** Tick its two items after trying them, even if they failed. Then answer whether that particular view is readable and aligned. You can report a problem or that you could not judge it. Optional comments belong to that view. There is no generic Keep/Change verdict and no demand to choose an implementation format.
+4. **Finish.** The final screen lists your actual answers. Return to the walkthrough list when ready. You may stop after this walkthrough. Later walkthroughs do not depend on finishing it.
 
-1. Turn **Ink ON**. Circle useful, draw an arrow, write a margin comment, and put marks near the page corners. Use the native highlighter, eraser and Undo too.
-2. Press **Capture both candidates**. Compare **Page image** and **PDF copy** at **1x, 2x, 4x**. A page image saves the background as pixels; a PDF copy may retain sharper text when enlarged. Both keep the ink separately editable. Look at the word, image, columns, page margins and ink. Turn ink off to hide the tool picker; the ink stays visible. Report what you can read and any alignment problems; no visible difference is a useful observation, not a requirement to choose a file format.
-3. Press **Remove scratch source**. This removes the scenario's working source and its fonts/images, releases its WebKit view, and opens only retained files.
-4. Fully close the app in the app switcher, disconnect internet, and reopen it. Do not uninstall or restart the scenario. Confirm that the original page and editable strokes are still available. Try erase, Undo and new ink. The app identifies reopening in a new process separately from pressing its reopen button.
-5. Use **Inspect revised quote** to compare original and changed words without moving the note. This is a quote comparison, not a full replacement-book loader or relink implementation.
-6. Press **Export current preview and review**. Open the self-contained HTML on the Mac in Vivaldi and Chrome, and on the Oppo in Chrome. Compare both examples and quote context. Capture the exact browser versions used. This is an archival excerpt preview, not proof of inline ink in BookOrbit's ordinary browser reader.
-7. Tick each check only after trying it, including an unacceptable result. Choose **Keep**, **Change**, or **Cannot judge** separately. In feedback, name the acceptable candidate, maximum useful zoom, defects, and acceptable failure behavior. Export again after editing ink or feedback.
+A page image stores the background as pixels. A PDF copy may keep text sharper when enlarged. Both preserve the same separately editable handwriting. Seeing no visible difference is a valid observation.
 
-The fourth scenario deliberately lacks an image. Enable ink, make a mark, and try capture. Expect an incomplete-capture message, no source-removal action, and retained scratch ink after reopening the scenario. Its review is exported separately. The local reset deletes only that scenario after confirmation.
+## Independent walkthroughs and coverage
 
-No checks or human verdicts are supplied by the automatic fixture run.
+Each row below has its own sample source, drawing, saved page, progress, questions and reset. Every walkthrough begins with writing and saving its own sample. No other walkthrough has to run first. A restart confirms deletion of only that walkthrough's files. The new walkthroughs use a separate `guided-walkthroughs` folder and fresh samples. Earlier prototype pages and editable ink files remain unchanged, with viewing buttons under Earlier prototype notes. Earlier generic review fields do not answer the new questions automatically.
+
+| Walkthrough                                 | Single question                                                             | Complete task within that walkthrough                                                                                                                     |
+| ------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Check a saved EPUB page                     | Is a saved single-column page readable with correctly placed ink?           | Write, save, inspect the text/picture/margins and ink in each format at 1x/2x/4x, answer each view                                                        |
+| Check saved EPUB columns                    | Are the correct columns and ink preserved?                                  | Its own column sample, write/save, inspect column edges and content at each format/size, answer each view                                                 |
+| Check a saved PDF page                      | Do saved PDF words, corners and ink remain aligned?                         | Its own cropped/rotated PDF, write/save, inspect each format/size, answer each view                                                                       |
+| Reopen an EPUB note offline                 | Can a saved EPUB note reopen and remain editable without its original book? | Its own sample, write/save, remove only that book, fully close and reopen offline, erase/Undo/add ink, answer recovery and editing questions              |
+| Reopen a PDF note offline                   | Can a saved PDF note reopen and remain editable without its original book?  | Its own PDF, the complete removal/offline/reopen/edit task, its own answers                                                                               |
+| Keep my writing when a page cannot be saved | Is an incomplete save explained without losing writing?                     | Its own deliberately missing picture, write, check saving, read the refusal, reopen the sample, check ink and answer                                      |
+| Read an EPUB note on other devices          | Is the exported EPUB note readable in each real browser?                    | Its own sample, write/save, share a self-contained file, check Mac Chrome, Mac Vivaldi and Android Chrome separately, record browser versions and answers |
+| Read a column EPUB note on other devices    | Is the exported column note readable in each real browser?                  | Its own column sample and the complete share/three-browser review                                                                                         |
+| Read a PDF note on other devices            | Is the exported PDF note readable in each real browser?                     | Its own PDF and the complete share/three-browser review                                                                                                   |
+| Keep a note beside its original words       | Does the saved note retain its original sentence when revised words differ? | Its own sample, write/save, show original/revised sentences, inspect the unchanged original page and ink, answer the context question                     |
+| Keep a local note through an app update     | Do page, editable ink and a local marker survive installation maintenance?  | Its own sample, write/save and local unsent marker, wait for an actual in-place update or signing refresh with the agent, reopen/edit and answer          |
+
+The offline walkthroughs explain Wi-Fi/cellular changes and keeping Bluetooth for the Pencil only when you reach that step. There is no global offline checklist. The installation walkthrough explicitly waits for a real update/refresh; the app does not pretend to perform signing itself.
+
+The revised-sentence walkthrough compares quote context, not a complete replacement-book import or relink. The browser walkthroughs show archival note previews, not BookOrbit sync or ordinary inline browser reading. The update walkthrough's marker is an isolated local file, not a production upload queue.
+
+## Run from source
+
+From this directory, run `./run.sh project`. XcodeGen 2.46.0 and Xcode are required. Choose your iPad and your own Personal Team in Xcode for the physical review. The deployment target is iPadOS 26.0; no iPadOS 27-only drawing APIs are used. The native harness is necessary to judge real PencilKit drawing and retained WebKit/PDF output; an HTML drawing imitation would not establish those facts.
 
 ## What is being compared
 
@@ -41,13 +60,15 @@ The fixed-PDF background is rendered again when switching zoom, up to 4x rasteri
 
 ## Scratch files and bounds
 
-Files live only in this app's Documents/`PROTOTYPE-WIPE-ME/<scenario>` directory, accessible through Files or Xcode's container download:
+Files live only in this app's Documents/`PROTOTYPE-WIPE-ME/guided-walkthroughs/<scenario>` directory, accessible through Files or Xcode's container download:
 
 - `source/`: removable working copy, including font and image resources.
 - `retained/background.png` and `background.pdf`: alternative backgrounds without PencilKit ink.
 - `retained/ink.drawing`: editable PencilKit data, saved on drawing changes.
 - `retained/record.json`: original quote, neighboring context, anchor, source-resource SHA-256, capture geometry, OS, timing, output dimensions, process-lifetime peak RSS observations, ink revision, launch IDs and human review.
-- `retained/ink-preview.png` and `preview.html`: regenerated on export, tied to the current ink revision. Earlier exports do not update by themselves.
+- `retained/ink-preview.png` and `preview.html`: regenerated on sharing, tied to the current ink revision. Earlier exports do not update by themselves.
+- `retained/walkthrough.json`: current guided step, per-step tried checkboxes, specific answers and comments. Earlier generic verdicts in `record.json` are retained as history.
+- `active-walkthrough.txt` at the scratch root: the walkthrough to resume after fully closing the app. Leaving through All walkthroughs clears only this pointer, not the saved note.
 
 EPUB hashing covers the chapter resource, not the complete publication or its font dependencies. PDF hashing covers the original PDF. These fixture identifiers do not decide production identity. The comparison of revised quotes performs no migration.
 
@@ -71,7 +92,7 @@ The actual free profile was issued **20 October 2026 at 14:11:25 UTC** and expir
 
 Before any preservation shortlist is accepted:
 
-1. Complete the first three scenarios on the connected iPad with physical Pencil input, cold offline reopening, enlarged display and appearance review. The first scrolled-EPUB comparison prompted a request to explain Raster versus Fixed page, so build 2 renamed them Page image and PDF copy. That exchange is not yet a fidelity approval or offline recovery verdict.
+1. Complete the first three page-clarity walkthroughs with physical Pencil input and enlarged display review. Complete source-free reopening and editing in the separate EPUB/PDF offline walkthroughs. The first scrolled-EPUB comparison prompted a request to explain Raster versus Fixed page, so build 2 renamed them Page image and PDF copy. The user then rejected the combined review structure; build 4 separates the tasks into eleven guided walkthroughs with specific questions. That exchange is not yet a fidelity approval or offline recovery verdict.
 2. Trial the chosen free SideStore route on that device. Record exact SideStore installer/app and LocalDevVPN versions, actual app identity, profile issuance/expiry and the observed refresh result, without publishing account identifiers or certificates.
 3. Save an original-context fixture with extra ink and a local pending-state marker. Refresh signing on-device with the required connectivity/VPN. Confirm the same data and drawing reopen and remain editable. This prototype has no production sync queue; its local drawing is the preservation fixture, not an upload test.
 4. The same-identity Xcode in-place update has preserved the first fixture. Repeat preservation checks through the chosen SideStore workflow and any Xcode fallback transition before relying on them. Do not uninstall the app.

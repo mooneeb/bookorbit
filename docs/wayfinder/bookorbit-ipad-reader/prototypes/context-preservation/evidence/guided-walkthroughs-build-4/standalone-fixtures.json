@@ -1,0 +1,66 @@
+{
+  "scope": "Synthetic simulator fixtures only; not human UI or physical fidelity approval",
+  "separateDirectory": "guided-walkthroughs/<scenario>",
+  "scenarios": {
+    "scroll": {
+      "ownArchiveExists": true,
+      "ownSourceWasRemoved": true,
+      "humanAnswersAbsent": true,
+      "inkBytes": 849
+    },
+    "columns": {
+      "ownArchiveExists": true,
+      "ownSourceWasRemoved": true,
+      "humanAnswersAbsent": true,
+      "inkBytes": 849
+    },
+    "pdf": {
+      "ownArchiveExists": true,
+      "ownSourceWasRemoved": true,
+      "humanAnswersAbsent": true,
+      "inkBytes": 849
+    },
+    "offlineEPUB": {
+      "ownArchiveExists": true,
+      "ownSourceWasRemoved": true,
+      "humanAnswersAbsent": true,
+      "inkBytes": 849
+    },
+    "offlinePDF": {
+      "ownArchiveExists": true,
+      "ownSourceWasRemoved": true,
+      "humanAnswersAbsent": true,
+      "inkBytes": 849
+    },
+    "browserEPUB": {
+      "ownArchiveExists": true,
+      "ownSourceWasRemoved": true,
+      "humanAnswersAbsent": true,
+      "inkBytes": 849
+    },
+    "browserColumns": {
+      "ownArchiveExists": true,
+      "ownSourceWasRemoved": true,
+      "humanAnswersAbsent": true,
+      "inkBytes": 849
+    },
+    "browserPDF": {
+      "ownArchiveExists": true,
+      "ownSourceWasRemoved": true,
+      "humanAnswersAbsent": true,
+      "inkBytes": 849
+    },
+    "replacement": {
+      "ownArchiveExists": true,
+      "ownSourceWasRemoved": true,
+      "humanAnswersAbsent": true,
+      "inkBytes": 849
+    },
+    "maintenance": {
+      "ownArchiveExists": true,
+      "ownSourceWasRemoved": true,
+      "humanAnswersAbsent": true,
+      "inkBytes": 849
+    }
+  }
+}

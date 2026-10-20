@@ -1,0 +1,17 @@
+{
+  "fromBuild": "0.1 (2)",
+  "toBuild": "4",
+  "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+  "installationExit": 0,
+  "inPlaceWithoutUninstall": true,
+  "priorScratchFilesCompared": 17,
+  "allPriorScratchFileHashesUnchanged": true,
+  "newWalkthroughsUseSeparateFolders": true,
+  "physicalLaunchExit": 1,
+  "physicalLaunchReason": "iPad locked; UI launch not yet confirmed on physical device",
+  "profileCreatedUTC": "2026-10-20T14:11:25Z",
+  "profileExpiresUTC": "2026-10-27T14:11:25Z",
+  "freshProfileRenewalProven": false,
+  "humanFidelityVerdict": "Pending",
+  "offlineReview": "Deferred at user request until walkthrough usability is resolved"
+}
