@@ -1,0 +1,94 @@
+{
+  "collectedUTC": "2026-10-20T17:23:19.781104+00:00",
+  "device": "iPad Air 13-inch (M2)",
+  "iPadOS": "26.6.1",
+  "appBuildReviewed": "4",
+  "source": "Read-only iPad app-container snapshot after user reported all except the last walkthrough finished",
+  "results": {
+    "browserColumns": {
+      "finished": true,
+      "outcome": "reported successful",
+      "answerCount": 4,
+      "sourceDirectoryAbsent": false,
+      "coldReopenRecorded": false
+    },
+    "browserEPUB": {
+      "finished": true,
+      "outcome": "reported successful",
+      "answerCount": 4,
+      "sourceDirectoryAbsent": false,
+      "coldReopenRecorded": false
+    },
+    "browserPDF": {
+      "finished": true,
+      "outcome": "reported successful",
+      "answerCount": 4,
+      "sourceDirectoryAbsent": false,
+      "coldReopenRecorded": false
+    },
+    "columns": {
+      "finished": true,
+      "outcome": "reported successful",
+      "answerCount": 6,
+      "sourceDirectoryAbsent": false,
+      "coldReopenRecorded": false
+    },
+    "maintenance": {
+      "finished": false,
+      "outcome": "pending",
+      "answerCount": 0,
+      "sourceDirectoryAbsent": false,
+      "coldReopenRecorded": false
+    },
+    "missing": {
+      "finished": true,
+      "outcome": "reported successful",
+      "answerCount": 1,
+      "sourceDirectoryAbsent": false
+    },
+    "offlineEPUB": {
+      "finished": true,
+      "outcome": "reported successful",
+      "answerCount": 2,
+      "sourceDirectoryAbsent": true,
+      "coldReopenRecorded": true
+    },
+    "offlinePDF": {
+      "finished": true,
+      "outcome": "reported successful",
+      "answerCount": 2,
+      "sourceDirectoryAbsent": true,
+      "coldReopenRecorded": true
+    },
+    "pdf": {
+      "finished": true,
+      "outcome": "reported successful",
+      "answerCount": 6,
+      "sourceDirectoryAbsent": false,
+      "coldReopenRecorded": false
+    },
+    "replacement": {
+      "finished": true,
+      "outcome": "unable to judge",
+      "answerCount": 1,
+      "sourceDirectoryAbsent": false,
+      "coldReopenRecorded": false
+    },
+    "scroll": {
+      "finished": true,
+      "outcome": "reported successful",
+      "answerCount": 6,
+      "sourceDirectoryAbsent": false,
+      "coldReopenRecorded": false
+    }
+  },
+  "finishedWalkthroughs": 10,
+  "reportedSuccessfulWalkthroughs": 9,
+  "limits": [
+    "Browser results are the user's saved reports; browser versions were not entered. Exact Android Chrome version remains unrecorded.",
+    "Original/revised context was explicitly unable to judge; a text-only dialog without ink was insufficient.",
+    "Maintenance awaits actual update plus physical edit/Undo verdict.",
+    "Offline internet setting is user-confirmed, while removed sources and distinct cold-launch identifiers are independently visible.",
+    "SideStore refresh and a newly issued signing profile remain untested."
+  ]
+}

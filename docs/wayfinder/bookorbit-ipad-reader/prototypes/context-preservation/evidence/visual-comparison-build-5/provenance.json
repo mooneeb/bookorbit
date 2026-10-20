@@ -1,0 +1,8 @@
+{
+  "runtime": "iOS 26.0 iPad Air 13-inch (M3) simulator",
+  "build": "5",
+  "input": "Copied self-authored fixture and actual Pencil ink from the physical build 4 replacement walkthrough",
+  "originalBackgroundAndInkMatchPhysicalSnapshot": true,
+  "newHumanApproval": false,
+  "scope": "Agent visual check of revised comparison; physical re-review remains pending"
+}

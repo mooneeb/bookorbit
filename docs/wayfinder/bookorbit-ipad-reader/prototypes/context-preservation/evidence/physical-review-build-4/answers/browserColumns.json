@@ -1,0 +1,21 @@
+{
+  "actions": {
+    "shared": true
+  },
+  "answers": {
+    "browser-0": "Yes, both previews are readable and aligned",
+    "browser-1": "Yes, both previews are readable and aligned",
+    "browser-2": "Yes, both previews are readable and aligned",
+    "share": "Yes, it is ready on both"
+  },
+  "checks": {
+    "browser-0": [true, true],
+    "browser-1": [true, true],
+    "browser-2": [true, true],
+    "share": [true]
+  },
+  "comments": {},
+  "finished": true,
+  "lastMessage": "",
+  "stepIndex": 4
+}

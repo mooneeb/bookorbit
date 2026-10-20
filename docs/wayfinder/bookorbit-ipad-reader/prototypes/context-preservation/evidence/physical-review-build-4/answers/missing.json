@@ -1,0 +1,15 @@
+{
+  "actions": {
+    "failure-reopened": true
+  },
+  "answers": {
+    "failure": "Yes, the explanation was clear and ink was kept"
+  },
+  "checks": {
+    "failure": [true, true]
+  },
+  "comments": {},
+  "finished": true,
+  "lastMessage": "This page was not saved because its required picture is missing. Your handwriting is still saved on the iPad.",
+  "stepIndex": 1
+}

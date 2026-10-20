@@ -1,0 +1,17 @@
+{
+  "actions": {
+    "quote-opened": true
+  },
+  "answers": {
+    "quote": "I could not compare the sentences"
+  },
+  "checks": {
+    "quote": [true, true]
+  },
+  "comments": {
+    "quote": "Clicking show revised sentence opened a dialogue box with text hat did not have any ink\n"
+  },
+  "finished": true,
+  "lastMessage": "",
+  "stepIndex": 1
+}

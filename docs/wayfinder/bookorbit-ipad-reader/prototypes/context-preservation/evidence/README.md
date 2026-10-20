@@ -2,6 +2,23 @@
 
 Recorded 2026-10-20. [Decision remains open](https://github.com/mooneeb/bookorbit/issues/15). [Run the native walkthrough](../README.md) before giving a fidelity verdict.
 
+## Latest physical review: build 4
+
+The user completed ten of eleven guided walkthroughs on the intended iPad, then connected it for read-only result collection. [Raw answers and summary](physical-review-build-4/summary.json) record **nine successful walkthroughs, one unable-to-judge comparison and the installation walkthrough still pending**. Finished means reviewed, not necessarily successful.
+
+- All eighteen individual page-clarity answers accepted both page image and PDF copy at 1x, 2x and 4x across the scrolled EPUB, column EPUB and cropped/rotated PDF.
+- Both offline walkthroughs reported that original words and ink returned, and erase/Undo/new ink worked. Their working source folders are absent, the records say sourceRemoved, and each has a reopen launch ID distinct from its capture launch ID. The offline setting itself is the user's report, not a network measurement by the app.
+- The missing-picture walkthrough reported a clear refusal and preserved ink after reopening. No complete archive exists for that incomplete sample.
+- All nine named browser-viewing answers reported both previews readable and aligned across the three exports in Mac Chrome, Mac Vivaldi and Android Chrome. Browser-version fields were left empty, so the exact Android Chrome build and browser-version-at-review remain unrecorded. These are archival previews, not ordinary inline BookOrbit reader integration.
+- The original/revised comparison was explicitly **unable to judge**. The user's comment says the dialog showed text without ink. It is not approved. Build 5 replaces it with an actual saved inked page beside a rendered local revised sample.
+- The installation walkthrough has a saved page, editable drawing and local unsent marker. The signed in-place update to build 5 preserved all 163 pre-update scratch file hashes and launched that walkthrough successfully. Its physical post-update edit/Undo answer remains pending; see the [update manifest](physical-review-build-4/update-to-build-5.json).
+
+Physical outputs include [single-column EPUB](physical-review-build-4/examples/scroll/preview.html), [column EPUB](physical-review-build-4/examples/columns/preview.html) and [PDF](physical-review-build-4/examples/pdf/preview.html). Each corresponding folder holds the original backgrounds and editable ink. Offline recovery drawings were saved at their current revisions separately; their earlier HTML previews were stale after editing and are not presented as current exports. Original browser exports predate the final checkbox answers, so the authoritative reviews are the separate collected answers.
+
+## Build 5 visual comparison
+
+The new comparison renders a local revised chapter with useful changed to revised, alongside the saved original background and the user's actual separate ink. It does not modify original assets or move ink. [The screenshot](visual-comparison-build-5/comparison.png) is from the iOS 26.0 simulator using a copy of the user's self-authored fixture and ink; it is an agent presentation check, not a new human approval. The original/revised page hashes and quotes are retained with that example. The physical re-review remains pending.
+
 ## Walkthrough redesign after the user review
 
 The user rejected the build 2 review structure as confusing. Merely renaming Raster and Fixed page did not solve the problem: saving, offline recovery, browser viewing, zoom and a generic verdict were still mixed together. They explicitly requested fixing that experience before resuming the offline question. No fidelity or offline approval was inferred.
@@ -98,12 +115,12 @@ These two launch modes are evidence-capture conveniences, not unit tests or prod
 
 ## Still required before resolution
 
-The intended Air M2, iPadOS 26.6.1, is installed and running. Required next evidence:
+The intended Air M2, iPadOS 26.6.1, is installed and running. The successful build 4 walkthroughs are recorded above. Required next evidence:
 
-1. Complete physical Pencil/tool editing, erase/Undo, source-free cold offline reopening, enlargement and appearance review across the first three scenarios. The first manually inked EPUB and its device measurements are recorded above; the user has not yet approved fidelity or offline recovery. The missing-resource ink recovery check also remains manual.
-2. The actual user's Mac Vivaldi 8.2.4133.89 / Chromium 152.0.7977.170, Mac Chrome 154.0.8037.98, and Oppo Find X9 Pro / Android 17 / actual Chrome build. Browser file-opening and image/PDF behavior must be tested there, not inferred from T3's renderer. Ordinary inline reading integration belongs to the separate browser validation decision.
-3. SideStore/LocalDevVPN compatibility, installed identity, newly issued profile, on-device refresh, update and fallback transition with preserved local ink/context. Xcode bootstrap, actual seven-day profile dates and a same-identity normal update are recorded above. That update did not renew the profile or prove a SideStore transition. There is no production sync queue in this app; pending-state renewal validation is not completed.
-4. The user's choice of acceptable candidates, zoom ceiling, visual defects and failure/recovery behavior. No agent verdict substitutes for this exchange.
+1. Human review of the corrected original/revised page comparison. Its earlier text-only dialog could not be judged.
+2. Human edit/Undo and local-marker verdict after the final walkthrough's actual controlled app update. Byte preservation alone cannot answer that physical interaction question.
+3. Exact browser versions at review, particularly Android Chrome, were not entered. The saved browser answers are successful reports with that provenance limit. Ordinary inline reading integration still belongs to the separate browser validation decision.
+4. SideStore/LocalDevVPN compatibility, installed identity, newly issued profile, on-device refresh and workflow-transition preservation. Normal Xcode updates that reuse the existing profile do not prove those things. There is no production upload queue in this app.
 
 Other unverified combinations include obfuscated/app-selected fonts, fixed-layout EPUB spreads, RTL/vertical scripts, huge chapters/scans, unusual PDF fonts/forms/links/tags, every rotation/crop combination, dynamic-color ink under changed appearance, interrupted/disk-full writes, corrupted archives and backup restoration. A final shortlist cannot claim these cases work.
 

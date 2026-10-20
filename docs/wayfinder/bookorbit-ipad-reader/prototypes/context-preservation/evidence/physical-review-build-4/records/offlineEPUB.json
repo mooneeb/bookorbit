@@ -1,0 +1,43 @@
+{
+  "captureMilliseconds" : 50.50194263458252,
+  "checks" : [
+    false,
+    false,
+    false
+  ],
+  "context" : {
+    "font" : "Source Serif 4, 4.005R",
+    "href" : "OEBPS\/chapter.xhtml#target",
+    "prefix" : "At the next gate, the reader stops to write.",
+    "quote" : "The most useful observation keeps its original context. A small mark can bring an old idea back into focus.",
+    "suffix" : "The reader closes the notebook and continues along the path."
+  },
+  "feedback" : "",
+  "geometry" : {
+    "canvasHeight" : 480,
+    "canvasWidth" : 640,
+    "scrollX" : 0,
+    "scrollY" : 1040,
+    "viewportHeight" : 480,
+    "viewportWidth" : 640,
+    "wordHeight" : 28,
+    "wordWidth" : 54.839996337890625,
+    "wordX" : 127.80000305175781,
+    "wordY" : 81.75
+  },
+  "inkRevision" : 7,
+  "inputEvidence" : "Manual input; physical Pencil review must be recorded separately",
+  "launchID" : "4F369560-70F3-4C5E-A6A0-BCBE09722686",
+  "os" : "26.6.1",
+  "processLifetimePeakRSSAfter" : 187105280,
+  "processLifetimePeakRSSBefore" : 187105280,
+  "rasterHeight" : 960,
+  "rasterWidth" : 1280,
+  "reopenedLaunchIDs" : [
+    "CA81DB2D-E1A8-4822-B896-9CE4B819158C"
+  ],
+  "scenario" : "offlineEPUB",
+  "sourceRemoved" : true,
+  "sourceSHA256" : "684915a5785a777b840b5522fc746d6e36c5ae39589df4769b6ab4e6cb0629c5",
+  "verdict" : "Not reviewed"
+}

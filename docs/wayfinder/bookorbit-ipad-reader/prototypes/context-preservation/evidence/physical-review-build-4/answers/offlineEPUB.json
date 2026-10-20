@@ -1,0 +1,15 @@
+{
+  "actions": {},
+  "answers": {
+    "edit": "Yes, erase, Undo and new ink worked",
+    "offline": "Yes, both returned"
+  },
+  "checks": {
+    "edit": [true, true],
+    "offline": [true, true]
+  },
+  "comments": {},
+  "finished": true,
+  "lastMessage": "",
+  "stepIndex": 3
+}

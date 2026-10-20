@@ -1,0 +1,672 @@
+{
+  "recordedUTC": "2026-10-20T17:27:18.932944+00:00",
+  "fromBuild": "4",
+  "toBuild": "5",
+  "installationExit": 0,
+  "sameBundleIdentifier": true,
+  "selectedSigningTeamMatches": true,
+  "inPlaceWithoutUninstall": true,
+  "priorFilesCompared": 163,
+  "allPriorFileHashesUnchanged": true,
+  "checks": [
+    {
+      "file": "columns/retained/readiness.json",
+      "unchanged": true
+    },
+    {
+      "file": "columns/source/EPUB/mimetype",
+      "unchanged": true
+    },
+    {
+      "file": "columns/source/EPUB/META-INF/container.xml",
+      "unchanged": true
+    },
+    {
+      "file": "columns/source/EPUB/OEBPS/nav.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "columns/source/EPUB/OEBPS/chapter.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "columns/source/EPUB/OEBPS/diagram.svg",
+      "unchanged": true
+    },
+    {
+      "file": "columns/source/EPUB/OEBPS/SourceSerif4-Regular.otf",
+      "unchanged": true
+    },
+    {
+      "file": "columns/source/EPUB/OEBPS/style.css",
+      "unchanged": true
+    },
+    {
+      "file": "columns/source/EPUB/OEBPS/reader.js",
+      "unchanged": true
+    },
+    {
+      "file": "columns/source/EPUB/OEBPS/package.opf",
+      "unchanged": true
+    },
+    {
+      "file": "scroll/retained/preview.html",
+      "unchanged": true
+    },
+    {
+      "file": "scroll/retained/record.json",
+      "unchanged": true
+    },
+    {
+      "file": "scroll/retained/ink-preview.png",
+      "unchanged": true
+    },
+    {
+      "file": "scroll/retained/background.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "scroll/retained/background.png",
+      "unchanged": true
+    },
+    {
+      "file": "scroll/retained/readiness.json",
+      "unchanged": true
+    },
+    {
+      "file": "scroll/retained/ink.drawing",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/retained/preview.html",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/retained/record.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/retained/ink-preview.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/retained/background.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/retained/background.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/retained/walkthrough.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/retained/readiness.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/retained/ink.drawing",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/source/EPUB/mimetype",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/source/EPUB/META-INF/container.xml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/source/EPUB/OEBPS/nav.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/source/EPUB/OEBPS/chapter.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/source/EPUB/OEBPS/diagram.svg",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/source/EPUB/OEBPS/SourceSerif4-Regular.otf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/source/EPUB/OEBPS/style.css",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/source/EPUB/OEBPS/reader.js",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserColumns/source/EPUB/OEBPS/package.opf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/retained/preview.html",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/retained/record.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/retained/ink-preview.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/retained/background.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/retained/background.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/retained/walkthrough.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/retained/readiness.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/retained/ink.drawing",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/source/EPUB/mimetype",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/source/EPUB/META-INF/container.xml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/source/EPUB/OEBPS/nav.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/source/EPUB/OEBPS/chapter.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/source/EPUB/OEBPS/diagram.svg",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/source/EPUB/OEBPS/SourceSerif4-Regular.otf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/source/EPUB/OEBPS/style.css",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/source/EPUB/OEBPS/reader.js",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/columns/source/EPUB/OEBPS/package.opf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/retained/preview.html",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/retained/record.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/retained/ink-preview.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/retained/background.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/retained/local-unsent-marker.txt",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/retained/background.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/retained/walkthrough.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/retained/readiness.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/retained/ink.drawing",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/source/EPUB/mimetype",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/source/EPUB/META-INF/container.xml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/source/EPUB/OEBPS/nav.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/source/EPUB/OEBPS/chapter.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/source/EPUB/OEBPS/diagram.svg",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/source/EPUB/OEBPS/SourceSerif4-Regular.otf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/source/EPUB/OEBPS/style.css",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/source/EPUB/OEBPS/reader.js",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/maintenance/source/EPUB/OEBPS/package.opf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlineEPUB/retained/preview.html",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlineEPUB/retained/record.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlineEPUB/retained/ink-preview.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlineEPUB/retained/background.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlineEPUB/retained/background.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlineEPUB/retained/walkthrough.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlineEPUB/retained/readiness.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlineEPUB/retained/ink.drawing",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserPDF/source/original.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserPDF/retained/preview.html",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserPDF/retained/record.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserPDF/retained/ink-preview.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserPDF/retained/background.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserPDF/retained/background.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserPDF/retained/walkthrough.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserPDF/retained/ink.drawing",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/retained/preview.html",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/retained/record.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/retained/ink-preview.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/retained/background.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/retained/background.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/retained/walkthrough.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/retained/revised-quote.txt",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/retained/readiness.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/retained/ink.drawing",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/source/EPUB/mimetype",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/source/EPUB/META-INF/container.xml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/source/EPUB/OEBPS/nav.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/source/EPUB/OEBPS/chapter.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/source/EPUB/OEBPS/diagram.svg",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/source/EPUB/OEBPS/SourceSerif4-Regular.otf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/source/EPUB/OEBPS/style.css",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/source/EPUB/OEBPS/reader.js",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/replacement/source/EPUB/OEBPS/package.opf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/missing/retained/walkthrough.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/missing/retained/readiness.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/missing/retained/ink.drawing",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/missing/source/EPUB/mimetype",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/missing/source/EPUB/META-INF/container.xml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/missing/source/EPUB/OEBPS/nav.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/missing/source/EPUB/OEBPS/chapter.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/missing/source/EPUB/OEBPS/SourceSerif4-Regular.otf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/missing/source/EPUB/OEBPS/style.css",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/missing/source/EPUB/OEBPS/reader.js",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/missing/source/EPUB/OEBPS/package.opf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/pdf/source/original.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/pdf/retained/preview.html",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/pdf/retained/record.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/pdf/retained/ink-preview.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/pdf/retained/background.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/pdf/retained/background.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/pdf/retained/walkthrough.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/pdf/retained/ink.drawing",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlinePDF/retained/preview.html",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlinePDF/retained/record.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlinePDF/retained/ink-preview.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlinePDF/retained/background.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlinePDF/retained/background.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlinePDF/retained/walkthrough.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/offlinePDF/retained/ink.drawing",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/retained/preview.html",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/retained/record.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/retained/ink-preview.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/retained/background.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/retained/background.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/retained/walkthrough.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/retained/readiness.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/retained/ink.drawing",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/source/EPUB/mimetype",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/source/EPUB/META-INF/container.xml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/source/EPUB/OEBPS/nav.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/source/EPUB/OEBPS/chapter.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/source/EPUB/OEBPS/diagram.svg",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/source/EPUB/OEBPS/SourceSerif4-Regular.otf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/source/EPUB/OEBPS/style.css",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/source/EPUB/OEBPS/reader.js",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/browserEPUB/source/EPUB/OEBPS/package.opf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/retained/preview.html",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/retained/record.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/retained/ink-preview.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/retained/background.pdf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/retained/background.png",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/retained/walkthrough.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/retained/readiness.json",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/retained/ink.drawing",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/source/EPUB/mimetype",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/source/EPUB/META-INF/container.xml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/source/EPUB/OEBPS/nav.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/source/EPUB/OEBPS/chapter.xhtml",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/source/EPUB/OEBPS/diagram.svg",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/source/EPUB/OEBPS/SourceSerif4-Regular.otf",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/source/EPUB/OEBPS/style.css",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/source/EPUB/OEBPS/reader.js",
+      "unchanged": true
+    },
+    {
+      "file": "guided-walkthroughs/scroll/source/EPUB/OEBPS/package.opf",
+      "unchanged": true
+    }
+  ],
+  "maintenanceMarkerPresent": true,
+  "maintenanceReviewStillPending": true,
+  "profileCreatedUTC": "2026-10-20T14:11:25Z",
+  "profileExpiresUTC": "2026-10-27T14:11:25Z",
+  "freshProfileRenewalProven": false,
+  "physicalPencilEditUndoVerdict": "Pending user check after update",
+  "maintenanceLaunchExit": 0
+}

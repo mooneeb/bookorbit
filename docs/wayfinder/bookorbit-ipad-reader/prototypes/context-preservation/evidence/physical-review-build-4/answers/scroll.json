@@ -1,0 +1,26 @@
+{
+  "actions": {},
+  "answers": {
+    "image-1": "Yes, it is readable and aligned",
+    "image-2": "Yes, it is readable and aligned",
+    "image-4": "Yes, it is readable and aligned",
+    "pdf-1": "Yes, it is readable and aligned",
+    "pdf-2": "Yes, it is readable and aligned",
+    "pdf-4": "Yes, it is readable and aligned"
+  },
+  "checks": {
+    "image-1": [true, true],
+    "image-2": [true, true],
+    "image-4": [true, true],
+    "pdf-1": [true, true],
+    "pdf-2": [true, true],
+    "pdf-4": [true, true]
+  },
+  "comments": {
+    "image-2": "",
+    "pdf-4": ""
+  },
+  "finished": true,
+  "lastMessage": "",
+  "stepIndex": 6
+}

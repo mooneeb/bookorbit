@@ -173,11 +173,11 @@ enum Scenario: String, CaseIterable, Codable {
       return [
         write,
         WalkthroughStep(
-          id: "quote", title: "Compare original and revised words", kind: .quote,
+          id: "quote", title: "Compare the original note with a revised page", kind: .quote,
           instruction:
-            "Tap Show revised sentence. The sample changes useful to revised in a second sentence. Your saved page should still show useful with your handwriting beside it. This compares sentence context; it does not import a complete revised book.",
+            "Tap Compare original and revised pages. On the left, find useful and your handwriting on the saved original page. On the right, find revised on a new sample page. Your old ink should stay on the original, without moving to the revised page. Return here to answer. This is a local sample revision, not an import of a complete new book.",
           checks: [
-            "I opened the revised sentence and compared it with the original.",
+            "I saw my original page and handwriting beside the revised sample page.",
             "I checked that the saved page and ink still show the original words.",
           ],
           question: "Did your note stay beside the original words without moving automatically?",

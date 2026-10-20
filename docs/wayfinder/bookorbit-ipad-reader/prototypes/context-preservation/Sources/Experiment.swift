@@ -467,6 +467,23 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
       if let problem = walkthrough.answers["save-problem"] {
         stack.addArrangedSubview(label("Could not finish saving: \(problem)"))
       }
+      if scenario == .replacement {
+        stack.addArrangedSubview(
+          button("Retry with the page comparison") { [weak self] in
+            guard let self else { return }
+            do {
+              let encoder = JSONEncoder()
+              encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+              try store.write(encoder.encode(walkthrough), "before-visual-comparison-review.json")
+              walkthrough.finished = false
+              walkthrough.stepIndex = 1
+              walkthrough.checks["quote"] = [false, false]
+              walkthrough.answers.removeValue(forKey: "quote")
+              persistWalkthrough()
+              renderStep()
+            } catch { showFailure(error) }
+          })
+      }
       stack.addArrangedSubview(
         button("Review my steps and answers") { [weak self] in
           guard let self else { return }
@@ -513,7 +530,7 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
       stack.addArrangedSubview(button("Share saved page") { [weak self] in self?.sharePreview() })
     case .quote:
       stack.addArrangedSubview(
-        button("Show revised sentence") { [weak self] in self?.inspectReplacement() })
+        button("Compare original and revised pages") { [weak self] in self?.inspectReplacement() })
     default: break
     }
     if !current.checks.isEmpty {
@@ -587,8 +604,10 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     case .maintenance:
       let marker = FileManager.default.fileExists(
         atPath: store.retained.appending(path: "local-unsent-marker.txt").path)
+      let build =
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
       return
-        "Local unsent-note marker: \(marker ? "present" : "missing"). App reopened since saving: \(record?.launchID != launchID ? "yes" : "not yet"). Original sentence: \(record?.context["quote"] ?? "unavailable")."
+        "Installed build: \(build). Local unsent-note marker: \(marker ? "present" : "missing"). App reopened since saving: \(record?.launchID != launchID ? "yes" : "not yet"). Original sentence: \(record?.context["quote"] ?? "unavailable")."
     case .quote: return "Original sentence: \(record?.context["quote"] ?? "unavailable")."
     case .share, .browser:
       return "The exported file is a viewing copy. Editable handwriting stays on your iPad."
@@ -756,6 +775,13 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
           }
         #endif
         renderStep()
+        #if targetEnvironment(simulator)
+          if scenario == .replacement
+            && ProcessInfo.processInfo.arguments.contains("--inspect-comparison")
+          {
+            inspectReplacement()
+          }
+        #endif
       } catch { showFailure(error) }
     }
   }
@@ -1170,20 +1196,13 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
 
   func inspectReplacement() {
     guard let record else { return }
-    let original = record.context["quote"] ?? ""
-    let revised = original.replacingOccurrences(of: "useful", with: "revised")
-    do {
-      try store.write(Data(revised.utf8), "revised-quote.txt")
-      walkthrough.actions["quote-opened"] = true
-      persistWalkthrough()
-      let alert = UIAlertController(
-        title: "Your note stays with the original sentence",
-        message:
-          "Original:\n\(original)\n\nRevised example:\n\(revised)\n\nThe saved page and ink still belong to the original words. No note has been moved.",
-        preferredStyle: .alert)
-      alert.addAction(UIAlertAction(title: "Back to my original note", style: .default))
-      present(alert, animated: true)
-    } catch { showFailure(error) }
+    let comparison = OriginalContextComparisonController(store: store, record: record)
+    comparison.onReady = { [weak self] in
+      self?.walkthrough.actions["visual-comparison-opened"] = true
+      self?.persistWalkthrough()
+    }
+    comparison.modalPresentationStyle = .fullScreen
+    present(comparison, animated: true)
   }
 
   func syntheticInk() -> PKDrawing {
@@ -1210,5 +1229,201 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
           ink: PKInk(index == 0 ? .marker : .pen, color: index == 0 ? .systemYellow : .black),
           path: PKStrokePath(controlPoints: points, creationDate: Date()))
       })
+  }
+}
+
+@MainActor
+final class OriginalContextComparisonController: UIViewController, WKNavigationDelegate {
+  let store: ScratchStore
+  let record: ArchiveRecord
+  let original = CaptureSurface()
+  let revised = CaptureSurface()
+  let pages = UIStackView()
+  let message = UILabel()
+  var onReady: (() -> Void)?
+  var continuation: CheckedContinuation<Void, Error>?
+  var started = false
+
+  init(store: ScratchStore, record: ArchiveRecord) {
+    self.store = store
+    self.record = record
+    super.init(nibName: nil, bundle: nil)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  func label(_ text: String, _ style: UIFont.TextStyle = .body) -> UILabel {
+    let label = UILabel()
+    label.text = text
+    label.numberOfLines = 0
+    label.font = .preferredFont(forTextStyle: style)
+    return label
+  }
+
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    view.backgroundColor = .systemBackground
+    let scroll = UIScrollView()
+    scroll.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(scroll)
+    NSLayoutConstraint.activate([
+      scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+      scroll.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+      scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+      scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+    ])
+    let stack = UIStackView()
+    stack.axis = .vertical
+    stack.spacing = 20
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    scroll.addSubview(stack)
+    NSLayoutConstraint.activate([
+      stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 24),
+      stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -24),
+      stack.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor, constant: 24),
+      stack.trailingAnchor.constraint(
+        equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -24),
+    ])
+    stack.addArrangedSubview(label("Your original note beside a revised page", .title1))
+    stack.addArrangedSubview(
+      label(
+        "Find useful and your ink on the original. Find revised on the new sample. Your old ink should stay with the original words. Pinch either page to enlarge it, then drag with a finger to look around."
+      ))
+    pages.axis = .horizontal
+    pages.distribution = .fillEqually
+    pages.spacing = 20
+    let originalWords = record.context["quote"] ?? ""
+    for (title, surface, words) in [
+      ("Original page with your handwriting", original, originalWords),
+      (
+        "Revised sample page", revised,
+        originalWords.replacingOccurrences(of: "useful", with: "revised")
+      ),
+    ] {
+      let panel = UIStackView()
+      panel.axis = .vertical
+      panel.spacing = 12
+      panel.addArrangedSubview(label(title, .headline))
+      surface.heightAnchor.constraint(equalToConstant: 380).isActive = true
+      surface.canvas.isUserInteractionEnabled = false
+      panel.addArrangedSubview(surface)
+      panel.addArrangedSubview(label(words, .callout))
+      pages.addArrangedSubview(panel)
+    }
+    stack.addArrangedSubview(pages)
+    message.numberOfLines = 0
+    message.font = .preferredFont(forTextStyle: .callout)
+    message.text = "Opening the revised sample. Your saved original page and ink are kept."
+    stack.addArrangedSubview(message)
+    let close = UIButton(type: .system)
+    close.configuration = .filled()
+    close.setTitle("Back to the walkthrough questions", for: .normal)
+    close.addAction(
+      UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
+    stack.addArrangedSubview(close)
+  }
+
+  override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    pages.axis = view.bounds.width >= 800 ? .horizontal : .vertical
+  }
+
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    guard !started else { return }
+    started = true
+    Task {
+      do { try await loadComparison() } catch {
+        message.text =
+          "The revised page could not open: \(error.localizedDescription). Your original note is kept. Return and report that you could not compare the pages."
+      }
+    }
+  }
+
+  func loadComparison() async throws {
+    let background = try Data(contentsOf: store.retained.appending(path: "background.png"))
+    guard let image = UIImage(data: background) else {
+      throw ExperimentFailure.message("The original saved page image could not open.")
+    }
+    let ink = try Data(contentsOf: store.retained.appending(path: "ink.drawing"))
+    original.show(image)
+    original.canvas.drawing = try PKDrawing(data: ink)
+    view.layoutIfNeeded()
+    for surface in [original, revised] {
+      surface.layoutIfNeeded()
+      surface.scroll.setZoomScale(surface.fit, animated: false)
+    }
+    let working = store.folder.appending(path: "revised-sample")
+    if FileManager.default.fileExists(atPath: working.path) {
+      try FileManager.default.removeItem(at: working)
+    }
+    if store.hasSource {
+      try FileManager.default.copyItem(at: store.source, to: working)
+    } else {
+      guard let seed = Bundle.main.url(forResource: "Fixtures", withExtension: nil) else {
+        throw ExperimentFailure.message("The revised sample resources are unavailable.")
+      }
+      try FileManager.default.createDirectory(at: working, withIntermediateDirectories: true)
+      try FileManager.default.copyItem(
+        at: seed.appending(path: "EPUB"), to: working.appending(path: "EPUB"))
+    }
+    let chapter = working.appending(path: "EPUB/OEBPS/chapter.xhtml")
+    let text = try String(contentsOf: chapter, encoding: .utf8)
+    guard text.contains(">useful</span>") else {
+      throw ExperimentFailure.message("The expected sample word was not found.")
+    }
+    try text.replacingOccurrences(of: ">useful</span>", with: ">revised</span>").write(
+      to: chapter, atomically: true, encoding: .utf8)
+    let web = revised.attachWeb()
+    web.navigationDelegate = self
+    try await withCheckedThrowingContinuation { callback in
+      continuation = callback
+      web.loadFileURL(chapter, allowingReadAccessTo: working)
+    }
+    let result = try await web.callAsyncJavaScript(
+      "return await prepareFixture('scroll')", arguments: [:], in: nil, contentWorld: .page)
+    guard let geometry = result as? [String: Any], let quote = geometry["quote"] as? String,
+      quote.contains("revised"), !quote.contains("useful")
+    else {
+      throw ExperimentFailure.message("The revised page did not reach its expected sentence.")
+    }
+    let configuration = WKSnapshotConfiguration()
+    configuration.rect = web.bounds
+    configuration.snapshotWidth = 640
+    let snapshot = try await web.takeSnapshot(configuration: configuration)
+    if let png = snapshot.pngData() { try store.write(png, "revised-background.png") }
+    try store.write(Data(quote.utf8), "revised-quote.txt")
+    let evidence: [String: Any] = [
+      "originalBackgroundSHA256": digest(background), "originalInkSHA256": digest(ink),
+      "originalQuote": record.context["quote"] ?? "", "revisedQuote": quote,
+      "originalAnchor": record.context["href"] ?? "",
+      "revisedChapterSHA256": digest(try Data(contentsOf: chapter)),
+      "oldInkMovedToRevisedPage": false, "geometry": geometry,
+      "scope":
+        "Local revised sample rendered beside retained original page and separate original ink; no full-book import or note migration",
+    ]
+    try store.write(
+      JSONSerialization.data(withJSONObject: evidence, options: [.prettyPrinted, .sortedKeys]),
+      "visual-comparison.json")
+    message.text =
+      "The original page still has your ink. The revised sample has changed words and no old ink. This test keeps the original context; it does not move your note."
+    onReady?()
+  }
+
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    continuation?.resume()
+    continuation = nil
+  }
+
+  func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    continuation?.resume(throwing: error)
+    continuation = nil
+  }
+
+  func webView(
+    _ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
+    withError error: Error
+  ) {
+    self.webView(webView, didFail: navigation, withError: error)
   }
 }

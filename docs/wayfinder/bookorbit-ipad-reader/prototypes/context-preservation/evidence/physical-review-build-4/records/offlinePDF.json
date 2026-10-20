@@ -1,0 +1,40 @@
+{
+  "captureMilliseconds" : 33.49792957305908,
+  "checks" : [
+    false,
+    false,
+    false
+  ],
+  "context" : {
+    "href" : "original.pdf#page=1",
+    "prefix" : "Original self-authored PDF",
+    "quote" : "A useful observation",
+    "suffix" : "A small note can bring an old idea back into focus."
+  },
+  "feedback" : "",
+  "geometry" : {
+    "canvasHeight" : 480,
+    "canvasWidth" : 640,
+    "cropHeight" : 468,
+    "cropWidth" : 624,
+    "cropX" : 48,
+    "cropY" : 36,
+    "intrinsicRotation" : 90
+  },
+  "inkRevision" : 10,
+  "inputEvidence" : "Manual input; physical Pencil review must be recorded separately",
+  "launchID" : "CA81DB2D-E1A8-4822-B896-9CE4B819158C",
+  "os" : "26.6.1",
+  "processLifetimePeakRSSAfter" : 104857600,
+  "processLifetimePeakRSSBefore" : 104857600,
+  "rasterHeight" : 960,
+  "rasterWidth" : 1280,
+  "reopenedLaunchIDs" : [
+    "BC3BCD4B-4145-4562-94F0-7AFD0F14A511",
+    "12E336D1-905F-4B43-807A-AAEC8693DA5B"
+  ],
+  "scenario" : "offlinePDF",
+  "sourceRemoved" : true,
+  "sourceSHA256" : "60d12f33e8386dad08bde17e9b38777c9c09c8c7960e03b96a85693e144f9104",
+  "verdict" : "Not reviewed"
+}

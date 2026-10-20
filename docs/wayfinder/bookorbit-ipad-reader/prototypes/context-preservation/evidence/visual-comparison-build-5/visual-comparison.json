@@ -1,0 +1,26 @@
+{
+  "geometry": {
+    "font": "Source Serif 4, 4.005R",
+    "href": "OEBPS\/chapter.xhtml#target",
+    "imagesReady": [true],
+    "prefix": "At the next gate, the reader stops to write.",
+    "quote": "The most revised observation keeps its original context. A small mark can bring an old idea back into focus.",
+    "scrollX": 0,
+    "scrollY": 1040,
+    "suffix": "The reader closes the notebook and continues along the path.",
+    "viewportHeight": 480,
+    "viewportWidth": 640,
+    "wordHeight": 28,
+    "wordWidth": 64.539993286132812,
+    "wordX": 127.80000305175781,
+    "wordY": 81.75
+  },
+  "oldInkMovedToRevisedPage": false,
+  "originalAnchor": "OEBPS\/chapter.xhtml#target",
+  "originalBackgroundSHA256": "d7a2757b3e8fab318380f9ff7128605ff168cb017a265d0624cce8ff62d990cd",
+  "originalInkSHA256": "3d48f872a5b130c36a5486c408937b4dd0e7568bdc5f380819ddb649688d5d9f",
+  "originalQuote": "The most useful observation keeps its original context. A small mark can bring an old idea back into focus.",
+  "revisedChapterSHA256": "df5506b805264ba843ed62f082495c1206e1f3ce85a1b5f4a795981474b909ae",
+  "revisedQuote": "The most revised observation keeps its original context. A small mark can bring an old idea back into focus.",
+  "scope": "Local revised sample rendered beside retained original page and separate original ink; no full-book import or note migration"
+}
