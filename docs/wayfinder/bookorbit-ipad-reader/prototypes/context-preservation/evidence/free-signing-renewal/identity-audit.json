@@ -1,0 +1,33 @@
+{
+  "recordedUTC": "2026-10-20T19:14:50.503291+00:00",
+  "status": "source-audit-inference-not-runtime-observation",
+  "installedSideStoreSourceCommit": "6032424a0e56c1c319762e786099bdd9186a238b",
+  "prototypeBundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+  "findings": [
+    {
+      "source": "SideStore/Core/Operations/OperationContexts.swift",
+      "finding": "A new install operation context defaults appendTeamID to true."
+    },
+    {
+      "source": "SideStore/Core/Operations/PipelineOperations/FetchProvisioningProfilesOperation.swift",
+      "finding": "Preferred installed identity is reused only when the resigned bundle identifier contains the Team identifier. Otherwise, the default path appends the Team identifier."
+    },
+    {
+      "source": "SideStore/Core/Operations/OperationStepDefinition.swift",
+      "finding": "The ordinary refresh pipeline does not run the user-customization step. Install and update pipelines run it."
+    },
+    {
+      "source": "SideStore/Core/Operations/PipelineOperations/UserCustomizationOperation.swift",
+      "finding": "The AppID customization dialog can disable appending the Team identifier for a full IPA install. The manual choice is stored only in that operation context."
+    }
+  ],
+  "inference": "For this existing prototype identifier, ordinary one-tap refresh is expected to request a profile for a different identifier. It cannot be assumed to renew the current app correctly.",
+  "chosenTrial": "In-place full IPA re-signing from Files on the iPad, with Customize AppID enabled and Append Team ID unchecked each time.",
+  "trialSequence": [
+    "Adopt build 6 into SideStore without changing the installed identity.",
+    "Reimport build 6 to test renewed provisioning without a code update.",
+    "Import build 7 to test a controlled update."
+  ],
+  "ordinaryReaderBadgeRefreshValidated": false,
+  "profileDatesAndDataRetentionStillRequired": true
+}

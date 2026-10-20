@@ -1,0 +1,14 @@
+{
+  "recordedUTC": "2026-10-20T19:09:52.693961+00:00",
+  "userReport": "It refreshed and I reopened SideStore",
+  "sideStoreVersion": "0.7.0-20260911.328+6032424a",
+  "sideStoreBuild": "0700",
+  "sameInstalledBundleIdentityAsBootstrap": true,
+  "prototypeRenewalVerified": false,
+  "sideStoreSelfProfileDatesCollected": false,
+  "readerProfileDatesEvidence": [
+    "build6-adoption.json",
+    "build6-ipad-renewal.json",
+    "build7-update.json"
+  ]
+}

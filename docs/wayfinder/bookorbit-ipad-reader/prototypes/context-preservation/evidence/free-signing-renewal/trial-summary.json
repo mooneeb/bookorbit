@@ -1,0 +1,55 @@
+{
+  "recordedUTC": "2026-10-20T19:37:05.510835+00:00",
+  "status": "passed-manual-ipa-renewal",
+  "device": {
+    "model": "iPad Air 13-inch (M2)",
+    "os": "iPadOS 26.6.1"
+  },
+  "readerBundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+  "xcodeBaseline": {
+    "build": "5",
+    "profileIssuedUTC": "2026-10-20T14:11:25Z",
+    "profileExpiresUTC": "2026-10-27T14:11:25Z"
+  },
+  "signingWindows": [
+    {
+      "stage": "SideStore adoption",
+      "build": "6",
+      "issuedUTC": "2026-10-20T19:16:40+00:00",
+      "expiresUTC": "2026-10-27T19:16:40+00:00"
+    },
+    {
+      "stage": "Same-build renewal; USB disconnected per user",
+      "build": "6",
+      "issuedUTC": "2026-10-20T19:29:01+00:00",
+      "expiresUTC": "2026-10-27T19:29:01+00:00"
+    },
+    {
+      "stage": "Controlled update",
+      "build": "7",
+      "issuedUTC": "2026-10-20T19:33:26+00:00",
+      "expiresUTC": "2026-10-27T19:33:26+00:00"
+    }
+  ],
+  "preservation": {
+    "adoptionUnchangedFiles": 175,
+    "sameBuildRenewalUnchangedFiles": 175,
+    "controlledUpdateUnchangedFiles": 176,
+    "allReaderNativeLaunchesSucceeded": true,
+    "appIdentifierUnchanged": true,
+    "teamUnchanged": true,
+    "signerCertificateChangedFromXcode": true
+  },
+  "validatedRenewalMethod": "SideStore full IPA import from Files; original AppID retained; Append Team ID unchecked",
+  "ordinaryReaderOneTapRefresh": "not validated; source audit indicates identifier mismatch for this prototype",
+  "reverseXcodeTransition": "not exercised; no reverse-transition or newly renewed Xcode profile claimed",
+  "serverSync": "not exercised; local marker is a scratch fixture only",
+  "humanPencilVerdict": "Everything was kept; erase and Undo work",
+  "completedUTC": "2026-10-20T19:37:54.769726+00:00",
+  "postHumanEditing": {
+    "inkRevisionBefore": 4,
+    "inkRevisionAfter": 6,
+    "drawingFileChanged": true,
+    "userConfirmsUndoRestoredMark": true
+  }
+}

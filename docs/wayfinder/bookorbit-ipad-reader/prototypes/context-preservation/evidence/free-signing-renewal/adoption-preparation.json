@@ -1,0 +1,25 @@
+{
+  "recordedUTC": "2026-10-20T19:12:52.192521+00:00",
+  "userConfirmedCustomizeAppID": true,
+  "userConfirmedExportResignedIPAs": true,
+  "filesLocation": "On My iPad / Orbit Context PROTOTYPE / Signing Trial",
+  "files": [
+    {
+      "name": "Reader update - build 6.ipa",
+      "sha256": "0a770c8d0b28f252d24465dca89d88bcef254b3b513b4565b31a337b8a0113ec"
+    },
+    {
+      "name": "Reader update - build 7.ipa",
+      "sha256": "a88fcd64af47d220575a129475fc8922a405048347dd97c2cb3ca0aa82a88033"
+    }
+  ],
+  "preAdoptionFixtureComparison": {
+    "recordedUTC": "2026-10-20T19:11:37.279107+00:00",
+    "files": 175,
+    "unchangedFromInitialBackup": 175,
+    "changedFiles": [],
+    "missingFiles": [],
+    "addedFiles": []
+  },
+  "installNotYetConfirmed": true
+}

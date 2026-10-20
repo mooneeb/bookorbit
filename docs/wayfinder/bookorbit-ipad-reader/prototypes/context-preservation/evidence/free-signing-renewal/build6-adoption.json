@@ -1,0 +1,55 @@
+{
+  "recordedUTC": "2026-10-20T19:25:03.161845+00:00",
+  "installedApp": {
+    "observedUTC": "2026-10-20T19:23:48.302870+00:00",
+    "apps": [
+      {
+        "name": "Orbit Context PROTOTYPE",
+        "version": "0.1",
+        "build": "6",
+        "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+        "containerAccessible": true
+      }
+    ]
+  },
+  "fixtureComparisonBeforeLaunch": {
+    "recordedUTC": "2026-10-20T19:23:50.119923+00:00",
+    "snapshotSucceeded": true,
+    "beforeFileCount": 175,
+    "afterFileCount": 175,
+    "unchangedFiles": 175,
+    "changedFiles": [],
+    "missingFiles": [],
+    "addedFiles": []
+  },
+  "signingProfile": {
+    "observedUTC": "2026-10-20T19:23:48.299859+00:00",
+    "source": "Reader-specific signed IPA exported by SideStore after installation",
+    "version": "0.1",
+    "build": "6",
+    "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+    "creationDateUTC": "2026-10-20T19:16:40+00:00",
+    "expirationDateUTC": "2026-10-27T19:16:40+00:00",
+    "profileSHA256": "1ff3c87985ce6629a435333c5aeb5c742698858f875b6226e8908207e57c7d9e",
+    "matchesExpectedApplicationIdentifier": true,
+    "matchesExistingXcodeTeam": true,
+    "intendedDeviceIncluded": true,
+    "localProvision": true,
+    "getTaskAllow": true,
+    "actualCodeSigner": {
+      "sideStoreSignerTeamMatchesExistingXcodeTeam": true,
+      "xcodeSignerTeamMatchesRecordedTeam": true,
+      "sameLeafSigningCertificateAsXcodeBuild5": false,
+      "exactSignerFingerprintsRetainedPrivately": true
+    }
+  },
+  "nativeLaunch": {
+    "checkedUTC": "2026-10-20T19:24:40.399698+00:00",
+    "readerBuild": 6,
+    "openedAfterSideStoreAdoption": true,
+    "exitCode": 0
+  },
+  "nextRenewalBaselineFiles": 175,
+  "altServerRunningBeforeRenewal": false,
+  "renewalWithoutCodeUpdatePending": true
+}

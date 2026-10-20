@@ -1,0 +1,36 @@
+{
+  "recordedUTC": "2026-10-20T19:37:54.769726+00:00",
+  "userVerdict": "Everything was kept; erase and Undo work",
+  "readerBuild": "7",
+  "checks": {
+    "originalPageSentenceAndInkReadable": true,
+    "physicalPencilEraseAndUndoPassed": true,
+    "installedBuild7AndLocalMarkerPresent": true
+  },
+  "finalSnapshotSucceeded": true,
+  "maintenance": {
+    "originalContextUnchanged": true,
+    "backgroundPNGUnchanged": true,
+    "backgroundPDFUnchanged": true,
+    "localMarkerUnchanged": true,
+    "localMarkerText": "Saved locally; not sent to a server",
+    "editableInkBytes": 14087,
+    "inkRevisionBeforePhysicalCheck": 4,
+    "inkRevisionAfterPhysicalCheck": 6,
+    "recordFieldsChangedDuringLaunchAndHumanEditing": [
+      "inkRevision",
+      "reopenedLaunchIDs"
+    ],
+    "finalFileSHA256": {
+      "background.png": "d7a2757b3e8fab318380f9ff7128605ff168cb017a265d0624cce8ff62d990cd",
+      "background.pdf": "5a79e18de64507faff472fb0d7b6633e034b1dccb6eecfa4f1578c668d438bca",
+      "ink.drawing": "cf83ec7be4bbc174ebbd33afc74d8b667917ea13e8fa0fa914e1178e872fadab",
+      "record.json": "9925ecc7a471f983bf4ab89ce09c03867cd3298f8de3d2b236068f45172f4ac2",
+      "local-unsent-marker.txt": "375992934a89ee1444dafc0ad2a50254814ebfe5e885453d65aa9e2157a58e70"
+    },
+    "editableDrawingBytesRestoredByUndo": false,
+    "allOtherRecordFieldsUnchanged": true,
+    "drawingByteComparisonPurpose": "Recorded only. The drawing file was intentionally edited; byte equality after editing is not the Undo acceptance criterion. The user confirmed visible restoration of the erased mark."
+  },
+  "scope": "Live human verdict after same-build signing renewal and controlled update. The local marker is not a production sync queue."
+}

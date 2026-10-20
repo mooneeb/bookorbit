@@ -12,7 +12,7 @@
   "prototypeRenewalVerified": false,
   "upstreamReport": "https://github.com/SideStore/SideStore/issues/1658",
   "contributorSuggestedWorkaround": "https://github.com/SideStore/SideStore/issues/1658#issuecomment-6232255981",
-  "workaroundStatus": "User confirmed On-Device Anisette OFF and SideStore reopened; remote server selection and fresh sign-in pending.",
+  "workaroundStatus": "User reports successful sign-in after the requested remote-helper configuration retry. First self-refresh pending.",
   "workaroundProvenance": "Contributor suggestion in the upstream issue tracker; not an established fix. Pinned app source confirms the relevant settings and certificate-preserving login reset.",
   "remoteHelperPreflight": {
     "checkedUTC": "2026-10-20T18:59:15.171757+00:00",
@@ -20,5 +20,7 @@
     "path": "/v3/client_info",
     "status": 200,
     "validJSONObject": true
-  }
+  },
+  "successfulRetryUserReport": "Never mind, I am signed in",
+  "successfulRetryReportedUTC": "2026-10-20T19:05:35.487511+00:00"
 }

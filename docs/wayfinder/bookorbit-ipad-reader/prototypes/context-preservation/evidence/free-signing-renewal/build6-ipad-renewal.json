@@ -1,0 +1,63 @@
+{
+  "recordedUTC": "2026-10-20T19:30:40.357924+00:00",
+  "userReport": "Installed with USB unplugged; reconnected now",
+  "altServerRunningBeforeTrial": false,
+  "installedApp": {
+    "observedUTC": "2026-10-20T19:29:39.519188+00:00",
+    "apps": [
+      {
+        "name": "Orbit Context PROTOTYPE",
+        "version": "0.1",
+        "build": "6",
+        "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+        "containerAccessible": true
+      }
+    ]
+  },
+  "fixtureComparisonBeforeLaunch": {
+    "recordedUTC": "2026-10-20T19:29:41.289417+00:00",
+    "snapshotSucceeded": true,
+    "beforeFileCount": 175,
+    "afterFileCount": 175,
+    "unchangedFiles": 175,
+    "changedFiles": [],
+    "missingFiles": [],
+    "addedFiles": []
+  },
+  "signingProfile": {
+    "observedUTC": "2026-10-20T19:29:41.318459+00:00",
+    "source": "Reader-specific signed IPA exported by SideStore after same-build reinstall with USB disconnected",
+    "version": "0.1",
+    "build": "6",
+    "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+    "creationDateUTC": "2026-10-20T19:29:01+00:00",
+    "expirationDateUTC": "2026-10-27T19:29:01+00:00",
+    "previousCreationDateUTC": "2026-10-20T19:16:40+00:00",
+    "previousExpirationDateUTC": "2026-10-27T19:16:40+00:00",
+    "issuanceAdvanced": true,
+    "expiryAdvanced": true,
+    "profileSHA256": "3c1de06d256498ebcb113c910378dd7aa039a86cb45addfa2b905ca965d0cf66",
+    "profileDiffersFromAdoption": true,
+    "matchesExpectedApplicationIdentifier": true,
+    "matchesExistingXcodeTeam": true,
+    "intendedDeviceIncluded": true,
+    "localProvision": true,
+    "getTaskAllow": true
+  },
+  "nativeLaunch": {
+    "checkedUTC": "2026-10-20T19:30:40.357198+00:00",
+    "readerBuild": 6,
+    "openedAfterIPadOnlyRenewal": true,
+    "exitCode": 0
+  },
+  "renewalMethod": "Same-build IPA import in SideStore with the original AppID and Append Team ID unchecked",
+  "ordinaryReaderBadgeRefreshValidated": false,
+  "postRenewalPencilReview": "pending after controlled build 7 update",
+  "expectedPostLaunchTrackingChanges": {
+    "addedFile": "active-walkthrough.txt",
+    "changedRecordField": "reopenedLaunchIDs",
+    "previousLaunchCount": 1,
+    "newLaunchCount": 2,
+    "otherRecordFieldsUnchanged": true
+  }
+}
