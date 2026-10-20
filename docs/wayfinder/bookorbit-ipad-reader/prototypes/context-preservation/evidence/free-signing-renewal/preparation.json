@@ -1,0 +1,92 @@
+{
+  "status": "prepared-awaiting-native-user-login",
+  "recordedUTC": "2026-10-20T18:21:50.054463+00:00",
+  "issue": "https://github.com/mooneeb/bookorbit/issues/20",
+  "prototypeSourceCommit": "1207bcc7d98d7418a1423e9204bf92a1ad691c49",
+  "device": {
+    "model": "iPad Air 13-inch (M2)",
+    "os": "iPadOS 26.6.1",
+    "osBuild": "23G83",
+    "connection": "USB",
+    "developerMode": true
+  },
+  "existingPrototype": {
+    "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+    "version": "0.1",
+    "build": "5",
+    "profileIssuedUTC": "2026-10-20T14:11:25Z",
+    "profileExpiresUTC": "2026-10-27T14:11:25Z",
+    "newProfileObserved": false
+  },
+  "backup": {
+    "startedUTC": "2026-10-20T18:16:13.566523+00:00",
+    "files": 175,
+    "completeManifestSHA256": "153f593884a6f60715efa5ded5ca99e5e35a35b5ab8dd7dcb7e499954fca1326",
+    "maintenanceInkRevision": 4,
+    "maintenanceFiles": {
+      "guided-walkthroughs/maintenance/retained/background.pdf": "5a79e18de64507faff472fb0d7b6633e034b1dccb6eecfa4f1578c668d438bca",
+      "guided-walkthroughs/maintenance/retained/background.png": "d7a2757b3e8fab318380f9ff7128605ff168cb017a265d0624cce8ff62d990cd",
+      "guided-walkthroughs/maintenance/retained/ink-preview.png": "530b7f8d33a44f0ee41d76dccc3c763efce67b88f639c350ffcfb36036cacf24",
+      "guided-walkthroughs/maintenance/retained/ink.drawing": "8c9ce2716d32f8666697024c8f7fe1214e3e5f9fb55ff82d387345de0ae3b185",
+      "guided-walkthroughs/maintenance/retained/local-unsent-marker.txt": "375992934a89ee1444dafc0ad2a50254814ebfe5e885453d65aa9e2157a58e70",
+      "guided-walkthroughs/maintenance/retained/preview.html": "20916c88d9c878bc1960ce53e919234ac040768cb3e93059a27ade297660e2c0",
+      "guided-walkthroughs/maintenance/retained/readiness.json": "523accce5f0acbbeb691241edf2cbaa249b30fa3f9c59f70daf29b728c541399",
+      "guided-walkthroughs/maintenance/retained/record.json": "66f540a013a8e172dea32adc40b1be93c430d6ea9b91c7ed86caa7329837c6a2",
+      "guided-walkthroughs/maintenance/retained/walkthrough.json": "99fea7fbba6cd503d20506128daca87eca74c13a8f4ca0d2ba63a68d09758f1a"
+    },
+    "privateFullBackupRetainedLocally": true
+  },
+  "tools": {
+    "macOS": "27.0.1 (26A434)",
+    "xcode": "27.0 (27A266a)",
+    "iloader": {
+      "version": "2.3.10",
+      "archiveSHA256": "c609c7462dd6afe32efca56fd8c043abb891d3752b4ef93d344fbb95435ff825",
+      "codesignVerification": "passed",
+      "gatekeeperAssessment": "accepted; Notarized Developer ID",
+      "openedOnMac": true
+    },
+    "SideStore": {
+      "releaseTag": "0.7.0-alpha",
+      "version": "0.7.0-20260911.328+6032424a",
+      "build": "0700",
+      "ipaSHA256": "e334f86e6ceeab2e0d886c07611246533f474bb18838cf13ebc09ed1f0d622b5",
+      "installedOnIPad": false
+    },
+    "LocalDevVPN": {
+      "installedOnIPad": false,
+      "appStoreVersionAtInspection": "1.3.0"
+    },
+    "existingAltStore": {
+      "version": "2.3",
+      "build": "64",
+      "preserved": true
+    }
+  },
+  "unsignedUpdateCandidates": [
+    {
+      "build": "6",
+      "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+      "sha256": "0a770c8d0b28f252d24465dca89d88bcef254b3b513b4565b31a337b8a0113ec",
+      "embeddedProfilePresent": false,
+      "minimumOS": "26.0"
+    },
+    {
+      "build": "7",
+      "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+      "sha256": "a88fcd64af47d220575a129475fc8922a405048347dd97c2cb3ca0aa82a88033",
+      "embeddedProfilePresent": false,
+      "minimumOS": "26.0"
+    }
+  ],
+  "results": {
+    "sideStoreTrial": "not-started",
+    "onDeviceRefresh": "not-tested",
+    "newProfileIssuance": "not-tested",
+    "workflowTransition": "not-tested",
+    "controlledSideStoreUpdate": "not-tested",
+    "postRenewalPhysicalReview": "pending",
+    "xcodeRenewalFallback": "not-tested"
+  },
+  "privacy": "Account, device, Team and certificate identifiers, pairing material, profiles and signed binaries excluded."
+}
