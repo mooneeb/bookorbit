@@ -30,6 +30,12 @@ Source: the user's completed ten-scenario review, recorded in [Validate the read
 
 The new [text-anchored ink investigation](https://github.com/mooneeb/bookorbit/issues/16) and [real-renderer reflow proof](https://github.com/mooneeb/bookorbit/issues/17) must ground the remaining technical choices. An HTML interaction review is not device or renderer validation.
 
+## Browser requirements after the live decision
+
+The [resolved browser-note contract](https://github.com/mooneeb/bookorbit/issues/7#issuecomment-6290292381) requires page ink directly inside both browser readers on MacBook and Android, notes in both existing note lists, browser typed-note editing and recoverable Trash/restore, and automatic updates without reload while preserving unsaved text. The resolution holds the detailed acceptance cases and connected-state freshness target.
+
+The [native-to-browser compatibility investigation](https://github.com/mooneeb/bookorbit/issues/18) and [browser ink validation](https://github.com/mooneeb/bookorbit/issues/19) must ground the ink representation and reader stack. This is an accepted reading requirement, not evidence that existing readers already support inline native ink or arbitrary EPUB reflow.
+
 ## Known facts from initial repository inspection
 
 These are starting pointers, not a completed compatibility or security audit.
