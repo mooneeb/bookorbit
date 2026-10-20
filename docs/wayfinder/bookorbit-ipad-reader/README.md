@@ -17,6 +17,8 @@ The completed review changes the earlier frozen-layout reading policy. Historica
 
 ## Research evidence
 
+- [Text-anchored EPUB ink through reflow](research/text-anchored-ink-reflow.md)
+
 - [BookOrbit sync foundations for a personal iPad reader](research/bookorbit-sync-foundations.md)
 - [iPad reader engines and annotation anchors](research/reader-engine-feasibility.md)
 - [Preserving original annotated EPUB and PDF views](research/annotated-view-preservation.md)

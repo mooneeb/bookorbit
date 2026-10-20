@@ -1,6 +1,6 @@
 # Text-anchored EPUB ink through reflow
 
-Audit date: **2026-10-20**. Planning and primary-source research for [issue 16](https://github.com/mooneeb/bookorbit/issues/16), read live with [prototype issue 17](https://github.com/mooneeb/bookorbit/issues/17). Repository baseline: `ce118e3890ea8c9019857cb7556552cdc9992f8e`. No renderer, deployment target, or storage schema is selected.
+Audit date: **2026-10-20**. Planning and primary-source research for [Establish text-anchored EPUB ink reflow feasibility](https://github.com/mooneeb/bookorbit/issues/16), read live with [Validate text-following ink through actual EPUB reflow](https://github.com/mooneeb/bookorbit/issues/17). Repository baseline: `ce118e3890ea8c9019857cb7556552cdc9992f8e`. No renderer, deployment target, or storage schema is selected.
 
 ## Finding and scope
 
@@ -116,7 +116,7 @@ When Ink OFF, continue rendering annotations with the resolved text and let navi
 
 Layout changes to unchanged publication content may remap. A replaced file, changed edition, edited resource, or uncertain source identity must not silently inherit the notes even if a CFI resolves or a quote approximately matches. Retain the original source association and excerpts/context; require an explicit reviewed reattachment/migration before claiming a new target. A same-name file or matching book title is not adequate identity. Old ink must remain available with its original context. This is an application safety requirement from the delegation, informed by [Readium's approximate matcher][readium-matcher]; it is not a guarantee supplied by that matcher.
 
-## Decisive fixture plan for issue 17
+## Decisive fixture plan for the EPUB reflow prototype
 
 This is proposed work for the [real-renderer prototype][prototype], not work completed here. Its overall aim is to establish whether the exact example survives actual EPUB layout and editable-ink transitions, and expose precisely where interpretation/placement decisions are required.
 
@@ -150,7 +150,7 @@ Before calling the bounded model feasible, require scenarios 1-3 to pass togethe
 
 ## Decisions to bring back through the parent
 
-These are questions for the parent to present during issue 17's live review, not questions asked or resolved by this researcher.
+These are questions for the parent to present during the live review for [Validate text-following ink through actual EPUB reflow][prototype], not questions asked or resolved by this researcher.
 
 1. Is selecting a target and explicitly grouping/assigning a handwritten label and connector acceptable, or must inference be part of the required experience? If inference is required, what corrections/uncertainty interactions are acceptable?
 2. May highlights/underlines/connectors change shape or split after wrapping, while handwriting retains its original form? Which marks must preserve literal appearance, and which may use a semantic rendering?
@@ -174,7 +174,7 @@ Selected Apple documentation payloads are pinned by SHA-256 below. The prefix is
 - [`pkstroke-swift.struct/rendergroupid.json`](https://developer.apple.com/tutorials/data/documentation/pencilkit/pkstroke-swift.struct/rendergroupid.json): `fc467926c4301ff544589be4b254e0095ca07f926050ee40dde9089f089e8cd6`.
 - [`pkstrokerecognizer.json`](https://developer.apple.com/tutorials/data/documentation/pencilkit/pkstrokerecognizer.json): `cc51d186286b9eea1c100bee93b554bfea7dbaa8964bee9e184e762442b9ecfa`.
 
-There is no BookOrbit renderer fixture, iPad/Pencil test, automatic-intent accuracy measurement, benchmark, or proof of native/web visual parity in this audit. No private server/library, production code, dependencies, migrations, map/ledger, assignment, or other issue was changed. Issue 16 remains open for parent review.
+There is no BookOrbit renderer fixture, iPad/Pencil test, automatic-intent accuracy measurement, benchmark, or proof of native/web visual parity in this audit. No private server/library, production code, dependencies, migrations, map/ledger, assignment, or other issue was changed. Current research status is recorded in [Establish text-anchored EPUB ink reflow feasibility](https://github.com/mooneeb/bookorbit/issues/16).
 
 Documentation verification: Prettier 3.9.9 write/check, `git diff --check`, and `git diff --cached --check` passed. All 53 reference-link definitions are used, with no undefined references; prohibited-text checks passed. The existing formatter in the main checkout was used without installing dependencies. Application tests, build, and ESLint were skipped because only this Markdown report changed.
 
