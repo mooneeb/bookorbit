@@ -1,0 +1,58 @@
+{
+  "recordedUTC": "2026-10-20T18:44:23.540137+00:00",
+  "status": "bootstrap-failed-pending-one-retry",
+  "userReportedLogin": "signed in to iloader",
+  "userReportedInstall": {
+    "downloadSideStore": "completed",
+    "signAndInstallSideStore": "failed",
+    "pairingFilePlacement": "not reached",
+    "error": "HTTP status server error (502 Bad Gateway) for url (https://new.ani.sidestore.io/v3/client_info)"
+  },
+  "initialIndependentProbe": {
+    "checkedUTC": "2026-10-20T18:42:47.204031+00:00",
+    "url": "https://new.ani.sidestore.io/v3/client_info",
+    "status": 502
+  },
+  "subsequentPublicEndpointProbes": [
+    {
+      "checkedUTC": "2026-10-20T18:43:18.641641+00:00",
+      "host": "new.ani.sidestore.io",
+      "path": "/v3/client_info",
+      "status": 200,
+      "validJSONObject": true
+    },
+    {
+      "checkedUTC": "2026-10-20T18:43:18.641973+00:00",
+      "host": "mac-ani.jkcoxson.com",
+      "path": "/v3/client_info",
+      "status": 200,
+      "validJSONObject": true
+    },
+    {
+      "checkedUTC": "2026-10-20T18:43:18.642150+00:00",
+      "host": "ani3.stikstore.app",
+      "path": "/v3/client_info",
+      "status": 403
+    }
+  ],
+  "afterFirstFailure": {
+    "sideStoreInstalled": false,
+    "newProvisioningProfileVerified": false,
+    "renewalVerified": false,
+    "prototypeFixtureComparison": {
+      "checkedUTC": "2026-10-20T18:44:12.913602+00:00",
+      "fixtureSnapshotSucceeded": true,
+      "beforeFileCount": 175,
+      "afterFileCount": 175,
+      "unchangedFiles": 175,
+      "changedFiles": [],
+      "missingFiles": [],
+      "addedFiles": []
+    }
+  },
+  "nextStep": "One retry with the same built-in server after its client_info endpoint returned HTTP 200.",
+  "alternateServerProvenance": "iloader v2.3.10 built-in presets, src/pages/Settings.tsx",
+  "alternateServerSource": "https://github.com/nab138/iloader/blob/v2.3.10/src/pages/Settings.tsx",
+  "scope": "A bootstrap server failure, not a demonstrated iPadOS incompatibility or a note preservation failure.",
+  "probePrivacy": "Public client_info GET requests only; no Apple Account credentials, anisette state, provisioning or signing requests."
+}

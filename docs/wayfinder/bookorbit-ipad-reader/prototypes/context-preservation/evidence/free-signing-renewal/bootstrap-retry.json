@@ -1,0 +1,43 @@
+{
+  "checkedUTC": "2026-10-20T18:45:28.052775+00:00",
+  "apps": [
+    {
+      "app": "SideStore",
+      "querySucceeded": true,
+      "matches": [
+        {
+          "name": "SideStore",
+          "version": "0.7.0-20260911.328+6032424a",
+          "build": "0700",
+          "bundleIdentifier": "personal suffix omitted"
+        }
+      ]
+    },
+    {
+      "app": "LocalDevVPN",
+      "querySucceeded": true,
+      "matches": []
+    },
+    {
+      "app": "Prototype",
+      "querySucceeded": true,
+      "matches": [
+        {
+          "name": "Orbit Context PROTOTYPE",
+          "version": "0.1",
+          "build": "5",
+          "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype"
+        }
+      ]
+    }
+  ],
+  "status": "bootstrap-succeeded-awaiting-local-vpn-setup",
+  "userReportedResult": "SideStore installs successfully",
+  "actualSideStoreBundleIdentity": {
+    "family": "com.SideStore.SideStore",
+    "teamSuffixMatchesExistingXcodePersonalTeam": true,
+    "completeIdentifierRetainedPrivately": true
+  },
+  "onDeviceRefreshVerified": false,
+  "prototypeRenewalVerified": false
+}

@@ -1,0 +1,18 @@
+{
+  "recordedUTC": "2026-10-20T18:50:16.401649+00:00",
+  "localDevVPN": {
+    "checkedUTC": "2026-10-20T18:49:40.172016+00:00",
+    "deviceQuerySucceeded": true,
+    "matches": [
+      {
+        "name": "LocalDevVPN",
+        "version": "1.3.0",
+        "build": "1",
+        "bundleIdentifier": "com.jkcoxson.LocalDevVPN"
+      }
+    ]
+  },
+  "vpnConnectionUserReport": "connected",
+  "sideStoreLaunchSucceeded": true,
+  "firstSelfRefreshVerified": false
+}
