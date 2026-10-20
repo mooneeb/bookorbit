@@ -18,10 +18,10 @@ The completed review changes the earlier frozen-layout reading policy. Historica
 ## Original-context preservation prototype
 
 - [Native capture-and-reopen walkthrough](prototypes/context-preservation/README.md)
-- [Simulator evidence and physical-review gates](prototypes/context-preservation/evidence/README.md)
+- [Simulator and physical evidence, with remaining review gates](prototypes/context-preservation/evidence/README.md)
 - [Validate preservation of original annotation context on EPUB and PDF](https://github.com/mooneeb/bookorbit/issues/15)
 
-The prototype has isolated EPUB scroll/column, PDF crop/rotation, and missing-resource scenarios. Simulator output is available; physical Pencil, current-iPad offline launch, signing renewal and the user's fidelity verdict remain unverified. This decision is still open.
+The prototype has isolated EPUB scroll/column, PDF crop/rotation, and missing-resource scenarios. It now opens on the intended Air M2 running iPadOS 26.6.1 through free Xcode signing. A first manually inked EPUB capture and a normal in-place update preserved the saved backgrounds, drawing and original context. Page image/PDF copy labels now explain the comparison. Physical source-free offline recovery, the remaining scenarios, signing renewal and the user's fidelity verdict remain open.
 
 ## Current browser contract
 
@@ -36,7 +36,7 @@ Page ink must appear directly inside both browser readers. Browser previews alon
 - [Resolved personal installation, runtime and maintenance policy](https://github.com/mooneeb/bookorbit/issues/11#issuecomment-6291346758)
 - [SideStore preferred for free on-device renewal, with Xcode fallback](https://github.com/mooneeb/bookorbit/issues/11#issuecomment-6291640322)
 
-Use the confirmed current iPadOS baseline and selected Mac/Android browsers. Prefer SideStore for routine on-device refresh after validation; retain Xcode for build/bootstrap and fallback. Free signing requires renewal within seven days of profile issuance, so fully disconnected use is bounded by the remaining signing lifetime. Device installation, refresh/update data preservation and reader compatibility still need actual validation.
+Use the confirmed current iPadOS baseline and selected Mac/Android browsers. Prefer SideStore for routine on-device refresh after validation; retain Xcode for build/bootstrap and fallback. Free signing requires renewal within seven days of profile issuance, so fully disconnected use is bounded by the remaining signing lifetime. Xcode bootstrap and a normal same-identity update have run on the iPad; SideStore compatibility, fresh signing renewal, workflow-transition preservation and reader compatibility still need actual validation.
 
 ## Research evidence
 

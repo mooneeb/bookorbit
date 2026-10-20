@@ -1,0 +1,21 @@
+{
+  "deviceModel": "iPad Air 13-inch (M2)",
+  "deviceOS": "26.6.1",
+  "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+  "version": "0.1",
+  "build": "1",
+  "profileCreatedUTC": "2026-10-20T14:11:25+00:00",
+  "profileExpiresUTC": "2026-10-27T14:11:25+00:00",
+  "profileValiditySeconds": 604800.0,
+  "localProvision": true,
+  "selectedTeamMatched": true,
+  "intendedDeviceIncluded": true,
+  "signingTeamFingerprintSHA256": "f34633ab5c6ff35713c84bec10010918557c4be83e7109674d9c6b20a69f3cec",
+  "installationRoute": "Xcode Personal Team bootstrap; SideStore trial still pending",
+  "developerMode": "enabled",
+  "installed": true,
+  "launchExitCode": 1,
+  "userConfirmedDeveloperTrustAndLaunch": true,
+  "trustedLaunchExitCode": 0,
+  "status": "Installed; developer trust confirmed by user; launch succeeded; handwriting review underway"
+}

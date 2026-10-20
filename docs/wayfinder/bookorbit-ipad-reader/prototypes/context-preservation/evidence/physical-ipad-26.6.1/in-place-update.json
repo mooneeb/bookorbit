@@ -1,0 +1,44 @@
+{
+  "fromBuild": "0.1 (1)",
+  "toBuild": "0.1 (2)",
+  "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+  "installedInPlace": true,
+  "launchExitCode": 0,
+  "profileCreatedUTC": "2026-10-20T14:11:25+00:00",
+  "profileExpiresUTC": "2026-10-27T14:11:25+00:00",
+  "localProvision": true,
+  "sameSelectedTeam": true,
+  "freshProfileRenewalProven": false,
+  "scope": "Actual iPad in-place Xcode update with unchanged bundle and selected Team; no uninstall or fixture reset",
+  "preservationChecks": [
+    {
+      "file": "scroll/retained/record.json",
+      "existsAfterUpdate": true,
+      "originalContextUnchanged": true,
+      "sourceIdentityUnchanged": true,
+      "humanChecksUnchanged": true,
+      "humanVerdictUnchanged": true,
+      "sourceRemovedBefore": false,
+      "sourceRemovedAfter": false,
+      "newAppLaunchRecorded": true
+    },
+    {
+      "file": "scroll/retained/background.pdf",
+      "existsAfterUpdate": true,
+      "sha256Unchanged": true
+    },
+    {
+      "file": "scroll/retained/background.png",
+      "existsAfterUpdate": true,
+      "sha256Unchanged": true
+    },
+    {
+      "file": "scroll/retained/ink.drawing",
+      "existsAfterUpdate": true,
+      "sha256Unchanged": true
+    }
+  ],
+  "allSavedFilesPresent": true,
+  "allBackgroundAndInkHashesUnchanged": true,
+  "originalContextUnchanged": true
+}

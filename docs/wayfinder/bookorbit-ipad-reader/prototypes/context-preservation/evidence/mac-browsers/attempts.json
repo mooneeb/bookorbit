@@ -1,0 +1,74 @@
+{
+  "result": "Chrome produced screenshots; processes timed out before returning a completed DOM audit. Vivaldi produced no screenshots. No human browser verdict.",
+  "humanFidelityVerdict": false,
+  "androidTested": false,
+  "browsers": [
+    {
+      "browser": "chrome",
+      "binaryVersion": "Google Chrome 154.0.8037.98",
+      "mode": "headless, isolated temporary profile, local file URL",
+      "viewport": {
+        "width": 720,
+        "height": 2000
+      },
+      "cases": [
+        {
+          "case": "scroll",
+          "status": "screenshotProducedButProcessTimedOut",
+          "timeoutSeconds": 35,
+          "completedImageAudit": false,
+          "screenshotProduced": true,
+          "screenshot": "chrome/scroll.png"
+        },
+        {
+          "case": "columns",
+          "status": "screenshotProducedButProcessTimedOut",
+          "timeoutSeconds": 35,
+          "completedImageAudit": false,
+          "screenshotProduced": true,
+          "screenshot": "chrome/columns.png"
+        },
+        {
+          "case": "pdf",
+          "status": "screenshotProducedButProcessTimedOut",
+          "timeoutSeconds": 35,
+          "completedImageAudit": false,
+          "screenshotProduced": true,
+          "screenshot": "chrome/pdf.png"
+        }
+      ]
+    },
+    {
+      "browser": "vivaldi",
+      "binaryVersion": "Vivaldi 8.2.4133.89",
+      "mode": "headless, isolated temporary profile, local file URL",
+      "viewport": {
+        "width": 720,
+        "height": 2000
+      },
+      "cases": [
+        {
+          "case": "scroll",
+          "status": "automationTimedOut",
+          "timeoutSeconds": 35,
+          "completedImageAudit": false,
+          "screenshotProduced": false
+        },
+        {
+          "case": "columns",
+          "status": "automationTimedOut",
+          "timeoutSeconds": 35,
+          "completedImageAudit": false,
+          "screenshotProduced": false
+        },
+        {
+          "case": "pdf",
+          "status": "automationTimedOut",
+          "timeoutSeconds": 35,
+          "completedImageAudit": false,
+          "screenshotProduced": false
+        }
+      ]
+    }
+  ]
+}

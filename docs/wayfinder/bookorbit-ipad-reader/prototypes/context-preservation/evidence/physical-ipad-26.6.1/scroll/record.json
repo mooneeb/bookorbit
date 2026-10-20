@@ -1,0 +1,43 @@
+{
+  "captureMilliseconds" : 70.18101215362549,
+  "checks" : [
+    false,
+    false,
+    false
+  ],
+  "context" : {
+    "font" : "Source Serif 4, 4.005R",
+    "href" : "OEBPS\/chapter.xhtml#target",
+    "prefix" : "At the next gate, the reader stops to write.",
+    "quote" : "The most useful observation keeps its original context. Circle useful, draw an arrow into the margin, and write important.",
+    "suffix" : "After capture, remove the local source copy and restart the app."
+  },
+  "feedback" : "",
+  "geometry" : {
+    "canvasHeight" : 480,
+    "canvasWidth" : 640,
+    "scrollX" : 0,
+    "scrollY" : 1100,
+    "viewportHeight" : 480,
+    "viewportWidth" : 640,
+    "wordHeight" : 28,
+    "wordWidth" : 54.839996337890625,
+    "wordX" : 127.80000305175781,
+    "wordY" : 81.75
+  },
+  "inkRevision" : 2,
+  "inputEvidence" : "Manual input; physical Pencil review must be recorded separately",
+  "launchID" : "C25B7A46-B838-467D-8BCA-16CF69D5EB33",
+  "os" : "26.6.1",
+  "processLifetimePeakRSSAfter" : 159547392,
+  "processLifetimePeakRSSBefore" : 149848064,
+  "rasterHeight" : 960,
+  "rasterWidth" : 1280,
+  "reopenedLaunchIDs" : [
+
+  ],
+  "scenario" : "scroll",
+  "sourceRemoved" : false,
+  "sourceSHA256" : "9c2800a71faab3030d242fc02603a1e24d0a1b851a2e01d44d0dfd5678d94544",
+  "verdict" : "Not reviewed"
+}

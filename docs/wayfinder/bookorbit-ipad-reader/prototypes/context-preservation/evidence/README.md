@@ -2,7 +2,23 @@
 
 Recorded 2026-10-20. [Decision remains open](https://github.com/mooneeb/bookorbit/issues/15). [Run the native walkthrough](../README.md) before giving a fidelity verdict.
 
-## What actually ran
+## Physical iPad installation and first capture
+
+The intended **iPad Air 13-inch (M2), iPadOS 26.6.1**, is now connected. The user selected their Personal Team in Xcode, trusted the Developer App on the iPad, and confirmed the prototype opens. Strict code-signature validation and profile/device membership checks passed. [Installation metadata](physical-ipad-26.6.1/installation.json) records the initial launch rejection before trust, then the successful trusted launch. Account, device and team identifiers and raw profiles are excluded.
+
+The free profile was issued **20 October 2026 at 14:11:25 UTC** and expires **27 October 2026 at 14:11:25 UTC**, exactly seven days later. The controlled build 1 to build 2 update reused that profile; **a fresh provisioning renewal has not been demonstrated**.
+
+The first [manually inked scrolled-EPUB capture](physical-ipad-26.6.1/scroll/preview.html) retains the actual backgrounds, editable drawing, preview and original context from that iPad. Capture geometry records vertical offset 1100 and a 640 x 480 point viewport. Its two recorded ink revisions are not synthetic fixture strokes. The record deliberately labels input as manual and requires a separate physical Pencil review; tool behavior and the user's fidelity verdict cannot be inferred from the drawing file.
+
+Single physical-fixture observations: **70.2 ms** capture/write time, **1280 x 960** raster pixels, **367,688 bytes** PNG, **53,458 bytes** PDF, and **10,630 bytes** editable ink. App-process lifetime peak RSS was **142.9 / 152.2 MiB** before/after. As with simulator measurements below, these exclude readiness/export time and separate WebKit/GPU processes. They are not a memory budget or large-book benchmark.
+
+The [in-place update manifest](physical-ipad-26.6.1/in-place-update.json) verifies installation and launch of build 2 under the same bundle/signing team without uninstalling or resetting. Background PNG, PDF and drawing hashes were unchanged. Original context, source identity, human checks and verdict were preserved, and a new app launch was recorded. **The working source existed before and after this update**, so this demonstrates update retention, not source-free offline restoration.
+
+The user asked what Raster and Fixed page meant and reported no visible difference. Build 2 now calls them **Page image** and **PDF copy**, with a short explanation. This is a request for clearer labeling, not approval of all zoom levels or recovery. [The interaction observation](physical-ipad-26.6.1/interaction-observation.json) keeps those verdicts pending. The retained physical HTML was exported before this update and still uses the older labels: Raster means Page image; Fixed page means PDF copy. Exporting again in build 2 updates those headings without changing the saved drawing.
+
+[Current prerequisite observations](physical-ipad-26.6.1/prerequisites.json) found no standard SideStore or LocalDevVPN installation through targeted device queries. Renamed forks are not excluded by that lookup. Neither compatibility nor refresh preservation has been tested.
+
+## What actually ran in the simulator
 
 - Xcode 27.0 (27A266a), iOS 27 SDK, deployment target 26.0. Unsigned device and simulator builds passed. The device IPA's Payload layout, bundle identity, iPad-only family, minimum OS and bundled fixtures were checked.
 - Execution: **iPad Air 13-inch (M3) simulator, iOS 26.0 (23A343)**. This is not the intended Air M2 on iPadOS 26.6.1.
@@ -23,7 +39,15 @@ Open one self-contained comparison at a time. Each contains both candidate backg
 
 The corresponding folders retain PNG/PDF backgrounds, separate editable `ink.drawing`, ink preview, fixed-page preview and capture record. The browser files label synthetic input and contain their own images, original quote and neighboring context. There are no runtime font or book-resource requests.
 
-The owner inspected the native screenshot and both EPUB/PDF candidate backgrounds. At normal size the retained text, illustration, table, margins and column layout were present in these fixtures. A T3 headless HTML render also loaded the four 1280 x 960 images used for the scrolled EPUB's background/ink comparisons and displayed their separate layers. This is an agent inspection of a rendering fragment, not validation in the user's Vivaldi, Chrome or Android browsers, and not the human's acceptable-fidelity decision. The collaborative browser rejected a local file URL as an unsupported protocol; no HTTP server was started.
+The owner inspected the native screenshot and both EPUB/PDF candidate backgrounds. At normal size the retained text, illustration, table, margins and column layout were present in these fixtures. A T3 headless HTML render also loaded the four 1280 x 960 images used for the scrolled EPUB's background/ink comparisons and displayed their separate layers. This is an agent inspection of a rendering fragment, not the human's acceptable-fidelity decision. The collaborative browser rejected a local file URL as an unsupported protocol; no HTTP server was started.
+
+## Actual Mac browser attempts
+
+The named Mac binaries reported **Google Chrome 154.0.8037.98** and **Vivaldi 8.2.4133.89**. Each was tried with an isolated temporary profile, local self-contained simulator exports and a 720 x 2000 headless viewport. The [attempt manifest](mac-browsers/attempts.json) distinguishes produced screenshots from completed audits.
+
+Chrome produced screenshots for the [scrolled EPUB](mac-browsers/chrome/scroll.png), [column EPUB](mac-browsers/chrome/columns.png) and [PDF](mac-browsers/chrome/pdf.png). Inspection of the scrolled-EPUB screenshot showed both backgrounds, overlaid ink and quoted context. All Chrome commands nevertheless reached the 35-second limit before returning a completed DOM audit. Vivaldi also timed out and produced no screenshots. The isolated processes were stopped and temporary profiles removed; no user's browser session was changed.
+
+These are partial Chrome rendering observations, not completed browser acceptance. Vivaldi rendering, interactive zoom, current physical-ink exports and the actual Android Chrome device remain unverified. An automation timeout alone does not establish a browser format incompatibility. Archival previews also do not prove inline ink in BookOrbit's normal browser reader.
 
 ## Source-free cold reopen and controlled simulator update
 
@@ -62,11 +86,11 @@ These two launch modes are evidence-capture conveniences, not unit tests or prod
 
 ## Still required before resolution
 
-The intended Air M2, iPadOS 26.6.1, remained disconnected at the final environment check. Required next evidence:
+The intended Air M2, iPadOS 26.6.1, is installed and running. Required next evidence:
 
-1. Physical Pencil ink, native tool editing/erase/Undo, cold offline reopening, enlargement and appearance review on that device. Record device capture sizes, timing and bounded memory observations separately.
+1. Complete physical Pencil/tool editing, erase/Undo, source-free cold offline reopening, enlargement and appearance review across the first three scenarios. The first manually inked EPUB and its device measurements are recorded above; the user has not yet approved fidelity or offline recovery. The missing-resource ink recovery check also remains manual.
 2. The actual user's Mac Vivaldi 8.2.4133.89 / Chromium 152.0.7977.170, Mac Chrome 154.0.8037.98, and Oppo Find X9 Pro / Android 17 / actual Chrome build. Browser file-opening and image/PDF behavior must be tested there, not inferred from T3's renderer. Ordinary inline reading integration belongs to the separate browser validation decision.
-3. SideStore/LocalDevVPN compatibility, installed identity, profile issuance/expiry, on-device refresh, normal in-place update and fallback transition with preserved local ink/context. There is no production sync queue in this app; pending-state renewal validation is not completed.
+3. SideStore/LocalDevVPN compatibility, installed identity, newly issued profile, on-device refresh, update and fallback transition with preserved local ink/context. Xcode bootstrap, actual seven-day profile dates and a same-identity normal update are recorded above. That update did not renew the profile or prove a SideStore transition. There is no production sync queue in this app; pending-state renewal validation is not completed.
 4. The user's choice of acceptable candidates, zoom ceiling, visual defects and failure/recovery behavior. No agent verdict substitutes for this exchange.
 
 Other unverified combinations include obfuscated/app-selected fonts, fixed-layout EPUB spreads, RTL/vertical scripts, huge chapters/scans, unusual PDF fonts/forms/links/tags, every rotation/crop combination, dynamic-color ink under changed appearance, interrupted/disk-full writes, corrupted archives and backup restoration. A final shortlist cannot claim these cases work.

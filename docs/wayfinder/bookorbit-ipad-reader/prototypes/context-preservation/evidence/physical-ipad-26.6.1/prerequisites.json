@@ -1,0 +1,13 @@
+{
+  "deviceModel": "iPad Air 13-inch (M2)",
+  "deviceOS": "26.6.1",
+  "developerMode": "enabled",
+  "connectionEstablished": true,
+  "standardSideStoreInstallationFound": false,
+  "standardLocalDevVPNInstallationFound": false,
+  "lookupScope": "Targeted CoreDevice display-name and official bundle-family predicates, including default apps; renamed forks not excluded",
+  "sideStoreTrial": "Not started",
+  "sideStoreRefreshPreservation": "Not tested",
+  "physicalPencilCaptureVerdict": "Awaiting user review",
+  "fullyOfflineColdLaunch": "Not tested"
+}

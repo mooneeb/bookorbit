@@ -38,7 +38,7 @@ enum Scenario: String, CaseIterable, Codable {
       ]
     }
     return [
-      "I compared Raster and Fixed page at 1x, 2x, and 4x, including margins and ink alignment.",
+      "I compared Page image and PDF copy at 1x, 2x, and 4x, including margins and ink alignment.",
       "After removing the scratch source and fully restarting, I could read the excerpt and edit/erase/undo ink.",
       "I checked the current exported preview in my Mac and Android browsers, including quote context.",
     ]
@@ -167,7 +167,7 @@ func drawPDF(_ data: Data, in rect: CGRect, context: CGContext) throws {
   guard let provider = CGDataProvider(data: data as CFData), let document = CGPDFDocument(provider),
     let page = document.page(at: 1)
   else {
-    throw ExperimentFailure.message("Fixed-page output could not be opened.")
+    throw ExperimentFailure.message("The PDF copy could not be opened.")
   }
   context.saveGState()
   context.translateBy(x: 0, y: rect.height)
@@ -295,7 +295,7 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
   let scenarioButton = UIButton(type: .system)
   let primary = UIButton(type: .system)
   let writeButton = UIButton(type: .system)
-  let candidates = UISegmentedControl(items: ["Raster", "Fixed page"])
+  let candidates = UISegmentedControl(items: ["Page image", "PDF copy"])
   let zoom = UISegmentedControl(items: ["1x", "2x", "4x"])
   let review = UIStackView()
   let verdict = UISegmentedControl(items: ["Keep", "Change", "Cannot judge"])
@@ -381,6 +381,10 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     let comparison = UIStackView(arrangedSubviews: [candidates, zoom])
     comparison.spacing = 16
     stack.addArrangedSubview(comparison)
+    stack.addArrangedSubview(
+      label(
+        "Both keep the same page with separately editable ink. The PDF copy may keep text sharper when enlarged.",
+        .footnote))
     contextLabel.numberOfLines = 0
     contextLabel.font = .preferredFont(forTextStyle: .footnote)
     stack.addArrangedSubview(contextLabel)
@@ -639,11 +643,12 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     guard let png = image.pngData(), let cgImage = image.cgImage,
       cgImage.width * cgImage.height <= 8_000_000
     else {
-      throw ExperimentFailure.message("Raster is unavailable or exceeds the experiment's 8 MP cap.")
+      throw ExperimentFailure.message(
+        "The page image is unavailable or exceeds this experiment's size limit.")
     }
     try store.write(png, "background.png")
     if let fixed { try store.write(fixed, "background.pdf") }
-    if fixed == nil && fixedError == nil { fixedError = "No fixed-page output returned." }
+    if fixed == nil && fixedError == nil { fixedError = "No PDF copy was returned." }
     let sourceFile =
       scenario == .pdf
       ? store.source.appending(path: "original.pdf")
@@ -701,7 +706,7 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     let cold = record.launchID != launchID
     if store.hasSource {
       status.text =
-        "2. Compare Raster and Fixed page below. Then remove this scenario's original scratch source."
+        "2. Compare Page image and PDF copy below. Then remove this scenario's original scratch source."
       primary.setTitle("3. Remove scratch source", for: .normal)
       primaryAction = { [weak self] in try self?.removeSource() }
     } else {
@@ -712,7 +717,7 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
       primary.setTitle("Reopen retained files", for: .normal)
       primaryAction = { [weak self] in try await self?.loadScenario() }
     }
-    let failure = record.fixedPageError.map { " Fixed-page candidate failed: \($0)" } ?? ""
+    let failure = record.fixedPageError.map { " The PDF copy is unavailable: \($0)" } ?? ""
     contextLabel.text =
       "Original quote: \(record.context["quote"] ?? "missing")\nThis note still belongs to the original content. Ink is saved locally; export again after changing it.\(failure)"
     updateProgress()
@@ -917,13 +922,13 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
     try store.write(inkData, "ink-preview.png")
     let background = try Data(contentsOf: store.retained.appending(path: "background.png"))
     var fixedHTML =
-      "<p>Fixed-page candidate failed: \(htmlEscape(record.fixedPageError ?? "not available"))</p>"
+      "<p>PDF copy unavailable: \(htmlEscape(record.fixedPageError ?? "not available"))</p>"
     if record.fixedPageError == nil {
       let fixed = try pdfImage(
         Data(contentsOf: store.retained.appending(path: "background.pdf")), size: rect.size)
       if let data = fixed.pngData() {
         fixedHTML = figure(
-          data, inkData, title: "Fixed page rendered at 2x for this portable preview")
+          data, inkData, title: "PDF copy, shown as a 2x image for this preview")
       }
     }
     let html = """
@@ -933,8 +938,8 @@ final class ExperimentController: UIViewController, WKNavigationDelegate, PKCanv
       <h1>Can you still read the original note?</h1><p>PROTOTYPE: saved source-replacement context, not normal EPUB reflow or BookOrbit sync. This single file contains its images and current ink preview. No font, original book, WebArchive, or PencilKit decoder is needed.</p>
       <p>\(htmlEscape(scenario.title)). iPadOS/simulator \(htmlEscape(record.os)). Ink revision \(record.inkRevision). Source absent at export: \(!store.hasSource).</p>
         <p>Input evidence: \(htmlEscape(record.inputEvidence ?? "Not recorded; do not treat this as physical Pencil evidence"))</p>
-      <p>Compare both examples. Check the text, illustration, margins and translucent ink. Use browser zoom or horizontal scrolling to inspect enlarged display. Fixed-page native zoom can retain more detail than this 2x browser derivative.</p>
-      \(figure(background, inkData, title: "Raster background plus current ink"))\(fixedHTML)
+      <p>Compare both examples. Check the text, illustration, margins and translucent ink. Use browser zoom or horizontal scrolling to inspect enlarged display. The iPad can show the PDF copy with more detail than this 2x preview image.</p>
+      \(figure(background, inkData, title: "Page image with current ink"))\(fixedHTML)
       <h2>Original context</h2><p>\(htmlEscape(record.context["quote"] ?? ""))</p><p>Before: \(htmlEscape(record.context["prefix"] ?? ""))<br>After: \(htmlEscape(record.context["suffix"] ?? ""))</p><p>Original anchor: \(htmlEscape(record.context["href"] ?? "")). This note has not been moved to a revised edition.</p>
       <h2>Your review</h2><p>\(htmlEscape(record.verdict)): \(htmlEscape(record.feedback))</p><p>Report browser/version, preferred candidate, acceptable zoom, visual defects, and whether the failure message is clear. Viewing this file does not tick the native checklist.</p></html>
       """

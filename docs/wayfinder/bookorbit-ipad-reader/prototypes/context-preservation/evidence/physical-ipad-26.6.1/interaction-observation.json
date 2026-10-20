@@ -1,0 +1,9 @@
+{
+  "userQuestion": "What is the difference between raster and fixed page? I do not see any",
+  "interpretation": "The user requested an explanation and reported no visible difference. This is not yet approval of all zoom levels or offline restoration.",
+  "response": "Clarified page image versus PDF copy, kept ink separately editable, and updated labels with an explanatory sentence.",
+  "acceptedFidelityVerdict": false,
+  "offlineReopenVerdict": "Awaiting user answer",
+  "oldLabels": ["Raster", "Fixed page"],
+  "newLabels": ["Page image", "PDF copy"]
+}
