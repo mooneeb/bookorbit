@@ -1,0 +1,23 @@
+[
+  {
+    "launchID" : "BCE6FA99-EC07-475F-9A09-28F73D6C5B68",
+    "originalQuoteAvailable" : true,
+    "scenario" : "scroll",
+    "sourceAbsent" : true,
+    "strokes" : 4
+  },
+  {
+    "launchID" : "BCE6FA99-EC07-475F-9A09-28F73D6C5B68",
+    "originalQuoteAvailable" : true,
+    "scenario" : "columns",
+    "sourceAbsent" : true,
+    "strokes" : 4
+  },
+  {
+    "launchID" : "BCE6FA99-EC07-475F-9A09-28F73D6C5B68",
+    "originalQuoteAvailable" : true,
+    "scenario" : "pdf",
+    "sourceAbsent" : true,
+    "strokes" : 4
+  }
+]

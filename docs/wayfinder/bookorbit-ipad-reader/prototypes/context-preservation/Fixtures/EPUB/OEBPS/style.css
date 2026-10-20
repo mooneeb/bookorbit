@@ -1,0 +1,49 @@
+@font-face {
+  font-family: FixtureSerif;
+  src: url("SourceSerif4-Regular.otf");
+}
+html {
+  background: #fffdf4;
+  color: #242424;
+}
+body {
+  margin: 0;
+  font:
+    20px/1.5 FixtureSerif,
+    serif;
+}
+#book {
+  margin: 40px;
+}
+h1 {
+  font-size: 28px;
+}
+p {
+  margin: 0 0 24px;
+}
+img {
+  display: block;
+  margin: 18px 0;
+}
+table {
+  border-collapse: collapse;
+  font-size: 16px;
+}
+td,
+th {
+  border: 1px solid #666;
+  padding: 4px 12px;
+}
+#useful {
+  background: #fff095;
+}
+html.columns #book {
+  width: 560px;
+  height: 400px;
+  column-width: 260px;
+  column-gap: 40px;
+  column-fill: auto;
+}
+html.columns p {
+  break-inside: avoid;
+}

@@ -1,0 +1,51 @@
+{
+  "environment": "iPad Air 13-inch (M3) simulator, iOS 26.0 (23A343), Xcode 27.0 (27A266a)",
+  "captureBuild": "0.1 (1)",
+  "reopenBuild": "0.1 (2), bundled Fixtures removed",
+  "backgroundAndInkSHA256Unchanged": true,
+  "originalQuoteContextUnchanged": true,
+  "allWorkingSourcesAbsent": true,
+  "bundledFixtureSeedAbsent": true,
+  "restoredSyntheticStrokesPerScenario": 4,
+  "humanChecksUntouched": true,
+  "physicalPencilTested": false,
+  "networkDisconnectedDuringSimulatorRun": false,
+  "signedInstallationTested": false,
+  "beforeUpdate": {
+    "scroll": {
+      "background.png": "332a12ec56a0fd5ead2832848431076e68e36e0d111574538e37921e6cfba073",
+      "background.pdf": "44998a4f430a1df92fc4c2f7d1c1c29b2758cc8dd505569971e39ffd7f45e401",
+      "ink.drawing": "fb47a8048fe841a61f8f5671b7652d8db4b33ac2667fa6a194bee2e3fbec5d6d",
+      "context": {
+        "font": "Source Serif 4, 4.005R",
+        "href": "OEBPS/chapter.xhtml#target",
+        "prefix": "At the next gate, the reader stops to write.",
+        "quote": "The most useful observation keeps its original context. Circle useful, draw an arrow into the margin, and write important.",
+        "suffix": "After capture, remove the local source copy and restart the app."
+      }
+    },
+    "columns": {
+      "background.png": "272d748eb5a47a1c4ac6957938c63afa45f8855ba1433c3224ef0d36a1088e40",
+      "background.pdf": "4c9884bc6cbb69bf3f7651ef2e48dc93c24ab6ec438adc863b07454e4325251f",
+      "ink.drawing": "cedb01ac9d784054ed628daf64b8d62d36d911162a81d255ff7a7ca7af6d1627",
+      "context": {
+        "font": "Source Serif 4, 4.005R",
+        "href": "OEBPS/chapter.xhtml#target",
+        "prefix": "At the next gate, the reader stops to write.",
+        "quote": "The most useful observation keeps its original context. Circle useful, draw an arrow into the margin, and write important.",
+        "suffix": "After capture, remove the local source copy and restart the app."
+      }
+    },
+    "pdf": {
+      "background.png": "c11d41148c63f43ed95ab473ef147a5e8b3d05610ba5cc3960dd957e03066cee",
+      "background.pdf": "9675d36dba32d3a9141b71ccee6370a825ad88846fe8661a098cf75ef139eb15",
+      "ink.drawing": "e89a2e86b8f04650c9b107b435c00cbf0d482d31828a11b992e295eeadaa3d82",
+      "context": {
+        "href": "original.pdf#page=1",
+        "prefix": "Original self-authored PDF",
+        "quote": "ORIGINAL PDF: useful observation",
+        "suffix": "Crop origin (48, 36). Intrinsic rotation 90 degrees."
+      }
+    }
+  }
+}

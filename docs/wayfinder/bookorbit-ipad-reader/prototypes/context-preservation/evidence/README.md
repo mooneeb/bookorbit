@@ -1,0 +1,74 @@
+# Preservation capture evidence
+
+Recorded 2026-10-20. [Decision remains open](https://github.com/mooneeb/bookorbit/issues/15). [Run the native walkthrough](../README.md) before giving a fidelity verdict.
+
+## What actually ran
+
+- Xcode 27.0 (27A266a), iOS 27 SDK, deployment target 26.0. Unsigned device and simulator builds passed. The device IPA's Payload layout, bundle identity, iPad-only family, minimum OS and bundled fixtures were checked.
+- Execution: **iPad Air 13-inch (M3) simulator, iOS 26.0 (23A343)**. This is not the intended Air M2 on iPadOS 26.6.1.
+- The capture run made four deterministic synthetic strokes per successful scenario: translucent underline, arrow, and two corner marks. No human handwriting, Pencil pressure/tilt, native eraser/Undo, or hardware gesture was tested.
+- WebKit capture ran at actual vertical offset **1100** for the scrolled EPUB and horizontal offset **1800** for the column EPUB, in a 640 x 480 point viewport. The returned word geometry, font name and original context are in each record.
+- The PDF fixture uses a nonzero crop origin and intrinsic 90 degree rotation. The same displayed-page transform was used for its raster and extracted-page candidate. This does not validate an eventual production PDF reader adapter or every PDF rotation.
+- The missing-image fixture failed image decoding and produced **no complete archive**. Its actual WebKit exception and the absent-record observation are in the [capture log](simulator-26.0/capture-run.json). Pending scratch-ink recovery in that failure scenario still needs manual review.
+
+An initial repeat run exposed asynchronous scroll-position reporting. The fixture now waits for the requested offset, with bounded resource readiness and a nonzero-offset gate. The recorded run completed without fixture failures. A successful API callback alone is not a visual-fidelity verdict.
+
+## Retained outputs
+
+Open one self-contained comparison at a time. Each contains both candidate backgrounds and the same native-rendered synthetic ink. These are recorded output examples, not simulated writing controls.
+
+- [Scrolled EPUB comparison](simulator-26.0/scroll/preview.html)
+- [Column EPUB comparison](simulator-26.0/columns/preview.html)
+- [Cropped/rotated PDF comparison](simulator-26.0/pdf/preview.html)
+
+The corresponding folders retain PNG/PDF backgrounds, separate editable `ink.drawing`, ink preview, fixed-page preview and capture record. The browser files label synthetic input and contain their own images, original quote and neighboring context. There are no runtime font or book-resource requests.
+
+The owner inspected the native screenshot and both EPUB/PDF candidate backgrounds. At normal size the retained text, illustration, table, margins and column layout were present in these fixtures. A T3 headless HTML render also loaded the four 1280 x 960 images used for the scrolled EPUB's background/ink comparisons and displayed their separate layers. This is an agent inspection of a rendering fragment, not validation in the user's Vivaldi, Chrome or Android browsers, and not the human's acceptable-fidelity decision. The collaborative browser rejected a local file URL as an unsupported protocol; no HTTP server was started.
+
+## Source-free cold reopen and controlled simulator update
+
+After capture, all three working sources were deleted. The deliberately broken fourth scenario's remaining source copy was also removed, so no scratch font/image copy remained. The original app process was terminated. An unsigned build with the **entire bundled Fixtures directory removed**, version advanced from **0.1 (1)** to **0.1 (2)**, was installed in place under the same bundle ID. A new process reopened the retained files.
+
+The [cold-reopen log](simulator-26.0/cold-reopen-run.json) and [verification manifest](simulator-26.0/verification.json) record:
+
+- All three sources absent, four restored synthetic strokes per scenario, and original quoted context available.
+- Background PNG, fixed PDF and editable drawing SHA-256 values unchanged across the update.
+- Original quote/context unchanged, distinct capture/reopen launch identifiers, and no fixture seed in the updated app.
+- Every human checkbox untouched and every verdict still **Not reviewed**.
+
+There was no new source rendering on this reopen path. The simulator remained network-connected; the experiment used local files only. This demonstrates source-independent local restoration in this simulator, not a physical airplane-mode launch, seven-day provisioning behavior, SideStore refresh or Xcode signing-identity transition. Simulator containers can change paths during an in-place installation; the checks retrieved the current container again rather than assuming its old path.
+
+## Bounded observations
+
+Single recorded run, not a benchmark. All raster backgrounds are **1280 x 960** pixels. Four synthetic strokes serialized to **849 bytes** in each example.
+
+| Fixture             | PNG bytes | Fixed PDF bytes | Capture/write time | App lifetime peak RSS before/after |
+| ------------------- | --------: | --------------: | -----------------: | ---------------------------------: |
+| Scrolled EPUB       |   136,560 |          53,451 |            55.0 ms |                  216.8 / 236.4 MiB |
+| Column EPUB         |   144,105 |          53,564 |            70.9 ms |                  266.6 / 266.6 MiB |
+| Cropped/rotated PDF |    69,490 |          15,823 |            13.2 ms |                  274.7 / 274.7 MiB |
+
+Capture time includes background generation and writes before the record was created; it excludes font/image readiness, preview export and cold reopening. RSS is the app process's lifetime high-water mark, not isolated capture usage, total WebKit/GPU memory, an intended-iPad measurement, or an accepted budget. Do not extrapolate these tiny fixtures to large chapters/scans or library storage.
+
+The native bench caps the viewport, active canvas/capture count, written artifact size and raster pixels. Those are experimental guardrails, not product quotas. No maximum useful zoom or acceptable visual difference has been chosen.
+
+## Reproduce the measurements
+
+From the prototype directory, build with `./run.sh simulator`. Install on an iPad simulator, then launch the dedicated `dev.mooneeb.bookorbit.contextprototype` app with `--capture-fixtures`. **That argument resets only this prototype's fixture scenarios. Do not use it after adding review ink you want to keep.** It writes `capture-run.json`, the retained assets and exports under Documents/`PROTOTYPE-WIPE-ME`.
+
+Record SHA-256 values for `background.png`, `background.pdf` and `ink.drawing`, plus each original context. Terminate the app. Copy the unsigned simulator app to a separate build directory, remove that copy's `Fixtures` directory, and advance its Info.plist build version. Remove any remaining `*/source` scratch folders. Install the copied app in place, then launch with `--reopen-fixtures`. Compare the new container's assets and context against the recorded values. Do not uninstall or reset the prototype between those steps.
+
+These two launch modes are evidence-capture conveniences, not unit tests or production behavior. Manual normal launch chooses a scenario through its title. `--scenario=columns`, `--scenario=pdf`, and `--scenario=missing` are optional direct launch shortcuts.
+
+## Still required before resolution
+
+The intended Air M2, iPadOS 26.6.1, remained disconnected at the final environment check. Required next evidence:
+
+1. Physical Pencil ink, native tool editing/erase/Undo, cold offline reopening, enlargement and appearance review on that device. Record device capture sizes, timing and bounded memory observations separately.
+2. The actual user's Mac Vivaldi 8.2.4133.89 / Chromium 152.0.7977.170, Mac Chrome 154.0.8037.98, and Oppo Find X9 Pro / Android 17 / actual Chrome build. Browser file-opening and image/PDF behavior must be tested there, not inferred from T3's renderer. Ordinary inline reading integration belongs to the separate browser validation decision.
+3. SideStore/LocalDevVPN compatibility, installed identity, profile issuance/expiry, on-device refresh, normal in-place update and fallback transition with preserved local ink/context. There is no production sync queue in this app; pending-state renewal validation is not completed.
+4. The user's choice of acceptable candidates, zoom ceiling, visual defects and failure/recovery behavior. No agent verdict substitutes for this exchange.
+
+Other unverified combinations include obfuscated/app-selected fonts, fixed-layout EPUB spreads, RTL/vertical scripts, huge chapters/scans, unusual PDF fonts/forms/links/tags, every rotation/crop combination, dynamic-color ink under changed appearance, interrupted/disk-full writes, corrupted archives and backup restoration. A final shortlist cannot claim these cases work.
+
+Native builds, Swift format/lint, shell syntax, fixture XML/resource references, IPA structure, source-removal restoration and evidence consistency are the relevant checks. No tests were added under the prototype skill. Production server/client ESLint, app tests, typechecks and migrations are inapplicable because no production source, API, database or dependencies changed. Generated build outputs are not committed.

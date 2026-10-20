@@ -1,0 +1,40 @@
+{
+  "captureMilliseconds" : 13.21399211883545,
+  "checks" : [
+    false,
+    false,
+    false
+  ],
+  "context" : {
+    "href" : "original.pdf#page=1",
+    "prefix" : "Original self-authored PDF",
+    "quote" : "ORIGINAL PDF: useful observation",
+    "suffix" : "Crop origin (48, 36). Intrinsic rotation 90 degrees."
+  },
+  "feedback" : "",
+  "geometry" : {
+    "canvasHeight" : 480,
+    "canvasWidth" : 640,
+    "cropHeight" : 468,
+    "cropWidth" : 624,
+    "cropX" : 48,
+    "cropY" : 36,
+    "intrinsicRotation" : 90
+  },
+  "inkRevision" : 2,
+  "inputEvidence" : "Synthetic strokes in an automated simulator fixture run",
+  "launchID" : "A89C0AAC-F2D8-4DF0-88AD-2CB473706B86",
+  "os" : "26.0",
+  "processLifetimePeakRSSAfter" : 288014336,
+  "processLifetimePeakRSSBefore" : 288014336,
+  "rasterHeight" : 960,
+  "rasterWidth" : 1280,
+  "reopenedLaunchIDs" : [
+    "E4C02591-559C-40EA-A496-785BD2B4443F",
+    "BCE6FA99-EC07-475F-9A09-28F73D6C5B68"
+  ],
+  "scenario" : "pdf",
+  "sourceRemoved" : true,
+  "sourceSHA256" : "56d9c8017d6fe925210ddca09de3782451b82b992bce14a0ec64990708bda592",
+  "verdict" : "Not reviewed"
+}

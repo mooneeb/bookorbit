@@ -15,6 +15,14 @@ Canonical map: [Find the design for a personal BookOrbit iPad reader](https://gi
 
 The completed review changes the earlier frozen-layout reading policy. Historical preservation reports remain evidence for retaining original context after source replacement, not proof of text-following page ink. Follow the current review and live issues for product requirements.
 
+## Original-context preservation prototype
+
+- [Native capture-and-reopen walkthrough](prototypes/context-preservation/README.md)
+- [Simulator evidence and physical-review gates](prototypes/context-preservation/evidence/README.md)
+- [Validate preservation of original annotation context on EPUB and PDF](https://github.com/mooneeb/bookorbit/issues/15)
+
+The prototype has isolated EPUB scroll/column, PDF crop/rotation, and missing-resource scenarios. Simulator output is available; physical Pencil, current-iPad offline launch, signing renewal and the user's fidelity verdict remain unverified. This decision is still open.
+
 ## Current browser contract
 
 - [Resolved browser note behavior](https://github.com/mooneeb/bookorbit/issues/7#issuecomment-6290292381)

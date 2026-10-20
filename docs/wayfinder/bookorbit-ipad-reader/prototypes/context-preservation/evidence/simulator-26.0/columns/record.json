@@ -1,0 +1,44 @@
+{
+  "captureMilliseconds" : 70.86002826690674,
+  "checks" : [
+    false,
+    false,
+    false
+  ],
+  "context" : {
+    "font" : "Source Serif 4, 4.005R",
+    "href" : "OEBPS\/chapter.xhtml#target",
+    "prefix" : "At the next gate, the reader stops to write.",
+    "quote" : "The most useful observation keeps its original context. Circle useful, draw an arrow into the margin, and write important.",
+    "suffix" : "After capture, remove the local source copy and restart the app."
+  },
+  "feedback" : "",
+  "geometry" : {
+    "canvasHeight" : 480,
+    "canvasWidth" : 640,
+    "scrollX" : 1800,
+    "scrollY" : 0,
+    "viewportHeight" : 480,
+    "viewportWidth" : 640,
+    "wordHeight" : 28,
+    "wordWidth" : 54.8399658203125,
+    "wordX" : 127.800048828125,
+    "wordY" : 41
+  },
+  "inkRevision" : 2,
+  "inputEvidence" : "Synthetic strokes in an automated simulator fixture run",
+  "launchID" : "A89C0AAC-F2D8-4DF0-88AD-2CB473706B86",
+  "os" : "26.0",
+  "processLifetimePeakRSSAfter" : 279527424,
+  "processLifetimePeakRSSBefore" : 279527424,
+  "rasterHeight" : 960,
+  "rasterWidth" : 1280,
+  "reopenedLaunchIDs" : [
+    "E4C02591-559C-40EA-A496-785BD2B4443F",
+    "BCE6FA99-EC07-475F-9A09-28F73D6C5B68"
+  ],
+  "scenario" : "columns",
+  "sourceRemoved" : true,
+  "sourceSHA256" : "9c2800a71faab3030d242fc02603a1e24d0a1b851a2e01d44d0dfd5678d94544",
+  "verdict" : "Not reviewed"
+}
