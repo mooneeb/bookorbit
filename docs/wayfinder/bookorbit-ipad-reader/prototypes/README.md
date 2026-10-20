@@ -10,6 +10,7 @@ Does immediate Pencil contact make switching between reading and page writing fe
 
 ## Try it
 
+- On a Mac, click **Start guided demo**, then keep clicking **Next** in the panel that stays at the top as you scroll. Each click acts out one action, updates the explanation, and brings the affected page or note into view. You do not need an iPad or to draw anything. The remaining controls are optional free play.
 - Start with the EPUB reflow walkthrough. Make ink, return to reading, enlarge text, and write again. Both original views stay under the same passage. Opening an earlier view then choosing Write edits its ink in that original layout.
 - Try linked notes. Selection creates a passage anchor; a typed note accepts keyboard or simulated Scribble text, while an ink note keeps strokes separately.
 - Try PDF offline in landscape and portrait. Zoom/rotation preserve page coordinates. Reconnection acknowledges pending changes in the simulation.

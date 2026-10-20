@@ -117,6 +117,9 @@
         top: 0;
         z-index: 3;
       }
+      .guide-controls {
+        margin-bottom: 14px;
+      }
       dl {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -272,10 +275,16 @@
       </div>
       <h1>From reading to writing, and back</h1>
       <p>
-        Does Pencil contact start page ink naturally, while fingers keep reading
-        safe? Try page writing, passage-linked notes, and revisiting the
-        original annotated view after EPUB reflow. These are proposals to react
-        to.
+        Use your mouse on your Mac. Click <strong>Start guided demo</strong>,
+        then keep clicking <strong>Next</strong>. Each click acts out one
+        reading or Pencil action for you. Watch the book and the explanation
+        change. You do not need to draw or use an iPad.
+      </p>
+      <button id="startGuided" class="primary">Start guided demo</button>
+      <p class="caption">
+        First example: write on a page, enlarge the text, then reopen the
+        original page with its ink. We are checking whether that flow makes
+        sense to you.
       </p>
       <p class="muted">
         All books, ink, gestures, and sync here are simulated in memory. Reload
@@ -284,6 +293,10 @@
       </p>
 
       <section class="panel state" aria-label="Current interaction state">
+        <div class="row spread guide-controls" id="guideControls" hidden>
+          <strong id="guidedProgress"></strong>
+          <button id="nextGuided" class="primary"></button>
+        </div>
         <dl id="stateFields"></dl>
         <div id="notice" role="status" aria-live="polite"></div>
       </section>
@@ -455,8 +468,9 @@
           <div id="scenarioSteps" class="steps"></div>
         </div>
         <p class="caption">
-          Each walkthrough starts fresh. Free play above is always available; it
-          does not advance the walkthrough.
+          Select an example here, then use the Next button that stays at the top
+          as you scroll. Each example starts fresh. The other controls are
+          optional free play.
         </p>
       </section>
       <p class="caption">
@@ -1196,6 +1210,17 @@
         renderScenario();
       }
       function renderScenario() {
+        const current = scenarios[scenario];
+        $("guideControls").hidden = step < 0;
+        $("guidedProgress").textContent =
+          step < current.steps.length
+            ? `${current.name} · ${step + 1} of ${current.steps.length}`
+            : `${current.name} · complete`;
+        $("nextGuided").hidden = step < 0 || step >= current.steps.length;
+        $("nextGuided").textContent =
+          step >= 0 && step < current.steps.length
+            ? `Next: ${current.steps[step][0]}`
+            : "";
         $("scenarioTabs").innerHTML = scenarios
           .map(
             (s, index) =>
@@ -1227,6 +1252,22 @@
           orientation: scenarios[index].orientation || "portrait",
         });
       }
+      function showGuidedSurface(action) {
+        const target =
+          state.noteId ||
+          ["GROUP", "SELECT", "CLOSE_NOTE"].includes(action?.type)
+            ? document.querySelector('aside[aria-label="Passage notes"]')
+            : document.querySelector('section[aria-label="Practice reader"]');
+        target.style.scrollMarginTop = `${document.querySelector(".state").offsetHeight + 12}px`;
+        target.scrollIntoView({ block: "start" });
+      }
+      function advanceGuided() {
+        if (step < 0 || step >= scenarios[scenario].steps.length) return;
+        const action = scenarios[scenario].steps[step][1];
+        step++;
+        dispatch(action);
+        showGuidedSurface(action);
+      }
       document.addEventListener("click", (event) => {
         const button = event.target.closest("button");
         if (!button) return;
@@ -1237,11 +1278,13 @@
           });
         else if (button.dataset.scenario !== undefined)
           startScenario(Number(button.dataset.scenario));
+        else if (button.id === "startGuided") {
+          startScenario(0);
+          showGuidedSurface();
+        } else if (button.id === "nextGuided") advanceGuided();
         else if (button.id === "restartScenario") startScenario(scenario);
         else if (button.dataset.step !== undefined) {
-          const action = scenarios[scenario].steps[step][1];
-          step++;
-          dispatch(action);
+          advanceGuided();
         }
       });
       $("entryPolicy").addEventListener("change", (e) =>
