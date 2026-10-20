@@ -2,7 +2,13 @@
 
 Recorded 2026-10-20. [Decision remains open](https://github.com/mooneeb/bookorbit/issues/15). [Run the native walkthrough](../README.md) before giving a fidelity verdict.
 
-## Latest physical review: build 4
+## Final physical review: all eleven behaviors accepted
+
+The user confirmed that the post-update page, ink and local marker were kept with editing working, and that the original page and ink stayed together beside the revised sample. These direct chat confirmations complete the two outstanding human verdicts. [Final physical evidence and provenance](physical-review-build-5/README.md) retain the raw device state separately: the app's finished flags were not submitted, and no answers or flags were written back by the agent.
+
+All eleven prototype behaviors are accepted within the local fixture scope. The larger [preservation decision](https://github.com/mooneeb/bookorbit/issues/15) remains open only for its [free-signing renewal prerequisite](https://github.com/mooneeb/bookorbit/issues/20). Existing Xcode updates reused their profile; they do not prove a new signing lifetime or SideStore compatibility. Browser version-at-review remains a provenance limit, particularly Android Chrome.
+
+## Initial physical review: build 4
 
 The user completed ten of eleven guided walkthroughs on the intended iPad, then connected it for read-only result collection. [Raw answers and summary](physical-review-build-4/summary.json) record **nine successful walkthroughs, one unable-to-judge comparison and the installation walkthrough still pending**. Finished means reviewed, not necessarily successful.
 
@@ -10,14 +16,14 @@ The user completed ten of eleven guided walkthroughs on the intended iPad, then 
 - Both offline walkthroughs reported that original words and ink returned, and erase/Undo/new ink worked. Their working source folders are absent, the records say sourceRemoved, and each has a reopen launch ID distinct from its capture launch ID. The offline setting itself is the user's report, not a network measurement by the app.
 - The missing-picture walkthrough reported a clear refusal and preserved ink after reopening. No complete archive exists for that incomplete sample.
 - All nine named browser-viewing answers reported both previews readable and aligned across the three exports in Mac Chrome, Mac Vivaldi and Android Chrome. Browser-version fields were left empty, so the exact Android Chrome build and browser-version-at-review remain unrecorded. These are archival previews, not ordinary inline BookOrbit reader integration.
-- The original/revised comparison was explicitly **unable to judge**. The user's comment says the dialog showed text without ink. It is not approved. Build 5 replaces it with an actual saved inked page beside a rendered local revised sample.
-- The installation walkthrough has a saved page, editable drawing and local unsent marker. The signed in-place update to build 5 preserved all 163 pre-update scratch file hashes and launched that walkthrough successfully. Its physical post-update edit/Undo answer remains pending; see the [update manifest](physical-review-build-4/update-to-build-5.json).
+- The original/revised comparison was explicitly **unable to judge**. The user's comment says the dialog showed text without ink. It was not approved at that stage. Build 5 replaces it with an actual saved inked page beside a rendered local revised sample.
+- The installation walkthrough has a saved page, editable drawing and local unsent marker. The signed in-place update to build 5 preserved all 163 pre-update scratch file hashes and launched that walkthrough successfully. The later successful physical post-update answer is recorded above; see the [update manifest](physical-review-build-4/update-to-build-5.json).
 
 Physical outputs include [single-column EPUB](physical-review-build-4/examples/scroll/preview.html), [column EPUB](physical-review-build-4/examples/columns/preview.html) and [PDF](physical-review-build-4/examples/pdf/preview.html). Each corresponding folder holds the original backgrounds and editable ink. Offline recovery drawings were saved at their current revisions separately; their earlier HTML previews were stale after editing and are not presented as current exports. Original browser exports predate the final checkbox answers, so the authoritative reviews are the separate collected answers.
 
 ## Build 5 visual comparison
 
-The new comparison renders a local revised chapter with useful changed to revised, alongside the saved original background and the user's actual separate ink. It does not modify original assets or move ink. [The screenshot](visual-comparison-build-5/comparison.png) is from the iOS 26.0 simulator using a copy of the user's self-authored fixture and ink; it is an agent presentation check, not a new human approval. The original/revised page hashes and quotes are retained with that example. The physical re-review remains pending.
+The new comparison renders a local revised chapter with useful changed to revised, alongside the saved original background and the user's actual separate ink. It does not modify original assets or move ink. [The screenshot](visual-comparison-build-5/comparison.png) is from the iOS 26.0 simulator using a copy of the user's self-authored fixture and ink; it is an agent presentation check, not a new human approval. The original/revised page hashes and quotes are retained with that example. The subsequent successful physical re-review is recorded above and in the final build 5 evidence.
 
 ## Walkthrough redesign after the user review
 
@@ -25,9 +31,9 @@ The user rejected the build 2 review structure as confusing. Merely renaming Ras
 
 Build 4 replaces that screen with eleven independent guided walkthroughs. The [walkthrough inventory](../README.md#independent-walkthroughs-and-coverage) maps each one to a single question and its complete task. Each has its own source, ink, progress, per-step tried checkboxes, concrete answer choices and reset. Page-clarity steps each show one format at one zoom level; their answers name readability and alignment. Other walkthroughs own offline recovery, the missing-picture refusal, specific browser checks, original/revised sentence context and installation maintenance.
 
-Old `record.json` checks, verdicts, saved pages and ink remain intact in their original folders, with a viewing entry on the walkthrough list. New tasks use their own `guided-walkthroughs/<scenario>` folders and neutral sample text, so old book text cannot contradict the current instructions. New human responses live separately in each `walkthrough.json`; no previous response is automatically approved. A walkthrough with a reported problem may finish as reviewed without being counted as successful. The offline review remains pending until the user returns to its separate task.
+Old `record.json` checks, verdicts, saved pages and ink remain intact in their original folders, with a viewing entry on the walkthrough list. New tasks use their own `guided-walkthroughs/<scenario>` folders and neutral sample text, so old book text cannot contradict the current instructions. New human responses live separately in each `walkthrough.json`; no previous response is automatically approved. A walkthrough with a reported problem may finish as reviewed without being counted as successful. The offline review was pending at that stage; the later physical results above accepted both formats.
 
-The [build 4 verification record](guided-walkthroughs-build-4/physical-update.json) confirms a signed in-place installation on the intended iPad and byte-for-byte retention of all 17 prior scratch files. Remote launch was refused because the iPad was locked, so physical presentation of the revised UI still needs the user to unlock and open it. The same free profile was reused.
+The [build 4 verification record](guided-walkthroughs-build-4/physical-update.json) confirms a signed in-place installation on the intended iPad and byte-for-byte retention of all 17 prior scratch files. Remote launch was refused because the iPad was locked, so physical presentation was pending at that point. The user subsequently opened it and completed the review above. The same free profile was reused.
 
 The [simulator fixture run](guided-walkthroughs-build-4/simulator-capture-run.json) created each of the ten successful walkthrough archives independently and refused the incomplete eleventh sample. [Fixture checks](guided-walkthroughs-build-4/standalone-fixtures.json) found separate folders and no supplied human answers. The [walkthrough list](guided-walkthroughs-build-4/walkthrough-list.png), [one page-image inspection step](guided-walkthroughs-build-4/page-image-1x.png) and [one enlarged PDF inspection step](guided-walkthroughs-build-4/pdf-copy-4x.png) are actual simulator screenshots. These demonstrate presentation and runnable fixture paths, not the user's approval of clarity or physical Pencil fidelity.
 
@@ -54,7 +60,7 @@ The user asked what Raster and Fixed page meant and reported no visible differen
 - The capture run made four deterministic synthetic strokes per successful scenario: translucent underline, arrow, and two corner marks. No human handwriting, Pencil pressure/tilt, native eraser/Undo, or hardware gesture was tested.
 - WebKit capture ran at actual vertical offset **1100** for the scrolled EPUB and horizontal offset **1800** for the column EPUB, in a 640 x 480 point viewport. The returned word geometry, font name and original context are in each record.
 - The PDF fixture uses a nonzero crop origin and intrinsic 90 degree rotation. The same displayed-page transform was used for its raster and extracted-page candidate. This does not validate an eventual production PDF reader adapter or every PDF rotation.
-- The missing-image fixture failed image decoding and produced **no complete archive**. Its actual WebKit exception and the absent-record observation are in the [capture log](simulator-26.0/capture-run.json). Pending scratch-ink recovery in that failure scenario still needs manual review.
+- The missing-image fixture failed image decoding and produced **no complete archive**. Its actual WebKit exception and the absent-record observation are in the [capture log](simulator-26.0/capture-run.json). That simulator run did not judge scratch-ink recovery; the later physical review above accepted it.
 
 An initial repeat run exposed asynchronous scroll-position reporting. The fixture now waits for the requested offset, with bounded resource readiness and a nonzero-offset gate. The recorded run completed without fixture failures. A successful API callback alone is not a visual-fidelity verdict.
 
@@ -76,7 +82,7 @@ The named Mac binaries reported **Google Chrome 154.0.8037.98** and **Vivaldi 8.
 
 Chrome produced screenshots for the [scrolled EPUB](mac-browsers/chrome/scroll.png), [column EPUB](mac-browsers/chrome/columns.png) and [PDF](mac-browsers/chrome/pdf.png). Inspection of the scrolled-EPUB screenshot showed both backgrounds, overlaid ink and quoted context. All Chrome commands nevertheless reached the 35-second limit before returning a completed DOM audit. Vivaldi also timed out and produced no screenshots. The isolated processes were stopped and temporary profiles removed; no user's browser session was changed.
 
-These are partial Chrome rendering observations, not completed browser acceptance. Vivaldi rendering, interactive zoom, current physical-ink exports and the actual Android Chrome device remain unverified. An automation timeout alone does not establish a browser format incompatibility. Archival previews also do not prove inline ink in BookOrbit's normal browser reader.
+These are partial Chrome rendering observations, not completed browser acceptance. Those automated attempts left Vivaldi, interactive zoom and Android unverified. The later physical/browser walkthrough responses above supplied successful human preview results, with the noted version-provenance gap. An automation timeout alone does not establish a browser format incompatibility. Archival previews also do not prove inline ink in BookOrbit's normal browser reader.
 
 ## Source-free cold reopen and controlled simulator update
 
@@ -103,7 +109,7 @@ Single recorded run, not a benchmark. All raster backgrounds are **1280 x 960** 
 
 Capture time includes background generation and writes before the record was created; it excludes font/image readiness, preview export and cold reopening. RSS is the app process's lifetime high-water mark, not isolated capture usage, total WebKit/GPU memory, an intended-iPad measurement, or an accepted budget. Do not extrapolate these tiny fixtures to large chapters/scans or library storage.
 
-The native bench caps the viewport, active canvas/capture count, written artifact size and raster pixels. Those are experimental guardrails, not product quotas. No maximum useful zoom or acceptable visual difference has been chosen.
+The native bench caps the viewport, active canvas/capture count, written artifact size and raster pixels. Those are experimental guardrails, not product quotas. The later physical review accepted both formats through the tested 4x views. No higher useful zoom or arbitrary-book fidelity has been established.
 
 ## Reproduce the measurements
 
@@ -115,12 +121,9 @@ These two launch modes are evidence-capture conveniences, not unit tests or prod
 
 ## Still required before resolution
 
-The intended Air M2, iPadOS 26.6.1, is installed and running. The successful build 4 walkthroughs are recorded above. Required next evidence:
+All eleven physical behavior verdicts are accepted. The remaining closure prerequisite is [Validate free signing renewal and note preservation on the intended iPad](https://github.com/mooneeb/bookorbit/issues/20): current-OS SideStore/LocalDevVPN compatibility, actual installed identity, newly issued profile, on-device refresh and workflow-transition preservation, or the documented tested free Xcode fallback. There is no production upload queue in this app.
 
-1. Human review of the corrected original/revised page comparison. Its earlier text-only dialog could not be judged.
-2. Human edit/Undo and local-marker verdict after the final walkthrough's actual controlled app update. Byte preservation alone cannot answer that physical interaction question.
-3. Exact browser versions at review, particularly Android Chrome, were not entered. The saved browser answers are successful reports with that provenance limit. Ordinary inline reading integration still belongs to the separate browser validation decision.
-4. SideStore/LocalDevVPN compatibility, installed identity, newly issued profile, on-device refresh and workflow-transition preservation. Normal Xcode updates that reuse the existing profile do not prove those things. There is no production upload queue in this app.
+Exact browser versions at review, especially Android Chrome, remain unrecorded provenance. The successful preview responses do not establish ordinary inline browser-reader integration; that remains a separate validation decision.
 
 Other unverified combinations include obfuscated/app-selected fonts, fixed-layout EPUB spreads, RTL/vertical scripts, huge chapters/scans, unusual PDF fonts/forms/links/tags, every rotation/crop combination, dynamic-color ink under changed appearance, interrupted/disk-full writes, corrupted archives and backup restoration. A final shortlist cannot claim these cases work.
 

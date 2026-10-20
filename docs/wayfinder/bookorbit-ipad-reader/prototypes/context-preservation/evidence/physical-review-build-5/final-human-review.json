@@ -1,0 +1,33 @@
+{
+  "recordedUTC": "2026-10-20T17:34:58.976905+00:00",
+  "device": "iPad Air 13-inch (M2)",
+  "iPadOS": "26.6.1",
+  "appBuild": "5",
+  "humanVerdictSource": "User direct conversation reply after the two physical checks",
+  "maintenance": {
+    "humanAnswer": "Everything was kept and editing works",
+    "accepted": true,
+    "deviceAnswer": "Yes, everything was kept and editing works",
+    "deviceFinishedFlag": false,
+    "currentInkRevision": 4,
+    "localMarkerPresent": true
+  },
+  "replacement": {
+    "humanAnswer": "Yes, the original page and ink stayed together",
+    "accepted": true,
+    "deviceFinishedFlag": false,
+    "deviceStoredAnswer": null,
+    "visualComparisonOpened": true,
+    "priorUnableToJudgeReviewPreserved": true,
+    "originalInkHashMatchesPhysicalComparison": true
+  },
+  "acceptedPrototypeBehaviors": 11,
+  "totalPrototypeBehaviors": 11,
+  "provenance": "The final chat confirmations complete the human review even though the raw in-app finished flags were not set. Raw device answers and flags are preserved without modification; no checkboxes or responses were written back to the iPad.",
+  "limits": [
+    "Exact browser versions at review were not entered, particularly Android Chrome.",
+    "Normal Xcode updates reused the same free signing profile; no fresh provisioning renewal was validated.",
+    "SideStore and LocalDevVPN compatibility, refresh and workflow-transition preservation remain untested.",
+    "No ordinary EPUB ink reflow, browser inline-reader integration, production sync, or complete revised-book import/relink is established by these preserved-page walkthroughs."
+  ]
+}

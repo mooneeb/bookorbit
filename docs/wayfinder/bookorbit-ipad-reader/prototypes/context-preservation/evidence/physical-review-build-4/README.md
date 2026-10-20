@@ -1,5 +1,7 @@
 # Physical walkthrough review
 
+Historical build 4 snapshot. The two then-outstanding verdicts are now accepted in the [final build 5 human review](../physical-review-build-5/README.md). Raw answers below are preserved as recorded.
+
 Read-only iPad collection after the user reported all walkthroughs done except the final installation check. Device: iPad Air 13-inch (M2), iPadOS 26.6.1. App build reviewed: 4.
 
 [Summary](summary.json) and `answers/` retain the user's actual responses. `records/` contains each complete archive's capture/context metadata. Legacy generic verdicts remain Not reviewed because the guided responses are stored separately; use the guided answers as the review evidence.
@@ -38,7 +40,7 @@ Single small sample per row. Each raster output is 1280 x 960. The RSS values ar
 
 ## Controlled update
 
-[Update to build 5](update-to-build-5.json) records an actual signed in-place update under the selected Team and unchanged bundle, without uninstalling or resetting. All 163 pre-update scratch files retained their exact hashes before launching, including guided answers, archived pages, editable ink, local context and the maintenance marker. Build 5 then launched the maintenance walkthrough successfully. This is evidence for normal Xcode update retention; the post-update physical editing answer remains pending.
+[Update to build 5](update-to-build-5.json) records an actual signed in-place update under the selected Team and unchanged bundle, without uninstalling or resetting. All 163 pre-update scratch files retained their exact hashes before launching, including guided answers, archived pages, editable ink, local context and the maintenance marker. Build 5 then launched the maintenance walkthrough successfully. This is evidence for normal Xcode update retention; the post-update physical editing answer was pending at this snapshot and is now accepted in the final review.
 
 The existing free profile was reused, with its recorded 27 October expiry. No new provisioning renewal, SideStore compatibility or SideStore-to-Xcode transition is claimed. The local marker is a scratch file, not a production sync queue.
 
@@ -46,4 +48,4 @@ The existing free profile was reused, with its recorded 27 October expiry. No ne
 
 The earlier inability to judge is kept in `answers/replacement.json`, including the user's actual explanation. Build 5 replaces the dialog with a saved original page and its actual ink beside a rendered revised sample, retaining original words and anchors without automatically moving the ink. [Simulator presentation evidence](../visual-comparison-build-5/provenance.json) uses a copy of this physical fixture. Its visual inspection is not the user's revised approval.
 
-The retry button saves the prior review in the app before clearing only this step's tried checks/answer. Other walkthroughs and all archived ink remain intact. Both the corrected comparison's human verdict and the final update walkthrough's edit/Undo answer remain pending. The encompassing preservation decision stays open.
+The retry button saves the prior review in the app before clearing only this step's tried checks/answer. Other walkthroughs and all archived ink remain intact. Both verdicts were pending at this snapshot and have since been accepted in the final review. The encompassing preservation decision stays open.

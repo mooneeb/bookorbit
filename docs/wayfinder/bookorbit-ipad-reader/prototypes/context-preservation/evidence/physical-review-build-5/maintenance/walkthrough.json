@@ -1,0 +1,21 @@
+{
+  "actions" : {
+
+  },
+  "answers" : {
+    "maintenance" : "Yes, everything was kept and editing works"
+  },
+  "checks" : {
+    "maintenance" : [
+      true,
+      true,
+      true
+    ]
+  },
+  "comments" : {
+
+  },
+  "finished" : false,
+  "lastMessage" : "",
+  "stepIndex" : 1
+}

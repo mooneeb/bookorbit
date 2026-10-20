@@ -90,15 +90,11 @@ The required physical target is iPad Air 13-inch (M2), iPadOS 26.6.1, Apple Penc
 
 The actual free profile was issued **20 October 2026 at 14:11:25 UTC** and expires **27 October 2026 at 14:11:25 UTC**, or **7:11:25 pm Pakistan time**. The update reused this profile; it did not prove a fresh signing renewal. See the [physical observations and remaining gates](evidence/README.md).
 
-Before any preservation shortlist is accepted:
+All eleven preservation walkthrough behaviors are now accepted, including the corrected original/revised page comparison and post-update erase/Undo check. See the [final physical review](evidence/physical-review-build-5/README.md). The tested background shortlist includes both page images and PDF copies through 4x for these fixtures; final reader/storage selection remains a later decision.
 
-1. The build 4 physical review reported successful page clarity for all three fixtures, source-free cold offline reopening/editing for EPUB and PDF, missing-picture failure recovery and all named browser previews. These checks need not be repeated merely to finish this review. The original/revised context check was unable to judge because the old dialog omitted the ink; review the build 5 visual comparison instead. The final installation walkthrough still needs the user's edit/Undo verdict after the controlled update.
-2. Trial the chosen free SideStore route on that device. Record exact SideStore installer/app and LocalDevVPN versions, actual app identity, profile issuance/expiry and the observed refresh result, without publishing account identifiers or certificates.
-3. Save an original-context fixture with extra ink and a local pending-state marker. Refresh signing on-device with the required connectivity/VPN. Confirm the same data and drawing reopen and remain editable. This prototype has no production sync queue; its local drawing is the preservation fixture, not an upload test.
-4. The same-identity Xcode in-place update has preserved the first fixture. Repeat preservation checks through the chosen SideStore workflow and any Xcode fallback transition before relying on them. Do not uninstall the app.
-5. Confirm offline launch within the actual remaining free provisioning lifetime. Free renewal still expires within seven days from profile issuance; this does not establish a 30-day disconnected installation.
+The outstanding manual prerequisite is [Validate free signing renewal and note preservation on the intended iPad](https://github.com/mooneeb/bookorbit/issues/20). It owns current-OS SideStore/LocalDevVPN compatibility, actual signing identity and profile dates, on-device refresh, data preservation and the free Xcode fallback. The [recorded installation policy](https://github.com/mooneeb/bookorbit/issues/11#issuecomment-6291640322) remains conditional until that work is complete. Normal Xcode updates that reuse the existing profile do not prove renewal. Fully disconnected use remains bounded by the actual remaining signing lifetime, not a new 30-day guarantee.
 
-The [SideStore amendment](https://github.com/mooneeb/bookorbit/issues/11#issuecomment-6291640322) remains conditional. Device compatibility, signing renewal, full offline launch, physical Pencil fidelity, the selected real Mac/Android browsers, and the user's acceptable zoom/failure policy are not established by a successful simulator run. The Wayfinder decision stays open until those evidence and human-review gates are met.
+Exact browser versions at review remain incompletely recorded, particularly Android Chrome. Successful archival preview responses do not substitute for normal inline-reader browser validation or EPUB reflow validation.
 
 ## API and fixture provenance
 

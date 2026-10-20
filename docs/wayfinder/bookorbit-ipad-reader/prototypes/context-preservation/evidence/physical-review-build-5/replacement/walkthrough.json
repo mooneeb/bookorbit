@@ -1,0 +1,21 @@
+{
+  "actions" : {
+    "quote-opened" : true,
+    "visual-comparison-opened" : true
+  },
+  "answers" : {
+
+  },
+  "checks" : {
+    "quote" : [
+      false,
+      false
+    ]
+  },
+  "comments" : {
+    "quote" : "Clicking show revised sentence opened a dialogue box with text hat did not have any ink\n"
+  },
+  "finished" : false,
+  "lastMessage" : "",
+  "stepIndex" : 1
+}
