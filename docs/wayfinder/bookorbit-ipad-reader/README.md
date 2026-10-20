@@ -9,7 +9,7 @@ Canonical map: [Find the design for a personal BookOrbit iPad reader](https://gi
 
 ## Current interaction review
 
-- [User verdicts and revised ink requirements](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289173037)
+- [Resolved reading and Pencil interactions](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289693465)
 - [Text-anchored EPUB ink feasibility investigation](https://github.com/mooneeb/bookorbit/issues/16)
 - [Actual EPUB reflow validation](https://github.com/mooneeb/bookorbit/issues/17)
 

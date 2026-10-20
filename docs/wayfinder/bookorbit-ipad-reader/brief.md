@@ -18,16 +18,15 @@ Use the [reading-note glossary](../../../GLOSSARY.md). Scribble is a text-entry 
 
 ## Interaction requirements after the live prototype review
 
-Source: the user's completed ten-scenario review, recorded in [Validate the reading and Pencil interaction model](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289173037). These requirements supersede earlier frozen-view and automatic Pencil-entry proposals.
+Source: the user's completed ten-scenario review, recorded in [Validate the reading and Pencil interaction model](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289693465). These requirements supersede earlier frozen-view and automatic Pencil-entry proposals.
 
-- Page ink remains visible on its content when writing is disabled. An explicit writing toggle controls Pencil input, not ink visibility. With writing off, Pencil navigates like a finger.
+- Page ink remains visible on its content with writing enabled or disabled. An explicit writing toggle controls Pencil input, not ink visibility. With writing on, Pencil creates/edits ink and fingers continue scrolling/turning pages. With writing off, both Pencil and finger navigate.
 - EPUB page ink must stay related to its intended text after reflow. The concrete target is a highlight on useful, an arrow, and handwritten important preserving their relationship and legibility as text grows/shrinks or layout changes. Separate saved layouts opened from a marker are not the accepted ordinary-reading solution. Technical feasibility and supported limits must be established before the note model and renderer are finalized.
 - PDF ink retains alignment through zoom, rotation, and fit. This defines the desired outcome for both formats, not a proven common transform.
 - Separate passage-linked ink notes and typed notes keep the accepted open/close/reopen behavior. Scribble is native text entry for a typed note.
 - Squeeze, double-tap, tool picking, erasing, Undo, and Redo should use native Apple drawing behavior consistent with Notes and Freeform, respecting Apple-owned system settings and supported APIs. Do not hardcode the demo's gesture mappings or introduce competing app-only gesture settings.
 - Offline reading, local note creation/editing, and later automatic sync with understandable status are retained. The interaction review does not establish protocol or background-execution guarantees.
 - Source-replacement safeguards remain: preserve original annotated excerpts and note context; do not move notes onto changed content without approval. This is distinct from ordinary EPUB reflow.
-- Finger navigation while writing remains enabled is the one pending touch clarification. The earlier requirement to leave writing before every finger page turn is not accepted by this review.
 
 The new [text-anchored ink investigation](https://github.com/mooneeb/bookorbit/issues/16) and [real-renderer reflow proof](https://github.com/mooneeb/bookorbit/issues/17) must ground the remaining technical choices. An HTML interaction review is not device or renderer validation.
 

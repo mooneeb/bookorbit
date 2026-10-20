@@ -6,7 +6,7 @@ Audit date: **2026-10-20**. Planning and primary-source research for [Establish 
 
 **There are credible building blocks for a bounded, explicitly associated annotation model. General automatic remapping of arbitrary freehand page ink is not established by the inspected APIs or sources.** Content anchors can recover the intended text; renderer geometry can locate that text in the new layout; PencilKit can preserve and manipulate editable strokes. The application still has to supply the relationships and placement rules connecting those pieces. This is a candidate for an experiment, not a feasibility promise. Evidence and limits follow below.
 
-The governing example is: highlight **useful**, draw an arrow, and handwrite **important**. All three must retain their intended relationship after font size, line breaks, pagination, margins, orientation, and viewport changes. Page ink remains visible with Ink OFF. Pencil navigates like a finger when OFF. Finger navigation while Ink ON remains a separate pending interaction question. These are requirements from the live issue and delegation, not conclusions of this audit.
+The governing example is: highlight **useful**, draw an arrow, and handwrite **important**. All three must retain their intended relationship after font size, line breaks, pagination, margins, orientation, and viewport changes. Page ink remains visible with Ink OFF. Pencil navigates like a finger when OFF. The subsequent [interaction resolution](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289693465) confirms that fingers continue navigating while Ink is ON and Pencil writes. These are requirements from the live issue and delegation, not conclusions of this audit.
 
 The earlier frozen-layout/marker-only ordinary-reading policy is superseded. This report does not substitute a snapshot, hidden ink opened from a marker, or a passage-linked canvas for visible page ink. The earlier [reader-engine report][prior-engines] and [Pencil report][prior-pencil] remain evidence for APIs and earlier unknowns, not authority to restore the old policy. PDFKit's accepted PDF geometry behavior does not validate EPUB remapping.
 
@@ -158,7 +158,7 @@ These are questions for the parent to present during the live review for [Valida
 4. For marks spanning pages or multiple targets, are continuation segments, duplication, or a spanning view acceptable? What must editing such a mark mean?
 5. What is the actual OS/device baseline? Public selection/identity helpers introduced in 27 change the grouping implementation options; exact SDK availability and old-ink fidelity still require testing.
 
-The report has no research-blocking dependency on these answers. They block a settled product promise and constrain the next experiment. Finger behavior while Ink ON stays with the existing interaction question.
+The report has no research-blocking dependency on these answers. They block a settled product promise and constrain the next experiment. Finger behavior while Ink ON is settled in the [interaction resolution](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289693465); the renderer proof must preserve that input contract.
 
 ## Audit reproducibility and limits
 

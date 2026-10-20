@@ -4,7 +4,7 @@ Throwaway logic prototype for [Validate the reading and Pencil interaction model
 
 ## Review status
 
-The user completed all ten scenarios and supplied [their verdicts and revised requirements](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289173037). The HTML is retained as the reviewed primary source. It includes rejected proposals: hiding page ink in reading, frozen-view EPUB reflow, automatic Pencil entry, and the old finger-navigation rule. Do not treat the demonstrated behavior as the current specification or ask the user to repeat accepted scenarios.
+The user completed all ten scenarios and supplied [their verdicts and revised requirements](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289173037). The [completed interaction decision](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289693465) also records the final choice: fingers navigate while Pencil writes with ink enabled; both navigate when ink is disabled, and page ink remains visible. The HTML is retained as the reviewed primary source. It includes rejected proposals: hiding page ink in reading, frozen-view EPUB reflow, automatic Pencil entry, and the old finger-navigation rule. Do not treat the demonstrated behavior as the current specification or ask the user to repeat accepted scenarios.
 
 Future prototype work must validate [text-following ink through actual EPUB reflow](https://github.com/mooneeb/bookorbit/issues/17), preserving the clear aim, independent scenarios, local controls, checklists, and separate reactions used here.
 
