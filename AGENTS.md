@@ -105,6 +105,7 @@ Examples:
 
 ## Git
 
+- Issue planning and Wayfinder work use the [GitHub tracker](docs/agents/issue-tracker.md).
 - Commit guidelines: [COMMIT_GUIDELINES.md](docs/COMMIT_GUIDELINES.md)
 - Branch naming: `BO-<issue-number>-<short-description>` (e.g. `BO-19-fix-mergerfs-inode-overflow`). Always include the issue number when a branch is linked to a GitHub issue.
 - **NEVER add a `Co-authored-by` trailer to any commit message.** No `Co-authored-by: Copilot` or any other co-author line. Ever. This is a hard requirement - no exceptions.
