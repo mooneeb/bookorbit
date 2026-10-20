@@ -1,28 +1,38 @@
-# Reading and Pencil interaction lab
+# Isolated reading and note scenarios
 
 Throwaway logic prototype for [Validate the reading and Pencil interaction model](https://github.com/mooneeb/bookorbit/issues/6), part of the [personal iPad reader map](https://github.com/mooneeb/bookorbit/issues/1).
 
-Open `reader-interaction.prototype.html` by double-clicking it. Nothing needs to be installed. Everything stays in memory and resets on reload. This file belongs on the throwaway branch, outside production reader code.
+Open `reader-interaction.prototype.html` by double-clicking it. Nothing needs installation. Progress stays in memory while the page is open; reloading starts over. Source lives on the throwaway prototype branch, outside production readers.
 
-## Question
+## Aim and review process
 
-Does immediate Pencil contact make switching between reading and page writing feel natural, with an explicit return to Read protecting against page turns? Compare the alternative requiring Write first. Check selection, linked typed/ink notes, original annotated views, erasing/Undo, tool gestures, and offline status together.
+Decide whether the proposed reading and note flows make sense to the reader. The overview explains the purpose and offers one starting action. Only one scenario is shown at a time. There is no global reader, shared settings panel, or raw state dashboard.
 
-## Try it
+Each scenario contains its own starting book or note, one aim, the controls it needs, three explicit actions and expected results, three manual checkboxes, and a reaction. Use mouse clicks to stand in for Pencil actions. No actual handwriting is required.
 
-- On a Mac, click **Start guided demo**, then keep clicking **Next** in the panel that stays at the top as you scroll. Each click acts out one action, updates the explanation, and brings the affected page or note into view. You do not need an iPad or to draw anything. The remaining controls are optional free play.
-- Start with the EPUB reflow walkthrough. Make ink, return to reading, enlarge text, and write again. Both original views stay under the same passage. Opening an earlier view then choosing Write edits its ink in that original layout.
-- Try linked notes. Selection creates a passage anchor; a typed note accepts keyboard or simulated Scribble text, while an ink note keeps strokes separately.
-- Try PDF offline in landscape and portrait. Zoom/rotation preserve page coordinates. Reconnection acknowledges pending changes in the simulation.
-- Try accidental marks. Require Write first, then erase, Undo, and open the squeeze palette.
-- Free play is always available. A mouse acts as a Pencil by default; change it to Finger to try horizontal page swipes. Touch is treated as finger input and a detected pen as Pencil input. Buttons provide accessible substitutes for every simulated action.
+Checkboxes mean the reader tried and checked the result, including a result they dislike. They are never ticked automatically. A separate Keep/Change reaction records approval or objections. The writing-entry comparison records a preference between its two options. Checks unlock only after their corresponding action has been performed.
 
-Proposed behavior to react to: Pencil contact enters page writing, fingers cannot turn pages until Read is chosen, long-press selection happens during normal reading, linked notes protect the underlying page while open, and edits are kept when a note closes. These choices are not settled until the live user reaction is recorded on the issue.
+Scenarios keep independent state when revisited. Restart resets only the current scenario. All ten scenarios are complete when every checklist is ticked and every reaction is recorded. The final summary supplies review text to copy into the conversation; it does not send anything or close the GitHub ticket.
 
-## Limits
+## Scenarios
 
-This is an interaction/state demo, with synthetic book layouts and simulated sync. It neither renders real EPUB/PDF files nor validates capture fidelity, source replacement, conflict handling, background sync, or server contracts. Existing decisions about retaining original note context still apply.
+1. Write over a page, return to reading, and reopen the same ink.
+2. Select a passage, create a separate ink note, then close and reopen it.
+3. Enter editable text through simulated Scribble, then close and reopen the note.
+4. Reflow EPUB text, revisit the original annotated page, and create/compare ink in the new layout.
+5. Keep fixed PDF ink aligned during zoom, rotation, and fit.
+6. Compare immediate Pencil entry with requiring Write first.
+7. Protect against finger page turns while writing, then resume reading navigation.
+8. Open a palette through simulated squeeze, choose a highlighter, and use it.
+9. Select an eraser through simulated double-tap, erase ink, and restore it with Undo.
+10. Read a downloaded book offline, write a note, then see pending sync acknowledged on reconnection.
 
-The gesture buttons are illustrative, subject to supported native APIs and system preferences. Real-device work must check Pencil pressure/tilt, Scribble, hover, barrel roll, squeeze, double-tap, haptics, palm rejection, latency, selection, multitouch pan/zoom, rotation, and accessibility. No Apple Pencil capability has been proven by this HTML demo. Finger pan/zoom uses the Zoom / fit button here.
+Scenarios are review fixtures, each initialized with its own required content. None depends on completing an earlier scenario or inherits another scenario's ink, layout, connection, tools, note text, or verdict.
 
-The pure `ReaderModel` script contains the proposed state transitions; the second script and HTML are the disposable shell. No production engine, native app boundary, data schema, or synchronization algorithm is selected by this prototype.
+## Scope
+
+This is a simulated interaction review using synthetic book layouts and supplied ink. It does not render actual EPUB/PDF files, capture retained pages, contact BookOrbit, or persist notes. It selects no production reader engine, native app architecture, schema, or sync algorithm.
+
+Native Pencil pressure, tilt, Scribble recognition, hover, barrel roll, squeeze settings and availability, double-tap settings, haptics, palm rejection, latency, native accessibility, and actual multitouch pan/zoom need device validation. The gesture scenarios state their specific assumptions. Sync is an acknowledgement simulation; conflict, deletion, suspension, replacement, and capture-fidelity decisions remain in their existing tickets.
+
+The first script is the pure scenario state model; the second is the disposable interface. No production behavior is accepted until the user has reacted to the scenarios and the decision is recorded on GitHub.

@@ -3,923 +3,897 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BookOrbit reading and Pencil interaction lab</title>
+    <title>BookOrbit: review one reading flow at a time</title>
     <style>
       * {
         box-sizing: border-box;
       }
       body {
         margin: 0;
-        color: var(--foreground, #26242b);
-        font: 14px/1.5 var(--font-sans, system-ui, sans-serif);
+        font: 15px/1.5 var(--font-sans, system-ui, sans-serif);
+        color: var(--foreground, #27242d);
       }
       main {
-        max-width: 1160px;
+        max-width: 900px;
         margin: auto;
       }
       h1 {
-        font-size: 24px;
-        letter-spacing: -0.025em;
-        margin: 4px 0 8px;
+        font-size: 27px;
+        line-height: 1.2;
+        letter-spacing: -0.03em;
+        margin: 8px 0 12px;
       }
       h2 {
-        font-size: 16px;
+        font-size: 20px;
+        line-height: 1.3;
         margin: 0 0 10px;
       }
       h3 {
-        font-size: 14px;
-        margin: 12px 0 6px;
+        font-size: 16px;
+        margin: 0 0 8px;
       }
       p {
-        margin: 6px 0 12px;
-      }
-      .eyebrow,
-      dt {
-        color: var(--muted-foreground, #6c6874);
-        font-size: 11px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
+        margin: 0 0 12px;
       }
       .muted,
       small {
-        color: var(--muted-foreground, #6c6874);
+        color: var(--muted-foreground, #696570);
+      }
+      small {
+        font-size: 12px;
+      }
+      .eyebrow {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: var(--muted-foreground, #696570);
       }
       button,
-      select,
+      input,
       textarea {
         font: inherit;
         color: inherit;
       }
-      button,
-      select {
-        border: 1px solid var(--border, #d8d5df);
-        border-radius: 8px;
-        padding: 7px 10px;
-        background: var(--card, #fff);
-        min-height: 36px;
-      }
       button {
         cursor: pointer;
+        border: 1px solid var(--border, #d8d4df);
+        background: var(--card, #fff);
+        border-radius: 8px;
+        padding: 10px 13px;
+        min-height: 44px;
       }
       button:hover {
-        background: var(--secondary, #f2f0f6);
+        background: var(--secondary, #f2eff7);
       }
-      button:focus-visible,
-      select:focus-visible,
-      textarea:focus-visible {
-        outline: 2px solid var(--primary, #7356ac);
-        outline-offset: 3px;
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
       }
-      button[aria-pressed="true"],
-      button[aria-selected="true"],
-      .primary {
-        background: var(--primary, #7356ac);
+      button.primary,
+      button[aria-pressed="true"] {
+        background: var(--primary, #7355aa);
         color: var(--primary-foreground, #fff);
         border-color: transparent;
       }
-      button:disabled {
-        opacity: 0.4;
-        cursor: default;
-      }
-      textarea {
-        display: block;
-        width: 100%;
-        min-height: 150px;
-        resize: vertical;
-        padding: 12px;
-        border: 1px solid var(--border, #d8d5df);
-        border-radius: 8px;
-        background: var(--background, #fff);
-      }
-      label {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
+      button:focus-visible,
+      textarea:focus-visible,
+      input:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid var(--primary, #7355aa);
+        outline-offset: 3px;
       }
       .row {
         display: flex;
-        flex-wrap: wrap;
+        gap: 8px;
         align-items: center;
-        gap: 7px;
+        flex-wrap: wrap;
       }
-      .spread {
+      .between {
         justify-content: space-between;
       }
       .panel {
-        background: var(--card, #faf9fc);
-        border: 1px solid var(--border, #dedbe4);
+        padding: 20px;
+        border: 1px solid var(--border, #d8d4df);
         border-radius: var(--radius, 12px);
-        padding: 16px;
+        background: var(--card, #fcfbfe);
       }
-      .state {
-        margin: 16px 0 10px;
-        position: sticky;
-        top: 0;
-        z-index: 3;
+      .spaced {
+        margin-top: 20px;
       }
-      .guide-controls {
-        margin-bottom: 14px;
+      .lead {
+        font-size: 17px;
       }
-      dl {
+      .how {
+        padding-left: 22px;
+        margin: 16px 0 20px;
+      }
+      .how li {
+        padding: 3px 0;
+      }
+      .overview {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .overview button {
+        text-align: left;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         gap: 12px;
-        margin: 0;
       }
-      dd {
-        margin: 3px 0 0;
-        font-weight: 600;
+      .overview span {
+        display: block;
       }
-      #notice {
-        margin: 10px 0 16px;
-        padding: 10px 12px;
-        border-left: 3px solid var(--primary, #7356ac);
-        background: var(--secondary, #f2f0f6);
-        min-height: 42px;
+      .overview strong {
+        display: block;
+      }
+      .progress {
+        font-size: 13px;
+        color: var(--muted-foreground, #696570);
+      }
+      progress {
+        width: 130px;
+        height: 8px;
+        accent-color: var(--primary, #7355aa);
+      }
+      .topline {
+        margin: 0 0 20px;
+      }
+      .aim {
+        border-left: 3px solid var(--primary, #7355aa);
+        padding-left: 12px;
       }
       .setup {
+        font-size: 13px;
+        color: var(--muted-foreground, #696570);
         margin-bottom: 12px;
       }
-      .workspace {
-        display: grid;
-        gap: 14px;
+      .book {
+        border: 1px solid var(--border, #d8d4df);
+        border-radius: 12px;
+        overflow: hidden;
+        background: var(--secondary, #f2eff7);
       }
-      .workspace.landscape {
-        grid-template-columns: minmax(0, 1.7fr) minmax(220px, 1fr);
+      .book-head {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border, #d8d4df);
+        font-size: 13px;
       }
-      .reader {
-        min-width: 0;
+      .book-head strong {
+        font-size: 14px;
       }
-      .reader-bar {
-        margin-bottom: 10px;
-      }
-      .page-scroll {
-        max-height: 720px;
+      .book-stage {
+        padding: 18px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 12px;
+        min-height: 220px;
         overflow: auto;
-        background: var(--secondary, #f1eff4);
-        border-radius: 8px;
-        padding: 12px;
       }
-      .page {
-        width: 100%;
-        max-width: 460px;
-        margin: auto;
-        color: var(--foreground, #26242b);
+      .paper {
+        position: relative;
+        flex: 0 0 auto;
+        width: min(100%, 480px);
+        min-height: 220px;
+        padding: 22px 26px;
         background: var(--background, #fff);
-        box-shadow: 0 2px 8px #0001;
+        border: 1px solid var(--border, #ddd);
+        border-radius: 4px;
       }
-      .landscape .page {
-        max-width: 720px;
+      .paper h3 {
+        font:
+          22px/1.3 Georgia,
+          serif;
       }
-      svg {
-        display: block;
-        width: 100%;
-        height: auto;
+      .paper p {
+        font:
+          18px/1.65 Georgia,
+          serif;
+        margin: 0 0 12px;
       }
-      #pageSvg,
-      #noteSvg {
-        touch-action: none;
-        user-select: none;
-        cursor: crosshair;
+      .paper p.quote.selected {
+        background: var(--secondary, #eee8f7);
+        outline: 2px solid var(--primary, #7355aa);
+        outline-offset: 4px;
       }
-      #noteSvg {
+      .paper.large p {
+        font-size: 23px;
+      }
+      .paper .ink {
+        position: absolute;
+        width: 85%;
+        height: 150px;
+        left: 5%;
+        top: 95px;
+        pointer-events: none;
+      }
+      .ink path,
+      .ink polyline {
+        fill: none;
+        stroke: var(--primary, #7355aa);
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .ink .wide {
+        stroke-width: 17;
+        opacity: 0.25;
+      }
+      .ink text {
+        fill: var(--primary, #7355aa);
+        font: italic 23px cursive;
+      }
+      .book-foot {
+        padding: 12px 16px;
         background: var(--background, #fff);
-        border-radius: 8px;
-        border: 1px solid var(--border, #dedbe4);
+        font-size: 13px;
+        min-height: 45px;
+        border-top: 1px solid var(--border, #d8d4df);
       }
-      .caption {
-        margin: 8px 0;
+      .badge {
+        border-radius: 99px;
+        padding: 3px 8px;
+        background: var(--secondary, #ede9f4);
         font-size: 12px;
       }
-      .tools {
-        margin: 10px 0;
-      }
-      .palette {
-        padding: 10px;
-        margin: 8px 0;
-        border: 2px solid var(--primary, #7356ac);
+      .note {
+        width: min(100%, 420px);
+        padding: 16px;
         border-radius: 10px;
+        background: var(--background, #fff);
+        border: 2px solid var(--primary, #7355aa);
       }
-      .quote {
-        padding-left: 10px;
-        border-left: 2px solid var(--border, #dedbe4);
+      .note .quote {
         font:
           italic 15px/1.5 Georgia,
           serif;
+        padding-left: 10px;
+        border-left: 2px solid var(--border, #d8d4df);
       }
-      .entry {
-        padding: 12px 0;
-        border-top: 1px solid var(--border, #dedbe4);
+      .note svg {
+        display: block;
+        width: 100%;
+        height: 120px;
       }
-      .entry p {
-        margin: 0 0 6px;
+      .note textarea {
+        width: 100%;
+        min-height: 100px;
+        padding: 10px;
+        border: 1px solid var(--border, #d8d4df);
+        background: var(--background, #fff);
+        border-radius: 8px;
       }
-      .pill {
-        border-radius: 999px;
-        background: var(--secondary, #f0edf5);
-        padding: 3px 8px;
+      .palette {
+        padding: 12px;
+        background: var(--background, #fff);
+        border: 2px solid var(--primary, #7355aa);
+        border-radius: 12px;
+      }
+      .result {
+        margin-top: 10px;
+        padding: 12px 14px;
+        border-radius: 8px;
+        background: var(--secondary, #f2eff7);
+        font-size: 14px;
+      }
+      .checklist {
+        padding: 0;
+        margin: 12px 0;
+        list-style: none;
+        display: grid;
+        gap: 10px;
+      }
+      .check-step {
+        border: 1px solid var(--border, #d8d4df);
+        border-radius: 10px;
+        padding: 14px;
+      }
+      .check-step.current {
+        border-color: var(--primary, #7355aa);
+      }
+      .check-step .number {
         font-size: 12px;
+        color: var(--muted-foreground, #696570);
+        margin-bottom: 4px;
       }
-      #gestureActions,
-      #freeActions {
+      .check-step p {
+        margin: 4px 0 10px;
+        font-size: 14px;
+      }
+      .check-step label {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        margin-top: 12px;
+        font-size: 14px;
+      }
+      .check-step input {
+        width: 18px;
+        height: 18px;
+        flex: 0 0 auto;
+        margin-top: 2px;
+        accent-color: var(--primary, #7355aa);
+      }
+      .review textarea {
+        display: block;
+        width: 100%;
+        min-height: 76px;
+        padding: 12px;
+        border: 1px solid var(--border, #d8d4df);
+        border-radius: 8px;
+        background: var(--background, #fff);
         margin-top: 10px;
       }
-      .walkthrough {
-        margin: 16px 0;
+      .footer {
+        margin: 20px 0 8px;
       }
-      .tabs {
-        margin-bottom: 12px;
+      .completion {
+        font-size: 14px;
+        margin: 12px 0 0;
       }
-      .steps {
+      .choice {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 6px;
-        margin: 12px 0;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
       }
-      .steps button {
-        text-align: left;
+      .option {
+        padding: 16px;
+        border: 1px solid var(--border, #d8d4df);
+        border-radius: 10px;
+        background: var(--background, #fff);
+      }
+      .option svg {
+        display: block;
+        width: 100%;
+        height: 78px;
+      }
+      .summary-list {
+        list-style: none;
+        padding: 0;
+        display: grid;
+        gap: 10px;
+      }
+      .summary-list li {
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border, #d8d4df);
       }
       details {
-        margin-top: 12px;
+        margin-top: 16px;
       }
       summary {
         cursor: pointer;
       }
+      .export {
+        width: 100%;
+        min-height: 200px;
+        padding: 14px;
+        background: var(--background, #fff);
+        border: 1px solid var(--border, #d8d4df);
+        border-radius: 8px;
+        font: 13px/1.5 var(--font-mono, monospace);
+      }
+      .pdf-window {
+        height: 330px;
+        width: 100%;
+        overflow: auto;
+        padding: 10px;
+        background: var(--secondary, #f2eff7);
+      }
+      .pdf-window.landscape {
+        height: 230px;
+      }
+      .pdf-page {
+        margin: auto;
+        width: 220px;
+        background: var(--background, #fff);
+        border: 1px solid var(--border, #d8d4df);
+      }
+      .pdf-page svg {
+        width: 100%;
+        display: block;
+      }
+      .pdf-page.zoomed {
+        width: 330px;
+      }
+      .pdf-window.landscape .pdf-page {
+        width: 150px;
+      }
+      .pdf-window.landscape .pdf-page.zoomed {
+        width: 225px;
+      }
       [hidden] {
         display: none !important;
       }
-      @media (max-width: 650px) {
-        .workspace.landscape {
-          grid-template-columns: 1fr;
-        }
-        dl {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-        .steps {
-          grid-template-columns: 1fr;
+      @media (max-width: 520px) {
+        h1 {
+          font-size: 24px;
         }
         .panel {
           padding: 16px;
         }
-        button,
-        select {
+        .book-stage {
+          padding: 12px;
+        }
+        .paper {
+          padding: 18px;
+        }
+        .paper p {
+          font-size: 16px;
+        }
+        .choice {
+          grid-template-columns: 1fr;
+        }
+        .progress {
           max-width: 100%;
+        }
+        .row button {
+          max-width: 100%;
+        }
+      }
+      .trial-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+        gap: 20px;
+        align-items: start;
+      }
+      .visual-column {
+        position: sticky;
+        top: 12px;
+        min-width: 0;
+      }
+      .trial-layout .choice {
+        grid-template-columns: 1fr;
+      }
+      .trial-layout h2 {
+        font-size: 18px;
+      }
+      @media (max-width: 680px) {
+        .trial-layout {
+          grid-template-columns: 1fr;
+        }
+        .visual-column {
+          position: static;
         }
       }
     </style>
   </head>
   <body>
-    <main>
-      <div class="eyebrow">
-        BookOrbit · interaction lab · throwaway prototype
-      </div>
-      <h1>From reading to writing, and back</h1>
-      <p>
-        Use your mouse on your Mac. Click <strong>Start guided demo</strong>,
-        then keep clicking <strong>Next</strong>. Each click acts out one
-        reading or Pencil action for you. Watch the book and the explanation
-        change. You do not need to draw or use an iPad.
-      </p>
-      <button id="startGuided" class="primary">Start guided demo</button>
-      <p class="caption">
-        First example: write on a page, enlarge the text, then reopen the
-        original page with its ink. We are checking whether that flow makes
-        sense to you.
-      </p>
-      <p class="muted">
-        All books, ink, gestures, and sync here are simulated in memory. Reload
-        resets everything. This does not test native Pencil feel or faithful
-        book capture.
-      </p>
-
-      <section class="panel state" aria-label="Current interaction state">
-        <div class="row spread guide-controls" id="guideControls" hidden>
-          <strong id="guidedProgress"></strong>
-          <button id="nextGuided" class="primary"></button>
-        </div>
-        <dl id="stateFields"></dl>
-        <div id="notice" role="status" aria-live="polite"></div>
-      </section>
-
-      <div class="setup row">
-        <button data-action="FORMAT" data-value="EPUB">EPUB</button>
-        <button data-action="FORMAT" data-value="PDF">PDF</button>
-        <button data-action="ROTATE">Rotate to landscape</button>
-        <button data-action="FONT">Larger EPUB text</button>
-        <button data-action="ZOOM">Zoom / fit</button>
-        <button data-action="CONNECT">Go offline</button>
-      </div>
-      <div class="setup row">
-        <label
-          >Start page ink
-          <select id="entryPolicy" aria-label="Start page ink">
-            <option value="contact">Pencil contact (proposal)</option>
-            <option value="explicit">Tap Write first</option>
-          </select>
-        </label>
-        <label
-          >Mouse acts as
-          <select id="mouseInput" aria-label="Mouse acts as">
-            <option value="pencil">Pencil</option>
-            <option value="finger">Finger</option>
-          </select>
-        </label>
-      </div>
-
-      <div id="workspace" class="workspace">
-        <section class="panel reader" aria-label="Practice reader">
-          <div class="row spread reader-bar">
-            <strong id="bookLabel"></strong>
-            <span id="pageLabel" class="muted"></span>
-          </div>
-          <div class="row reader-bar">
-            <button data-action="READ">Read</button>
-            <button data-action="WRITE">Write on page</button>
-            <button data-action="SELECT">Long-press passage</button>
-            <button data-action="GROUP" id="marker">Passage notes (0)</button>
-          </div>
-          <div class="page-scroll">
-            <div id="page" class="page">
-              <svg
-                id="pageSvg"
-                role="img"
-                aria-label="Practice book page; draw with the simulated Pencil"
-                viewBox="0 0 600 800"
-              ></svg>
-            </div>
-          </div>
-          <p class="caption" id="pageCaption"></p>
-          <div class="row tools" aria-label="Drawing tools">
-            <button data-action="TOOL" data-value="pen">Pen</button>
-            <button data-action="TOOL" data-value="pencil">Pencil</button>
-            <button data-action="TOOL" data-value="highlighter">
-              Highlighter
-            </button>
-            <button data-action="TOOL" data-value="eraser">Eraser</button>
-            <button data-action="UNDO">Undo</button>
-            <button data-action="REDO">Redo</button>
-          </div>
-          <div id="palette" class="palette" hidden>
-            <strong>Squeeze tool palette (simulation)</strong>
-            <div class="row">
-              <button data-action="TOOL" data-value="pen">Choose pen</button
-              ><button data-action="TOOL" data-value="highlighter">
-                Choose highlighter</button
-              ><button data-action="TOOL" data-value="eraser">
-                Choose eraser
-              </button>
-            </div>
-          </div>
-          <div class="row" id="freeActions" aria-label="Free-play actions">
-            <button data-action="CONTACT">Pencil sample stroke</button>
-            <button data-action="SWIPE">Finger swipe</button>
-            <button data-action="PREVIOUS">Previous page</button>
-            <button data-action="NEXT">Next page</button>
-          </div>
-          <details>
-            <summary>Simulate Pencil Pro gestures</summary>
-            <div class="row" id="gestureActions">
-              <button data-action="SQUEEZE">Squeeze</button>
-              <button data-action="DOUBLE_TAP">Double-tap</button>
-              <button data-action="HOVER">Hover preview</button>
-              <button data-action="ROLL">Barrel roll preview</button>
-            </div>
-            <p class="caption">
-              Double-tap follows this simulated system preference:
-            </p>
-            <select
-              id="doubleTapAction"
-              aria-label="Double-tap system preference"
-            >
-              <option value="eraser">Switch tool / eraser</option>
-              <option value="previous">Switch to last tool</option>
-              <option value="none">Off</option>
-            </select>
-            <p class="caption">
-              Native app behavior must respect supported hardware and the user's
-              system settings. Pressure, tilt, hover alignment, barrel roll,
-              haptics, Scribble, palm rejection, latency, and accessibility need
-              real-device validation.
-            </p>
-          </details>
-        </section>
-
-        <aside class="panel" aria-label="Passage notes">
-          <div class="row spread">
-            <h2 id="notesTitle">A note beside the passage</h2>
-            <button data-action="CLOSE_NOTE" id="closeNotes" hidden>
-              Close note
-            </button>
-          </div>
-          <p class="quote" id="quote"></p>
-          <div id="noteLanding">
-            <p id="notesHint" class="muted"></p>
-            <div class="row">
-              <button data-action="NEW_NOTE" data-value="typed">
-                Typed note</button
-              ><button data-action="NEW_NOTE" data-value="ink">Ink note</button>
-            </div>
-            <div id="noteList"></div>
-          </div>
-          <div id="typedEditor" hidden>
-            <label for="noteText">Typed note</label>
-            <textarea
-              id="noteText"
-              placeholder="Type here. On iPad, Scribble would enter text in this field."
-            ></textarea>
-            <p class="caption">
-              Kept as editable text as you type. Scribble uses the same text
-              field in the native app.
-            </p>
-            <button
-              data-action="TEXT"
-              data-value="Return here: notice how the small details change the whole journey."
-            >
-              Insert simulated Scribble text
-            </button>
-          </div>
-          <div id="inkEditor" hidden>
-            <svg
-              id="noteSvg"
-              viewBox="0 0 600 440"
-              role="img"
-              aria-label="Passage-linked ink note; draw with the simulated Pencil"
-            ></svg>
-            <p class="caption">
-              A separate editable ink note linked to the quote. Use the shared
-              tools and Undo.
-            </p>
-          </div>
-          <p class="caption" id="noteSaveState"></p>
-        </aside>
-      </div>
-
-      <section class="panel walkthrough" aria-label="Guided walkthroughs">
-        <h2>Try the awkward cases</h2>
-        <div
-          id="scenarioTabs"
-          class="row tabs"
-          role="tablist"
-          aria-label="Walkthrough"
-        ></div>
-        <div role="tabpanel" id="scenarioPanel">
-          <p id="scenarioDescription"></p>
-          <button id="restartScenario">Start / reset this walkthrough</button>
-          <div id="scenarioSteps" class="steps"></div>
-        </div>
-        <p class="caption">
-          Select an example here, then use the Next button that stays at the top
-          as you scroll. Each example starts fresh. The other controls are
-          optional free play.
-        </p>
-      </section>
-      <p class="caption">
-        Evaluate the flow, rather than the sample book's typography. The
-        preserved views are synthetic layouts, not EPUB/PDF captures. No
-        BookOrbit server, library, storage, or native reader is connected.
-      </p>
-    </main>
-
-    <script id="interaction-model">
-      const ReaderModel = (() => {
-        const fresh = (format = "EPUB", orientation = "portrait") => ({
-          format,
-          orientation,
-          font: 100,
-          layoutVersion: 1,
-          page: 1,
-          zoom: 1,
-          mode: "read",
-          policy: "contact",
-          mouse: "pencil",
+    <main id="app"></main>
+    <script id="walkthrough-model">
+      const WalkthroughModel = (() => {
+        const initial = (id) => ({
+          id,
+          tried: [false, false, false],
+          checked: [false, false, false],
+          stage: 0,
+          verdict: null,
+          comment: "",
+          text: "",
+          ink: false,
+          noteOpen: false,
+          closed: false,
+          armed: false,
+          choice: null,
+          view: "original",
+          extraOriginalInk: false,
           tool: "pen",
-          previousTool: "highlighter",
-          doubleTap: "eraser",
-          online: true,
-          dirty: [],
-          views: [],
-          notes: [],
-          nextId: 1,
-          viewId: null,
-          noteId: null,
-          selected: false,
-          group: false,
-          palette: false,
-          hover: false,
-          roll: 0,
-          message:
-            "Ready to read. Try a Pencil stroke, or start a walkthrough below.",
         });
-        const layout = (s) => ({
-          format: s.format,
-          page: s.page,
-          width: s.format === "PDF" || s.orientation === "portrait" ? 600 : 800,
-          height:
-            s.format === "PDF" || s.orientation === "portrait" ? 800 : 600,
-          font: s.format === "PDF" ? 100 : s.font,
-          orientation: s.format === "PDF" ? "fixed page" : s.orientation,
-          version: s.format === "PDF" ? 0 : s.layoutVersion,
-        });
-        const samePassage = (a, s) =>
-          a.format === s.format && a.page === s.page;
-        const active = (s) =>
-          s.noteId
-            ? s.notes.find((n) => n.id === s.noteId)
-            : s.views.find((v) => v.id === s.viewId);
-        const dirty = (s, id) => {
-          if (!s.online && !s.dirty.includes(id)) s.dirty.push(id);
-        };
-        const begin = (s) => {
-          let view = s.views.find((v) => v.id === s.viewId);
-          if (!view) {
-            const current = layout(s);
-            view = s.views.find(
-              (v) =>
-                samePassage(v, s) &&
-                JSON.stringify(v.layout) === JSON.stringify(current),
-            );
-            if (!view) {
-              view = {
-                id: s.nextId++,
-                format: s.format,
-                page: s.page,
-                layout: current,
-                strokes: [],
-                undo: [],
-                redo: [],
-              };
-              s.views.push(view);
-            }
-            s.viewId = view.id;
-          }
-          s.mode = "write";
-          s.selected = false;
-          return view;
-        };
-        const changeInk = (s, target, strokes) => {
-          target.undo.push(target.strokes);
-          target.redo = [];
-          target.strokes = strokes;
-          dirty(s, target.id);
-        };
-        const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+        const complete = (s) =>
+          s.checked.every(Boolean) &&
+          (s.id === "entry" ? !!s.choice : !!s.verdict);
         const reduce = (state, action) => {
-          if (action.type === "RESET")
-            return fresh(action.format, action.orientation);
           const s = structuredClone(state);
-          const say = (text) => {
-            s.message = text;
+          if (action.type === "RESET") return initial(s.id);
+          if (action.type === "CHECK") {
+            if (s.tried[action.index]) s.checked[action.index] = action.value;
             return s;
-          };
-          switch (action.type) {
-            case "FORMAT":
-              s.format = action.value;
-              s.page = 1;
-              s.mode = "read";
-              s.viewId = null;
-              s.noteId = null;
-              s.selected = false;
-              s.group = false;
-              s.zoom = 1;
-              s.palette = false;
-              s.hover = false;
-              return say(
-                `${s.format} practice book. Notes in the other format remain in this demo.`,
-              );
-            case "ROTATE":
-              s.orientation =
-                s.orientation === "portrait" ? "landscape" : "portrait";
-              if (s.format === "EPUB") s.layoutVersion++;
-              return say(
-                s.viewId
-                  ? "The annotated view keeps its original layout and ink; only its fit changes."
-                  : s.format === "PDF"
-                    ? "The PDF keeps its fixed page geometry."
-                    : "Normal EPUB reading reflows. Earlier annotated views stay intact.",
-              );
-            case "FONT":
-              if (s.format === "PDF")
-                return say(
-                  "PDF text has a fixed layout. Try Zoom / fit instead.",
-                );
-              if (s.viewId || s.noteId)
-                return say(
-                  "Choose Read first. Text size changes normal EPUB reading, not a preserved view.",
-                );
-              s.font = s.font === 100 ? 125 : s.font === 125 ? 150 : 100;
-              s.layoutVersion++;
-              return say(
-                `Normal EPUB text is now ${s.font}%. Page ink stays in its earlier annotated view.`,
-              );
-            case "ZOOM":
-              s.zoom = s.zoom === 1 ? 1.35 : 1;
-              return say(
-                "Zoom changes the fit, never the placement of ink against its preserved content.",
-              );
-            case "CONNECT":
-              s.online = !s.online;
-              if (s.online) {
-                const count = s.dirty.length;
-                s.dirty = [];
-                return say(
-                  `Server reachable: simulated auto-sync acknowledged ${count} changed note/view${count === 1 ? "" : "s"}. No real server was contacted.`,
-                );
-              }
-              return say(
-                "Offline. Reading and editing still work; changed notes wait on this device in the simulation.",
-              );
-            case "POLICY":
-              s.policy = action.value;
-              return say(
-                s.policy === "contact"
-                  ? "Proposal: Pencil contact immediately enters page writing."
-                  : "Alternative: Pencil cannot mark until you tap Write on page.",
-              );
-            case "MOUSE":
-              s.mouse = action.value;
-              return say(
-                `Mouse now behaves as ${s.mouse === "pencil" ? "a Pencil" : "a finger"} in the page and ink note.`,
-              );
-            case "DOUBLE_TAP_SETTING":
-              s.doubleTap = action.value;
-              return say("Simulated system preference updated.");
-            case "READ":
-              s.mode = "read";
-              s.viewId = null;
-              s.noteId = null;
-              s.palette = false;
-              s.hover = false;
-              s.zoom = 1;
-              return say(
-                "Back to normal reading. Page turns are available; saved annotated views stay in passage notes.",
-              );
-            case "WRITE":
-              if (s.noteId)
-                return say("Close the linked note before writing on the page.");
-              begin(s);
-              return say(
-                "Page writing is active. Pencil draws; fingers cannot turn the page. Choose Read to resume navigation.",
-              );
-            case "SELECT":
-              if (s.mode === "write" || s.viewId || s.noteId)
-                return say(
-                  "Choose Read before selecting a passage. This prevents selection from competing with ink editing.",
-                );
-              s.selected = true;
-              s.group = true;
-              return say(
-                "Simulated finger long-press selected this passage. Choose Typed note or Ink note.",
-              );
-            case "GROUP":
-              s.group = true;
-              return say(
-                "All notes and annotated views for this passage are grouped below the quote.",
-              );
-            case "NEW_NOTE": {
-              if (!s.selected || s.mode !== "read" || s.viewId)
-                return say(
-                  "Choose Read, then Long-press passage, before creating a linked note.",
-                );
-              const note = {
-                id: s.nextId++,
-                format: s.format,
-                page: s.page,
-                kind: action.value,
-                text: "",
-                strokes: [],
-                undo: [],
-                redo: [],
-              };
-              s.notes.push(note);
-              s.noteId = note.id;
-              s.palette = false;
-              dirty(s, note.id);
-              return say(
-                `${note.kind === "ink" ? "Ink" : "Typed"} note opened beside the selected quote. The reading page is protected while the note is open.`,
-              );
-            }
-            case "OPEN_NOTE": {
-              const note = s.notes.find((n) => n.id === Number(action.value));
-              if (!note) return s;
-              s.mode = "read";
-              s.viewId = null;
-              s.noteId = note.id;
-              s.palette = false;
-              return say(
-                "Linked note reopened. Closing it keeps your edits in this simulation.",
-              );
-            }
-            case "CLOSE_NOTE":
-              s.noteId = null;
-              s.palette = false;
-              s.hover = false;
-              return say(
-                "Note closed; edits kept. Normal reading is available.",
-              );
-            case "TEXT": {
-              const note = active(s);
-              if (!s.noteId || note.kind !== "typed")
-                return say(
-                  "Open a typed note first. Scribble enters editable text there.",
-                );
-              note.text = action.value;
-              dirty(s, note.id);
-              return say(
-                "Text updated. In the native app, keyboard and Scribble both enter typed text here.",
-              );
-            }
-            case "OPEN_VIEW": {
-              const view =
-                action.value === "oldest"
-                  ? s.views.find((v) => samePassage(v, s) && v.strokes.length)
-                  : s.views.find((v) => v.id === Number(action.value));
-              if (!view)
-                return say("No annotated view yet. Make a page stroke first.");
-              s.viewId = view.id;
-              s.noteId = null;
-              s.mode = "read";
-              s.zoom = 1;
-              s.palette = false;
-              s.selected = false;
-              return say(
-                "Original annotated view opened with editable ink. Choose Write on page to edit it; Read returns to the current layout.",
-              );
-            }
-            case "TOOL":
-              if (s.tool !== action.value) {
-                s.previousTool = s.tool;
-                s.tool = action.value;
-              }
-              s.palette = false;
-              return say(
-                `${s.tool[0].toUpperCase() + s.tool.slice(1)} selected.`,
-              );
-            case "CONTACT": {
-              if (s.noteId && active(s).kind === "typed")
-                return say(
-                  "Pencil input belongs to the text field here. Use simulated Scribble text, or type directly.",
-                );
-              if (s.noteId && action.surface === "page")
-                return say(
-                  "The page is protected while a linked note is open. Draw inside the ink note.",
-                );
-              if (!s.noteId && s.mode !== "write") {
-                if (s.policy === "explicit")
-                  return say(
-                    "No mark: this alternative requires Write on page first.",
-                  );
-                begin(s);
-              }
-              const target = active(s);
-              const dims = s.noteId
-                ? { width: 600, height: 440 }
-                : target.layout;
-              const points =
-                action.points ||
-                (s.tool === "eraser" && target.strokes.length
-                  ? target.strokes.at(-1).points
-                  : [
-                      [0.17 * dims.width, 0.53 * dims.height],
-                      [0.3 * dims.width, 0.57 * dims.height],
-                      [0.52 * dims.width, 0.5 * dims.height],
-                      [0.67 * dims.width, 0.54 * dims.height],
-                    ]
-                ).map(([x, y]) => [
-                  x,
-                  y +
-                    (action.points || s.tool === "eraser"
-                      ? 0
-                      : target.strokes.length * 10),
-                ]);
-              if (s.tool === "eraser") {
-                const radius = Math.max(dims.width, dims.height) * 0.035;
-                const remaining = target.strokes.filter(
-                  (stroke) =>
-                    !stroke.points.some((p) =>
-                      points.some((q) => distance(p, q) < radius),
-                    ),
-                );
-                if (remaining.length === target.strokes.length)
-                  return say(
-                    "No ink touched. Move the eraser across a mark to erase its whole stroke.",
-                  );
-                changeInk(s, target, remaining);
-                return say("Stroke erased. Undo brings it back.");
-              }
-              changeInk(s, target, [
-                ...target.strokes,
-                { tool: s.tool, roll: s.roll, points },
-              ]);
-              return say(
-                s.noteId
-                  ? "Ink added to the passage-linked note. The book page is unchanged."
-                  : "Ink added to this preserved layout. Choose Read to return to normal reading.",
-              );
-            }
-            case "UNDO":
-            case "REDO": {
-              const target = active(s);
-              if (
-                !target ||
-                (s.viewId && s.mode !== "write") ||
-                (s.noteId && target.kind !== "ink")
-              )
-                return say("Open ink editing to Undo or Redo a stroke.");
-              const from = action.type === "UNDO" ? target.undo : target.redo;
-              const to = action.type === "UNDO" ? target.redo : target.undo;
-              if (!from.length)
-                return say(
-                  `Nothing to ${action.type.toLowerCase()} in this ink surface.`,
-                );
-              to.push(target.strokes);
-              target.strokes = from.pop();
-              dirty(s, target.id);
-              return say(
-                `${action.type === "UNDO" ? "Undo" : "Redo"} applied to this ink surface only.`,
-              );
-            }
-            case "SWIPE":
-            case "NEXT":
-            case "PREVIOUS":
-              if (s.mode === "write" || s.noteId || s.viewId)
-                return say(
-                  "Page stays put. In page writing, fingers move/zoom the content instead of turning pages (simulated). Choose Read to navigate.",
-                );
-              s.page =
-                action.type === "PREVIOUS"
-                  ? Math.max(1, s.page - 1)
-                  : Math.min(2, s.page + 1);
-              s.selected = false;
-              s.group = false;
-              s.zoom = 1;
-              return say(
-                `Reading page ${s.page}. Finger navigation made no ink.`,
-              );
-            case "FINGER":
-              return say(
-                s.mode === "write" || s.noteId || s.viewId
-                  ? "Finger contact made no mark and did not turn the page. Pan/zoom is simulated by Zoom / fit."
-                  : "Finger tap made no ink. Swipe to turn the page, or use Long-press passage to select text.",
-              );
-            case "SQUEEZE":
-            case "DOUBLE_TAP":
-            case "HOVER":
-            case "ROLL": {
-              if (!(
-                s.mode === "write" ||
-                (s.noteId && active(s).kind === "ink")
-              ))
-                return say(
-                  "Open page writing or an ink note to try drawing gestures. These controls simulate supported native actions.",
-                );
-              if (action.type === "SQUEEZE") {
-                s.palette = !s.palette;
-                return say(
-                  "Simulated squeeze toggled the tool palette. Native mapping must follow system settings and supported APIs.",
-                );
-              }
-              if (action.type === "HOVER") {
-                s.hover = !s.hover;
-                return say(
-                  "Simulated hover previews the active tool without making a mark.",
-                );
-              }
-              if (action.type === "ROLL") {
-                s.roll = (s.roll + 45) % 180;
-                return say(
-                  `Simulated highlighter nib angle: ${s.roll}°. Real barrel roll and supported tool behavior need device validation.`,
-                );
-              }
-              if (s.doubleTap === "none")
-                return say(
-                  "Double-tap is off in the simulated system settings.",
-                );
-              const next =
-                s.doubleTap === "eraser"
-                  ? s.tool === "eraser"
-                    ? s.previousTool
-                    : "eraser"
-                  : s.previousTool;
-              s.previousTool = s.tool;
-              s.tool = next;
-              return say(
-                `Simulated double-tap selected ${s.tool}, following the chosen system preference.`,
-              );
-            }
-            default:
-              return s;
           }
+          if (action.type === "VERDICT") {
+            s.verdict = action.value;
+            return s;
+          }
+          if (action.type === "COMMENT") {
+            s.comment = action.value;
+            return s;
+          }
+          if (action.type === "TEXT") {
+            s.text = action.value;
+            return s;
+          }
+          if (action.type === "CHOICE") {
+            s.choice = action.value;
+            return s;
+          }
+          if (action.type === "VIEW") {
+            s.view = action.value;
+            return s;
+          }
+          if (action.type === "EDIT_ORIGINAL") {
+            s.view = "original";
+            s.extraOriginalInk = true;
+            return s;
+          }
+          if (action.type !== "TRY") return s;
+          const n = action.index;
+          if (n > 0 && !s.tried[n - 1]) return s;
+          if (s.id === "linked") {
+            if (n === 0) {
+              s.stage = 1;
+              s.tried[0] = true;
+            }
+            if (n === 1 && !s.noteOpen) {
+              s.noteOpen = true;
+              s.stage = 2;
+            } else if (n === 1) {
+              s.ink = true;
+              s.tried[1] = true;
+            }
+            if (n === 2 && !s.closed) {
+              s.noteOpen = false;
+              s.closed = true;
+              s.stage = 3;
+            } else if (n === 2) {
+              s.noteOpen = true;
+              s.tried[2] = true;
+            }
+            return s;
+          }
+          if (s.id === "typed") {
+            if (n === 0) {
+              s.noteOpen = true;
+              s.stage = 1;
+              s.tried[0] = true;
+            }
+            if (n === 1) {
+              s.text =
+                "Look again: the small details change the whole journey.";
+              s.stage = 2;
+              s.tried[1] = true;
+            }
+            if (n === 2 && !s.closed) {
+              s.noteOpen = false;
+              s.closed = true;
+              s.stage = 3;
+            } else if (n === 2) {
+              s.noteOpen = true;
+              s.tried[2] = true;
+            }
+            return s;
+          }
+          if (s.id === "entry" && n === 2 && !s.armed) {
+            s.armed = true;
+            return s;
+          }
+          if (s.id === "finger" && n === 2 && !s.armed) {
+            s.armed = true;
+            return s;
+          }
+          s.stage = n + 1;
+          s.tried[n] = true;
+          if (s.id === "page") s.ink = true;
+          if (s.id === "epub") s.view = n === 1 ? "original" : "larger";
+          if (s.id === "palette") s.tool = n > 0 ? "highlighter" : "pen";
+          if (s.id === "undo") s.tool = "eraser";
+          return s;
         };
-        return { fresh, layout, samePassage, active, reduce };
+        return { initial, reduce, complete };
       })();
     </script>
-
-    <script id="demo-shell">
-      let state = ReaderModel.fresh();
-      let scenario = 0;
-      let step = -1;
+    <script id="review-shell">
+      const quote =
+        "A useful note keeps a question alive long enough for a different answer to appear.";
+      const scribble =
+        "Look again: the small details change the whole journey.";
+      const scenarios = [
+        {
+          id: "page",
+          title: "Write on a page, then read the ink later",
+          aim: "Check that you can find and reopen handwriting after returning to reading.",
+          setup:
+            "An EPUB passage is open. The sample mark stands in for your Pencil handwriting.",
+          steps: [
+            {
+              label: "Add some page ink",
+              action: "Write a sample mark",
+              expect: "A purple handwritten mark appears over the passage.",
+              check: "I saw ink appear over the page.",
+            },
+            {
+              label: "Return to reading",
+              action: "Return to reading",
+              expect:
+                "Normal reading returns, with a marker for the annotated page.",
+              check: "I found the marker for my saved page ink.",
+            },
+            {
+              label: "Read the ink again",
+              action: "Open the saved page",
+              expect: "The original page opens with the same handwriting.",
+              check: "I reopened the page and could see the same ink.",
+            },
+          ],
+        },
+        {
+          id: "linked",
+          title: "Keep a handwritten note beside a passage",
+          aim: "Check that a separate ink note stays connected to the passage you selected.",
+          setup:
+            "A fresh EPUB passage is ready. This note will be separate from writing over the book page.",
+          steps: [
+            {
+              label: "Choose the passage",
+              action: "Select this passage",
+              expect: "The quote is selected as the context for your note.",
+              check: "I could tell which passage the note belongs to.",
+            },
+            {
+              label: "Write the linked note",
+              action: "Create an ink note",
+              expect:
+                "Open the note, then add the supplied handwriting inside it.",
+              check:
+                "I wrote inside a separate note, with the quote still visible.",
+            },
+            {
+              label: "Find it again",
+              action: "Close the ink note",
+              expect:
+                "Close it, then reopen it from its passage marker. Its ink should still be there.",
+              check: "I reopened the linked note and found its handwriting.",
+            },
+          ],
+        },
+        {
+          id: "typed",
+          title: "Turn handwriting input into a typed note",
+          aim: "Check the flow for a typed note entered through Scribble, then reopened later.",
+          setup:
+            "A passage is already selected. The Scribble button inserts sample text; you can edit that text with your keyboard.",
+          limit:
+            "This checks the text-note flow. Actual Scribble recognition needs an iPad.",
+          steps: [
+            {
+              label: "Open a text note",
+              action: "Open a typed note",
+              expect:
+                "An editable text field opens with the passage quote above it.",
+              check: "I found an editable text field linked to the quote.",
+            },
+            {
+              label: "Enter text through Scribble",
+              action: "Simulate Scribble input",
+              expect:
+                "Sample handwriting becomes editable text. Try changing a word if you like.",
+              check: "I saw editable text appear in the note.",
+            },
+            {
+              label: "Read the note again",
+              action: "Close the typed note",
+              expect:
+                "Close the note, then reopen it. The text, including any edits, should remain.",
+              check: "I reopened the note and found my text.",
+            },
+          ],
+        },
+        {
+          id: "epub",
+          title: "Change EPUB text size without losing page ink",
+          aim: "Check that old ink keeps its original page, while a new layout can have its own ink.",
+          setup:
+            "This EPUB already has an annotated page. Its supplied handwriting is your starting point.",
+          steps: [
+            {
+              label: "Make reading text larger",
+              action: "Enlarge the reading text",
+              expect:
+                "Reading text reflows. A marker points to the earlier annotated page.",
+              check: "I saw larger reading text and a marker for the old ink.",
+            },
+            {
+              label: "Revisit the old layout",
+              action: "Open the earlier annotated page",
+              expect:
+                "The original text size and its handwriting return together.",
+              check: "I could read the earlier ink in its original layout.",
+            },
+            {
+              label: "Write in the new layout",
+              action: "Write on the larger layout",
+              expect:
+                "A second annotated page is created. Switch between Original and Larger below the book to compare them.",
+              check:
+                "I compared both annotated pages and could distinguish their ink.",
+            },
+          ],
+        },
+        {
+          id: "pdf",
+          title: "Keep PDF ink aligned while zooming and rotating",
+          aim: "Check that a mark stays over the same PDF content when its display changes.",
+          setup:
+            "A fixed PDF page already has a purple circle around the word Observation.",
+          steps: [
+            {
+              label: "Zoom the PDF",
+              action: "Zoom in",
+              expect: "The page and its circle grow together.",
+              check:
+                "I checked that the circle stayed around Observation after zooming.",
+            },
+            {
+              label: "Rotate the iPad",
+              action: "Rotate to landscape",
+              expect:
+                "The viewing area becomes wider. The PDF page keeps its shape and mark placement.",
+              check: "I checked that the mark stayed aligned after rotation.",
+            },
+            {
+              label: "Fit the whole page",
+              action: "Fit the page",
+              expect:
+                "The whole page fits again, with the same circle in place.",
+              check: "I checked the circle again with the page fitted.",
+            },
+          ],
+        },
+        {
+          id: "entry",
+          title: "Choose how page writing should begin",
+          aim: "Compare Pencil contact with tapping Write first, then choose the one you prefer.",
+          setup:
+            "Two fresh copies of the same passage are provided. Only the way writing starts differs.",
+          steps: [
+            {
+              label: "Try immediate writing",
+              action: "Touch option A with the Pencil",
+              expect: "Option A enters writing and makes a mark immediately.",
+              check: "I tried starting a mark with Pencil contact alone.",
+            },
+            {
+              label: "Try the protected reading page",
+              action: "Touch option B with the Pencil",
+              expect: "Option B stays in reading, without making a mark.",
+              check:
+                "I tried Pencil contact before tapping Write and saw no mark.",
+            },
+            {
+              label: "Enter writing explicitly",
+              action: "Tap Write in option B",
+              expect:
+                "Tap Write, then touch the page with the Pencil. Only then does a mark appear.",
+              check: "I tapped Write and then made a mark in option B.",
+            },
+          ],
+        },
+        {
+          id: "finger",
+          title: "Avoid accidental page turns while writing",
+          aim: "Check whether returning to Read before turning pages feels natural.",
+          setup:
+            "A fresh EPUB page is ready. This example only tests finger navigation during page writing.",
+          steps: [
+            {
+              label: "Begin writing",
+              action: "Add a sample Pencil mark",
+              expect: "Page writing starts, with ink on page 1.",
+              check: "I could tell that page writing was active.",
+            },
+            {
+              label: "Try a finger page turn",
+              action: "Try turning the page with a finger",
+              expect:
+                "Page 1 stays in place. While writing, fingers are reserved for moving or zooming the content.",
+              check:
+                "I tried a finger page turn and the writing page stayed put.",
+            },
+            {
+              label: "Resume reading navigation",
+              action: "Return to Read",
+              expect:
+                "Return to Read, then try the finger page turn again. This time page 2 should open.",
+              check: "I returned to Read and could turn to page 2.",
+            },
+          ],
+        },
+        {
+          id: "palette",
+          title: "Choose a drawing tool using squeeze",
+          aim: "Check whether a small tool palette is a useful response to Pencil squeeze.",
+          setup:
+            "Page writing is already active. The supplied squeeze button stands in for the Pencil gesture.",
+          limit:
+            "Squeeze is simulated. Native behavior must follow supported APIs and the iPad system settings.",
+          steps: [
+            {
+              label: "Open the tools",
+              action: "Simulate Pencil squeeze",
+              expect: "A small drawing-tool palette opens beside the passage.",
+              check: "I found the tool palette after squeeze.",
+            },
+            {
+              label: "Choose a highlighter",
+              action: "Choose Highlighter",
+              expect:
+                "Highlighter becomes the selected tool and the palette closes.",
+              check: "I could tell Highlighter was selected.",
+            },
+            {
+              label: "Use the chosen tool",
+              action: "Add a sample highlight",
+              expect: "A broad translucent mark appears over the passage.",
+              check: "I saw the highlighter make a different mark from a pen.",
+            },
+          ],
+        },
+        {
+          id: "undo",
+          title: "Erase a mark, then undo the mistake",
+          aim: "Check that switching to an eraser and recovering a mark are easy to follow.",
+          setup:
+            "A page already has a purple handwritten mark. Pen is initially selected.",
+          limit:
+            "Double-tap is simulated with its system action set to switch between tool and eraser.",
+          steps: [
+            {
+              label: "Switch to the eraser",
+              action: "Simulate Pencil double-tap",
+              expect: "Eraser becomes the selected tool.",
+              check: "I could tell that double-tap selected Eraser.",
+            },
+            {
+              label: "Erase the ink",
+              action: "Erase the sample mark",
+              expect: "The handwriting disappears from the page.",
+              check: "I saw the mark disappear after erasing it.",
+            },
+            {
+              label: "Recover the mark",
+              action: "Undo the erasing",
+              expect: "The same handwriting comes back.",
+              check: "I restored the erased handwriting with Undo.",
+            },
+          ],
+        },
+        {
+          id: "offline",
+          title: "Write offline, then see the note sync",
+          aim: "Check that offline saving and later synchronization are understandable.",
+          setup:
+            "A downloaded EPUB is open and the server is initially reachable. Sync acknowledgements are simulated.",
+          steps: [
+            {
+              label: "Lose the server connection",
+              action: "Go offline",
+              expect: "The book stays open, with an Offline indication.",
+              check: "I could still read the downloaded book while offline.",
+            },
+            {
+              label: "Write without a connection",
+              action: "Write a note while offline",
+              expect:
+                "Ink appears and is labelled Saved on this iPad, waiting to sync.",
+              check:
+                "I could tell the note was kept locally and had not synced yet.",
+            },
+            {
+              label: "Reconnect",
+              action: "Reconnect to the server",
+              expect:
+                "The same note remains, and its status changes to Synced in this simulation.",
+              check: "I saw the note stay intact when pending sync completed.",
+            },
+          ],
+        },
+      ];
+      let states = Object.fromEntries(
+        scenarios.map((s) => [s.id, WalkthroughModel.initial(s.id)]),
+      );
+      let current = null;
+      let showReview = false;
       const $ = (id) => document.getElementById(id);
-      const escapeHtml = (value) =>
+      const esc = (value) =>
         String(value).replace(
           /[&<>"']/g,
           (c) =>
@@ -931,467 +905,302 @@
               "'": "&#39;",
             })[c],
         );
-      const passages = [
-        "The path became clearer when I stopped measuring the distance and began noticing what was beside me.",
-        "A useful note keeps the question alive long enough for a different answer to appear.",
-      ];
-      const paragraphs = [
-        [
-          "I took the quiet road toward the coast before the town had stirred. The air carried the smell of wet stone, and the last lights in the harbor trembled on the water.",
-          passages[0],
-          "I paused at a low wall and opened my book. There was no reason to hurry. I wanted a place to keep the thought, and enough room to return to it later.",
-        ],
-        [
-          "By the afternoon the tide had uncovered a line of shallow pools. Each held a small version of the sky, broken only when the wind reached the water.",
-          passages[1],
-          "I wrote a few words before continuing. The words were a reminder to look again, rather than an attempt to finish the thought.",
-        ],
-      ];
-      const scenarios = [
+      const ink = (extra = false, wide = false) =>
+        `<svg class="ink" viewBox="0 0 400 140" aria-label="Purple handwriting"><path ${wide ? 'class="wide"' : ""} d="M22 38 Q92 16 174 40 T330 37 M56 67 Q143 84 293 61"/>${wide ? "" : `<path d="M296 64 Q352 91 354 120 M342 109 L354 120 L364 105"/><text x="128" y="126">come back to this</text>`}${extra ? '<path d="M28 102 L50 118 L85 83"/>' : ""}</svg>`;
+      const paper = (
+        s,
         {
-          name: "EPUB reflow",
-          description:
-            "Circle a thought, reflow the normal reading page, then write again. Watch the two original layouts remain grouped under the same passage.",
-          format: "EPUB",
-          steps: [
-            ["Make page ink", { type: "CONTACT" }],
-            ["Return to reading", { type: "READ" }],
-            ["Increase text size", { type: "FONT" }],
-            ["Write in the new layout", { type: "CONTACT" }],
-            ["Try a finger page turn", { type: "SWIPE" }],
-            ["Return to reading", { type: "READ" }],
-            ["Open passage notes", { type: "GROUP" }],
-            [
-              "Reopen the first annotated view",
-              { type: "OPEN_VIEW", value: "oldest" },
-            ],
-          ],
-        },
-        {
-          name: "Linked notes",
-          description:
-            "Select a passage and enter a typed note through simulated Scribble. Then create a separate ink note for the same passage; closing either keeps its contents.",
-          format: "EPUB",
-          steps: [
-            ["Select the passage", { type: "SELECT" }],
-            ["Open a typed note", { type: "NEW_NOTE", value: "typed" }],
-            [
-              "Enter simulated Scribble text",
-              {
-                type: "TEXT",
-                value: "What changes when I slow down enough to notice?",
-              },
-            ],
-            ["Close the typed note", { type: "CLOSE_NOTE" }],
-            ["Open a linked ink note", { type: "NEW_NOTE", value: "ink" }],
-            ["Write in the ink note", { type: "CONTACT" }],
-            ["Close the ink note", { type: "CLOSE_NOTE" }],
-            ["See both by the passage", { type: "GROUP" }],
-          ],
-        },
-        {
-          name: "PDF offline",
-          description:
-            "Start with a landscape PDF, write while offline, rotate, and reconnect. The PDF page and ink keep their geometry. Sync is only an acknowledgement simulation.",
-          format: "PDF",
-          orientation: "landscape",
-          steps: [
-            ["Go offline", { type: "CONNECT" }],
-            ["Write on the PDF", { type: "CONTACT" }],
-            ["Rotate to portrait", { type: "ROTATE" }],
-            ["Zoom the annotated page", { type: "ZOOM" }],
-            ["Try a finger page turn", { type: "SWIPE" }],
-            ["Return to reading", { type: "READ" }],
-            ["Reconnect / simulate auto-sync", { type: "CONNECT" }],
-            [
-              "Reopen the original PDF view",
-              { type: "OPEN_VIEW", value: "oldest" },
-            ],
-          ],
-        },
-        {
-          name: "Accidental marks",
-          description:
-            "Compare requiring the Write button. Then erase, undo, and try squeeze. Reading navigation stays locked until you explicitly return to Read.",
-          format: "EPUB",
-          steps: [
-            ["Require the Write button", { type: "POLICY", value: "explicit" }],
-            ["Try Pencil contact: no mark", { type: "CONTACT" }],
-            ["Enter page writing", { type: "WRITE" }],
-            ["Make an intentional mark", { type: "CONTACT" }],
-            ["Double-tap to the eraser", { type: "DOUBLE_TAP" }],
-            ["Erase that stroke", { type: "CONTACT" }],
-            ["Undo the erasing", { type: "UNDO" }],
-            ["Squeeze for tools", { type: "SQUEEZE" }],
-          ],
-        },
-      ];
-
-      function dispatch(action) {
-        state = ReaderModel.reduce(state, action);
-        render();
+          draw = false,
+          large = false,
+          selected = false,
+          second = false,
+          extra = false,
+          wide = false,
+        } = {},
+      ) =>
+        `<div class="paper ${large ? "large" : ""}"><h3>${second ? "A second look" : "A place to return to"}</h3><p class="quote ${selected ? "selected" : ""}">${second ? "The next morning I returned to the same path and noticed something I had missed." : quote}</p><p>${second ? "There was room for another question." : "I stopped here to keep a thought before continuing with the chapter."}</p>${draw ? ink(extra, wide) : ""}</div>`;
+      function bookFrame(title, badge, content, foot) {
+        return `<div class="book"><div class="book-head row between"><strong>${title}</strong><span class="badge">${badge}</span></div><div class="book-stage">${content}</div><div class="book-foot">${foot}</div></div>`;
       }
-      function inkSvg(target) {
-        if (!target) return "";
-        return target.strokes
-          .map(
-            (stroke) =>
-              `<polyline points="${stroke.points.map((p) => p.join(",")).join(" ")}" fill="none" stroke="var(--primary, #7356ac)" stroke-width="${stroke.tool === "highlighter" ? 20 : stroke.tool === "pencil" ? 2 : 3}" stroke-linecap="round" stroke-linejoin="round" opacity="${stroke.tool === "highlighter" ? 0.25 : stroke.tool === "pencil" ? 0.7 : 1}" />`,
-          )
-          .join("");
+      function noteContent(s, typed) {
+        return `<div class="note"><strong>${typed ? "Typed" : "Ink"} note</strong><p class="quote">${quote}</p>${typed ? `<label for="noteText"><small>Your editable note</small></label><textarea id="noteText" placeholder="Your text appears here">${esc(s.text)}</textarea>` : `<svg class="ink" style="position:static" viewBox="0 0 400 140" aria-label="Handwriting inside the linked note">${s.ink ? '<path d="M30 40 Q110 14 190 45 T350 40 M72 75 Q170 92 310 65"/><text x="80" y="120">why does this matter?</text>' : ""}</svg><small>${s.ink ? "Editable handwriting kept with this quote." : "A blank space for your handwriting."}</small>`}</div>`;
       }
-      function wrap(text, limit) {
-        const lines = [""];
-        for (const word of text.split(" ")) {
-          if ((lines.at(-1) + " " + word).trim().length > limit && lines.at(-1))
-            lines.push(word);
-          else lines[lines.length - 1] = (lines.at(-1) + " " + word).trim();
+      function visual(c, s) {
+        const n = s.stage;
+        if (c.id === "page")
+          return bookFrame(
+            "EPUB · Practice book",
+            n === 1 ? "Writing" : n === 3 ? "Saved annotated page" : "Reading",
+            paper(s, { draw: n === 1 || n === 3 }),
+            n === 2
+              ? "Saved page ink · 1 annotated page for this passage"
+              : n === 3
+                ? "Original page and its handwriting reopened."
+                : n === 1
+                  ? "Ink is on this page."
+                  : "Your practice passage is ready.",
+          );
+        if (c.id === "linked" || c.id === "typed")
+          return bookFrame(
+            "EPUB · This passage",
+            s.noteOpen ? "Note open" : "Reading",
+            s.noteOpen
+              ? noteContent(s, c.id === "typed")
+              : paper(s, { selected: n > 0 }),
+            s.closed && !s.noteOpen
+              ? "Note marker · 1 note linked to this quote"
+              : s.noteOpen
+                ? "The note belongs to the quote shown above it."
+                : n > 0
+                  ? "Passage selected for a linked note."
+                  : "Select a passage using step 1 below.",
+          );
+        if (c.id === "epub") {
+          const old = n === 0 || s.view === "original";
+          const controls =
+            n === 3
+              ? `<div class="row"><button data-view="original" aria-pressed="${s.view === "original"}">Original annotated page</button><button data-view="larger" aria-pressed="${s.view === "larger"}">Larger annotated page</button>${s.view === "original" ? "<button data-edit-original>Edit original ink: add a mark</button>" : ""}</div>`
+              : "";
+          return bookFrame(
+            "EPUB · One passage, preserved layouts",
+            n === 1
+              ? "Larger reading text"
+              : old
+                ? "Original annotated page"
+                : "Larger annotated page",
+            paper(s, {
+              draw: n !== 1,
+              large: !old,
+              extra: old ? s.extraOriginalInk : true,
+            }),
+            n === 1
+              ? "Earlier page ink · 1 annotated page at the original size"
+              : controls ||
+                  "This is the earlier page with its original handwriting.",
+          );
         }
-        return lines;
+        if (c.id === "pdf")
+          return bookFrame(
+            "PDF · Field observations",
+            n >= 2 ? "Landscape" : "Portrait",
+            `<div class="pdf-window ${n >= 2 ? "landscape" : ""}"><div class="pdf-page ${n === 1 || n === 2 ? "zoomed" : ""}"><svg viewBox="0 0 600 800" role="img" aria-label="PDF page with a purple circle around Observation"><g fill="currentColor" font-family="Georgia,serif"><text x="60" y="100" font-size="32">Field observations</text><text x="60" y="160" font-size="23">A fixed page with a marked detail.</text><rect x="65" y="235" width="470" height="160" fill="var(--secondary,#f2eff7)"/><text x="160" y="325" font-size="34">Observation</text><text x="60" y="465" font-size="23">Keep the mark with this content.</text><text x="300" y="750" font-size="18">1</text></g><ellipse cx="270" cy="314" rx="155" ry="58" fill="none" stroke="var(--primary,#7355aa)" stroke-width="5" transform="rotate(-5,270,314)"/></svg></div></div>`,
+            n === 3
+              ? "Whole page fitted. The circle still surrounds Observation."
+              : n === 2
+                ? "Landscape viewing area. Scroll inside the PDF if needed."
+                : n === 1
+                  ? "Zoomed page. Page content and ink use the same scale."
+                  : "The purple circle is supplied so you can check its alignment.",
+          );
+        if (c.id === "entry")
+          return bookFrame(
+            "EPUB · Compare writing entry",
+            "Two isolated options",
+            `<div class="choice"><div class="option"><strong>A · Pencil contact</strong><p>Reading → writing on contact.</p><svg class="ink" style="position:static" viewBox="0 0 400 140">${s.tried[0] ? '<path d="M25 40 Q140 10 320 45"/><text x="45" y="100">a thought</text>' : ""}</svg><small>${s.tried[0] ? "Writing · mark created." : "Reading · no ink yet."}</small></div><div class="option"><strong>B · Write button first</strong><p>Reading stays protected.</p><svg class="ink" style="position:static" viewBox="0 0 400 140">${s.tried[2] ? '<path d="M25 40 Q140 10 320 45"/><text x="45" y="100">a thought</text>' : ""}</svg><small>${s.tried[2] ? "Writing · mark created." : s.armed ? "Write selected · ready for Pencil." : s.tried[1] ? "Reading · Pencil made no mark." : "Reading · no ink yet."}</small></div></div>`,
+            s.tried[2]
+              ? "You have now tried both entry behaviors. Choose your preference below."
+              : "Use the numbered steps below to try each option.",
+          );
+        if (c.id === "finger")
+          return bookFrame(
+            "EPUB · Practice book",
+            n === 0 || (s.armed && !s.tried[2])
+              ? "Reading · page 1"
+              : n < 3
+                ? "Writing · page 1"
+                : "Reading · page 2",
+            paper(s, {
+              draw: (n === 1 || n === 2) && !s.armed,
+              second: s.tried[2],
+            }),
+            s.armed && !s.tried[2]
+              ? "Read selected. Now try the finger page turn in step 3."
+              : n === 2
+                ? "Finger page-turn attempt: page 1 stayed put. Fingers are reserved for pan/zoom while writing."
+                : s.tried[2]
+                  ? "Read was selected, then the finger page turn opened page 2."
+                  : "Follow the steps below to compare finger navigation while writing and reading.",
+          );
+        if (c.id === "palette")
+          return bookFrame(
+            "EPUB · Page writing",
+            `Selected tool: ${s.tool}`,
+            n === 1
+              ? `<div class="palette"><strong>Drawing tools</strong><p>Choose Highlighter here or in step 2.</p><div class="row"><button disabled>Pen (selected)</button><button data-try="1">Highlighter</button></div></div>`
+              : paper(s, { draw: n === 3, wide: true }),
+            n === 1
+              ? "The squeeze gesture opened this palette."
+              : n >= 2
+                ? "Highlighter selected. The palette has closed."
+                : "Page writing is active; the drawing tools are initially tucked away.",
+          );
+        if (c.id === "undo")
+          return bookFrame(
+            "EPUB · Page writing",
+            `Selected tool: ${s.tool}`,
+            paper(s, { draw: n !== 2 }),
+            n === 2
+              ? "Mark erased. Undo can restore it."
+              : n === 3
+                ? "Undo restored the original handwriting."
+                : n === 1
+                  ? "Double-tap selected Eraser. The mark is still here until you erase it."
+                  : "The sample mark is ready for you to erase.",
+          );
+        return bookFrame(
+          "EPUB · Downloaded book",
+          n === 0 || n === 3 ? "Server reachable" : "Offline",
+          paper(s, { draw: n >= 2 }),
+          n === 0
+            ? "Book downloaded. Server reachable."
+            : n === 1
+              ? "Offline · the downloaded book remains readable."
+              : n === 2
+                ? "Saved on this iPad · 1 note waiting to sync."
+                : "Synced (simulation) · the same note has been acknowledged.",
+        );
       }
-      function pageMarkup(layout, view) {
-        const font = (20 * layout.font) / 100;
-        const limit = Math.floor((layout.width - 128) / (font * 0.49));
-        let y = 150;
-        const text = paragraphs[layout.page - 1]
-          .map((paragraph, index) => {
-            const lines = wrap(paragraph, limit);
-            const start = y;
-            const out = lines
-              .map((line) => {
-                const row =
-                  y <= layout.height - 72
-                    ? `<text x="64" y="${y}" font-size="${font}">${escapeHtml(line)}</text>`
-                    : "";
-                y += font * 1.5;
-                return row;
-              })
-              .join("");
-            y += 18;
-            return `${index === 1 && state.selected ? `<rect x="52" y="${start - font}" width="${layout.width - 104}" height="${lines.length * font * 1.5 + 8}" fill="var(--primary, #7356ac)" opacity=".12" />` : ""}${out}`;
-          })
-          .join("");
-        const hover =
-          state.hover && !state.noteId
-            ? `<ellipse cx="${layout.width * 0.65}" cy="${layout.height * 0.65}" rx="17" ry="6" transform="rotate(${state.roll},${layout.width * 0.65},${layout.height * 0.65})" fill="none" stroke="var(--primary, #7356ac)" stroke-dasharray="4 3" />`
-            : "";
-        return `<g fill="currentColor" font-family="Georgia, serif"><text x="64" y="62" font-size="12" font-family="system-ui" letter-spacing="2">FIELD NOTES · A PRACTICE BOOK</text><text x="64" y="106" font-size="28">${layout.page === 1 ? "A place to return to" : "Looking again"}</text>${text}<text x="${layout.width / 2}" y="${layout.height - 32}" text-anchor="middle" font-size="12">${layout.page}</text></g>${inkSvg(view)}${hover}`;
+      function actionLabel(c, s, i) {
+        if (c.id === "linked" && i === 1 && s.noteOpen)
+          return s.ink
+            ? "Write the sample note again"
+            : "Add sample handwriting";
+        if ((c.id === "linked" || c.id === "typed") && i === 2 && s.closed)
+          return "Reopen the note";
+        if (c.id === "entry" && i === 2 && s.armed)
+          return "Make a Pencil mark in option B";
+        if (c.id === "finger" && i === 2 && s.armed)
+          return "Turn the page with a finger";
+        return c.steps[i].action;
+      }
+      function reviewedCount() {
+        return Object.values(states).filter(WalkthroughModel.complete).length;
+      }
+      function header() {
+        return `<div class="row between topline"><button data-home>All scenarios</button><span class="progress">${reviewedCount()} of ${scenarios.length} reviewed <progress max="${scenarios.length}" value="${reviewedCount()}" aria-label="Scenarios reviewed"></progress></span></div>`;
+      }
+      function overview() {
+        const first = scenarios.find(
+          (c) => !WalkthroughModel.complete(states[c.id]),
+        );
+        return `<div class="eyebrow">Personal BookOrbit iPad app · interaction review</div><h1>How should reading and taking notes work?</h1><p class="lead">Try ten small scenarios, one at a time. Each answers one question about your future iPad reader.</p><ol class="how"><li>Read the scenario's aim.</li><li>Use its three steps and tick what you checked.</li><li>Choose <strong>Keep this flow</strong> or <strong>Change this flow</strong>.</li></ol><button class="primary" data-open="${first?.id || scenarios[0].id}">${reviewedCount() === 0 ? "Start scenario 1: write and revisit ink" : first ? "Continue with the next unfinished scenario" : "Revisit scenario 1"}</button><p class="progress spaced">${reviewedCount()} of ${scenarios.length} scenarios reviewed. Progress stays while this page is open.</p><p class="muted">Use your mouse. Sample marks stand in for Pencil handwriting. This review checks the reading and note flows; native Pencil feel needs an iPad.</p><details><summary>See all ten scenarios</summary><div class="overview">${scenarios.map((c, i) => `<button data-open="${c.id}"><span><strong>${i + 1}. ${c.title}</strong><small>${c.aim}</small></span><span class="badge">${WalkthroughModel.complete(states[c.id]) ? "Reviewed" : `${states[c.id].checked.filter(Boolean).length}/3 checked`}</span></button>`).join("")}</div></details><button class="spaced" data-summary>Review my results</button>`;
+      }
+      function activeCase() {
+        const c = scenarios.find((c) => c.id === current),
+          s = states[current],
+          index = scenarios.indexOf(c),
+          done = WalkthroughModel.complete(s);
+        const nextStep = s.tried.findIndex((t) => !t);
+        const result =
+          s.stage === 0
+            ? "Start with step 1. Everything you need for this scenario is on this page."
+            : nextStep === -1
+              ? "All three actions have been tried. Tick what you checked, then give this flow your reaction."
+              : `Now try step ${nextStep + 1}. Tick each checkbox after checking its result.`;
+        return `${header()}<div class="eyebrow">Scenario ${index + 1} of ${scenarios.length}</div><h1>${c.title}</h1><p class="aim"><strong>Aim:</strong> ${c.aim}</p><p class="setup">${c.setup}</p><div class="trial-layout spaced"><div class="visual-column">${visual(c, s)}<div class="result" role="status" aria-live="polite">${result}</div></div><section aria-label="Scenario checklist"><h2>Try these three things</h2><p class="muted">Tick each box after trying it, even if you want the behavior changed.</p><ol class="checklist">${c.steps.map((st, i) => `<li class="check-step ${i === nextStep ? "current" : ""}"><div class="number">Step ${i + 1}</div><h3>${st.label}</h3><p>${st.expect}</p><button data-try="${i}" ${i > 0 && !s.tried[i - 1] ? "disabled" : ""} ${i === nextStep ? 'class="primary"' : ""}>${esc(actionLabel(c, s, i))}</button><label><input type="checkbox" data-check="${i}" ${s.checked[i] ? "checked" : ""} ${!s.tried[i] ? "disabled" : ""}/><span>${st.check}</span></label></li>`).join("")}</ol></section></div><section class="panel review spaced" aria-label="Your reaction"><h2>${c.id === "entry" ? "Which way should writing begin?" : "Would you keep this flow?"}</h2>${c.id === "entry" ? `<div class="row"><button data-choice="contact" aria-pressed="${s.choice === "contact"}">A · Pencil contact</button><button data-choice="write" aria-pressed="${s.choice === "write"}">B · Write first</button></div>` : `<div class="row"><button data-verdict="keep" aria-pressed="${s.verdict === "keep"}">Keep this flow</button><button data-verdict="change" aria-pressed="${s.verdict === "change"}">Change this flow</button></div>`}<label for="feedback"><small>${s.verdict === "change" ? "What would you change?" : "Anything to add? (optional)"}</small></label><textarea id="feedback" placeholder="Tell me what felt awkward or what you would prefer.">${esc(s.comment)}</textarea><p class="completion">${done ? "Scenario reviewed. Your reaction is recorded in this page." : `${s.checked.filter(Boolean).length} of 3 checks ticked. ${c.id === "entry" ? (!s.choice ? "Choose your preferred entry behavior." : "") : !s.verdict ? "Choose Keep or Change." : ""}`}</p></section><div class="row between footer"><button data-reset>Restart only this scenario</button>${index < scenarios.length - 1 ? `<button class="primary" data-open="${scenarios[index + 1].id}" ${!done ? "disabled" : ""}>Next scenario: ${index + 2}</button>` : `<button class="primary" data-summary ${!done ? "disabled" : ""}>Review all results</button>`}</div>${c.limit ? `<p class="setup">${c.limit}</p>` : ""}`;
+      }
+      function verdict(c) {
+        const s = states[c.id];
+        return c.id === "entry"
+          ? s.choice === "contact"
+            ? "Prefer Pencil contact"
+            : s.choice === "write"
+              ? "Prefer Write first"
+              : "No preference yet"
+          : s.verdict === "keep"
+            ? "Keep this flow"
+            : s.verdict === "change"
+              ? "Change this flow"
+              : "No reaction yet";
+      }
+      function reviewText() {
+        return (
+          `BookOrbit reader interaction review\n${reviewedCount()} of ${scenarios.length} scenarios reviewed\n\n` +
+          scenarios
+            .map((c, i) => {
+              const s = states[c.id];
+              return `${i + 1}. ${c.title}\n${s.checked.filter(Boolean).length}/3 checks completed. ${verdict(c)}.${s.comment ? "\nFeedback: " + s.comment : ""}`;
+            })
+            .join("\n\n")
+        );
+      }
+      function summary() {
+        const done = reviewedCount() === scenarios.length;
+        return `${header()}<h1>${done ? "Your interaction review is complete" : "Your review so far"}</h1><p>${done ? "You have tried every scenario and recorded a reaction to each flow." : "Choose any unfinished scenario below to continue."}</p><ul class="summary-list">${scenarios.map((c, i) => `<li><div class="row between"><div><strong>${i + 1}. ${c.title}</strong><br/><small>${states[c.id].checked.filter(Boolean).length}/3 checks · ${verdict(c)}</small></div><button data-open="${c.id}">${WalkthroughModel.complete(states[c.id]) ? "Revisit" : "Continue"}</button></div>${states[c.id].comment ? `<p>${esc(states[c.id].comment)}</p>` : ""}</li>`).join("")}</ul><section class="panel spaced"><h2>Share your review in this chat</h2><p>The review is kept on this page. Select the text below, copy it, and paste it into our conversation.</p><button data-select-review>Select review text</button><textarea class="export spaced" id="reviewText" readonly aria-label="Your review to copy">${esc(reviewText())}</textarea></section>`;
       }
       function render() {
-        const view = state.views.find((v) => v.id === state.viewId);
-        const note = state.notes.find((n) => n.id === state.noteId);
-        const savedViews = state.views.filter(
-          (v) => ReaderModel.samePassage(v, state) && v.strokes.length,
-        );
-        const notes = state.notes.filter((n) =>
-          ReaderModel.samePassage(n, state),
-        );
-        const layout = view ? view.layout : ReaderModel.layout(state);
-        const fields = [
-          [
-            "Where",
-            `${state.format} · page ${state.page} · ${state.orientation}`,
-          ],
-          [
-            "Surface",
-            note
-              ? `${note.kind === "ink" ? "Ink" : "Typed"} note`
-              : view
-                ? `Original ${view.layout.font}% ${view.layout.orientation} · ${state.mode === "write" ? "editing ink" : "viewing"}`
-                : "Normal reading",
-          ],
-          [
-            "Pencil",
-            note?.kind === "typed"
-              ? "Scribble enters text"
-              : state.mode === "write" || note
-                ? `${state.tool} · drawing`
-                : state.policy === "contact"
-                  ? "Contact starts page ink"
-                  : "Tap Write before marking",
-          ],
-          [
-            "Finger",
-            state.mode === "write" || note || view
-              ? "No ink or page turns"
-              : "Swipe pages · select text",
-          ],
-          [
-            "This passage",
-            `${savedViews.length} view${savedViews.length === 1 ? "" : "s"} · ${notes.length} linked note${notes.length === 1 ? "" : "s"}`,
-          ],
-          [
-            "Sync simulation",
-            state.online
-              ? "Online · simulated synced"
-              : `Offline · ${state.dirty.length} changed note/view${state.dirty.length === 1 ? "" : "s"} waiting`,
-          ],
-        ];
-        $("stateFields").innerHTML = fields
-          .map(
-            ([label, value]) =>
-              `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`,
-          )
-          .join("");
-        $("notice").textContent = state.message;
-        $("workspace").className = `workspace ${state.orientation}`;
-        $("bookLabel").textContent = `${state.format} · Field notes`;
-        $("pageLabel").textContent = `${state.page} / 2`;
-        $("pageSvg").setAttribute(
-          "viewBox",
-          `0 0 ${layout.width} ${layout.height}`,
-        );
-        $("pageSvg").innerHTML = pageMarkup(layout, view);
-        $("page").style.width = `${state.zoom * 100}%`;
-        $("page").style.maxWidth =
-          `${(layout.width === 800 ? 720 : 460) * state.zoom}px`;
-        $("pageCaption").textContent = view
-          ? `Preserved ${view.format} view · ${view.layout.font}% · ${view.layout.orientation}. ${state.mode === "write" ? "Editing original ink." : "Tap Write to edit this ink."} Read returns to the current layout.`
-          : `Normal ${state.format} reading${state.format === "EPUB" ? ` · text ${state.font}%` : " · fixed PDF page"}. Drag with the simulated Pencil to write; use the buttons to simulate gestures.`;
-        $("entryPolicy").value = state.policy;
-        $("mouseInput").value = state.mouse;
-        $("doubleTapAction").value = state.doubleTap;
-        $("palette").hidden = !state.palette;
-        document.querySelectorAll("[data-action]").forEach((button) => {
-          const type = button.dataset.action;
-          if (["TOOL", "FORMAT", "READ", "WRITE"].includes(type))
-            button.setAttribute(
-              "aria-pressed",
-              type === "TOOL"
-                ? String(button.dataset.value === state.tool)
-                : type === "FORMAT"
-                  ? String(button.dataset.value === state.format)
-                  : type === "READ"
-                    ? String(state.mode === "read" && !note && !view)
-                    : String(state.mode === "write" && !note),
-            );
-          if (type === "ROTATE")
-            button.textContent = `Rotate to ${state.orientation === "portrait" ? "landscape" : "portrait"}`;
-          if (type === "FONT") button.textContent = `EPUB text: ${state.font}%`;
-          if (type === "CONNECT")
-            button.textContent = state.online
-              ? "Go offline"
-              : "Reconnect / auto-sync";
-        });
-        $("marker").textContent =
-          `Passage notes (${savedViews.length + notes.length})`;
-        $("notesTitle").textContent = note
-          ? `${note.kind === "ink" ? "Ink" : "Typed"} note`
-          : state.group
-            ? "This passage's notes"
-            : "A note beside the passage";
-        $("quote").textContent = passages[state.page - 1];
-        $("closeNotes").hidden = !note;
-        $("noteLanding").hidden = !!note;
-        $("typedEditor").hidden = note?.kind !== "typed";
-        $("inkEditor").hidden = note?.kind !== "ink";
-        if (note?.kind === "typed" && $("noteText").value !== note.text)
-          $("noteText").value = note.text;
-        $("noteSvg").innerHTML =
-          `<path d="M24 100H576 M24 180H576 M24 260H576 M24 340H576" stroke="var(--border, #dedbe4)" stroke-width="1" />${inkSvg(note)}${state.hover && note?.kind === "ink" ? `<ellipse cx="390" cy="270" rx="17" ry="6" transform="rotate(${state.roll},390,270)" fill="none" stroke="var(--primary, #7356ac)" stroke-dasharray="4 3" />` : ""}`;
-        $("notesHint").textContent = state.selected
-          ? "Passage selected. Start a typed or ink note, or reopen an earlier view below."
-          : "Choose Read, then Long-press passage to create a linked note. Earlier notes and annotated views are available below.";
-        $("noteSaveState").textContent = note
-          ? state.online
-            ? "Kept in this demo · simulated synced"
-            : "Kept in this demo · waiting to sync"
-          : "";
-        $("noteList").innerHTML = [
-          ...savedViews.map(
-            (v, index) =>
-              `<div class="entry"><p><strong>Annotated view ${index + 1}</strong> <span class="pill">${v.strokes.length} stroke${v.strokes.length === 1 ? "" : "s"}</span></p><p class="muted">${v.layout.font}% text · ${v.layout.orientation} · original content + editable ink</p><button data-action="OPEN_VIEW" data-value="${v.id}">Open annotated view ${index + 1}</button></div>`,
-          ),
-          ...notes.map(
-            (n, index) =>
-              `<div class="entry"><p><strong>${n.kind === "ink" ? "Ink" : "Typed"} note ${index + 1}</strong></p><p>${n.kind === "typed" ? escapeHtml(n.text || "Empty typed note") : `${n.strokes.length} editable ink stroke${n.strokes.length === 1 ? "" : "s"}`}</p><button data-action="OPEN_NOTE" data-value="${n.id}">Open ${n.kind} note ${index + 1}</button></div>`,
-          ),
-        ].join("");
-        renderScenario();
+        const focus = document.activeElement?.id;
+        const start = document.activeElement?.selectionStart,
+          end = document.activeElement?.selectionEnd;
+        $("app").innerHTML = showReview
+          ? summary()
+          : current
+            ? activeCase()
+            : overview();
+        if (focus && (focus === "noteText" || focus === "feedback")) {
+          const el = $(focus);
+          if (el) {
+            el.focus({ preventScroll: true });
+            el.setSelectionRange(start, end);
+          }
+        }
       }
-      function renderScenario() {
-        const current = scenarios[scenario];
-        $("guideControls").hidden = step < 0;
-        $("guidedProgress").textContent =
-          step < current.steps.length
-            ? `${current.name} · ${step + 1} of ${current.steps.length}`
-            : `${current.name} · complete`;
-        $("nextGuided").hidden = step < 0 || step >= current.steps.length;
-        $("nextGuided").textContent =
-          step >= 0 && step < current.steps.length
-            ? `Next: ${current.steps[step][0]}`
-            : "";
-        $("scenarioTabs").innerHTML = scenarios
-          .map(
-            (s, index) =>
-              `<button role="tab" id="scenario-tab-${index}" aria-controls="scenarioPanel" aria-selected="${scenario === index}" data-scenario="${index}">${s.name}</button>`,
-          )
-          .join("");
-        $("scenarioPanel").setAttribute(
-          "aria-labelledby",
-          `scenario-tab-${scenario}`,
-        );
-        $("scenarioDescription").textContent = scenarios[scenario].description;
-        $("scenarioSteps").innerHTML =
-          scenarios[scenario].steps
-            .map(
-              ([label], index) =>
-                `<button data-step="${index}" ${index !== step ? "disabled" : ""}>${index < step ? "✓" : index + 1 + "."} ${label}</button>`,
-            )
-            .join("") +
-          (step === scenarios[scenario].steps.length
-            ? `<p>Walkthrough complete. Keep exploring above, or try another scenario.</p>`
-            : "");
+      function dispatch(action) {
+        states[current] = WalkthroughModel.reduce(states[current], action);
+        render();
       }
-      function startScenario(index) {
-        scenario = index;
-        step = 0;
-        dispatch({
-          type: "RESET",
-          format: scenarios[index].format,
-          orientation: scenarios[index].orientation || "portrait",
-        });
+      function goTop() {
+        window.scrollTo(0, 0);
       }
-      function showGuidedSurface(action) {
-        const target =
-          state.noteId ||
-          ["GROUP", "SELECT", "CLOSE_NOTE"].includes(action?.type)
-            ? document.querySelector('aside[aria-label="Passage notes"]')
-            : document.querySelector('section[aria-label="Practice reader"]');
-        target.style.scrollMarginTop = `${document.querySelector(".state").offsetHeight + 12}px`;
-        target.scrollIntoView({ block: "start" });
-      }
-      function advanceGuided() {
-        if (step < 0 || step >= scenarios[scenario].steps.length) return;
-        const action = scenarios[scenario].steps[step][1];
-        step++;
-        dispatch(action);
-        showGuidedSurface(action);
-      }
-      document.addEventListener("click", (event) => {
-        const button = event.target.closest("button");
-        if (!button) return;
-        if (button.dataset.action)
-          dispatch({
-            type: button.dataset.action,
-            value: button.dataset.value,
-          });
-        else if (button.dataset.scenario !== undefined)
-          startScenario(Number(button.dataset.scenario));
-        else if (button.id === "startGuided") {
-          startScenario(0);
-          showGuidedSurface();
-        } else if (button.id === "nextGuided") advanceGuided();
-        else if (button.id === "restartScenario") startScenario(scenario);
-        else if (button.dataset.step !== undefined) {
-          advanceGuided();
+      document.addEventListener("click", (e) => {
+        const b = e.target.closest("button");
+        if (!b || b.disabled) return;
+        if (b.hasAttribute("data-home")) {
+          current = null;
+          showReview = false;
+          render();
+          goTop();
+        } else if (b.hasAttribute("data-open")) {
+          current = b.dataset.open;
+          showReview = false;
+          render();
+          goTop();
+        } else if (b.hasAttribute("data-summary")) {
+          showReview = true;
+          render();
+          goTop();
+        } else if (b.hasAttribute("data-try")) {
+          dispatch({ type: "TRY", index: Number(b.dataset.try) });
+        } else if (b.hasAttribute("data-verdict"))
+          dispatch({ type: "VERDICT", value: b.dataset.verdict });
+        else if (b.hasAttribute("data-choice"))
+          dispatch({ type: "CHOICE", value: b.dataset.choice });
+        else if (b.hasAttribute("data-reset")) {
+          dispatch({ type: "RESET" });
+          goTop();
+        } else if (b.hasAttribute("data-view"))
+          dispatch({ type: "VIEW", value: b.dataset.view });
+        else if (b.hasAttribute("data-edit-original"))
+          dispatch({ type: "EDIT_ORIGINAL" });
+        else if (b.hasAttribute("data-select-review")) {
+          $("reviewText").focus();
+          $("reviewText").select();
         }
       });
-      $("entryPolicy").addEventListener("change", (e) =>
-        dispatch({ type: "POLICY", value: e.target.value }),
-      );
-      $("mouseInput").addEventListener("change", (e) =>
-        dispatch({ type: "MOUSE", value: e.target.value }),
-      );
-      $("doubleTapAction").addEventListener("change", (e) =>
-        dispatch({ type: "DOUBLE_TAP_SETTING", value: e.target.value }),
-      );
-      $("noteText").addEventListener("input", (e) =>
-        dispatch({ type: "TEXT", value: e.target.value }),
-      );
-      let drag = null;
-      function point(event, svg) {
-        const p = svg.createSVGPoint();
-        p.x = event.clientX;
-        p.y = event.clientY;
-        const local = p.matrixTransform(svg.getScreenCTM().inverse());
-        return [Math.round(local.x), Math.round(local.y)];
-      }
-      for (const id of ["pageSvg", "noteSvg"]) {
-        const svg = $(id);
-        svg.addEventListener("pointerdown", (event) => {
-          const input =
-            event.pointerType === "pen"
-              ? "pencil"
-              : event.pointerType === "touch"
-                ? "finger"
-                : state.mouse;
-          drag = {
-            pointerId: event.pointerId,
-            svg,
-            input,
-            points: [point(event, svg)],
-          };
-          svg.setPointerCapture(event.pointerId);
-        });
-        svg.addEventListener("pointermove", (event) => {
-          if (!drag || drag.svg !== svg || event.pointerId !== drag.pointerId)
-            return;
-          const p = point(event, svg);
-          if (
-            Math.hypot(
-              p[0] - drag.points.at(-1)[0],
-              p[1] - drag.points.at(-1)[1],
-            ) < 2
-          )
-            return;
-          drag.points.push(p);
-          if (drag.input === "pencil") {
-            let preview = svg.querySelector(".live-stroke");
-            if (!preview) {
-              preview = document.createElementNS(
-                "http://www.w3.org/2000/svg",
-                "polyline",
-              );
-              preview.classList.add("live-stroke");
-              preview.setAttribute("fill", "none");
-              preview.setAttribute("stroke", "var(--primary, #7356ac)");
-              preview.setAttribute("stroke-width", "3");
-              preview.setAttribute("opacity", ".5");
-              svg.append(preview);
-            }
-            const note = state.notes.find((n) => n.id === state.noteId);
-            const allowed =
-              id === "noteSvg"
-                ? note?.kind === "ink"
-                : !note &&
-                  (state.policy === "contact" || state.mode === "write");
-            if (allowed && state.tool !== "eraser")
-              preview.setAttribute(
-                "points",
-                drag.points.map((p) => p.join(",")).join(" "),
-              );
-          }
-        });
-        svg.addEventListener("pointerup", (event) => {
-          if (!drag || drag.svg !== svg || event.pointerId !== drag.pointerId)
-            return;
-          const current = drag;
-          drag = null;
-          svg.querySelector(".live-stroke")?.remove();
-          if (current.input === "pencil")
-            dispatch({
-              type: "CONTACT",
-              surface: id === "pageSvg" ? "page" : "note",
-              points: current.points,
-            });
-          else if (
-            id === "pageSvg" &&
-            Math.abs(current.points.at(-1)[0] - current.points[0][0]) > 50
-          )
-            dispatch({
-              type:
-                current.points.at(-1)[0] < current.points[0][0]
-                  ? "SWIPE"
-                  : "PREVIOUS",
-            });
-          else dispatch({ type: "FINGER" });
-        });
-        svg.addEventListener("pointercancel", () => {
-          drag = null;
-          svg.querySelector(".live-stroke")?.remove();
-        });
-      }
+      document.addEventListener("change", (e) => {
+        if (e.target.hasAttribute("data-check"))
+          dispatch({
+            type: "CHECK",
+            index: Number(e.target.dataset.check),
+            value: e.target.checked,
+          });
+      });
+      document.addEventListener("input", (e) => {
+        if (e.target.id === "feedback")
+          dispatch({ type: "COMMENT", value: e.target.value });
+        if (e.target.id === "noteText")
+          dispatch({ type: "TEXT", value: e.target.value });
+      });
       render();
     </script>
   </body>
