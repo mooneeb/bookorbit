@@ -1,0 +1,11 @@
+{
+  "build": "10",
+  "checks": {
+    "legacyGroupsDecoded": true,
+    "previousAnswerPreserved": true,
+    "previousTriedChecksPreserved": true,
+    "canonicalDrawingsUnchanged": true,
+    "sourceHashUnchanged": true
+  },
+  "scope": "Build 9 physical single-word fixture copied into the simulator, decoded by the actual build 10 controller. This is a compatibility check, not a new physical or human verdict."
+}

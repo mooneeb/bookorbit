@@ -1,9 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 cd "${0:A:h}"
-if [[ ! -f OrbitContextPrototype.xcodeproj/project.pbxproj || project.yml -nt OrbitContextPrototype.xcodeproj/project.pbxproj ]]; then
-  xcodegen generate --quiet
-fi
+xcodegen generate --quiet
 route="${1:-simulator}"
 prototype_build="${2:-1}"
 if [[ "$route" == "project" ]]; then

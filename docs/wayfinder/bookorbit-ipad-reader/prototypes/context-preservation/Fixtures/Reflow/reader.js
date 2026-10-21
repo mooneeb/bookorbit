@@ -172,6 +172,25 @@ window.reflow = {
 
 if (new URL(location.href).searchParams.has("probe")) {
   window.reflowProbe = {
+    selectSentence() {
+      const { doc } = view.renderer.getContents()[0];
+      const paragraph = doc.querySelector("p");
+      const range = doc.createRange();
+      range.setStart(paragraph, 0);
+      let remaining = paragraph.textContent.indexOf(".") + 1;
+      const walker = doc.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (remaining <= node.textContent.length) {
+          range.setEnd(node, remaining);
+          break;
+        }
+        remaining -= node.textContent.length;
+      }
+      const selection = doc.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return window.reflow.select();
+    },
     selectOccurrence(occurrence = 1) {
       const { doc } = view.renderer.getContents()[0];
       const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);

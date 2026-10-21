@@ -1,0 +1,36 @@
+{
+  "assignment": "This standalone walkthrough explicitly requests only this kind of mark",
+  "canonicalInkHash": "03728efbdb2a6b8fc8b7731e3b1a66fca6233940f6e4ae9eed0306c9bb7f908a",
+  "derivedEditablePiecesValidated": false,
+  "lineCount": 2,
+  "mode": "neat",
+  "pieces": [
+    {
+      "construction": "generated rounded outline with regular thickness",
+      "piece": 0,
+      "sourceGroup": "B57A6384-053D-4E88-A5C3-E5B9D7B8C8CD",
+      "target": {
+        "height": 46,
+        "width": 539.74479166666663,
+        "x": 214.05729166666666,
+        "y": 148.71875
+      }
+    },
+    {
+      "construction": "generated rounded outline with regular thickness",
+      "piece": 1,
+      "sourceGroup": "B57A6384-053D-4E88-A5C3-E5B9D7B8C8CD",
+      "target": {
+        "height": 46,
+        "width": 241.66666666666666,
+        "x": 214.05729166666666,
+        "y": 199.71875
+      }
+    }
+  ],
+  "role": "circle",
+  "scope": "New rounded native strokes using the first source ink and regular thickness; original shape and pressure are not copied",
+  "sourceCFI": "epubcfi(\/6\/4!\/4\/4,,\/1:55)",
+  "sourceGroup": "B57A6384-053D-4E88-A5C3-E5B9D7B8C8CD",
+  "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2"
+}

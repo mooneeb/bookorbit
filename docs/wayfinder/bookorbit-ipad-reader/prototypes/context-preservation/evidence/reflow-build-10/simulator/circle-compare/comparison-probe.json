@@ -1,0 +1,15 @@
+{
+  "actions": [
+    "mark-original",
+    "mark-per-line",
+    "mark-enclosing",
+    "mark-neat",
+    "mark-restore"
+  ],
+  "canonicalHashAfter": "03728efbdb2a6b8fc8b7731e3b1a66fca6233940f6e4ae9eed0306c9bb7f908a",
+  "canonicalHashBefore": "03728efbdb2a6b8fc8b7731e3b1a66fca6233940f6e4ae9eed0306c9bb7f908a",
+  "canonicalInkUnchanged": true,
+  "humanAnswerPresent": false,
+  "input": "Synthetic native mark and programmatic sentence selection; no user verdict",
+  "triedChecksSet": 0
+}

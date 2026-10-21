@@ -35,6 +35,7 @@ struct ReflowReview: Codable {
   var lastFont = 24.0
   var question: String?
   var localUnsentMarker = "Saved locally; not sent to a server"
+  var markLayout: String?
 }
 
 @MainActor
@@ -100,7 +101,7 @@ final class ReflowHomeController: UIViewController {
       "Choose one walkthrough. Each has its own sample, notes, controls, checks and answer. Start with the first; no walkthrough depends on another.",
       .body)
     text(
-      "This experiment asks you to select words first, then write an ink group for them. It moves and scales the whole group with the first selected fragment. It does not recognize your intentions or solve arbitrary freehand reflow. Judge these limits as well as the result.",
+      "Select words first, then write an ink group for them. The first nine walkthroughs move that group with the first selected fragment. The separate underline and circle comparisons also show reshaped copies. You assign the words and mark type; automatic intent recognition is not part of this experiment.",
       .body)
     for (index, scenario) in ReflowScenario.all.enumerated() {
       let path = Self.root.appending(path: scenario.id).appending(path: "review.json")
@@ -173,6 +174,7 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
   var writing = false
   var activeAvailable = false
   var sampleReady = false
+  var comparisonDrawing: PKDrawing?
   var lastSequence = 0
   var projectedGroupID: String?
   var history: [[String: Any]] = []
@@ -304,7 +306,7 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
             URLRequest(
               url: URL(
                 string:
-                  "http://127.0.0.1:\(port)/Fixtures/Reflow/index.html?chapter=\(self.index)\(self.probe ? "&probe=1" : "")"
+                  "http://127.0.0.1:\(port)/Fixtures/Reflow/index.html?chapter=\(self.scenario.chapter ?? self.index)\(self.probe ? "&probe=1" : "")"
               )!))
         }
       }
@@ -347,6 +349,11 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     js("window.reflow.setGroups(\(text),\(focus))")
   }
   func toggleWriting() {
+    if scenario.markKind != nil && review.markLayout != nil && review.markLayout != "original" {
+      status.text =
+        "This is an appearance comparison. Return to the original layout to edit your original mark."
+      return
+    }
     guard !review.groups.isEmpty else {
       status.text = "Select words, then tap Link selected words before writing."
       return
@@ -391,9 +398,20 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
       syncGroups()
       if savedFont != 24 { js("window.reflow.restoreFont(\(savedFont))") }
       if probe {
-        if review.groups.isEmpty { js("window.reflowProbe.selectOccurrence(1)") }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-          self?.js("window.reflowProbe.sequence()")
+        if review.groups.isEmpty {
+          js(
+            scenario.markKind == nil
+              ? "window.reflowProbe.selectOccurrence(1)" : "window.reflowProbe.selectSentence()")
+        }
+        if scenario.markKind != nil {
+          Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            await self?.runComparisonProbe()
+          }
+        } else {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            self?.js("window.reflowProbe.sequence()")
+          }
         }
       }
       return
@@ -408,6 +426,11 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
       return
     }
     if type == "selected" {
+      if scenario.markKind != nil && !review.groups.isEmpty {
+        status.text =
+          "This comparison uses one sentence and one mark. Restart this walkthrough to choose another sentence."
+        return
+      }
       guard review.groups.count < 12, let cfi = packet["cfi"] as? String,
         let quote = packet["quote"] as? String, quote.count <= 500,
         let rects = packet["rects"] as? [[String: Double]], let r = rects.first
@@ -452,14 +475,18 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
       }
       if probe, !review.groups.isEmpty, drawings[review.groups[0].id]?.strokes.isEmpty != false {
         let r = review.groups[0].origin
-        let paths: [[CGPoint]] = [
-          [CGPoint(x: r.x, y: r.y + r.height), CGPoint(x: r.x + r.width, y: r.y + r.height)],
-          [
-            CGPoint(x: r.x + r.width / 2, y: r.y), CGPoint(x: r.x + r.width / 2 + 40, y: r.y - 30),
-            CGPoint(x: r.x + r.width / 2 + 110, y: r.y - 30),
-          ],
-          [CGPoint(x: r.x + 120, y: r.y - 40), CGPoint(x: r.x + 120, y: r.y - 15)],
-        ]
+        let paths: [[CGPoint]] =
+          scenario.markKind != nil
+          ? comparisonProbePaths()
+          : [
+            [CGPoint(x: r.x, y: r.y + r.height), CGPoint(x: r.x + r.width, y: r.y + r.height)],
+            [
+              CGPoint(x: r.x + r.width / 2, y: r.y),
+              CGPoint(x: r.x + r.width / 2 + 40, y: r.y - 30),
+              CGPoint(x: r.x + r.width / 2 + 110, y: r.y - 30),
+            ],
+            [CGPoint(x: r.x + 120, y: r.y - 40), CGPoint(x: r.x + 120, y: r.y - 15)],
+          ]
         let strokes = paths.map { points in
           PKStroke(
             ink: PKInk(.pen, color: .black),
@@ -486,7 +513,7 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
       ]
       record["inputEvidence"] =
         probe
-        ? "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers"
+        ? "Synthetic native PKStroke probe with programmatic text selection; no human answers"
         : "User authoring requires live physical confirmation"
       history.append(record)
       if history.count > 60 { history.removeFirst(history.count - 60) }
@@ -513,6 +540,11 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
 
   func applyGeometry() {
     guard let resolved = latestPacket["groups"] as? [[String: Any]] else { return }
+    if scenario.markKind != nil && review.markLayout != nil && review.markLayout != "original" {
+      applyMarkComparison()
+      return
+    }
+    comparisonDrawing = nil
     for preview in previews { preview.removeFromSuperview() }
     previews.removeAll()
     let path = UIBezierPath()
@@ -639,6 +671,7 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
         packet["deviceModel"] = UIDevice.current.model
         packet["iPadOS"] = UIDevice.current.systemVersion
         packet["appBuild"] = Bundle.main.infoDictionary?["CFBundleVersion"]
+        if let mode = review.markLayout { packet["markComparisonMode"] = mode }
         packet["inputEvidence"] =
           ProcessInfo.processInfo.arguments.contains("--simulator-input")
           ? "Simulator input; no physical Pencil verdict"
@@ -695,6 +728,10 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
       button("I could not complete this step") { [weak self] in self?.renderVerdict() })
   }
   func perform(_ action: String) {
+    if action.hasPrefix("mark-") {
+      performMarkComparison(action)
+      return
+    }
     writing = false
     updateWriting()
     save()
@@ -734,7 +771,29 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     feedback.borderStyle = .roundedRect
     feedback.text = review.feedback
     bottom.addArrangedSubview(feedback)
-    for answer in [scenario.success, "No, this needs changes", "I could not judge this"] {
+    if scenario.markKind != nil {
+      bottom.addArrangedSubview(
+        button("Compare: original shape after wrapping") { [weak self] in
+          self?.performMarkComparison("mark-original")
+        })
+      bottom.addArrangedSubview(
+        button("Compare: a mark on each line") { [weak self] in
+          self?.performMarkComparison("mark-per-line")
+        })
+      if scenario.markKind == "circle" {
+        bottom.addArrangedSubview(
+          button("Compare: one outline around the sentence") { [weak self] in
+            self?.performMarkComparison("mark-enclosing")
+          })
+        bottom.addArrangedSubview(
+          button("Compare: neat outlines on each line") { [weak self] in
+            self?.performMarkComparison("mark-neat")
+          })
+      }
+    }
+    for answer in scenario.answers ?? [
+      scenario.success, "No, this needs changes", "I could not judge this",
+    ] {
       bottom.addArrangedSubview(
         button(answer) { [weak self, weak feedback] in
           guard let self else { return }

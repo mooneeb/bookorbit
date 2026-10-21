@@ -1,0 +1,9 @@
+{
+  "actions": ["mark-original", "mark-per-line", "mark-restore"],
+  "canonicalHashAfter": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819",
+  "canonicalHashBefore": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819",
+  "canonicalInkUnchanged": true,
+  "humanAnswerPresent": false,
+  "input": "Synthetic native mark and programmatic sentence selection; no user verdict",
+  "triedChecksSet": 0
+}

@@ -1,0 +1,58 @@
+{
+  "activeResources": 1,
+  "appBuild": "10",
+  "appProcessLifetimePeakRSS": 363642880,
+  "deviceModel": "iPad",
+  "flow": "paginated",
+  "font": 24,
+  "generation": 7,
+  "groups": [
+    {
+      "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+      "index": 1,
+      "quote": "The most useful observation keeps its original context.",
+      "rects": [
+        {
+          "height": 29,
+          "width": 576,
+          "x": 70,
+          "y": 121.28125
+        }
+      ],
+      "status": "resolved",
+      "visible": [
+        {
+          "height": 29,
+          "width": 576,
+          "x": 70,
+          "y": 121.28125
+        }
+      ]
+    }
+  ],
+  "inputEvidence": "Simulator input; no physical Pencil verdict",
+  "iPadOS": "26.0",
+  "location": {
+    "cfi": "epubcfi(\/6\/4!\/4\/14\/1:223)",
+    "location": {
+      "current": 3,
+      "next": 4,
+      "total": 30
+    },
+    "section": {
+      "current": 1,
+      "total": 9
+    }
+  },
+  "markComparisonMode": "original",
+  "measurementMilliseconds": 1,
+  "reason": "restore-font",
+  "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+  "sequence": 22,
+  "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+  "type": "geometry",
+  "viewport": {
+    "height": 869,
+    "width": 992
+  }
+}

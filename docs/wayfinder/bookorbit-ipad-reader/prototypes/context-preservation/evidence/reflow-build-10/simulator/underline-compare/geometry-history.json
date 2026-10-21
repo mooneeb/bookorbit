@@ -1,0 +1,1544 @@
+[
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {},
+    "canonicalStrokeCounts": {},
+    "flow": "paginated",
+    "font": 24,
+    "generation": 1,
+    "groups": [],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": null,
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 0,
+      "ty": 0
+    },
+    "reason": "ready",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 1,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 24,
+    "generation": 1,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 29,
+            "width": 576,
+            "x": 70,
+            "y": 121.28125
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 29,
+            "width": 576,
+            "x": 70,
+            "y": 121.28125
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/14\/1:223)",
+      "location": {
+        "current": 3,
+        "next": 4,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 2,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 0,
+      "ty": 0
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 2,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 24,
+    "generation": 2,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 29,
+            "width": 576,
+            "x": 554.4375,
+            "y": 121.28125
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 29,
+            "width": 576,
+            "x": 554.4375,
+            "y": 121.28125
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/2\/1:0)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 484.4375,
+      "ty": 0
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 3,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 24,
+    "generation": 2,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 29,
+            "width": 484.79296875,
+            "x": 219.390625,
+            "y": 121.28125
+          },
+          {
+            "height": 29,
+            "width": 85,
+            "x": 219.390625,
+            "y": 159.28125
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 29,
+            "width": 484.79296875,
+            "x": 219.390625,
+            "y": 121.28125
+          },
+          {
+            "height": 29,
+            "width": 85,
+            "x": 219.390625,
+            "y": 159.28125
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/12\/1:106)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 149.390625,
+      "ty": 0
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 4,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 24,
+    "generation": 2,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 29,
+            "width": 484.79296875,
+            "x": 219.390625,
+            "y": 121.28125
+          },
+          {
+            "height": 29,
+            "width": 85,
+            "x": 219.390625,
+            "y": 159.28125
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 29,
+            "width": 484.79296875,
+            "x": 219.390625,
+            "y": 121.28125
+          },
+          {
+            "height": 29,
+            "width": 85,
+            "x": 219.390625,
+            "y": 159.28125
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/12\/1:106)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 149.390625,
+      "ty": 0
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 5,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 24,
+    "generation": 2,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 29,
+            "width": 484.79296875,
+            "x": 219.390625,
+            "y": 121.28125
+          },
+          {
+            "height": 29,
+            "width": 85,
+            "x": 219.390625,
+            "y": 159.28125
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 29,
+            "width": 484.79296875,
+            "x": 219.390625,
+            "y": 121.28125
+          },
+          {
+            "height": 29,
+            "width": 85,
+            "x": 219.390625,
+            "y": 159.28125
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/12\/1:106)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 149.390625,
+      "ty": 0
+    },
+    "reason": "narrow",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 6,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 3,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/8\/1:122)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 1,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": 126.05729166666667,
+      "ty": -8.9895833333333144
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 7,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 3,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/8\/1:122)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": 126.05729166666667,
+      "ty": -8.9895833333333144
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 8,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 3,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/8\/1:122)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 1,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": 126.05729166666667,
+      "ty": -8.9895833333333144
+    },
+    "reason": "restore-font",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 9,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 4,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/8\/1:122)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 1,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": 126.05729166666667,
+      "ty": -8.9895833333333144
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 10,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 4,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/8\/1:122)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": 126.05729166666667,
+      "ty": -8.9895833333333144
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 11,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 4,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/8\/1:122)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": 126.05729166666667,
+      "ty": -8.9895833333333144
+    },
+    "reason": "narrow",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 12,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 5,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/8\/1:122)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": 126.05729166666667,
+      "ty": -8.9895833333333144
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 13,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 5,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/8\/1:122)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 1,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": 126.05729166666667,
+      "ty": -8.9895833333333144
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 14,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 5,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": 219.390625,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": 219.390625,
+            "y": 203.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/8\/1:122)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 1,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": 126.05729166666667,
+      "ty": -8.9895833333333144
+    },
+    "reason": "restore-font",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 15,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 6,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": -265.046875,
+            "y": 152.71875
+          },
+          {
+            "height": 38,
+            "width": 231,
+            "x": -265.046875,
+            "y": 203.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 529.078125,
+            "x": -265.046875,
+            "y": 152.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/12\/1:223)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": -358.38020833333331,
+      "ty": -8.9895833333333144
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 16,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 6,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 768,
+            "x": 70,
+            "y": 152.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 768,
+            "x": 70,
+            "y": 152.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/10\/1:176)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 1,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": -23.333333333333329,
+      "ty": -8.9895833333333144
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 17,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 6,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 768,
+            "x": 70,
+            "y": 152.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 768,
+            "x": 70,
+            "y": 152.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/10\/1:176)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": -23.333333333333329,
+      "ty": -8.9895833333333144
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 18,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 6,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 38,
+            "width": 768,
+            "x": 70,
+            "y": 152.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 768,
+            "x": 70,
+            "y": 152.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/10\/1:176)",
+      "location": {
+        "current": 3,
+        "next": 3,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": -23.333333333333329,
+      "ty": -8.9895833333333144
+    },
+    "reason": "wide",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 19,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 24,
+    "generation": 7,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 29,
+            "width": 576,
+            "x": 70,
+            "y": 121.28125
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 29,
+            "width": 576,
+            "x": 70,
+            "y": 121.28125
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/14\/1:223)",
+      "location": {
+        "current": 3,
+        "next": 4,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 0,
+      "ty": 0
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 20,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 24,
+    "generation": 7,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 29,
+            "width": 576,
+            "x": 70,
+            "y": 121.28125
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 29,
+            "width": 576,
+            "x": 70,
+            "y": 121.28125
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/14\/1:223)",
+      "location": {
+        "current": 3,
+        "next": 4,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 1,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 0,
+      "ty": 0
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 21,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819"
+    },
+    "canonicalStrokeCounts": {
+      "4ABB66B8-A032-488F-817F-35EE7ED227C8": 1
+    },
+    "flow": "paginated",
+    "font": 24,
+    "generation": 7,
+    "groups": [
+      {
+        "id": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+        "index": 1,
+        "quote": "The most useful observation keeps its original context.",
+        "rects": [
+          {
+            "height": 29,
+            "width": 576,
+            "x": 70,
+            "y": 121.28125
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 29,
+            "width": 576,
+            "x": 70,
+            "y": 121.28125
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe with programmatic text selection; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/4!\/4\/14\/1:223)",
+      "location": {
+        "current": 3,
+        "next": 4,
+        "total": 30
+      },
+      "section": {
+        "current": 1,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 1,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 0,
+      "ty": 0
+    },
+    "reason": "restore-font",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 22,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 869,
+      "width": 992
+    }
+  }
+]

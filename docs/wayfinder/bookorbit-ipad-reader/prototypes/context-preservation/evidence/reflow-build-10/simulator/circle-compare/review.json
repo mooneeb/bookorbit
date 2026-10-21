@@ -1,0 +1,36 @@
+{
+  "feedback": "",
+  "groups": [
+    {
+      "association": "Tester explicitly selected the words and started this ink group",
+      "cfi": "epubcfi(\/6\/4!\/4\/4,,\/1:55)",
+      "font": 24,
+      "id": "B57A6384-053D-4E88-A5C3-E5B9D7B8C8CD",
+      "origin": {
+        "height": 29,
+        "width": 576,
+        "x": 70,
+        "y": 121.28125
+      },
+      "placement": "Whole editable drawing uniformly scales with font size and follows the first range fragment",
+      "prefix": "",
+      "quote": "The most useful observation keeps its original context.",
+      "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+      "suffix": " A small mark can bring an old idea back into focus."
+    }
+  ],
+  "lastFont": 24,
+  "layoutActions": [
+    "mark-original",
+    "mark-per-line",
+    "mark-enclosing",
+    "mark-neat",
+    "mark-restore"
+  ],
+  "localUnsentMarker": "Saved locally; not sent to a server",
+  "markLayout": "original",
+  "question": "Which circle appearance should we investigate further when a sentence wraps?",
+  "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+  "step": 0,
+  "tried": [false, false, false, false, false, false]
+}

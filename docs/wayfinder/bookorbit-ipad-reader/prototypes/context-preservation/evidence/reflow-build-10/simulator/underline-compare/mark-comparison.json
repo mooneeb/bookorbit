@@ -1,0 +1,48 @@
+{
+  "assignment": "This standalone walkthrough explicitly requests only this kind of mark",
+  "canonicalInkHash": "485ab9240340ffe11bf2a9c13754bb481741f7f1b743abd915e22ac1f8781819",
+  "derivedEditablePiecesValidated": false,
+  "lineCount": 2,
+  "mode": "per-line",
+  "pieces": [
+    {
+      "construction": "affine copy of original strokes",
+      "piece": 0,
+      "sourceGroup": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+      "target": {
+        "height": 5.333333333333333,
+        "width": 529.078125,
+        "x": 219.390625,
+        "y": 193.38541666666666
+      },
+      "transform": {
+        "a": 0.91220366379310347,
+        "d": 1.3333333333333333,
+        "tx": 157.36077586206898,
+        "ty": -9.28125
+      }
+    },
+    {
+      "construction": "affine copy of original strokes",
+      "piece": 1,
+      "sourceGroup": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+      "target": {
+        "height": 5.333333333333333,
+        "width": 231,
+        "x": 219.390625,
+        "y": 244.38541666666666
+      },
+      "transform": {
+        "a": 0.39827586206896554,
+        "d": 1.3333333333333333,
+        "tx": 192.30786637931035,
+        "ty": 41.71875
+      }
+    }
+  ],
+  "role": "underline",
+  "scope": "Native PencilKit stroke copies with affine reshaping; not stroke splitting or automatic role recognition",
+  "sourceCFI": "epubcfi(\/6\/4!\/4\/4,,\/1:55)",
+  "sourceGroup": "4ABB66B8-A032-488F-817F-35EE7ED227C8",
+  "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2"
+}

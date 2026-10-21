@@ -14,6 +14,9 @@ struct ReflowScenario {
   let steps: [ReflowStep]
   let question: String
   let success: String
+  var chapter: Int? = nil
+  var markKind: String? = nil
+  var answers: [String]? = nil
 
   static let author = ReflowStep(
     instruction:
@@ -189,5 +192,80 @@ struct ReflowScenario {
       question:
         "Did the same editable note, including the newly added ink, survive the offline reopen and actual signing update?",
       success: "Yes, the same note and all ink survived"),
+    .init(
+      id: "underline-compare", title: "Compare underlines when a sentence wraps",
+      aim:
+        "Compare the shape of your own underline before choosing a wrapping rule. This checks appearance; editing the adapted copies is a later test.",
+      steps: [
+        .init(
+          instruction:
+            "With writing OFF, select the first whole sentence and tap Link selected words. Turn writing ON and draw only an underline beneath that sentence. Turn writing OFF. This walkthrough treats all of your strokes as that underline; add no handwriting or arrows.",
+          check: "I selected the sentence and drew my own underline."),
+        .init(
+          instruction:
+            "Wrap the sentence. This first view keeps your original pen shape together. Check which words it now underlines.",
+          check: "I checked the original shape in the wrapped layout.", action: "mark-original",
+          button: "Wrap and show original shape"),
+        .init(
+          instruction:
+            "Show one copy of your underline beneath each new line of selected words. Each copy is stretched to that line. Compare the style, thickness and which words are marked. These are native-rendered copies of your mark, not a replacement typed underline.",
+          check: "I checked the underline copied beneath each line.", action: "mark-per-line",
+          button: "Show an underline beneath each line"),
+        .init(
+          instruction:
+            "Return to the original reading layout. Your original ink is still editable: turn writing ON, erase a small part, then Undo. Turn writing OFF. The final screen lets you compare both wrapped views again before answering.",
+          check: "I checked that my original mark was kept and remains editable.",
+          action: "mark-restore", button: "Return to original layout and ink"),
+      ],
+      question: "Which underline appearance should we investigate further when a sentence wraps?",
+      success: "Follow each line with a reshaped copy", chapter: 1, markKind: "underline",
+      answers: [
+        "Follow each line with a reshaped copy", "Keep the single original shape",
+        "Neither appearance works for me", "I could not judge these appearances",
+      ]),
+    .init(
+      id: "circle-compare", title: "Compare circles when a sentence wraps",
+      aim:
+        "Compare separate circles per line with one outline around the whole wrapped sentence, using your own Pencil circle. Editing the adapted copies is a later test.",
+      steps: [
+        .init(
+          instruction:
+            "With writing OFF, select the first whole sentence and tap Link selected words. Turn writing ON and draw only a circle or oval around that sentence. Turn writing OFF. This walkthrough treats all of your strokes as that outline; add no handwriting or arrows.",
+          check: "I selected the sentence and drew my own outline."),
+        .init(
+          instruction:
+            "Wrap the sentence. This view keeps your original outline together. Check which words it now surrounds.",
+          check: "I checked the original outline in the wrapped layout.", action: "mark-original",
+          button: "Wrap and show original outline"),
+        .init(
+          instruction:
+            "Show a reshaped copy of your outline around each line's selected words. Check the covered words, the gaps between outlines, and changes to your pen shape or thickness.",
+          check: "I checked separate outlines around each line.", action: "mark-per-line",
+          button: "Show an outline around each line"),
+        .init(
+          instruction:
+            "Show one reshaped copy around the full area occupied by the wrapped sentence. Check whether it includes unrelated words or leaves selected words outside. Compare it with the separate outlines you just saw.",
+          check: "I checked one outline around the whole wrapped sentence.",
+          action: "mark-enclosing", button: "Show one outline around the sentence"),
+        .init(
+          instruction:
+            "Show neat outlines around each line instead. These are newly drawn rounded outlines using your first stroke's ink and a regular thickness, rather than copies of your hand-drawn shape or pressure. Compare readability and whether losing the irregular shape is acceptable. Your original drawing stays saved.",
+          check: "I compared neat outlines with the copied hand-drawn outlines.",
+          action: "mark-neat",
+          button: "Show neat outlines around each line"),
+        .init(
+          instruction:
+            "Return to the original reading layout. Turn writing ON, erase a small part of your original outline, then Undo. Turn writing OFF. The final screen lets you compare all four wrapped views again before answering.",
+          check: "I checked that my original outline was kept and remains editable.",
+          action: "mark-restore", button: "Return to original layout and ink"),
+      ],
+      question: "Which circle appearance should we investigate further when a sentence wraps?",
+      success: "Separate outlines around each line", chapter: 1, markKind: "circle",
+      answers: [
+        "Separate copies around each line", "Neat outlines around each line",
+        "One outline around the whole sentence",
+        "Keep the single original shape", "None of these appearances works for me",
+        "I could not judge these appearances",
+      ]),
   ]
 }

@@ -1,0 +1,21 @@
+{
+  "recordedUTC": "2026-10-21T10:02:27.128856+00:00",
+  "build": "10",
+  "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+  "scratchFilesBackedUp": 199,
+  "allScratchHashesUnchangedAfterStaging": false,
+  "stagingComparison": {
+    "unchangedFiles": 198,
+    "changedFiles": ["guided-walkthroughs/maintenance/retained/record.json"],
+    "changedRecordFields": ["reopenedLaunchIDs"],
+    "allEditableDrawingsAndOtherFilesUnchanged": true,
+    "interpretation": "The running older preservation walkthrough appended a launch identifier. Its ink revision did not change. No drawing or source files changed.",
+    "preInstallBaseline": "Fresh after-staging snapshot, including the launch-record change"
+  },
+  "stagedFile": "On My iPad / Orbit Context PROTOTYPE / Signing Trial / Reader mark comparisons - build 10.ipa",
+  "unsignedIPASHA256": "7c91d8cce0002e46ab956c9f6b92e303901b4dedcefa295810f53b2865616018",
+  "stagedRoundTripMatches": true,
+  "EPUBSourceUnchanged": true,
+  "installed": false,
+  "humanComparisonVerdicts": "pending"
+}
