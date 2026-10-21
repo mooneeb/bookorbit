@@ -1,0 +1,9 @@
+{
+  "checkedUTC": "2026-10-21T08:40:42.820360+00:00",
+  "build": "8",
+  "exitCode": 0,
+  "requestedWalkthrough": "Keep a note on a word as text grows",
+  "launchArguments": ["--reflow-scenario=size"],
+  "automatedProbeEnabled": false,
+  "humanVerdict": "pending"
+}

@@ -20,7 +20,11 @@ The first browser inspector attempt and its retry both returned `Preview automat
 
 [Preparation metadata](ipad-preparation.json) records a private backup of the installed build 7 scratch notes before any update, an unsigned build 8 IPA staged in Files, and an unchanged scratch-file comparison after staging. Staging a file is not an installation or a newly issued profile. Raw backups, device/Team identifiers and device-tool logs remain private.
 
-Use the accepted manual SideStore IPA import, preserve `dev.mooneeb.bookorbit.contextprototype`, and uncheck Append Team ID. Keep the existing app installed. The earlier preserved-page notes and the new reflow walkthroughs use separate folders. Actual adoption, profile dates and post-install preservation remain to be verified after the user imports the build.
+The user imported build 8 through SideStore with the existing identifier. The [post-install check](ipad-installation.json) independently confirms build 8 on the intended iPadOS 26.6.1 device. Its reader-specific signed export contains the corrected JavaScript and original EPUB, and its code signature verifies. The profile includes this iPad, matches the original application identifier and is valid from 21 October 2026 at 07:11:11 UTC to 28 October at 07:11:11 UTC. Its signed entitlements match the profile. The earlier private Team reference is unavailable, so no independent comparison to the prior Team is claimed.
+
+Before opening the reader, a fresh private snapshot contained 176 scratch files. The earlier temporary 176-file baseline no longer exists, so a full pre-install hash comparison is unavailable. All 21 files compared against published older fixtures match, including eight editable drawings, original backgrounds and previews, and the maintenance note's record and local marker. This narrower comparison does not establish equality of every file. No restore or note change was performed.
+
+The [native launch record](native-launch.json) confirms the app opened with the first reflow walkthrough requested and no automated probe enabled. The new reflow folder was absent in the pre-launch snapshot. Physical authoring and the live verdict are still pending. The earlier preserved-page notes and the new reflow walkthroughs use separate folders.
 
 ## Remaining gates
 
