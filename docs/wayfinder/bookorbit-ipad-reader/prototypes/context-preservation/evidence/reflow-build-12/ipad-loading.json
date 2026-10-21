@@ -1,0 +1,25 @@
+{
+  "recordedUTC": "2026-10-21T14:15:15.387214+00:00",
+  "scenario": "underline-gap-reflow",
+  "title": "Keep an erased underline gap with its word",
+  "appBuild": "12",
+  "iPadOS": "26.6.1",
+  "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+  "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+  "font": 24,
+  "resourceRequestCount": 13,
+  "allResourceRequestsHTTP200": true,
+  "allResourceRequestsAllowed": true,
+  "initialState": {
+    "step": 0,
+    "tried": [false, false, false, false, false, false],
+    "groupCount": 0,
+    "answer": null
+  },
+  "automaticProbeEnabled": false,
+  "simulatorInputEnabled": false,
+  "inputEvidence": "Physical input must be confirmed by user",
+  "humanVerdictPending": true,
+  "interpretation": "The physical build 12 walkthrough loaded the actual EPUB with successful resource requests and fresh unchecked steps. No Pencil erasing, further-reflow, Undo or reload acceptance is inferred from loading.",
+  "privateIdentifiersOmitted": true
+}
