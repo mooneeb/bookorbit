@@ -1,0 +1,9 @@
+{
+  "recordedUTC": "2026-10-21T09:35:15.218368+00:00",
+  "build": "9",
+  "question": "On the iPad, do you now see the book page headed “A word grows”, with paragraphs containing “useful”, instead of the white error page?",
+  "userAnswer": "Yes, I can see the reading page",
+  "physicalSampleLoadingConfirmed": true,
+  "scope": "Confirms the loading fix only. No handwriting, reflow, editing or workflow acceptance is inferred.",
+  "firstPencilWalkthrough": "pending"
+}

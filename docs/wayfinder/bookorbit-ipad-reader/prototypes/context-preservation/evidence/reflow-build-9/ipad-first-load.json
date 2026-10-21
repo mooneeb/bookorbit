@@ -1,0 +1,102 @@
+{
+  "recordedUTC": "2026-10-21T09:34:03.099761+00:00",
+  "build": "9",
+  "nativeLaunchSucceeded": true,
+  "requestedWalkthrough": "Keep a note on a word as text grows",
+  "automatedProbeEnabled": false,
+  "resourceRequests": [
+    {
+      "status": 200,
+      "allowed": true,
+      "bundleRootNeededNormalization": true,
+      "path": "/Fixtures/Reflow/index.html"
+    },
+    {
+      "status": 200,
+      "allowed": true,
+      "path": "/Fixtures/Reflow/reader.js",
+      "bundleRootNeededNormalization": true
+    },
+    {
+      "path": "/foliate/view.js",
+      "allowed": true,
+      "status": 200,
+      "bundleRootNeededNormalization": true
+    },
+    {
+      "allowed": true,
+      "bundleRootNeededNormalization": true,
+      "status": 200,
+      "path": "/foliate/epubcfi.js"
+    },
+    {
+      "allowed": true,
+      "path": "/foliate/progress.js",
+      "status": 200,
+      "bundleRootNeededNormalization": true
+    },
+    {
+      "path": "/foliate/overlayer.js",
+      "bundleRootNeededNormalization": true,
+      "allowed": true,
+      "status": 200
+    },
+    {
+      "status": 200,
+      "bundleRootNeededNormalization": true,
+      "path": "/foliate/text-walker.js",
+      "allowed": true
+    },
+    {
+      "path": "/foliate/streaming-loader.js",
+      "bundleRootNeededNormalization": true,
+      "status": 200,
+      "allowed": true
+    },
+    {
+      "path": "/Fixtures/Reflow/reflow.epub",
+      "allowed": true,
+      "status": 200,
+      "bundleRootNeededNormalization": true
+    },
+    {
+      "path": "/foliate/vendor/zip.js",
+      "allowed": true,
+      "status": 200,
+      "bundleRootNeededNormalization": true
+    },
+    {
+      "path": "/foliate/epub.js",
+      "status": 200,
+      "bundleRootNeededNormalization": true,
+      "allowed": true
+    },
+    {
+      "status": 200,
+      "path": "/foliate/paginator.js",
+      "allowed": true,
+      "bundleRootNeededNormalization": true
+    },
+    {
+      "status": 200,
+      "allowed": true,
+      "bundleRootNeededNormalization": true,
+      "path": "/foliate/iframe-loader.js"
+    }
+  ],
+  "sampleHTML200": true,
+  "readerModule200": true,
+  "EPUB200": true,
+  "rendererModule200": true,
+  "failedRequests": [],
+  "sourceHashMatchesBundledEPUB": true,
+  "geometryPresent": true,
+  "activeResources": 1,
+  "iPadOS": "26.6.1",
+  "reportedAppBuild": "9",
+  "groupsAtSnapshot": 0,
+  "humanAnswer": null,
+  "triedChecksSet": 0,
+  "physicalVisualConfirmation": "pending",
+  "scope": "Actual iPad loading diagnostics after the update; this does not establish Pencil or reflow acceptance."
+}
