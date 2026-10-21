@@ -1,0 +1,59 @@
+{
+  "recordedUTC": "2026-10-21T12:46:43.238843+00:00",
+  "build": "11",
+  "walkthrough": "Erase only one line of an underline",
+  "question": "Did the gap stay only on line 1, with both lines still editable and their saved state intact?",
+  "userReply": "Yes, all five checks passed",
+  "acceptedInThisWalkthrough": [
+    "Erasing a gap on line 1 left line 2 unchanged",
+    "Native Undo closed the gap and Redo restored it only on line 1",
+    "Editing line 2 and undoing that edit preserved the earlier gap on line 1",
+    "Saved line states survived the native drawing/chapter reload",
+    "The reloaded line marks remained editable and supported Undo"
+  ],
+  "snapshotExitCode": 0,
+  "deviceReviewState": {
+    "groups": 1,
+    "lineCopies": 3,
+    "step": 5,
+    "tried": [true, true, true, true, true],
+    "answer": "Yes, edits stayed on their own line",
+    "layoutActions": ["local-prepare", "local-reload", "local-reload"],
+    "sourceHash": ""
+  },
+  "deviceGeometry": {
+    "appBuild": "11",
+    "iPadOS": "26.6.1",
+    "font": 32
+  },
+  "sourceWholeSentenceCurrentAndRetainedOriginalBytesMatch": true,
+  "drawingFiles": [
+    {
+      "file": "0C135EF1-EAF1-458D-8FED-C3E951F9843C-original.drawing",
+      "bytes": 12509,
+      "SHA256": "ccfd385a5cf5fe73d9acceedfb01a15b25ed947896bbebcab09b2e1946de8c42"
+    },
+    {
+      "file": "0C135EF1-EAF1-458D-8FED-C3E951F9843C.drawing",
+      "bytes": 12509,
+      "SHA256": "ccfd385a5cf5fe73d9acceedfb01a15b25ed947896bbebcab09b2e1946de8c42"
+    },
+    {
+      "file": "5C6F77B0-F3FE-49EC-9C72-FC0319303C49.drawing",
+      "bytes": 12727,
+      "SHA256": "146ba7decefad2588c9635c9142b9485201f1478753b2014382af7fa14751167"
+    },
+    {
+      "file": "6DE4A512-61BC-4799-BEA5-9B38A1695532.drawing",
+      "bytes": 12573,
+      "SHA256": "bacd1aa45865f3e0cd5b3516ebaaddf4a16c8a1f91ec2c7d5709df8b12e689cc"
+    },
+    {
+      "file": "8D17D20A-5C92-4C56-89CF-79A399CBDF00.drawing",
+      "bytes": 17070,
+      "SHA256": "5ffea82ea0388d32e4a0815b8d54b64f21baec0f47d252bfc8890598780dd755"
+    }
+  ],
+  "sourceInkBindingsAndGeometryRetainedPrivately": true,
+  "scope": "Physical acceptance of this five-step underline local-editing check in the same line layout. The physical snapshot contains three line copies; the requested comparisons and reported checks concern the first two. No result is inferred for the third line beyond its presence in the saved state. Circle editing, later splitting/joining of edited pieces during reflow, final interaction/Undo-history policy, other native input and offline gates remain separate."
+}
