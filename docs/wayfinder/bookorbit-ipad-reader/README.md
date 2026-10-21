@@ -9,11 +9,13 @@ Canonical map: [Find the design for a personal BookOrbit iPad reader](https://gi
 
 ## Current interaction review
 
+The current [accepted format split](https://github.com/mooneeb/bookorbit/issues/17#issuecomment-6321857426) uses freehand page ink for PDFs and typed/ink notes linked to exact selected words for EPUBs. It supersedes the earlier requirement to reshape arbitrary EPUB page ink through reflow. Existing-reader research remains a comparison, rather than acceptance of a new implementation.
+
 - [Resolved reading and Pencil interactions](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289693465)
 - [Text-anchored EPUB ink feasibility investigation](https://github.com/mooneeb/bookorbit/issues/16)
 - [Actual EPUB reflow validation](https://github.com/mooneeb/bookorbit/issues/17)
 
-The completed review changes the earlier frozen-layout reading policy. Historical preservation reports remain evidence for retaining original context after source replacement, not proof of text-following page ink. Follow the current review and live issues for product requirements.
+The completed reviews and scope decision are linked above. Historical preservation reports remain evidence for retaining original context after source replacement, not proof of text-following page ink. Follow the current format decision and live issues for product requirements.
 
 ## Original-context preservation prototype
 
@@ -29,7 +31,7 @@ The prototype now has eleven independent, guided walkthroughs that separate page
 - [Native-to-browser inline ink compatibility investigation](https://github.com/mooneeb/bookorbit/issues/18)
 - [MacBook and Android browser ink validation](https://github.com/mooneeb/bookorbit/issues/19)
 
-Page ink must appear directly inside both browser readers. Browser previews alone do not satisfy this requirement. The remaining investigations and prototypes must establish compatibility while preserving editable ink on iPad.
+PDF page ink must appear directly inside the browser reader. EPUB uses notes attached to exact selected words under the current format decision. Browser note lists, typed-note editing, recoverable Trash and automatic arrival remain required. The remaining investigations and prototypes must establish compatibility while preserving editable ink on iPad.
 
 ## Installation and test targets
 
@@ -40,6 +42,7 @@ Use the confirmed current iPadOS baseline and selected Mac/Android browsers. Pre
 
 ## Research evidence
 
+- [Existing readers with freehand writing directly over EPUB pages](research/direct-epub-page-handwriting.md)
 - [Native-to-browser inline ink compatibility](research/browser-inline-ink-compatibility.md)
 - [Text-anchored EPUB ink through reflow](research/text-anchored-ink-reflow.md)
 

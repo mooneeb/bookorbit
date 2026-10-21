@@ -11,14 +11,15 @@ _Avoid_: Scribble note
 **Typed note**:
 A reading note expressed as editable text, whether entered with a keyboard or through Scribble.
 
-**Passage-linked note**:
-A typed or handwritten note associated with a particular passage in a book.
+**Text-linked note**:
+A typed or handwritten note attached to the exact words selected in a book. The note's content stays separate from the reading page's changing layout.
+_Avoid_: Passage-linked note, page note
 
 **Page ink**:
 Handwriting or drawings placed directly over the book's displayed content.
 
 **Text-anchored ink**:
-Page ink associated with specific book text, preserving its intended relationship to that text across reading layouts.
+Page ink positioned relative to specific words across reading layouts. This differs from handwriting contained in a text-linked note.
 
 **Writing mode**:
 A reader state in which Pencil input creates or edits ink.

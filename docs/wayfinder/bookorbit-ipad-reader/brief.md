@@ -2,6 +2,18 @@
 
 Source: the user's wayfinder interview, 2026-10-20. These are intake constraints, not resolutions of the map's detailed decision tickets.
 
+## Current format decision, 2026-10-21
+
+The user's [accepted hybrid approach](https://github.com/mooneeb/bookorbit/issues/17#issuecomment-6321857426) supersedes the earlier requirement for arbitrary freehand EPUB page ink through reflow:
+
+- PDF keeps editable freehand writing directly over its pages, visible during reading.
+- EPUB uses selected words/text ranges with attached typed or editable ink notes. The note belongs to the exact selected text, rather than a coarse passage or page. Its handwriting stays together in the note instead of being scaled, split or reshaped across the book's lines.
+- The explicit writing toggle, native Pencil behavior, offline preservation, automatic sync, browser note lists, typed-note editing and recoverable Trash remain required. Browser PDF ink remains on the page; the former browser requirement for inline freehand EPUB page ink is superseded by the text-linked note model.
+
+Research into existing readers that support handwriting directly over EPUB pages is a separate comparison. It does not reverse this accepted choice. The intake and review below preserve the earlier requirements as history; use this section where they conflict.
+
+## Initial intake
+
 - Destination: a build-ready specification and settled decisions before implementation.
 - Personal iPad app connected to the user's self-hosted BookOrbit, with an Apple Books-like reading and note-taking experience. A separate native app is the proposed route; source availability and reuse options remain subject to investigation.
 - EPUB and PDF have equal importance. The specification must address both rather than quietly deferring either format.
@@ -16,7 +28,7 @@ Source: the user's wayfinder interview, 2026-10-20. These are intake constraints
 
 Use the [reading-note glossary](../../../GLOSSARY.md). Scribble is a text-entry method; an ink note preserves handwriting. This distinction does not settle whether a single note may contain several kinds of content.
 
-## Interaction requirements after the live prototype review
+## Earlier interaction requirements after the live prototype review
 
 Source: the user's completed ten-scenario review, recorded in [Validate the reading and Pencil interaction model](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289693465). These requirements supersede earlier frozen-view and automatic Pencil-entry proposals.
 
@@ -30,7 +42,7 @@ Source: the user's completed ten-scenario review, recorded in [Validate the read
 
 The new [text-anchored ink investigation](https://github.com/mooneeb/bookorbit/issues/16) and [real-renderer reflow proof](https://github.com/mooneeb/bookorbit/issues/17) must ground the remaining technical choices. An HTML interaction review is not device or renderer validation.
 
-## Browser requirements after the live decision
+## Earlier browser requirements after the live decision
 
 The [resolved browser-note contract](https://github.com/mooneeb/bookorbit/issues/7#issuecomment-6290292381) requires page ink directly inside both browser readers on MacBook and Android, notes in both existing note lists, browser typed-note editing and recoverable Trash/restore, and automatic updates without reload while preserving unsaved text. The resolution holds the detailed acceptance cases and connected-state freshness target.
 
