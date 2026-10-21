@@ -27,6 +27,7 @@ extension ReflowController {
   }
 
   func performLocalEdit(_ action: String) {
+    linePreparationIssue = nil
     guard let group = review.groups.first, let source = drawings[group.id],
       !source.strokes.isEmpty
     else {
@@ -64,9 +65,11 @@ extension ReflowController {
       return
     }
     preparingLines = true
+    status.text = "Preparing the wrapped sentence. Wait for the editable lines to appear."
     save()
+    let layout = scenario.gapReflow ? "gap-wrap" : "narrow"
     js(
-      "(async()=>{await window.reflow.layout('narrow');await window.reflow.restoreFont(\(group.font + 8));})()"
+      "(async()=>{await window.reflow.layout('\(layout)');await window.reflow.restoreFont(\(group.font + 8));})()"
     )
   }
 
@@ -83,8 +86,9 @@ extension ReflowController {
       }), source.bounds.width > 0, source.bounds.height > 0
     else {
       preparingLines = false
-      status.text =
-        "The whole selected sentence must wrap onto at least two visible lines. Restart this walkthrough and select only the first sentence."
+      linePreparationIssue =
+        "The sentence is not ready: it must fit on this page and wrap onto at least two lines. Keep your ink, return to step 2 and try Prepare again."
+      status.text = linePreparationIssue
       return
     }
     var copies: [ReflowLineCopy] = []
@@ -130,7 +134,9 @@ extension ReflowController {
       save()
     } catch {
       preparingLines = false
-      status.text = "The editable line copies could not be saved: \(error.localizedDescription)"
+      linePreparationIssue =
+        "The editable line copies could not be saved: \(error.localizedDescription)"
+      status.text = linePreparationIssue
     }
   }
 

@@ -1,0 +1,34 @@
+{
+  "humanAnswerPresent": false,
+  "input": "Programmatic sentence selection, synthetic native underline\/mask and delegate edit. Not physical erasing or Undo acceptance.",
+  "layouts": [
+    {
+      "displayStrokes": 82,
+      "font": 24,
+      "gapEditedInkPixels": 9,
+      "gapOwnerCFI": "epubcfi(\/6\/4!\/4\/4,\/1:11,\/1:12)",
+      "gapOwnerCharacter": "e",
+      "gapReferenceInkPixels": 252,
+      "gapVisibleAtExpectedCharacter": true,
+      "layout": "gap-wide"
+    },
+    {
+      "displayStrokes": 82,
+      "font": 40,
+      "gapEditedInkPixels": 12,
+      "gapOwnerCFI": "epubcfi(\/6\/4!\/4\/4,\/1:11,\/1:12)",
+      "gapOwnerCharacter": "e",
+      "gapReferenceInkPixels": 585,
+      "gapVisibleAtExpectedCharacter": true,
+      "layout": "gap-large"
+    }
+  ],
+  "newNativeEditSavedAndReopened": true,
+  "originalWholeSentenceInkUnchanged": true,
+  "preparedLineCount": 2,
+  "preparedViewport": {
+    "height": 927,
+    "width": 1558
+  },
+  "triedChecksSet": 0
+}

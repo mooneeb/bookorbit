@@ -163,6 +163,20 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
   let index: Int
   var scenario: ReflowScenario { ReflowScenario.all[index] }
   var probe: Bool { ProcessInfo.processInfo.arguments.contains("--reflow-probe") }
+  var probeViewportWidth: CGFloat? {
+    #if targetEnvironment(simulator)
+      guard probe,
+        let argument = ProcessInfo.processInfo.arguments.first(where: {
+          $0.hasPrefix("--reflow-probe-width=")
+        }),
+        let width = Double(argument.split(separator: "=").last ?? ""),
+        (600...2000).contains(width)
+      else { return nil }
+      return CGFloat(width)
+    #else
+      return nil
+    #endif
+  }
   var folder: URL {
     ReflowHomeController.root.appending(path: (probe ? "PROBE-" : "") + scenario.id)
   }
@@ -183,6 +197,7 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
   var lineDrawings: [String: PKDrawing] = [:]
   var activeLine = 0
   var preparingLines = false
+  var linePreparationIssue: String?
   var gapDrawing = PKDrawing()
   var gapDisplayedCells: [ReflowGapCell] = []
   var gapDisplayedFont = 24.0
@@ -232,11 +247,14 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     column.spacing = 9
     column.translatesAutoresizingMaskIntoConstraints = false
     view.addSubview(column)
+    let columnWidth =
+      probeViewportWidth.map { column.widthAnchor.constraint(equalToConstant: $0) }
+      ?? column.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16)
     NSLayoutConstraint.activate([
       column.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
       column.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
       column.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-      column.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+      columnWidth,
     ])
     let heading = UILabel()
     heading.text = scenario.title
@@ -432,8 +450,9 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
           "(async()=>{await window.reflow.layout('wide');await window.reflow.restoreFont(\(savedFont));})()"
         )
       } else if scenario.localEditing && review.lineCopies != nil {
+        let layout = scenario.gapReflow ? "gap-wrap" : "narrow"
         js(
-          "(async()=>{await window.reflow.layout('narrow');await window.reflow.restoreFont(\(savedFont));})()"
+          "(async()=>{await window.reflow.layout('\(layout)');await window.reflow.restoreFont(\(savedFont));})()"
         )
       } else if savedFont != 24 {
         js("window.reflow.restoreFont(\(savedFont))")
@@ -512,16 +531,20 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     if type == "geometry" {
       let sequence = packet["sequence"] as? Int ?? 0
       guard sequence > lastSequence else { return }
+      let previousRequirement = gapStepRequirement
       lastSequence = sequence
       latestPacket = packet
       review.lastFont = packet["font"] as? Double ?? review.lastFont
-      if preparingLines { finishPreparingLines() }
+      if preparingLines && packet["reason"] as? String == "restore-font" {
+        finishPreparingLines()
+      }
       if drawingActive {
         status.text =
           "The layout changed during a stroke. Ink placement waits until the stroke ends."
       } else {
         applyGeometry()
       }
+      if previousRequirement != gapStepRequirement { renderStep() }
       if probe, !review.groups.isEmpty, drawings[review.groups[0].id]?.strokes.isEmpty != false {
         let r = review.groups[0].origin
         let paths: [[CGPoint]] =
@@ -588,6 +611,9 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
   }
 
   func applyGeometry() {
+    defer {
+      if let linePreparationIssue { status.text = linePreparationIssue }
+    }
     guard let resolved = latestPacket["groups"] as? [[String: Any]] else { return }
     if scenario.gapReflow && review.gapSnapshot != nil {
       applyGapGeometry()
@@ -787,8 +813,25 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
       self.save()
       self.renderStep()
     }
-    next.isEnabled = review.tried[review.step]
+    let requirement = gapStepRequirement
+    next.isEnabled = review.tried[review.step] && requirement == nil
+    if let requirement {
+      let help = UILabel()
+      help.text = requirement
+      help.font = .preferredFont(forTextStyle: .caption1)
+      help.numberOfLines = 0
+      bottom.addArrangedSubview(help)
+    }
     bottom.addArrangedSubview(row([check, next]))
+    if scenario.gapReflow && review.step > 0 {
+      bottom.addArrangedSubview(
+        button("Back one step") { [weak self] in
+          guard let self else { return }
+          self.review.step -= 1
+          self.save()
+          self.renderStep()
+        })
+    }
     bottom.addArrangedSubview(
       button("I could not complete this step") { [weak self] in self?.renderVerdict() })
   }
@@ -904,6 +947,7 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
           self.lineDrawings = [:]
           self.activeLine = 0
           self.preparingLines = false
+          self.linePreparationIssue = nil
           self.gapDrawing = PKDrawing()
           self.gapDisplayedCells = []
           self.gapAssignedData = nil

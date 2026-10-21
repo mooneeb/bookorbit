@@ -1,0 +1,21 @@
+{
+  "recordedUTC": "2026-10-21T14:48:06.326218+00:00",
+  "build": "13",
+  "stagedFilename": "Reader wrapping fix - build 13.ipa",
+  "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+  "freshBackupCompleted": true,
+  "stagingComparison": {
+    "beforeFiles": 247,
+    "afterFiles": 247,
+    "unchangedFiles": 247,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "transferRoundTripMatches": true,
+  "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+  "actualInstallationPending": true,
+  "newSigningDatesPending": true,
+  "physicalVerdictPending": true,
+  "privateIdentifiersOmitted": true
+}

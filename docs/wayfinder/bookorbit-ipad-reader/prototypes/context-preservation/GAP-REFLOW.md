@@ -1,17 +1,19 @@
 # Keep an erased underline gap with its word
 
-Build 12 asks whether an actual erased gap follows its word through further EPUB reflow, with the moved underline still editable. The earlier local-edit checks kept the same line layout. Their passes do not answer this question.
+This walkthrough asks whether an actual erased gap follows its word through further EPUB reflow, with the moved underline still editable. The earlier local-edit checks kept the same line layout. Their passes do not answer this question.
 
 Open **Keep an erased underline gap with its word** in All walkthroughs. This standalone walkthrough has its own note, sample selection, six checks, controls, answer and reset. It needs no previous drawing. It explicitly asks for an underline, without handwritten comments or circles.
 
 1. With writing off, select the first whole sentence and tap Link selected words. Turn writing on, draw your own underline beneath it, then turn writing off.
-2. Tap **Prepare the wrapped underline**. With writing on, use the native pixel eraser to erase a small gap directly below useful on the first line. Turn writing off and remember which letters sit above the gap.
+2. Tap **Prepare the wrapped underline**. Wait until the sentence spans at least two lines and line 1 is editable. With writing on, use the native pixel eraser to erase a small gap directly below useful on the first line. Turn writing off and remember which letters sit above the gap.
 3. Tap **Widen the text and follow the gap**. The gap must remain below those letters. Check the rest of the underline, especially joins between the old lines. Report extra gaps, broken joins or shifted ink.
 4. Tap **Make text larger and follow the gap**. Check the gap again, including that it was not repeated under other words.
 5. The whole displayed underline is now editable together. Turn writing on, erase below a different word, then Undo. That part must return while the earlier useful gap remains. Turn writing off. Changing layout starts a fresh Undo history.
 6. Tap **Reload the edited underline**. Check the saved gap, then erase a small part and Undo again. The saved gap must remain, while the new erasure is undone. Turn writing off.
 
 Each step has its own tester-controlled checkbox. The final question names the expected gap placement, readability, editing and reload behavior, with explicit positive, failure and inability-to-complete answers. The user judges the real native ink, including any unintended seams. Blue text boxes are only a reference.
+
+Build 12's physical attempt could not proceed through widening: its relative preparation width left the sentence on one line in a wide iPad window. Build 13 caps this experiment's wrapped column at 560 CSS pixels and waits for the completed font/layout measurement before creating editable lines. Missing prerequisite actions are explained beside Continue. Back one step returns to earlier instructions while keeping the drawing and checked steps. For a fresh end-to-end retry, Restart this walkthrough resets only this walkthrough's active scratch note and answers after confirmation; the incomplete attempt has been retained in the verified private backup.
 
 ## Candidate and limits
 
@@ -25,4 +27,4 @@ This is bounded to a selected range of at most 160 characters, with the whole se
 
 Apple explains how native stroke masks retain partial erasures and why the full path alone does not describe visible ink in [Inspect, modify, and construct PencilKit drawings](https://developer.apple.com/videos/play/wwdc2020/10148/). The mask coordinate contract and API availability were also checked against the installed PencilKit SDK header. Core Graphics provides the [path operations](https://developer.apple.com/documentation/coregraphics/cgpath) used to intersect the clips. The code uses APIs available on the iPadOS 26 baseline; it does not use the newer stroke-identity or substroke APIs.
 
-See [build 12 evidence](evidence/reflow-build-12/README.md). No production reader, note schema, sync contract, server or database changed.
+See [build 12 evidence](evidence/reflow-build-12/README.md) and the [build 13 correction](evidence/reflow-build-13/README.md). No production reader, note schema, sync contract, server or database changed.

@@ -16,6 +16,25 @@ struct ReflowGapSnapshot: Codable {
 }
 
 extension ReflowController {
+  var gapStepRequirement: String? {
+    guard scenario.gapReflow else { return nil }
+    switch review.step {
+    case 1 where review.lineCopies == nil:
+      return
+        "Tap Prepare the wrapped underline first. Continue becomes available after the sentence wraps and the editable lines appear."
+    case 2 where review.gapSnapshot == nil || review.lastFont != 24:
+      return
+        "Tap Widen the text and follow the gap. Wait for the wider text before checking this step."
+    case 3 where review.lastFont != 40:
+      return
+        "Tap Make text larger and follow the gap. Wait for the larger text before checking this step."
+    case 5 where !review.layoutActions.contains("gap-reload"):
+      return "Tap Reload the edited underline before checking the saved gap."
+    default:
+      return nil
+    }
+  }
+
   func currentGapCells() -> [ReflowGapCell] {
     guard let group = review.groups.first,
       let matches = latestPacket["groups"] as? [[String: Any]],
@@ -250,6 +269,8 @@ extension ReflowController {
       let original = lineDrawings[first.id], !original.strokes.isEmpty
     else { return }
     let cells = currentGapCells()
+    let preparedViewport = latestPacket["viewport"] as? [String: Any] ?? [:]
+    let preparedLineCount = copies.count
     let word = usefulCells(cells)
     guard let owner = word.dropFirst(2).first else { return }
     let gap = CGRect(
@@ -330,6 +351,8 @@ extension ReflowController {
     try? await Task.sleep(for: .seconds(1))
     let reloaded = try? Data(contentsOf: folder.appending(path: "gap-current.drawing"))
     let record: [String: Any] = [
+      "preparedViewport": preparedViewport,
+      "preparedLineCount": preparedLineCount,
       "layouts": outcomes,
       "newNativeEditSavedAndReopened": saved != nil && saved == reloaded
         && visible == pixelHash(canvas.drawing),

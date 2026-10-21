@@ -216,6 +216,7 @@ window.reflow = {
     if (action === "bigger") font = Math.min(font + 8, 56);
     if (action === "smaller") font = Math.max(font - 8, 16);
     if (action === "narrow") view.style.width = "65%";
+    if (action === "gap-wrap") view.style.width = "min(65%, 560px)";
     if (action === "wide") view.style.width = "100%";
     if (action === "margins") view.renderer.setAttribute("margin", "84px");
     if (action === "normalMargins") view.renderer.setAttribute("margin", "28px");

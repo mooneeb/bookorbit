@@ -327,7 +327,7 @@ struct ReflowScenario {
             check: "I selected the first sentence and drew my own underline."),
           .init(
             instruction:
-              "Prepare the wrapped underline. Turn writing ON and use the native pixel eraser to make a small gap directly below useful on the first line. Turn writing OFF. Remember which letters are above your gap.",
+              "Tap Prepare the wrapped underline. Wait until the sentence spans at least two lines and line 1 is editable. Turn writing ON and use the native pixel eraser to make a small gap directly below useful on the first line. Turn writing OFF. Remember which letters are above your gap.",
             check: "I erased a small gap below useful and checked its position.",
             action: "local-prepare", button: "Prepare the wrapped underline"),
           .init(
