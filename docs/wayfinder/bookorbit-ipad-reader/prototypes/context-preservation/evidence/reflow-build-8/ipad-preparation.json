@@ -1,0 +1,16 @@
+{
+  "recordedUTC": "2026-10-21T06:45:54.483555+00:00",
+  "installedBuildBeforeStaging": "7",
+  "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+  "privateBackupSucceeded": true,
+  "beforeScratchFiles": 176,
+  "afterScratchFiles": 176,
+  "allScratchHashesUnchangedAfterStaging": true,
+  "stagedFile": "On My iPad / Orbit Context PROTOTYPE / Signing Trial / Reader reflow - build 8.ipa",
+  "stagedUnsignedIPASHA256": "9838a456046414a6eb62ec2757f94d6c4c4a5c81ad417ab0a5b76d25490d921a",
+  "installed": false,
+  "newSigningProfileVerified": false,
+  "physicalReflowReview": "pending",
+  "stagedFileRoundTripSHA256Matches": true,
+  "finalBuildStagedUTC": "2026-10-21T06:51:44.205880+00:00"
+}

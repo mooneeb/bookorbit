@@ -1,0 +1,57 @@
+{
+  "activeResources": 1,
+  "appBuild": "8",
+  "appProcessLifetimePeakRSS": 350240768,
+  "deviceModel": "iPad",
+  "flow": "paginated",
+  "font": 24,
+  "generation": 7,
+  "groups": [
+    {
+      "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
+      "index": 0,
+      "quote": "useful",
+      "rects": [
+        {
+          "height": 29,
+          "width": 65,
+          "x": 189,
+          "y": 221.28125
+        }
+      ],
+      "status": "resolved",
+      "visible": [
+        {
+          "height": 29,
+          "width": 65,
+          "x": 189,
+          "y": 221.28125
+        }
+      ]
+    }
+  ],
+  "inputEvidence": "Simulator input; no physical Pencil verdict",
+  "iPadOS": "26.0",
+  "location": {
+    "cfi": "epubcfi(\/6\/2!\/4\/16\/1:81)",
+    "location": {
+      "current": 0,
+      "next": 0,
+      "total": 30
+    },
+    "section": {
+      "current": 0,
+      "total": 9
+    }
+  },
+  "measurementMilliseconds": 0,
+  "reason": "relocate",
+  "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+  "sequence": 32,
+  "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+  "type": "geometry",
+  "viewport": {
+    "height": 898,
+    "width": 992
+  }
+}

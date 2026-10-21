@@ -245,7 +245,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   ) {
     guard let windowScene = scene as? UIWindowScene else { return }
     let window = UIWindow(windowScene: windowScene)
-    window.rootViewController = ExperimentController()
+    window.rootViewController =
+      ProcessInfo.processInfo.arguments.contains(where: {
+        $0.hasPrefix("--scenario=") || $0 == "--capture-fixtures"
+      }) ? ExperimentController() : ReflowHomeController()
     window.makeKeyAndVisible()
     self.window = window
   }

@@ -1,0 +1,42 @@
+{
+  "recordedUTC": "2026-10-21T06:43:25.609791+00:00",
+  "status": "simulator-probe-passed-physical-review-pending",
+  "simulator": "iPad Air 13-inch (M3), iOS 26.0",
+  "intendedPhysicalTarget": "iPad Air 13-inch (M2), iPadOS 26.6.1",
+  "build": "8",
+  "fixtureSHA256": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+  "probePackets": 32,
+  "singleCanonicalInkHashAcrossLayouts": true,
+  "humanAnswer": null,
+  "triedChecksSet": 0,
+  "canonicalStrokes": 3,
+  "activeResources": 1,
+  "exercisedActions": [
+    "relocate",
+    "viewport-resized",
+    "bigger",
+    "narrow",
+    "wide",
+    "smaller",
+    "scrolled",
+    "paginated",
+    "scroll"
+  ],
+  "unsignedIPA": {
+    "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+    "version": "0.1",
+    "build": "8",
+    "minimumOS": "26.0",
+    "containsProvisioningProfile": false
+  },
+  "inputProvenance": "Programmatic DOM Range selection of second useful; actual Foliate-generated CFI; synthetic PKStroke data, no handwriting or physical input acceptance",
+  "limits": [
+    "Single group and native transform/serialization probe only",
+    "No real-device old/new editing, palm rejection, pressure, navigation or squeeze verdict",
+    "No physical cold-offline reopen or signing preservation for new reflow groups yet",
+    "Whole-group affine placement does not establish arbitrary ink reflow",
+    "Browser inspector snapshot timed out twice; no browser acceptance inferred"
+  ],
+  "finalProbeRecordedUTC": "2026-10-21T06:52:58.618981+00:00",
+  "canonicalInkUnchangedAcrossSimulatorRelaunch": true
+}

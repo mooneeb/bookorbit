@@ -19,6 +19,9 @@ targets:
       - path: Fixtures
         type: folder
         buildPhase: resources
+      - path: ../../../../../client/public/assets/foliate
+        type: folder
+        buildPhase: resources
     info:
       path: Generated/Info.plist
       properties:
@@ -33,6 +36,8 @@ targets:
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         UILaunchScreen: {}
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
           UISceneConfigurations:

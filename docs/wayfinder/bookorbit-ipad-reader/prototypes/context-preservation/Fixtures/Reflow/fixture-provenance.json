@@ -1,0 +1,7 @@
+{
+  "source": "Self-authored local EPUB; no private library",
+  "chapters": 9,
+  "sha256": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+  "font": "Source Serif 4 Regular 4.005R; existing Fixtures/FONT-LICENSE.md",
+  "rendererBaseline": "ce118e3890ea8c9019857cb7556552cdc9992f8e"
+}

@@ -1,5 +1,7 @@
 # Original annotation context experiment
 
+This branch now opens the [text-following ink experiment](REFLOW.md) by default. The earlier preserved-page walkthroughs remain accessible from its home list with their data intact. The description below records that earlier preservation experiment; its signing prerequisite has since been [completed](https://github.com/mooneeb/bookorbit/issues/20#issuecomment-6299949060) and its [decision resolved](https://github.com/mooneeb/bookorbit/issues/15#issuecomment-6300054724).
+
 Throwaway native prototype for [Validate preservation of original annotation context on EPUB and PDF](https://github.com/mooneeb/bookorbit/issues/15). Kept off main on `BO-15-annotation-context-prototype`.
 
 **Question:** after a book is replaced or removed, can its original excerpt and editable ink still reopen, and which capture looks acceptable?
