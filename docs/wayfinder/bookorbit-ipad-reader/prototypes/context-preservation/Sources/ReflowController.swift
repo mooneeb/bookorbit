@@ -636,6 +636,13 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
           ? "Simulator input; no physical Pencil verdict"
           : "Physical input must be confirmed by user"
         packet["appProcessLifetimePeakRSS"] = processLifetimePeakRSS()
+        guard JSONSerialization.isValidJSONObject(packet),
+          JSONSerialization.isValidJSONObject(history)
+        else {
+          status.text =
+            "Your note is saved. Waiting for valid layout measurements before saving technical evidence."
+          return
+        }
         try JSONSerialization.data(withJSONObject: packet, options: [.prettyPrinted, .sortedKeys])
           .write(to: folder.appending(path: "geometry.json"), options: .atomic)
         try JSONSerialization.data(withJSONObject: history, options: [.prettyPrinted, .sortedKeys])

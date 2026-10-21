@@ -5,7 +5,7 @@
   "intendedPhysicalTarget": "iPad Air 13-inch (M2), iPadOS 26.6.1",
   "build": "8",
   "fixtureSHA256": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
-  "probePackets": 32,
+  "probePackets": 31,
   "singleCanonicalInkHashAcrossLayouts": true,
   "humanAnswer": null,
   "triedChecksSet": 0,
@@ -13,14 +13,14 @@
   "activeResources": 1,
   "exercisedActions": [
     "relocate",
-    "viewport-resized",
     "bigger",
     "narrow",
     "wide",
     "smaller",
     "scrolled",
     "paginated",
-    "scroll"
+    "scroll",
+    "non-finite-progress-probe"
   ],
   "unsignedIPA": {
     "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
@@ -37,6 +37,8 @@
     "Whole-group affine placement does not establish arbitrary ink reflow",
     "Browser inspector snapshot timed out twice; no browser acceptance inferred"
   ],
-  "finalProbeRecordedUTC": "2026-10-21T06:52:58.618981+00:00",
-  "canonicalInkUnchangedAcrossSimulatorRelaunch": true
+  "finalProbeRecordedUTC": "2026-10-21T07:03:02.863008+00:00",
+  "canonicalInkUnchangedAcrossSimulatorRelaunch": true,
+  "nonFiniteDiagnosticProbePassed": true,
+  "nativeProcessAliveAfterProbe": true
 }

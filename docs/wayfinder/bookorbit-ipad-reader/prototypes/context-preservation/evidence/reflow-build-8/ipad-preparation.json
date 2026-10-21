@@ -7,10 +7,11 @@
   "afterScratchFiles": 176,
   "allScratchHashesUnchangedAfterStaging": true,
   "stagedFile": "On My iPad / Orbit Context PROTOTYPE / Signing Trial / Reader reflow - build 8.ipa",
-  "stagedUnsignedIPASHA256": "9838a456046414a6eb62ec2757f94d6c4c4a5c81ad417ab0a5b76d25490d921a",
+  "stagedUnsignedIPASHA256": "7b6b2babdf49d4ebd9b3d772b5e0b57b141c62d57fb384cae2545e102301be3e",
   "installed": false,
   "newSigningProfileVerified": false,
   "physicalReflowReview": "pending",
   "stagedFileRoundTripSHA256Matches": true,
-  "finalBuildStagedUTC": "2026-10-21T06:51:44.205880+00:00"
+  "finalBuildStagedUTC": "2026-10-21T07:05:07.305611+00:00",
+  "includesDiagnosticCrashFix": true
 }

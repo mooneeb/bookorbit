@@ -1,0 +1,18 @@
+{
+  "observedLocalTime": "2026-10-21 11:51:45 +0500",
+  "environment": "iPad Air 13-inch (M3), iOS 26.0 simulator",
+  "process": "OrbitContextPrototype",
+  "exception": "EXC_CRASH SIGABRT",
+  "observedStack": [
+    "Foundation _writeJSONNumber",
+    "JSONSerialization.data(withJSONObject:options:)",
+    "ReflowController.save()",
+    "ReflowController.userContentController(_:didReceive:)"
+  ],
+  "inferredCause": "A transient non-finite geometry/progress number was passed from the WebKit message to Foundation diagnostic serialization. The Objective-C exception was not caught by Swift's do/catch.",
+  "fix": "Normalize bridge payloads through JSON serialization, reject non-finite range rectangles, and validate native evidence JSON before writing. Canonical notes are saved independently.",
+  "rawCrashReportRetainedPrivately": true,
+  "physicalIPadAffected": false,
+  "physicalIPadBuildStillExpected": "7; new build not yet installed",
+  "retestStatus": "passed; deliberate NaN/Infinity progress became null, no crash, saved ink and review state retained"
+}

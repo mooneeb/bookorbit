@@ -11,8 +11,9 @@ let sequence = 0;
 let chapter = Number(new URL(location.href).searchParams.get("chapter") || 0);
 let focusCFI = null;
 const send = (message) => {
-  window.lastReflowMessage = message;
-  window.webkit?.messageHandlers.reflow.postMessage(message);
+  const payload = JSON.parse(JSON.stringify(message));
+  window.lastReflowMessage = payload;
+  window.webkit?.messageHandlers?.reflow?.postMessage(payload);
 };
 const fail = (error) => {
   problem.textContent = `The sample could not be opened. ${error.message || error}`;
@@ -24,7 +25,9 @@ window.addEventListener("unhandledrejection", (event) => fail(event.reason));
 function fragments(range) {
   const frame = range.startContainer.ownerDocument.defaultView.frameElement.getBoundingClientRect();
   return [...range.getClientRects()]
-    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .filter(
+      (rect) => rect.width > 0 && rect.height > 0 && [rect.left, rect.top, rect.width, rect.height, frame.left, frame.top].every(Number.isFinite),
+    )
     .map((rect) => ({
       x: frame.left + rect.left,
       y: frame.top + rect.top,
@@ -193,6 +196,13 @@ if (new URL(location.href).searchParams.has("probe")) {
         await new Promise((resolve) => setTimeout(resolve, 450));
       }
       await window.reflow.reload();
+      send({
+        ...window.lastReflowMessage,
+        type: "geometry",
+        sequence: ++sequence,
+        reason: "non-finite-progress-probe",
+        location: { current: Number.NaN, total: Infinity },
+      });
     },
   };
 }

@@ -1,8 +1,12 @@
 [
   {
     "activeResources": 1,
-    "canonicalInkHashes": {},
-    "canonicalStrokeCounts": {},
+    "canonicalInkHashes": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
+    },
+    "canonicalStrokeCounts": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
+    },
     "flow": "paginated",
     "font": 24,
     "generation": 0,
@@ -40,7 +44,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -85,7 +89,7 @@
         "total": 9
       }
     },
-    "measurementMilliseconds": 1,
+    "measurementMilliseconds": 1.0000000000002274,
     "projection": {
       "a": 1,
       "d": 1,
@@ -105,72 +109,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
-    },
-    "canonicalStrokeCounts": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
-    },
-    "flow": "paginated",
-    "font": 24,
-    "generation": 1,
-    "groups": [
-      {
-        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
-        "index": 0,
-        "quote": "useful",
-        "rects": [
-          {
-            "height": 29,
-            "width": 65,
-            "x": 189,
-            "y": 221.28125
-          }
-        ],
-        "status": "resolved",
-        "visible": [
-          {
-            "height": 29,
-            "width": 65,
-            "x": 189,
-            "y": 221.28125
-          }
-        ]
-      }
-    ],
-    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
-    "location": {
-      "cfi": "epubcfi(\/6\/2!\/4\/16\/1:81)",
-      "location": {
-        "current": 0,
-        "next": 0,
-        "total": 30
-      },
-      "section": {
-        "current": 0,
-        "total": 9
-      }
-    },
-    "measurementMilliseconds": 0.99999999999977263,
-    "projection": {
-      "a": 1,
-      "d": 1,
-      "tx": 0,
-      "ty": 0
-    },
-    "reason": "viewport-resized",
-    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
-    "sequence": 3,
-    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
-    "type": "geometry",
-    "viewport": {
-      "height": 898,
-      "width": 992
-    }
-  },
-  {
-    "activeResources": 1,
-    "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -224,6 +163,71 @@
     },
     "reason": "relocate",
     "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 3,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 898,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
+    },
+    "canonicalStrokeCounts": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 2,
+    "groups": [
+      {
+        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
+        "index": 0,
+        "quote": "useful",
+        "rects": [
+          {
+            "height": 38,
+            "width": 87,
+            "x": 229,
+            "y": 286.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 87,
+            "x": 229,
+            "y": 286.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/2!\/4\/10\/1:223)",
+      "location": {
+        "current": 0,
+        "next": 0,
+        "total": 30
+      },
+      "section": {
+        "current": 0,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": -23,
+      "ty": -8.3229166666666288
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
     "sequence": 4,
     "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
     "type": "geometry",
@@ -235,7 +239,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -300,7 +304,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -365,7 +369,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -417,7 +421,7 @@
       "tx": -23,
       "ty": -8.3229166666666288
     },
-    "reason": "relocate",
+    "reason": "bigger",
     "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
     "sequence": 7,
     "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
@@ -430,72 +434,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
-    },
-    "canonicalStrokeCounts": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
-    },
-    "flow": "paginated",
-    "font": 32,
-    "generation": 2,
-    "groups": [
-      {
-        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
-        "index": 0,
-        "quote": "useful",
-        "rects": [
-          {
-            "height": 38,
-            "width": 87,
-            "x": 229,
-            "y": 286.71875
-          }
-        ],
-        "status": "resolved",
-        "visible": [
-          {
-            "height": 38,
-            "width": 87,
-            "x": 229,
-            "y": 286.71875
-          }
-        ]
-      }
-    ],
-    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
-    "location": {
-      "cfi": "epubcfi(\/6\/2!\/4\/10\/1:223)",
-      "location": {
-        "current": 0,
-        "next": 0,
-        "total": 30
-      },
-      "section": {
-        "current": 0,
-        "total": 9
-      }
-    },
-    "measurementMilliseconds": 1,
-    "projection": {
-      "a": 1.3333333333333333,
-      "d": 1.3333333333333333,
-      "tx": -23,
-      "ty": -8.3229166666666288
-    },
-    "reason": "bigger",
-    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
-    "sequence": 8,
-    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
-    "type": "geometry",
-    "viewport": {
-      "height": 898,
-      "width": 992
-    }
-  },
-  {
-    "activeResources": 1,
-    "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -549,6 +488,71 @@
     },
     "reason": "relocate",
     "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 8,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 898,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
+    },
+    "canonicalStrokeCounts": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 3,
+    "groups": [
+      {
+        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
+        "index": 0,
+        "quote": "useful",
+        "rects": [
+          {
+            "height": 38,
+            "width": 87,
+            "x": 378.390625,
+            "y": 337.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 87,
+            "x": 378.390625,
+            "y": 337.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/2!\/4\/10\/1:37)",
+      "location": {
+        "current": 0,
+        "next": 0,
+        "total": 30
+      },
+      "section": {
+        "current": 0,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": 126.390625,
+      "ty": 42.677083333333371
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
     "sequence": 9,
     "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
     "type": "geometry",
@@ -560,7 +564,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -625,72 +629,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
-    },
-    "canonicalStrokeCounts": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
-    },
-    "flow": "paginated",
-    "font": 32,
-    "generation": 3,
-    "groups": [
-      {
-        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
-        "index": 0,
-        "quote": "useful",
-        "rects": [
-          {
-            "height": 38,
-            "width": 87,
-            "x": 378.390625,
-            "y": 337.71875
-          }
-        ],
-        "status": "resolved",
-        "visible": [
-          {
-            "height": 38,
-            "width": 87,
-            "x": 378.390625,
-            "y": 337.71875
-          }
-        ]
-      }
-    ],
-    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
-    "location": {
-      "cfi": "epubcfi(\/6\/2!\/4\/10\/1:37)",
-      "location": {
-        "current": 0,
-        "next": 0,
-        "total": 30
-      },
-      "section": {
-        "current": 0,
-        "total": 9
-      }
-    },
-    "measurementMilliseconds": 0,
-    "projection": {
-      "a": 1.3333333333333333,
-      "d": 1.3333333333333333,
-      "tx": 126.390625,
-      "ty": 42.677083333333371
-    },
-    "reason": "relocate",
-    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
-    "sequence": 11,
-    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
-    "type": "geometry",
-    "viewport": {
-      "height": 898,
-      "width": 992
-    }
-  },
-  {
-    "activeResources": 1,
-    "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -744,7 +683,7 @@
     },
     "reason": "narrow",
     "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
-    "sequence": 12,
+    "sequence": 11,
     "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
     "type": "geometry",
     "viewport": {
@@ -755,7 +694,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -802,7 +741,7 @@
     },
     "reason": "relocate",
     "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
-    "sequence": 13,
+    "sequence": 12,
     "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
     "type": "geometry",
     "viewport": {
@@ -813,7 +752,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -859,6 +798,71 @@
       }
     },
     "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1.3333333333333333,
+      "d": 1.3333333333333333,
+      "tx": -23,
+      "ty": -8.3229166666666288
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 13,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 898,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
+    },
+    "canonicalStrokeCounts": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
+    },
+    "flow": "paginated",
+    "font": 32,
+    "generation": 4,
+    "groups": [
+      {
+        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
+        "index": 0,
+        "quote": "useful",
+        "rects": [
+          {
+            "height": 38,
+            "width": 87,
+            "x": 229,
+            "y": 286.71875
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 38,
+            "width": 87,
+            "x": 229,
+            "y": 286.71875
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/2!\/4\/10\/1:223)",
+      "location": {
+        "current": 0,
+        "next": 0,
+        "total": 30
+      },
+      "section": {
+        "current": 0,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0.99999999999954525,
     "projection": {
       "a": 1.3333333333333333,
       "d": 1.3333333333333333,
@@ -878,7 +882,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -923,14 +927,14 @@
         "total": 9
       }
     },
-    "measurementMilliseconds": 0,
+    "measurementMilliseconds": 1.0000000000004547,
     "projection": {
       "a": 1.3333333333333333,
       "d": 1.3333333333333333,
       "tx": -23,
       "ty": -8.3229166666666288
     },
-    "reason": "relocate",
+    "reason": "wide",
     "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
     "sequence": 15,
     "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
@@ -943,14 +947,14 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
     },
     "flow": "paginated",
-    "font": 32,
-    "generation": 4,
+    "font": 24,
+    "generation": 5,
     "groups": [
       {
         "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
@@ -958,26 +962,26 @@
         "quote": "useful",
         "rects": [
           {
-            "height": 38,
-            "width": 87,
-            "x": 229,
-            "y": 286.71875
+            "height": 29,
+            "width": 65,
+            "x": 189,
+            "y": 221.28125
           }
         ],
         "status": "resolved",
         "visible": [
           {
-            "height": 38,
-            "width": 87,
-            "x": 229,
-            "y": 286.71875
+            "height": 29,
+            "width": 65,
+            "x": 189,
+            "y": 221.28125
           }
         ]
       }
     ],
     "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
     "location": {
-      "cfi": "epubcfi(\/6\/2!\/4\/10\/1:223)",
+      "cfi": "epubcfi(\/6\/2!\/4\/16\/1:81)",
       "location": {
         "current": 0,
         "next": 0,
@@ -988,14 +992,14 @@
         "total": 9
       }
     },
-    "measurementMilliseconds": 1,
+    "measurementMilliseconds": 0,
     "projection": {
-      "a": 1.3333333333333333,
-      "d": 1.3333333333333333,
-      "tx": -23,
-      "ty": -8.3229166666666288
+      "a": 1,
+      "d": 1,
+      "tx": 0,
+      "ty": 0
     },
-    "reason": "wide",
+    "reason": "relocate",
     "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
     "sequence": 16,
     "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
@@ -1008,7 +1012,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -1073,7 +1077,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -1138,72 +1142,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
-    },
-    "canonicalStrokeCounts": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
-    },
-    "flow": "paginated",
-    "font": 24,
-    "generation": 5,
-    "groups": [
-      {
-        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
-        "index": 0,
-        "quote": "useful",
-        "rects": [
-          {
-            "height": 29,
-            "width": 65,
-            "x": 189,
-            "y": 221.28125
-          }
-        ],
-        "status": "resolved",
-        "visible": [
-          {
-            "height": 29,
-            "width": 65,
-            "x": 189,
-            "y": 221.28125
-          }
-        ]
-      }
-    ],
-    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
-    "location": {
-      "cfi": "epubcfi(\/6\/2!\/4\/16\/1:81)",
-      "location": {
-        "current": 0,
-        "next": 0,
-        "total": 30
-      },
-      "section": {
-        "current": 0,
-        "total": 9
-      }
-    },
-    "measurementMilliseconds": 1,
-    "projection": {
-      "a": 1,
-      "d": 1,
-      "tx": 0,
-      "ty": 0
-    },
-    "reason": "relocate",
-    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
-    "sequence": 19,
-    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
-    "type": "geometry",
-    "viewport": {
-      "height": 898,
-      "width": 992
-    }
-  },
-  {
-    "activeResources": 1,
-    "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -1257,6 +1196,71 @@
     },
     "reason": "smaller",
     "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 19,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 898,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
+    },
+    "canonicalStrokeCounts": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
+    },
+    "flow": "scrolled",
+    "font": 24,
+    "generation": 6,
+    "groups": [
+      {
+        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
+        "index": 0,
+        "quote": "useful",
+        "rects": [
+          {
+            "height": 29,
+            "width": 65,
+            "x": 193.65625,
+            "y": 28.28125
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 29,
+            "width": 65,
+            "x": 193.65625,
+            "y": 28.28125
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/2!\/4\/6\/1:0)",
+      "location": {
+        "current": 0,
+        "next": 0,
+        "total": 30
+      },
+      "section": {
+        "current": 0,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 4.65625,
+      "ty": -193
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
     "sequence": 20,
     "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
     "type": "geometry",
@@ -1268,7 +1272,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -1333,7 +1337,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -1398,7 +1402,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -1450,7 +1454,7 @@
       "tx": 4.65625,
       "ty": -193
     },
-    "reason": "relocate",
+    "reason": "scrolled",
     "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
     "sequence": 23,
     "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
@@ -1463,72 +1467,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
-    },
-    "canonicalStrokeCounts": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
-    },
-    "flow": "scrolled",
-    "font": 24,
-    "generation": 6,
-    "groups": [
-      {
-        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
-        "index": 0,
-        "quote": "useful",
-        "rects": [
-          {
-            "height": 29,
-            "width": 65,
-            "x": 193.65625,
-            "y": 28.28125
-          }
-        ],
-        "status": "resolved",
-        "visible": [
-          {
-            "height": 29,
-            "width": 65,
-            "x": 193.65625,
-            "y": 28.28125
-          }
-        ]
-      }
-    ],
-    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
-    "location": {
-      "cfi": "epubcfi(\/6\/2!\/4\/6\/1:0)",
-      "location": {
-        "current": 0,
-        "next": 0,
-        "total": 30
-      },
-      "section": {
-        "current": 0,
-        "total": 9
-      }
-    },
-    "measurementMilliseconds": 1,
-    "projection": {
-      "a": 1,
-      "d": 1,
-      "tx": 4.65625,
-      "ty": -193
-    },
-    "reason": "scrolled",
-    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
-    "sequence": 24,
-    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
-    "type": "geometry",
-    "viewport": {
-      "height": 898,
-      "width": 992
-    }
-  },
-  {
-    "activeResources": 1,
-    "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -1573,7 +1512,72 @@
         "total": 9
       }
     },
-    "measurementMilliseconds": 1,
+    "measurementMilliseconds": 0,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 0,
+      "ty": 0
+    },
+    "reason": "relocate",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 24,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 898,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
+    },
+    "canonicalStrokeCounts": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
+    },
+    "flow": "paginated",
+    "font": 24,
+    "generation": 7,
+    "groups": [
+      {
+        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
+        "index": 0,
+        "quote": "useful",
+        "rects": [
+          {
+            "height": 29,
+            "width": 65,
+            "x": 189,
+            "y": 221.28125
+          }
+        ],
+        "status": "resolved",
+        "visible": [
+          {
+            "height": 29,
+            "width": 65,
+            "x": 189,
+            "y": 221.28125
+          }
+        ]
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/2!\/4\/16\/1:81)",
+      "location": {
+        "current": 0,
+        "next": 0,
+        "total": 30
+      },
+      "section": {
+        "current": 0,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 1.0000000000009095,
     "projection": {
       "a": 1,
       "d": 1,
@@ -1593,7 +1597,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -1638,7 +1642,7 @@
         "total": 9
       }
     },
-    "measurementMilliseconds": 0,
+    "measurementMilliseconds": 1,
     "projection": {
       "a": 1,
       "d": 1,
@@ -1658,7 +1662,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -1703,14 +1707,14 @@
         "total": 9
       }
     },
-    "measurementMilliseconds": 0,
+    "measurementMilliseconds": 1,
     "projection": {
       "a": 1,
       "d": 1,
       "tx": 0,
       "ty": 0
     },
-    "reason": "relocate",
+    "reason": "paginated",
     "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
     "sequence": 27,
     "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
@@ -1723,7 +1727,93 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
+    },
+    "canonicalStrokeCounts": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
+    },
+    "flow": "paginated",
+    "font": 24,
+    "generation": 7,
+    "groups": [
+      {
+        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
+        "status": "different-chapter"
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
+    "location": {
+      "cfi": "epubcfi(\/6\/2!\/4\/16\/1:81)",
+      "location": {
+        "current": 0,
+        "next": 0,
+        "total": 30
+      },
+      "section": {
+        "current": 0,
+        "total": 9
+      }
+    },
+    "measurementMilliseconds": 1,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 0,
+      "ty": 0
+    },
+    "reason": "scroll",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 28,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 898,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
+    },
+    "canonicalStrokeCounts": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
+    },
+    "flow": "paginated",
+    "font": 24,
+    "generation": 7,
+    "groups": [
+      {
+        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
+        "status": "different-chapter"
+      }
+    ],
+    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
+    "location": {
+      "current": null,
+      "total": null
+    },
+    "measurementMilliseconds": 1,
+    "projection": {
+      "a": 1,
+      "d": 1,
+      "tx": 0,
+      "ty": 0
+    },
+    "reason": "non-finite-progress-probe",
+    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+    "sequence": 29,
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+    "type": "geometry",
+    "viewport": {
+      "height": 898,
+      "width": 992
+    }
+  },
+  {
+    "activeResources": 1,
+    "canonicalInkHashes": {
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -1765,100 +1855,6 @@
       },
       "section": {
         "current": 0,
-        "total": 9
-      }
-    },
-    "measurementMilliseconds": 0,
-    "projection": {
-      "a": 1,
-      "d": 1,
-      "tx": 0,
-      "ty": 0
-    },
-    "reason": "paginated",
-    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
-    "sequence": 28,
-    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
-    "type": "geometry",
-    "viewport": {
-      "height": 898,
-      "width": 992
-    }
-  },
-  {
-    "activeResources": 1,
-    "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
-    },
-    "canonicalStrokeCounts": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
-    },
-    "flow": "paginated",
-    "font": 24,
-    "generation": 7,
-    "groups": [
-      {
-        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
-        "status": "different-chapter"
-      }
-    ],
-    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
-    "location": {
-      "cfi": "epubcfi(\/6\/2!\/4\/16\/1:81)",
-      "location": {
-        "current": 0,
-        "next": 0,
-        "total": 30
-      },
-      "section": {
-        "current": 0,
-        "total": 9
-      }
-    },
-    "measurementMilliseconds": 0,
-    "projection": {
-      "a": 1,
-      "d": 1,
-      "tx": 0,
-      "ty": 0
-    },
-    "reason": "scroll",
-    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
-    "sequence": 29,
-    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
-    "type": "geometry",
-    "viewport": {
-      "height": 898,
-      "width": 992
-    }
-  },
-  {
-    "activeResources": 1,
-    "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
-    },
-    "canonicalStrokeCounts": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
-    },
-    "flow": "paginated",
-    "font": 24,
-    "generation": 7,
-    "groups": [
-      {
-        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
-        "status": "different-chapter"
-      }
-    ],
-    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
-    "location": {
-      "cfi": "epubcfi(\/6\/4!\/4\/16\/1:81)",
-      "location": {
-        "current": 3,
-        "next": 4,
-        "total": 30
-      },
-      "section": {
-        "current": 1,
         "total": 9
       }
     },
@@ -1882,7 +1878,7 @@
   {
     "activeResources": 1,
     "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
+      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "8cb6de4e9fc599fc0050aafb73a5190a64bfa2b08e87d15e2728315fd2517804"
     },
     "canonicalStrokeCounts": {
       "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
@@ -1937,71 +1933,6 @@
     "reason": "relocate",
     "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
     "sequence": 31,
-    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
-    "type": "geometry",
-    "viewport": {
-      "height": 898,
-      "width": 992
-    }
-  },
-  {
-    "activeResources": 1,
-    "canonicalInkHashes": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": "7c2b22fcec8946a20b3272566e791a4c856afb1c94dd59d0a92cce4f0d720a6b"
-    },
-    "canonicalStrokeCounts": {
-      "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC": 3
-    },
-    "flow": "paginated",
-    "font": 24,
-    "generation": 7,
-    "groups": [
-      {
-        "id": "4D8A4E34-8ACA-4C45-8875-1C5A2A287CEC",
-        "index": 0,
-        "quote": "useful",
-        "rects": [
-          {
-            "height": 29,
-            "width": 65,
-            "x": 189,
-            "y": 221.28125
-          }
-        ],
-        "status": "resolved",
-        "visible": [
-          {
-            "height": 29,
-            "width": 65,
-            "x": 189,
-            "y": 221.28125
-          }
-        ]
-      }
-    ],
-    "inputEvidence": "Synthetic native PKStroke probe; programmatically selected the second useful; no human answers",
-    "location": {
-      "cfi": "epubcfi(\/6\/2!\/4\/16\/1:81)",
-      "location": {
-        "current": 0,
-        "next": 0,
-        "total": 30
-      },
-      "section": {
-        "current": 0,
-        "total": 9
-      }
-    },
-    "measurementMilliseconds": 0,
-    "projection": {
-      "a": 1,
-      "d": 1,
-      "tx": 0,
-      "ty": 0
-    },
-    "reason": "relocate",
-    "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
-    "sequence": 32,
     "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
     "type": "geometry",
     "viewport": {

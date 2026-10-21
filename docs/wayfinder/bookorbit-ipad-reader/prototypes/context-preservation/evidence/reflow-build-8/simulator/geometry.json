@@ -1,7 +1,7 @@
 {
   "activeResources": 1,
   "appBuild": "8",
-  "appProcessLifetimePeakRSS": 350240768,
+  "appProcessLifetimePeakRSS": 358744064,
   "deviceModel": "iPad",
   "flow": "paginated",
   "font": 24,
@@ -47,7 +47,7 @@
   "measurementMilliseconds": 0,
   "reason": "relocate",
   "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
-  "sequence": 32,
+  "sequence": 31,
   "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
   "type": "geometry",
   "viewport": {
