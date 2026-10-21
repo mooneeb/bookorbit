@@ -1,0 +1,62 @@
+{
+  "recordedUTC": "2026-10-21T13:13:35.677950+00:00",
+  "build": "11",
+  "walkthrough": "Erase only one line of a circle",
+  "question": "Did edits stay on their own line, with both lines still editable and their saved state intact?",
+  "userReply": "Yes, all five circle checks passed",
+  "acceptanceSource": "Explicit current live chat reply. No new interpretation or confirmation inferred from saved UI controls.",
+  "reportedPassedChecks": [
+    "Local first-line erasure left the other line unchanged",
+    "Native Undo and Redo restored and reopened the first-line gap locally",
+    "Editing and undoing the second line preserved the earlier first-line gap",
+    "Both saved line states survived the drawing/chapter reload",
+    "The reloaded marks stayed editable with Undo"
+  ],
+  "snapshotExitCode": 0,
+  "deviceReviewState": {
+    "groups": 1,
+    "lineCopies": 3,
+    "step": 4,
+    "tried": [true, true, true, true, false],
+    "answer": "I could not complete this check",
+    "layoutActions": [
+      "local-prepare",
+      "local-reload",
+      "local-reload",
+      "local-reload"
+    ],
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2"
+  },
+  "savedUIAgreesWithChatVerdict": false,
+  "savedUIDiscrepancy": "The snapshot has four checked steps and I could not complete this check. It is preserved verbatim rather than changed to match the later explicit chat report. The user is not asked to repeat an already clear answer.",
+  "sourceWholeSentenceCurrentAndRetainedOriginalBytesMatch": true,
+  "drawingFiles": [
+    {
+      "file": "1D0CE3DC-645F-4600-A3B6-FAFB378DAC97.drawing",
+      "bytes": 47776,
+      "SHA256": "062d720b9f2789ccf65ac3f39b484efff846c61da694bbc9baa234ea49d5d884"
+    },
+    {
+      "file": "36DC5AF4-334E-40CD-8D4F-5FA361BBEDF9-original.drawing",
+      "bytes": 35527,
+      "SHA256": "6784aaba0fa4c24aea9c3d7e39baacc16e49a80d7c913fee519396dfa04263a7"
+    },
+    {
+      "file": "36DC5AF4-334E-40CD-8D4F-5FA361BBEDF9.drawing",
+      "bytes": 35527,
+      "SHA256": "6784aaba0fa4c24aea9c3d7e39baacc16e49a80d7c913fee519396dfa04263a7"
+    },
+    {
+      "file": "CA45DE4B-1F32-41AF-B599-E69A8BE06B72.drawing",
+      "bytes": 35787,
+      "SHA256": "b6b451f6cdd3a3bfb82b546b926d78427256b4ae3f296b656de2c6b0c1699c91"
+    },
+    {
+      "file": "F9C97B5E-88A5-4745-87E5-DFCAFCADF785.drawing",
+      "bytes": 47381,
+      "SHA256": "f64fecd91467d2ca5dcb418780a18174ee52977e00f85a8d081e92f3f576af3c"
+    }
+  ],
+  "sourceInkBindingsAndGeometryRetainedPrivately": true,
+  "scope": "Physical acceptance reported by the user for the five-step circle local-editing flow in the same line layout. The saved UI state is a separate observation and does not independently establish all five completions. Subsequent reflow of edited marks, interaction constraints and other native/offline gates remain open."
+}
