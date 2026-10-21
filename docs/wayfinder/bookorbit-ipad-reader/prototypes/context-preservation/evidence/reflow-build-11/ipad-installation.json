@@ -1,0 +1,41 @@
+{
+  "recordedUTC": "2026-10-21T10:55:10.565427+00:00",
+  "userReport": "Installed; still in SideStore",
+  "build": "11",
+  "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+  "installedMetadataMatchesSignedExport": true,
+  "codeSignatureVerified": true,
+  "profileAndSignedEntitlementsMatch": true,
+  "sameTeamAsVerifiedBuild10": true,
+  "intendedDeviceIncluded": true,
+  "freeLocalProvision": true,
+  "profileCreationUTC": "2026-10-21T10:51:53Z",
+  "profileExpirationUTC": "2026-10-28T10:51:53Z",
+  "resourcesMatchStagedBuild": [
+    "Fixtures/Reflow/reader.js",
+    "Fixtures/Reflow/index.html",
+    "Fixtures/Reflow/reflow.epub"
+  ],
+  "nativeExecutableUUIDMatchesStagedBuild": {
+    "OrbitContextPrototype": true,
+    "OrbitContextPrototype.debug.dylib": true
+  },
+  "savedFilesBeforeOpening": {
+    "baselineFiles": 217,
+    "postInstallFiles": 217,
+    "unchangedFiles": 216,
+    "changedFiles": ["reflow-walkthroughs/circle-compare/review.json"],
+    "missingFiles": [],
+    "addedFiles": [],
+    "changedReviewFields": {
+      "answer": {
+        "before": "Separate copies around each line",
+        "after": "Keep the single original shape"
+      }
+    },
+    "allEditableDrawingFilesUnchanged": true,
+    "interpretation": "Only the saved circle verdict differs from the baseline. The time and cause of that choice change are not established by this comparison. No notes were restored or edited. Chat clarification requested before treating it as a new preference."
+  },
+  "readerOpenedByAgentBeforeSnapshot": false,
+  "privateIdentifiersOmitted": true
+}
