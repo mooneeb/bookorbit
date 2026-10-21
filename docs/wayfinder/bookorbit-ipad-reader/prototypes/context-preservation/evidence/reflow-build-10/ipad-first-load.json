@@ -1,0 +1,23 @@
+{
+  "recordedUTC": "2026-10-21T10:22:13.150096+00:00",
+  "build": "10",
+  "requestedWalkthrough": "Compare underlines when a sentence wraps",
+  "nativeLaunchExitCode": 0,
+  "initialCollection": "The comparison scratch folder was absent on the first collection attempt. This did not establish a successful target-screen load.",
+  "humanQuestion": "On the iPad, tap “All walkthroughs” if needed, then open “Compare underlines when a sentence wraps”. Do you see the sample reading page and “Step 1 of 4” underneath it?",
+  "humanAnswer": "Yes, the underline comparison and Step 1 are visible",
+  "snapshotExitCode": 0,
+  "automatedProbeEnabled": false,
+  "appearanceChoice": "pending",
+  "scope": "Physical visibility and loading confirmation only. No preferred mark behavior or original/derived editing result is inferred.",
+  "loadingDiagnostics": {
+    "requestCount": 13,
+    "failedRequests": [],
+    "sourceHashMatchesOriginalEPUB": true,
+    "activeResources": 1,
+    "reportedAppBuild": "10",
+    "iPadOS": "26.6.1",
+    "groupsAtSnapshot": 1,
+    "humanAnswerAtSnapshot": null
+  }
+}
