@@ -1,0 +1,52 @@
+{
+  "recordedUTC": "2026-10-21T10:25:25.756809+00:00",
+  "build": "10",
+  "walkthrough": "Compare underlines when a sentence wraps",
+  "userChoice": "Follow each line with a reshaped copy",
+  "directionForFurtherInvestigation": "Copy the original underline beneath each current line and reshape each copy to that line",
+  "snapshotExitCode": 0,
+  "scope": "Appearance preference only. Direct editing of adapted copies, edit propagation, pressure fidelity and acceptance of explicit selection/role assignment remain open. The original-layout erase/Undo outcome is not inferred from this appearance choice.",
+  "deviceReviewState": {
+    "groups": 1,
+    "step": 4,
+    "tried": [true, true, true, true],
+    "answer": "Follow each line with a reshaped copy",
+    "markLayout": "per-line",
+    "layoutActions": [
+      "mark-original",
+      "mark-per-line",
+      "mark-per-line",
+      "mark-restore",
+      "mark-restore",
+      "mark-original",
+      "mark-per-line",
+      "mark-original",
+      "mark-per-line",
+      "mark-original",
+      "mark-per-line",
+      "mark-per-line"
+    ],
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2"
+  },
+  "drawingFiles": [
+    {
+      "file": "comparison-per-line.drawing",
+      "bytes": 44428,
+      "SHA256": "2fc1652dc0a5e9f1d9fb319650f9229294be6e2499f3cd99815281405f94e5a6",
+      "kind": "comparison derivative"
+    },
+    {
+      "file": "1D6CDD78-F846-4536-9E67-A32EDB2238E7.drawing",
+      "bytes": 14824,
+      "SHA256": "c5d150860fbffdf665cc82a9bb6d6a4f9f83524bfe1670c054017abf46ffabaa",
+      "kind": "editable original/current ink"
+    },
+    {
+      "file": "1D6CDD78-F846-4536-9E67-A32EDB2238E7-original.drawing",
+      "bytes": 12629,
+      "SHA256": "994a9c2422dd8e13cf64afd797fd9f772346c6d6acab1df638d07dfd483b74fa",
+      "kind": "editable original/current ink"
+    }
+  ],
+  "sourceInkBindingsAndGeometryRetainedPrivately": true
+}

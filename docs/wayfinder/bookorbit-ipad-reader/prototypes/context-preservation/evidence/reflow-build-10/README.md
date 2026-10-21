@@ -17,3 +17,5 @@ The composites pair the actual WKWebView snapshot with the native-rendered drawi
 The native listener is bound to loopback and stops on leaving a walkthrough; both simulator probe listeners were stopped. No Mac background server was started. Raw physical notes, account/Team/device identifiers, signed exports and device-tool logs remain private.
 
 The [first physical comparison load](ipad-first-load.json) preserves the route limitation: the comparison folder was absent on the initial collection attempt after the launch request. The user then opened the named walkthrough manually and confirmed the reading page and Step 1 of 4 were visible. Loading diagnostics are separate from appearance acceptance or editing results.
+
+The [live underline choice](human-underline-choice.json) is “Follow each line with a reshaped copy”. This selects an appearance for further investigation. It does not establish direct editing of adapted pieces or imply acceptance of explicit target/role assignment. The independent circle choice remains pending.
