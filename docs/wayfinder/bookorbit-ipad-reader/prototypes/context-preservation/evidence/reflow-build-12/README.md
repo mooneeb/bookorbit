@@ -14,4 +14,6 @@ The [compatibility check](legacy-review-compatibility.json) exercises the actual
 
 [iPad preparation](ipad-preparation.json) records a successful fresh backup after the user reconnected/unlocked the device. All 242 files match after staging, with none changed, missing or added. Reader erased gap - build 12.ipa has a matching transfer round trip and the original app identity. Actual installation, signing dates and live gap-reflow results remain pending.
 
+After the user reported installing build 12, the [first installation check](ipad-installation-attempt-1.json) found all 242 saved files unchanged. A fresh copy of the on-device installer still matches build 12, but the installed reader metadata and reader-only SideStore signed export both report build 11. The export retains build 11's earlier signing dates. The cause is not established. The reader was left unopened and a fresh import of the exact build 12 file was requested. This is not a verified build 12 installation or a live walkthrough result.
+
 The guide links the primary Apple mask documentation and states the candidate's explicit underline role, borrowed whitespace joins, character limit and unresolved native fragment interaction limits. Raw physical ink and private device/signing information remain outside the repository. No production code changed.

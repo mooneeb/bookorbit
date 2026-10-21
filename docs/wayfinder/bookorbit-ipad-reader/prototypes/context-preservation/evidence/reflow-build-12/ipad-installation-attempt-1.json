@@ -1,0 +1,27 @@
+{
+  "recordedUTC": "2026-10-21T14:07:41.794841+00:00",
+  "userReport": "Build 12 installed; still in SideStore",
+  "expectedBuild": "12",
+  "installedReaderBuild": "11",
+  "signedReaderExportBuild": "11",
+  "signedReaderExportCodeSignatureVerified": true,
+  "signedReaderExportProfileCreationUTC": "2026-10-21T10:51:53Z",
+  "signedReaderExportProfileExpirationUTC": "2026-10-28T10:51:53Z",
+  "onDeviceCandidate": {
+    "path": "Documents/Signing Trial/Reader erased gap - build 12.ipa",
+    "build": "12",
+    "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+    "matchesVerifiedStagedIPA": true
+  },
+  "savedFilesBeforeOpening": {
+    "beforeFileCount": 242,
+    "afterFileCount": 242,
+    "unchangedCount": 242,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "readerOpenedByAgent": false,
+  "interpretation": "The correct build 12 installer is present on the iPad, but the installed reader and reader-only SideStore export still identify as build 11. Build 12 installation is not verified. The cause is not established. A fresh import of the exact build 12 file using My Apps + was requested; the reader remains unopened.",
+  "privateIdentifiersOmitted": true
+}
