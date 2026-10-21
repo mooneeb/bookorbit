@@ -1,0 +1,31 @@
+{
+  "recordedUTC": "2026-10-21T09:41:59.334449+00:00",
+  "build": "9",
+  "walkthrough": "Let a marked sentence wrap",
+  "userAnswer": "No, the mark no longer fits the sentence",
+  "result": "failed",
+  "decisionImplication": "Whole-group translation and uniform scaling does not meet the sentence-wrap requirement. The single-word pass does not establish general text-following ink.",
+  "snapshotExitCode": 0,
+  "scope": "Physical live verdict. No constraint on supported annotations or changed drawing semantics has been accepted by the user.",
+  "deviceReviewState": {
+    "groups": 1,
+    "step": 3,
+    "tried": [true, true, true],
+    "answer": "No, this needs changes",
+    "layoutActions": ["wrap", "wrap", "wrap", "wrap", "unwrap", "unwrap"],
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2"
+  },
+  "editableDrawingFiles": [
+    {
+      "file": "513B7B8E-DB67-4524-A513-44F824792E9B-original.drawing",
+      "bytes": 13332,
+      "SHA256": "0981f9379fad9fbb3aedb0146a7d433d3c6430d8c74d3100345841ce100336a2"
+    },
+    {
+      "file": "513B7B8E-DB67-4524-A513-44F824792E9B.drawing",
+      "bytes": 13332,
+      "SHA256": "0981f9379fad9fbb3aedb0146a7d433d3c6430d8c74d3100345841ce100336a2"
+    }
+  ],
+  "evidencePreservedPrivately": true
+}

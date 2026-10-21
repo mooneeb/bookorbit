@@ -1,0 +1,44 @@
+{
+  "recordedUTC": "2026-10-21T09:37:41.307847+00:00",
+  "build": "9",
+  "walkthrough": "Keep a note on a word as text grows",
+  "userAnswer": "yes it did but what did link selected words do?",
+  "acceptedResult": "The mark and arrow stayed on the chosen useful and the handwritten important remained readable at larger and smaller text sizes.",
+  "selectionWorkflowAcceptance": "not inferred; the user asked what Link selected words does, and its purpose was explained",
+  "snapshotExitCode": 0,
+  "scope": "Live result for the single-word size-change example only. Does not establish literal sentence-wrap behavior, arbitrary ink or acceptance of the explicit selection burden.",
+  "deviceReviewState": {
+    "groups": 1,
+    "step": 3,
+    "tried": [true, true, true],
+    "answer": "Yes, the connection stayed clear",
+    "layoutActions": [
+      "bigger",
+      "bigger",
+      "bigger",
+      "bigger",
+      "bigger",
+      "bigger",
+      "smaller",
+      "smaller",
+      "smaller",
+      "smaller",
+      "smaller",
+      "smaller"
+    ],
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2"
+  },
+  "editableDrawingFiles": [
+    {
+      "file": "EBEA9113-CAC5-49C5-AC31-BBEDA9F2D6C5-original.drawing",
+      "bytes": 9477,
+      "SHA256": "3ad11e866c684e5289afe8651f3bd8003583babdba2db0277fdea493d51f998c"
+    },
+    {
+      "file": "EBEA9113-CAC5-49C5-AC31-BBEDA9F2D6C5.drawing",
+      "bytes": 9477,
+      "SHA256": "3ad11e866c684e5289afe8651f3bd8003583babdba2db0277fdea493d51f998c"
+    }
+  ],
+  "evidencePreservedPrivately": true
+}
