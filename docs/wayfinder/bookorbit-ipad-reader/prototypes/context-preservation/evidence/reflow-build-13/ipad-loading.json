@@ -1,0 +1,28 @@
+{
+  "recordedUTC": "2026-10-21T16:17:25.107502+00:00",
+  "scenario": "underline-gap-reflow",
+  "appBuild": "13",
+  "iPadOS": "26.6.1",
+  "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+  "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+  "resourceRequestCount": 13,
+  "allResourceRequestsHTTP200": true,
+  "allResourceRequestsAllowed": true,
+  "retainedAttempt": {
+    "step": 3,
+    "tried": [true, true, true, false, false, false],
+    "answer": null,
+    "lineCopies": 0,
+    "gapSnapshotPresent": false,
+    "checkedStepsAndAnswerUnchanged": true,
+    "groupsUnchanged": true,
+    "nativeDrawingFileCount": 1,
+    "allNativeDrawingFilesUnchanged": true
+  },
+  "automaticProbeEnabled": false,
+  "simulatorInputEnabled": false,
+  "resetByAgent": false,
+  "freshPhysicalRetryPending": true,
+  "privateIdentifiersOmitted": true,
+  "interpretation": "The checked steps and native ink belong to the retained, incomplete build 12 attempt. Loading build 13 preserves them and does not establish a new physical result. A fresh user-controlled six-step retry was requested; the agent did not reset this attempt."
+}

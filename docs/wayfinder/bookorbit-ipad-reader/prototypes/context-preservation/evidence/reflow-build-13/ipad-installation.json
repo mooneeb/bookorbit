@@ -1,0 +1,33 @@
+{
+  "recordedUTC": "2026-10-21T16:16:23.090789+00:00",
+  "userReport": "Build 13 installed; still in SideStore",
+  "build": "13",
+  "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+  "installedMetadataMatchesSignedExport": true,
+  "codeSignatureVerified": true,
+  "profileAndSignedEntitlementsMatch": true,
+  "sameTeamAsVerifiedBuild12": true,
+  "intendedDeviceIncluded": true,
+  "freeLocalProvision": true,
+  "profileCreationUTC": "2026-10-21T16:14:55Z",
+  "profileExpirationUTC": "2026-10-28T16:14:55Z",
+  "resourcesMatchStagedBuild": {
+    "Fixtures/Reflow/reader.js": true,
+    "Fixtures/Reflow/index.html": true,
+    "Fixtures/Reflow/reflow.epub": true
+  },
+  "nativeExecutableUUIDMatchesStagedBuild": {
+    "OrbitContextPrototype": true,
+    "OrbitContextPrototype.debug.dylib": true
+  },
+  "savedFilesBeforeOpening": {
+    "beforeFiles": 247,
+    "afterFiles": 247,
+    "unchangedFiles": 247,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "readerOpenedByAgentBeforeSnapshot": false,
+  "privateIdentifiersOmitted": true
+}
