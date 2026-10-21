@@ -1,0 +1,59 @@
+{
+  "recordedUTC": "2026-10-21T13:43:41.636360+00:00",
+  "environment": "iPad Air 13-inch (M3) Simulator, iOS 26.0, actual build 12 controller",
+  "fixtures": "Read-only copies of the physical build 11 local-edit walkthroughs from the fresh backup",
+  "results": [
+    {
+      "walkthrough": "underline-local-edit",
+      "checks": {
+        "groups": true,
+        "lineCopies": true,
+        "sourceHash": false,
+        "answer": true,
+        "tried": true,
+        "step": true,
+        "layoutActions": true,
+        "markLayout": true,
+        "allNativeDrawingFilesUnchanged": true,
+        "actualBuild12ControllerLoaded": true
+      },
+      "preExistingSavedAnswer": "Yes, edits stayed on their own line",
+      "tried": [true, true, true, true, true],
+      "lineCopies": 3,
+      "sourceFingerprintObservation": {
+        "beforeBookFingerprint": "",
+        "afterBookFingerprint": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+        "groupFingerprintsUnchanged": true,
+        "allowedEmptyBookFingerprintFill": true
+      },
+      "compatible": true
+    },
+    {
+      "walkthrough": "circle-local-edit",
+      "checks": {
+        "groups": true,
+        "lineCopies": true,
+        "sourceHash": true,
+        "answer": true,
+        "tried": true,
+        "step": true,
+        "layoutActions": true,
+        "markLayout": true,
+        "allNativeDrawingFilesUnchanged": true,
+        "actualBuild12ControllerLoaded": true
+      },
+      "preExistingSavedAnswer": "I could not complete this check",
+      "tried": [true, true, true, true, false],
+      "lineCopies": 3,
+      "sourceFingerprintObservation": {
+        "beforeBookFingerprint": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+        "afterBookFingerprint": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+        "groupFingerprintsUnchanged": true,
+        "allowedEmptyBookFingerprintFill": false
+      },
+      "compatible": true
+    }
+  ],
+  "scope": "Decoder/storage compatibility. Different line breaks can pause the old fixed-layout editing view; this does not claim layout fidelity or new physical acceptance. Existing answers are copied fixture data, not automation-supplied verdicts.",
+  "initialObservation": "The first fixed two-second check still saw the copied build 11 geometry. Waiting for actual build 12 geometry established controller loading. A strict aggregate fingerprint equality check then failed for underline: its initially empty book-level fingerprint was populated from the identical EPUB, while group fingerprints and all native ink stayed unchanged. Both observations are retained instead of declaring untouched copied files a loading proof."
+}

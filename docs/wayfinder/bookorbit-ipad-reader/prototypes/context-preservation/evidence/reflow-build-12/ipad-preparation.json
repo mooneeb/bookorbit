@@ -1,0 +1,21 @@
+{
+  "recordedUTC": "2026-10-21T13:43:39.746280+00:00",
+  "build": "12",
+  "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+  "stagedFile": "On My iPad / Orbit Context PROTOTYPE / Signing Trial / Reader erased gap - build 12.ipa",
+  "scratchFilesBackedUp": 242,
+  "allScratchHashesUnchangedAfterStaging": true,
+  "comparison": {
+    "beforeFiles": 242,
+    "afterFiles": 242,
+    "changedFiles": [],
+    "missingFiles": [],
+    "addedFiles": []
+  },
+  "unsignedIPASHA256": "760976a19ebe7759e28d1e413b64968c328c3fcbb62120dcaa9ce3f67608261e",
+  "stagedRoundTripMatches": true,
+  "EPUBSourceUnchanged": true,
+  "initialBackupAttempt": "Timed out after 30 seconds; user reconnected and unlocked the iPad, then a fresh backup succeeded",
+  "installed": false,
+  "physicalGapReflowVerdict": "pending"
+}

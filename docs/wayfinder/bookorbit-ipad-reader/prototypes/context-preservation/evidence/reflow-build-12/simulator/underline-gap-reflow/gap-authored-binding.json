@@ -1,0 +1,486 @@
+{
+  "cells": [
+    {
+      "rect": { "height": 38, "x": 219.390625, "y": 152.71875, "width": 20 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:0,\/1:1)",
+      "collapsed": false,
+      "quote": "T",
+      "clip": { "height": 51, "x": 219.390625, "y": 150.71875, "width": 20 }
+    },
+    {
+      "rect": { "x": 238.390625, "y": 152.71875, "height": 38, "width": 20 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:1,\/1:2)",
+      "collapsed": false,
+      "quote": "h",
+      "clip": { "x": 238.390625, "y": 150.71875, "height": 51, "width": 20 }
+    },
+    {
+      "rect": { "x": 257.390625, "width": 16, "height": 38, "y": 152.71875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:2,\/1:3)",
+      "collapsed": false,
+      "quote": "e",
+      "clip": { "x": 257.390625, "width": 16, "height": 51, "y": 150.71875 }
+    },
+    {
+      "rect": { "height": 38, "width": 9, "x": 272.390625, "y": 152.71875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:3,\/1:4)",
+      "collapsed": false,
+      "quote": " ",
+      "clip": { "height": 51, "width": 9, "x": 272.390625, "y": 150.71875 }
+    },
+    {
+      "rect": { "height": 38, "y": 152.71875, "x": 280.390625, "width": 29 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:4,\/1:5)",
+      "collapsed": false,
+      "quote": "m",
+      "clip": { "height": 51, "y": 150.71875, "x": 280.390625, "width": 29 }
+    },
+    {
+      "rect": { "x": 308.390625, "height": 38, "y": 152.71875, "width": 19 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:5,\/1:6)",
+      "collapsed": false,
+      "quote": "o",
+      "clip": { "x": 308.390625, "height": 51, "y": 150.71875, "width": 19 }
+    },
+    {
+      "rect": { "y": 152.71875, "width": 14, "height": 38, "x": 326.390625 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:6,\/1:7)",
+      "collapsed": false,
+      "quote": "s",
+      "clip": { "y": 150.71875, "width": 14, "height": 51, "x": 326.390625 }
+    },
+    {
+      "rect": { "x": 339.390625, "y": 152.71875, "width": 12, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:7,\/1:8)",
+      "collapsed": false,
+      "quote": "t",
+      "clip": { "x": 339.390625, "y": 150.71875, "width": 12, "height": 51 }
+    },
+    {
+      "rect": { "width": 9, "x": 350.390625, "height": 38, "y": 152.71875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:8,\/1:9)",
+      "collapsed": false,
+      "quote": " ",
+      "clip": { "width": 9, "x": 350.390625, "height": 51, "y": 150.71875 }
+    },
+    {
+      "rect": { "width": 20, "x": 358.390625, "height": 38, "y": 152.71875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:9,\/1:10)",
+      "collapsed": false,
+      "quote": "u",
+      "clip": { "width": 20, "x": 358.390625, "height": 51, "y": 150.71875 }
+    },
+    {
+      "rect": { "x": 377.390625, "y": 152.71875, "width": 14, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:10,\/1:11)",
+      "collapsed": false,
+      "quote": "s",
+      "clip": { "x": 377.390625, "y": 150.71875, "width": 14, "height": 51 }
+    },
+    {
+      "rect": { "height": 38, "y": 152.71875, "x": 390.390625, "width": 17 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:11,\/1:12)",
+      "collapsed": false,
+      "quote": "e",
+      "clip": { "height": 51, "y": 150.71875, "x": 390.390625, "width": 17 }
+    },
+    {
+      "rect": { "y": 152.71875, "width": 11, "height": 38, "x": 406.390625 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:12,\/1:13)",
+      "collapsed": false,
+      "quote": "f",
+      "clip": { "y": 150.71875, "width": 11, "height": 51, "x": 406.390625 }
+    },
+    {
+      "rect": { "y": 152.71875, "x": 416.390625, "height": 38, "width": 20 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:13,\/1:14)",
+      "collapsed": false,
+      "quote": "u",
+      "clip": { "y": 150.71875, "x": 416.390625, "height": 51, "width": 20 }
+    },
+    {
+      "rect": { "height": 38, "x": 435.390625, "y": 152.71875, "width": 10 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:14,\/1:15)",
+      "collapsed": false,
+      "quote": "l",
+      "clip": { "height": 51, "x": 435.390625, "y": 150.71875, "width": 10 }
+    },
+    {
+      "rect": { "x": 444.390625, "y": 152.71875, "height": 38, "width": 9 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:15,\/1:16)",
+      "collapsed": false,
+      "quote": " ",
+      "clip": { "x": 444.390625, "y": 150.71875, "height": 51, "width": 9 }
+    },
+    {
+      "rect": { "height": 38, "x": 452.390625, "y": 152.71875, "width": 18 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:16,\/1:17)",
+      "collapsed": false,
+      "quote": "o",
+      "clip": { "height": 51, "x": 452.390625, "y": 150.71875, "width": 18 }
+    },
+    {
+      "rect": { "y": 152.71875, "x": 469.390625, "width": 19, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:17,\/1:18)",
+      "collapsed": false,
+      "quote": "b",
+      "clip": { "y": 150.71875, "x": 469.390625, "width": 19, "height": 51 }
+    },
+    {
+      "rect": { "height": 38, "y": 152.71875, "x": 487.390625, "width": 15 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:18,\/1:19)",
+      "collapsed": false,
+      "quote": "s",
+      "clip": { "height": 51, "y": 150.71875, "x": 487.390625, "width": 15 }
+    },
+    {
+      "rect": { "width": 16, "y": 152.71875, "x": 501.390625, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:19,\/1:20)",
+      "collapsed": false,
+      "quote": "e",
+      "clip": { "width": 16, "y": 150.71875, "x": 501.390625, "height": 51 }
+    },
+    {
+      "rect": { "y": 152.71875, "width": 14, "x": 516.390625, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:20,\/1:21)",
+      "collapsed": false,
+      "quote": "r",
+      "clip": { "y": 150.71875, "width": 14, "x": 516.390625, "height": 51 }
+    },
+    {
+      "rect": { "height": 38, "x": 529.390625, "width": 17, "y": 152.71875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:21,\/1:22)",
+      "collapsed": false,
+      "quote": "v",
+      "clip": { "height": 51, "x": 529.390625, "width": 17, "y": 150.71875 }
+    },
+    {
+      "rect": { "height": 38, "x": 545.390625, "width": 17, "y": 152.71875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:22,\/1:23)",
+      "collapsed": false,
+      "quote": "a",
+      "clip": { "height": 51, "x": 545.390625, "width": 17, "y": 150.71875 }
+    },
+    {
+      "rect": { "y": 152.71875, "width": 12, "height": 38, "x": 561.390625 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:23,\/1:24)",
+      "collapsed": false,
+      "quote": "t",
+      "clip": { "y": 150.71875, "width": 12, "height": 51, "x": 561.390625 }
+    },
+    {
+      "rect": { "y": 152.71875, "height": 38, "x": 572.390625, "width": 11 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:24,\/1:25)",
+      "collapsed": false,
+      "quote": "i",
+      "clip": { "y": 150.71875, "height": 51, "x": 572.390625, "width": 11 }
+    },
+    {
+      "rect": { "height": 38, "x": 582.390625, "y": 152.71875, "width": 18 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:25,\/1:26)",
+      "collapsed": false,
+      "quote": "o",
+      "clip": { "height": 51, "x": 582.390625, "y": 150.71875, "width": 18 }
+    },
+    {
+      "rect": { "y": 152.71875, "width": 20, "height": 38, "x": 599.390625 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:26,\/1:27)",
+      "collapsed": false,
+      "quote": "n",
+      "clip": { "y": 150.71875, "width": 20, "height": 51, "x": 599.390625 }
+    },
+    {
+      "rect": { "y": 152.71875, "x": 618.390625, "width": 8, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:27,\/1:28)",
+      "collapsed": false,
+      "quote": " ",
+      "clip": { "y": 150.71875, "x": 618.390625, "width": 8, "height": 51 }
+    },
+    {
+      "rect": { "height": 38, "y": 152.71875, "x": 625.390625, "width": 19 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:28,\/1:29)",
+      "collapsed": false,
+      "quote": "k",
+      "clip": { "height": 51, "y": 150.71875, "x": 625.390625, "width": 19 }
+    },
+    {
+      "rect": { "y": 152.71875, "height": 38, "x": 643.390625, "width": 16 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:29,\/1:30)",
+      "collapsed": false,
+      "quote": "e",
+      "clip": { "y": 150.71875, "height": 51, "x": 643.390625, "width": 16 }
+    },
+    {
+      "rect": { "width": 16, "height": 38, "x": 658.390625, "y": 152.71875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:30,\/1:31)",
+      "collapsed": false,
+      "quote": "e",
+      "clip": { "width": 16, "height": 51, "x": 658.390625, "y": 150.71875 }
+    },
+    {
+      "rect": { "x": 674.390625, "height": 38, "width": 19, "y": 152.71875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:31,\/1:32)",
+      "collapsed": false,
+      "quote": "p",
+      "clip": { "x": 674.390625, "height": 51, "width": 19, "y": 150.71875 }
+    },
+    {
+      "rect": { "width": 15, "y": 152.71875, "x": 692.390625, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:32,\/1:33)",
+      "collapsed": false,
+      "quote": "s",
+      "clip": { "width": 15, "y": 150.71875, "x": 692.390625, "height": 51 }
+    },
+    {
+      "rect": { "y": 152.71875, "width": 8, "height": 38, "x": 706.390625 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:33,\/1:34)",
+      "collapsed": false,
+      "quote": " ",
+      "clip": { "y": 150.71875, "width": 8, "height": 51, "x": 706.390625 }
+    },
+    {
+      "rect": { "x": 713.390625, "height": 38, "y": 152.71875, "width": 11 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:34,\/1:35)",
+      "collapsed": false,
+      "quote": "i",
+      "clip": { "x": 713.390625, "height": 51, "y": 150.71875, "width": 11 }
+    },
+    {
+      "rect": { "width": 12, "x": 723.390625, "y": 152.71875, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:35,\/1:36)",
+      "collapsed": false,
+      "quote": "t",
+      "clip": { "width": 12, "x": 723.390625, "y": 150.71875, "height": 51 }
+    },
+    {
+      "rect": {
+        "y": 152.71875,
+        "width": 14.078125,
+        "x": 734.390625,
+        "height": 38
+      },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:36,\/1:37)",
+      "collapsed": false,
+      "quote": "s",
+      "clip": {
+        "y": 150.71875,
+        "width": 14.078125,
+        "x": 734.390625,
+        "height": 51
+      }
+    },
+    {
+      "rect": { "y": 152.71875, "width": 1, "height": 38, "x": 740.9296875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:37,\/1:38)",
+      "collapsed": true,
+      "quote": " ",
+      "clip": { "y": 150.71875, "width": 1, "height": 51, "x": 740.9296875 }
+    },
+    {
+      "rect": { "x": 219.390625, "width": 18, "y": 203.71875, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:38,\/1:39)",
+      "collapsed": false,
+      "quote": "o",
+      "clip": {
+        "x": 219.390625,
+        "width": 18,
+        "y": 201.71875,
+        "height": 68.80000000000001
+      }
+    },
+    {
+      "rect": { "width": 14, "height": 38, "x": 236.390625, "y": 203.71875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:39,\/1:40)",
+      "collapsed": false,
+      "quote": "r",
+      "clip": {
+        "width": 14,
+        "height": 68.80000000000001,
+        "x": 236.390625,
+        "y": 201.71875
+      }
+    },
+    {
+      "rect": { "width": 10, "x": 249.390625, "y": 203.71875, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:40,\/1:41)",
+      "collapsed": false,
+      "quote": "i",
+      "clip": {
+        "width": 10,
+        "x": 249.390625,
+        "y": 201.71875,
+        "height": 68.80000000000001
+      }
+    },
+    {
+      "rect": { "height": 38, "x": 258.390625, "width": 18, "y": 203.71875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:41,\/1:42)",
+      "collapsed": false,
+      "quote": "g",
+      "clip": {
+        "height": 68.80000000000001,
+        "x": 258.390625,
+        "width": 18,
+        "y": 201.71875
+      }
+    },
+    {
+      "rect": { "x": 275.390625, "width": 10, "y": 203.71875, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:42,\/1:43)",
+      "collapsed": false,
+      "quote": "i",
+      "clip": {
+        "x": 275.390625,
+        "width": 10,
+        "y": 201.71875,
+        "height": 68.80000000000001
+      }
+    },
+    {
+      "rect": { "x": 284.390625, "y": 203.71875, "width": 20, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:43,\/1:44)",
+      "collapsed": false,
+      "quote": "n",
+      "clip": {
+        "x": 284.390625,
+        "y": 201.71875,
+        "width": 20,
+        "height": 68.80000000000001
+      }
+    },
+    {
+      "rect": { "height": 38, "width": 17, "y": 203.71875, "x": 303.390625 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:44,\/1:45)",
+      "collapsed": false,
+      "quote": "a",
+      "clip": {
+        "height": 68.80000000000001,
+        "width": 17,
+        "y": 201.71875,
+        "x": 303.390625
+      }
+    },
+    {
+      "rect": { "x": 319.390625, "y": 203.71875, "height": 38, "width": 10 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:45,\/1:46)",
+      "collapsed": false,
+      "quote": "l",
+      "clip": {
+        "x": 319.390625,
+        "y": 201.71875,
+        "height": 68.80000000000001,
+        "width": 10
+      }
+    },
+    {
+      "rect": { "x": 328.390625, "y": 203.71875, "height": 38, "width": 9 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:46,\/1:47)",
+      "collapsed": false,
+      "quote": " ",
+      "clip": {
+        "x": 328.390625,
+        "y": 201.71875,
+        "height": 68.80000000000001,
+        "width": 9
+      }
+    },
+    {
+      "rect": { "x": 336.390625, "y": 203.71875, "width": 15, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:47,\/1:48)",
+      "collapsed": false,
+      "quote": "c",
+      "clip": {
+        "x": 336.390625,
+        "y": 201.71875,
+        "width": 15,
+        "height": 68.80000000000001
+      }
+    },
+    {
+      "rect": { "x": 350.390625, "y": 203.71875, "width": 19, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:48,\/1:49)",
+      "collapsed": false,
+      "quote": "o",
+      "clip": {
+        "x": 350.390625,
+        "y": 201.71875,
+        "width": 19,
+        "height": 68.80000000000001
+      }
+    },
+    {
+      "rect": { "height": 38, "x": 368.390625, "width": 19, "y": 203.71875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:49,\/1:50)",
+      "collapsed": false,
+      "quote": "n",
+      "clip": {
+        "height": 68.80000000000001,
+        "x": 368.390625,
+        "width": 19,
+        "y": 201.71875
+      }
+    },
+    {
+      "rect": { "width": 12, "x": 387.390625, "height": 38, "y": 203.71875 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:50,\/1:51)",
+      "collapsed": false,
+      "quote": "t",
+      "clip": {
+        "width": 12,
+        "x": 387.390625,
+        "height": 68.80000000000001,
+        "y": 201.71875
+      }
+    },
+    {
+      "rect": { "x": 398.390625, "y": 203.71875, "width": 16, "height": 38 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:51,\/1:52)",
+      "collapsed": false,
+      "quote": "e",
+      "clip": {
+        "x": 398.390625,
+        "y": 201.71875,
+        "width": 16,
+        "height": 68.80000000000001
+      }
+    },
+    {
+      "rect": { "height": 38, "y": 203.71875, "width": 17, "x": 413.390625 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:52,\/1:53)",
+      "collapsed": false,
+      "quote": "x",
+      "clip": {
+        "height": 68.80000000000001,
+        "y": 201.71875,
+        "width": 17,
+        "x": 413.390625
+      }
+    },
+    {
+      "rect": { "x": 429.390625, "height": 38, "y": 203.71875, "width": 12 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:53,\/1:54)",
+      "collapsed": false,
+      "quote": "t",
+      "clip": {
+        "x": 429.390625,
+        "height": 68.80000000000001,
+        "y": 201.71875,
+        "width": 12
+      }
+    },
+    {
+      "rect": { "y": 203.71875, "height": 38, "x": 440.390625, "width": 10 },
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:54,\/1:55)",
+      "collapsed": false,
+      "quote": ".",
+      "clip": {
+        "y": 201.71875,
+        "height": 68.80000000000001,
+        "x": 440.390625,
+        "width": 10
+      }
+    }
+  ],
+  "font": 32,
+  "file": "gap-current.drawing"
+}

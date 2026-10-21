@@ -1,0 +1,36 @@
+{
+  "activeLine": 1,
+  "framePolicy": "Fixed text-line reference frames, never refit to edited drawing bounds",
+  "identityPolicy": "Separate native drawing and exact line range CFI\/quote per copied mark",
+  "pieces": [
+    {
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:0,\/1:38)",
+      "id": "591346E3-55A1-4E12-A1E3-A4A44031CF59",
+      "inkHash": "a96533a4e3e0046466cbcba140b3d98f94cd1115a156decf76f19d9e0bf86346",
+      "quote": "The most useful observation keeps its ",
+      "referenceFrame": {
+        "height": 38,
+        "width": 529.078125,
+        "x": 219.390625,
+        "y": 152.71875
+      }
+    },
+    {
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:38,\/1:55)",
+      "id": "4232FE28-E824-4412-B72E-87D3DF5D03F2",
+      "inkHash": "d67b2a69bc557aff4aed363639cc4527f9525374351057d85a03710fd171de1e",
+      "quote": "original context.",
+      "referenceFrame": {
+        "height": 38,
+        "width": 231,
+        "x": 219.390625,
+        "y": 203.71875
+      }
+    }
+  ],
+  "scope": "Same-line-layout local editing; subsequent reflow of edited pieces remains unvalidated",
+  "sourceInkHashes": {
+    "303BD4EF-664A-41FC-AB06-2596AC1CA44F": "3a4bdf37bf69a8a9ef3c2e5a03a4d142e232d92c6e331e33f30636c51620b247"
+  },
+  "undoPolicy": "Native Undo per active line; switching lines or reloading clears Undo history"
+}

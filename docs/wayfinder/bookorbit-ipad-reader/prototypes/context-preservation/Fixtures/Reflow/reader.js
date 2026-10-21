@@ -11,6 +11,7 @@ let sequence = 0;
 let chapter = Number(new URL(location.href).searchParams.get("chapter") || 0);
 let focusCFI = null;
 let includeLineBindings = false;
+let includeCharacterBindings = false;
 const send = (message) => {
   const payload = JSON.parse(JSON.stringify(message));
   window.lastReflowMessage = payload;
@@ -80,6 +81,44 @@ function selectedLines(range, index) {
   return lines.map((line) => ({ cfi: view.getCFI(index, line.range), quote: line.range.toString(), rect: line.rect }));
 }
 
+function selectedCharacters(range, index) {
+  if (range.toString().length > 160) throw new Error("For this gap check, select only the first sentence.");
+  const doc = range.startContainer.ownerDocument;
+  const root = range.commonAncestorContainer;
+  const nodes = [];
+  if (root.nodeType === Node.TEXT_NODE) nodes.push(root);
+  else {
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (range.intersectsNode(node)) nodes.push(node);
+    }
+  }
+  const characters = [];
+  for (const node of nodes) {
+    const start = node === range.startContainer ? range.startOffset : 0;
+    const end = node === range.endContainer ? range.endOffset : node.textContent.length;
+    for (let offset = start; offset < end;) {
+      const length = String.fromCodePoint(node.textContent.codePointAt(offset)).length;
+      const unit = doc.createRange();
+      unit.setStart(node, offset);
+      unit.setEnd(node, Math.min(offset + length, end));
+      offset += length;
+      const rect = fragments(unit).find((r) => r.width > 0);
+      if (rect) characters.push({ cfi: view.getCFI(index, unit), quote: unit.toString(), rect, collapsed: false });
+      else if (!unit.toString().trim() && characters.length) {
+        const previous = characters.at(-1).rect;
+        characters.push({
+          cfi: view.getCFI(index, unit),
+          quote: unit.toString(),
+          collapsed: true,
+          rect: { x: previous.x + previous.width / 2 - 0.5, y: previous.y, width: 1, height: previous.height },
+        });
+      }
+    }
+  }
+  return characters;
+}
+
 function measure(reason = "layout") {
   const started = performance.now();
   const contents = view.renderer?.getContents() || [];
@@ -101,6 +140,7 @@ function measure(reason = "layout") {
         visible,
         index: locator.index,
         ...(includeLineBindings ? { lines: selectedLines(range, locator.index) } : {}),
+        ...(includeCharacterBindings ? { characters: selectedCharacters(range, locator.index) } : {}),
       };
     } catch (error) {
       return { id: group.id, status: "unresolved", message: String(error) };
@@ -140,10 +180,11 @@ view.addEventListener("load", ({ detail: { doc } }) => {
 });
 
 window.reflow = {
-  setGroups(value, activeCFI, lineBindings = false) {
+  setGroups(value, activeCFI, lineBindings = false, characterBindings = false) {
     groups = value;
     focusCFI = activeCFI;
     includeLineBindings = lineBindings;
+    includeCharacterBindings = characterBindings;
     schedule("groups-restored");
   },
   select() {

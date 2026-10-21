@@ -1,0 +1,997 @@
+{
+  "feedback": "",
+  "gapSnapshot": {
+    "cells": [
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:0,\/1:1)",
+        "clip": {
+          "height": 64,
+          "width": 25,
+          "x": 70,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "T",
+        "rect": {
+          "height": 46,
+          "width": 25,
+          "x": 70,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:1,\/1:2)",
+        "clip": {
+          "height": 64,
+          "width": 25,
+          "x": 94,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "h",
+        "rect": {
+          "height": 46,
+          "width": 25,
+          "x": 94,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:2,\/1:3)",
+        "clip": {
+          "height": 64,
+          "width": 20,
+          "x": 118,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "e",
+        "rect": {
+          "height": 46,
+          "width": 20,
+          "x": 118,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:3,\/1:4)",
+        "clip": {
+          "height": 64,
+          "width": 11,
+          "x": 137,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": " ",
+        "rect": {
+          "height": 46,
+          "width": 11,
+          "x": 137,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:4,\/1:5)",
+        "clip": {
+          "height": 64,
+          "width": 36,
+          "x": 147,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "m",
+        "rect": {
+          "height": 46,
+          "width": 36,
+          "x": 147,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:5,\/1:6)",
+        "clip": {
+          "height": 64,
+          "width": 22,
+          "x": 182,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "o",
+        "rect": {
+          "height": 46,
+          "width": 22,
+          "x": 182,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:6,\/1:7)",
+        "clip": {
+          "height": 64,
+          "width": 19,
+          "x": 203,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "s",
+        "rect": {
+          "height": 46,
+          "width": 19,
+          "x": 203,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:7,\/1:8)",
+        "clip": {
+          "height": 64,
+          "width": 14,
+          "x": 221,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "t",
+        "rect": {
+          "height": 46,
+          "width": 14,
+          "x": 221,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:8,\/1:9)",
+        "clip": {
+          "height": 64,
+          "width": 11,
+          "x": 234,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": " ",
+        "rect": {
+          "height": 46,
+          "width": 11,
+          "x": 234,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:9,\/1:10)",
+        "clip": {
+          "height": 64,
+          "width": 24,
+          "x": 244,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "u",
+        "rect": {
+          "height": 46,
+          "width": 24,
+          "x": 244,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:10,\/1:11)",
+        "clip": {
+          "height": 64,
+          "width": 18,
+          "x": 267,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "s",
+        "rect": {
+          "height": 46,
+          "width": 18,
+          "x": 267,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:11,\/1:12)",
+        "clip": {
+          "height": 64,
+          "width": 21,
+          "x": 284,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "e",
+        "rect": {
+          "height": 46,
+          "width": 21,
+          "x": 284,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:12,\/1:13)",
+        "clip": {
+          "height": 64,
+          "width": 14,
+          "x": 304,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "f",
+        "rect": {
+          "height": 46,
+          "width": 14,
+          "x": 304,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:13,\/1:14)",
+        "clip": {
+          "height": 64,
+          "width": 24,
+          "x": 317,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "u",
+        "rect": {
+          "height": 46,
+          "width": 24,
+          "x": 317,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:14,\/1:15)",
+        "clip": {
+          "height": 64,
+          "width": 12,
+          "x": 340,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "l",
+        "rect": {
+          "height": 46,
+          "width": 12,
+          "x": 340,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:15,\/1:16)",
+        "clip": {
+          "height": 64,
+          "width": 11,
+          "x": 351,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": " ",
+        "rect": {
+          "height": 46,
+          "width": 11,
+          "x": 351,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:16,\/1:17)",
+        "clip": {
+          "height": 64,
+          "width": 22,
+          "x": 361,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "o",
+        "rect": {
+          "height": 46,
+          "width": 22,
+          "x": 361,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:17,\/1:18)",
+        "clip": {
+          "height": 64,
+          "width": 24,
+          "x": 382,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "b",
+        "rect": {
+          "height": 46,
+          "width": 24,
+          "x": 382,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:18,\/1:19)",
+        "clip": {
+          "height": 64,
+          "width": 18,
+          "x": 405,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "s",
+        "rect": {
+          "height": 46,
+          "width": 18,
+          "x": 405,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:19,\/1:20)",
+        "clip": {
+          "height": 64,
+          "width": 20,
+          "x": 422,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "e",
+        "rect": {
+          "height": 46,
+          "width": 20,
+          "x": 422,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:20,\/1:21)",
+        "clip": {
+          "height": 64,
+          "width": 18,
+          "x": 441,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "r",
+        "rect": {
+          "height": 46,
+          "width": 18,
+          "x": 441,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:21,\/1:22)",
+        "clip": {
+          "height": 64,
+          "width": 21,
+          "x": 458,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "v",
+        "rect": {
+          "height": 46,
+          "width": 21,
+          "x": 458,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:22,\/1:23)",
+        "clip": {
+          "height": 64,
+          "width": 21,
+          "x": 478,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "a",
+        "rect": {
+          "height": 46,
+          "width": 21,
+          "x": 478,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:23,\/1:24)",
+        "clip": {
+          "height": 64,
+          "width": 15,
+          "x": 498,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "t",
+        "rect": {
+          "height": 46,
+          "width": 15,
+          "x": 498,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:24,\/1:25)",
+        "clip": {
+          "height": 64,
+          "width": 12,
+          "x": 512,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "i",
+        "rect": {
+          "height": 46,
+          "width": 12,
+          "x": 512,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:25,\/1:26)",
+        "clip": {
+          "height": 64,
+          "width": 23,
+          "x": 523,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "o",
+        "rect": {
+          "height": 46,
+          "width": 23,
+          "x": 523,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:26,\/1:27)",
+        "clip": {
+          "height": 64,
+          "width": 24,
+          "x": 545,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "n",
+        "rect": {
+          "height": 46,
+          "width": 24,
+          "x": 545,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:27,\/1:28)",
+        "clip": {
+          "height": 64,
+          "width": 10,
+          "x": 569,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": " ",
+        "rect": {
+          "height": 46,
+          "width": 10,
+          "x": 569,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:28,\/1:29)",
+        "clip": {
+          "height": 64,
+          "width": 23,
+          "x": 578,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "k",
+        "rect": {
+          "height": 46,
+          "width": 23,
+          "x": 578,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:29,\/1:30)",
+        "clip": {
+          "height": 64,
+          "width": 20,
+          "x": 600,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "e",
+        "rect": {
+          "height": 46,
+          "width": 20,
+          "x": 600,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:30,\/1:31)",
+        "clip": {
+          "height": 64,
+          "width": 20,
+          "x": 619,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "e",
+        "rect": {
+          "height": 46,
+          "width": 20,
+          "x": 619,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:31,\/1:32)",
+        "clip": {
+          "height": 64,
+          "width": 24,
+          "x": 638,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "p",
+        "rect": {
+          "height": 46,
+          "width": 24,
+          "x": 638,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:32,\/1:33)",
+        "clip": {
+          "height": 64,
+          "width": 18,
+          "x": 661,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "s",
+        "rect": {
+          "height": 46,
+          "width": 18,
+          "x": 661,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:33,\/1:34)",
+        "clip": {
+          "height": 64,
+          "width": 11,
+          "x": 678,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": " ",
+        "rect": {
+          "height": 46,
+          "width": 11,
+          "x": 678,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:34,\/1:35)",
+        "clip": {
+          "height": 64,
+          "width": 13,
+          "x": 688,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "i",
+        "rect": {
+          "height": 46,
+          "width": 13,
+          "x": 688,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:35,\/1:36)",
+        "clip": {
+          "height": 64,
+          "width": 15,
+          "x": 700,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "t",
+        "rect": {
+          "height": 46,
+          "width": 15,
+          "x": 700,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:36,\/1:37)",
+        "clip": {
+          "height": 64,
+          "width": 18,
+          "x": 714,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "s",
+        "rect": {
+          "height": 46,
+          "width": 18,
+          "x": 714,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:37,\/1:38)",
+        "clip": {
+          "height": 64,
+          "width": 10,
+          "x": 731,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": " ",
+        "rect": {
+          "height": 46,
+          "width": 10,
+          "x": 731,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:38,\/1:39)",
+        "clip": {
+          "height": 64,
+          "width": 23,
+          "x": 740,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "o",
+        "rect": {
+          "height": 46,
+          "width": 23,
+          "x": 740,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:39,\/1:40)",
+        "clip": {
+          "height": 64,
+          "width": 17,
+          "x": 762,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "r",
+        "rect": {
+          "height": 46,
+          "width": 17,
+          "x": 762,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:40,\/1:41)",
+        "clip": {
+          "height": 64,
+          "width": 13,
+          "x": 778,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "i",
+        "rect": {
+          "height": 46,
+          "width": 13,
+          "x": 778,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:41,\/1:42)",
+        "clip": {
+          "height": 64,
+          "width": 22,
+          "x": 790,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "g",
+        "rect": {
+          "height": 46,
+          "width": 22,
+          "x": 790,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:42,\/1:43)",
+        "clip": {
+          "height": 64,
+          "width": 12,
+          "x": 811,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "i",
+        "rect": {
+          "height": 46,
+          "width": 12,
+          "x": 811,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:43,\/1:44)",
+        "clip": {
+          "height": 64,
+          "width": 25,
+          "x": 822,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "n",
+        "rect": {
+          "height": 46,
+          "width": 25,
+          "x": 822,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:44,\/1:45)",
+        "clip": {
+          "height": 64,
+          "width": 21,
+          "x": 846,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "a",
+        "rect": {
+          "height": 46,
+          "width": 21,
+          "x": 846,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:45,\/1:46)",
+        "clip": {
+          "height": 64,
+          "width": 11.984375,
+          "x": 866,
+          "y": 183.15625
+        },
+        "collapsed": false,
+        "quote": "l",
+        "rect": {
+          "height": 46,
+          "width": 11.984375,
+          "x": 866,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:46,\/1:47)",
+        "clip": {
+          "height": 64,
+          "width": 1,
+          "x": 871.4921875,
+          "y": 183.15625
+        },
+        "collapsed": true,
+        "quote": " ",
+        "rect": {
+          "height": 46,
+          "width": 1,
+          "x": 871.4921875,
+          "y": 185.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:47,\/1:48)",
+        "clip": {
+          "height": 84,
+          "width": 19,
+          "x": 70,
+          "y": 247.15625
+        },
+        "collapsed": false,
+        "quote": "c",
+        "rect": {
+          "height": 46,
+          "width": 19,
+          "x": 70,
+          "y": 249.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:48,\/1:49)",
+        "clip": {
+          "height": 84,
+          "width": 22,
+          "x": 88,
+          "y": 247.15625
+        },
+        "collapsed": false,
+        "quote": "o",
+        "rect": {
+          "height": 46,
+          "width": 22,
+          "x": 88,
+          "y": 249.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:49,\/1:50)",
+        "clip": {
+          "height": 84,
+          "width": 25,
+          "x": 109,
+          "y": 247.15625
+        },
+        "collapsed": false,
+        "quote": "n",
+        "rect": {
+          "height": 46,
+          "width": 25,
+          "x": 109,
+          "y": 249.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:50,\/1:51)",
+        "clip": {
+          "height": 84,
+          "width": 15,
+          "x": 133,
+          "y": 247.15625
+        },
+        "collapsed": false,
+        "quote": "t",
+        "rect": {
+          "height": 46,
+          "width": 15,
+          "x": 133,
+          "y": 249.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:51,\/1:52)",
+        "clip": {
+          "height": 84,
+          "width": 20,
+          "x": 147,
+          "y": 247.15625
+        },
+        "collapsed": false,
+        "quote": "e",
+        "rect": {
+          "height": 46,
+          "width": 20,
+          "x": 147,
+          "y": 249.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:52,\/1:53)",
+        "clip": {
+          "height": 84,
+          "width": 21,
+          "x": 166,
+          "y": 247.15625
+        },
+        "collapsed": false,
+        "quote": "x",
+        "rect": {
+          "height": 46,
+          "width": 21,
+          "x": 166,
+          "y": 249.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:53,\/1:54)",
+        "clip": {
+          "height": 84,
+          "width": 15,
+          "x": 186,
+          "y": 247.15625
+        },
+        "collapsed": false,
+        "quote": "t",
+        "rect": {
+          "height": 46,
+          "width": 15,
+          "x": 186,
+          "y": 249.15625
+        }
+      },
+      {
+        "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:54,\/1:55)",
+        "clip": {
+          "height": 84,
+          "width": 12,
+          "x": 200,
+          "y": 247.15625
+        },
+        "collapsed": false,
+        "quote": ".",
+        "rect": {
+          "height": 46,
+          "width": 12,
+          "x": 200,
+          "y": 249.15625
+        }
+      }
+    ],
+    "file": "gap-current.drawing",
+    "font": 40
+  },
+  "groups": [
+    {
+      "association": "Tester explicitly selected the words and started this ink group",
+      "cfi": "epubcfi(\/6\/4!\/4\/4,,\/1:55)",
+      "font": 24,
+      "id": "303BD4EF-664A-41FC-AB06-2596AC1CA44F",
+      "origin": {
+        "height": 29,
+        "width": 576,
+        "x": 70,
+        "y": 121.28125
+      },
+      "placement": "Whole editable drawing uniformly scales with font size and follows the first range fragment",
+      "prefix": "",
+      "quote": "The most useful observation keeps its original context.",
+      "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+      "suffix": " A small mark can bring an old idea back into focus."
+    }
+  ],
+  "lastFont": 40,
+  "layoutActions": ["local-prepare", "gap-wide", "gap-large", "gap-reload"],
+  "lineCopies": [
+    {
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:0,\/1:38)",
+      "font": 32,
+      "id": "591346E3-55A1-4E12-A1E3-A4A44031CF59",
+      "quote": "The most useful observation keeps its ",
+      "reference": {
+        "height": 38,
+        "width": 529.078125,
+        "x": 219.390625,
+        "y": 152.71875
+      }
+    },
+    {
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:38,\/1:55)",
+      "font": 32,
+      "id": "4232FE28-E824-4412-B72E-87D3DF5D03F2",
+      "quote": "original context.",
+      "reference": {
+        "height": 38,
+        "width": 231,
+        "x": 219.390625,
+        "y": 203.71875
+      }
+    }
+  ],
+  "localUnsentMarker": "Saved locally; not sent to a server",
+  "markLayout": "gap-reflow",
+  "question": "Did your erased gap follow useful through both layouts, with the rest of the underline readable and still editable after reload?",
+  "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+  "step": 0,
+  "tried": [false, false, false, false, false, false]
+}

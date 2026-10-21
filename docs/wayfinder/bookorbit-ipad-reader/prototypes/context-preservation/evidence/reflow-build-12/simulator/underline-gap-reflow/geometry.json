@@ -1,0 +1,699 @@
+{
+  "activeResources": 1,
+  "appBuild": "12",
+  "appProcessLifetimePeakRSS": 361267200,
+  "deviceModel": "iPad",
+  "flow": "paginated",
+  "font": 40,
+  "generation": 6,
+  "groups": [
+    {
+      "characters": [
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:0,\/1:1)",
+          "collapsed": false,
+          "quote": "T",
+          "rect": {
+            "height": 46,
+            "width": 25,
+            "x": 70,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:1,\/1:2)",
+          "collapsed": false,
+          "quote": "h",
+          "rect": {
+            "height": 46,
+            "width": 25,
+            "x": 94,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:2,\/1:3)",
+          "collapsed": false,
+          "quote": "e",
+          "rect": {
+            "height": 46,
+            "width": 20,
+            "x": 118,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:3,\/1:4)",
+          "collapsed": false,
+          "quote": " ",
+          "rect": {
+            "height": 46,
+            "width": 11,
+            "x": 137,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:4,\/1:5)",
+          "collapsed": false,
+          "quote": "m",
+          "rect": {
+            "height": 46,
+            "width": 36,
+            "x": 147,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:5,\/1:6)",
+          "collapsed": false,
+          "quote": "o",
+          "rect": {
+            "height": 46,
+            "width": 22,
+            "x": 182,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:6,\/1:7)",
+          "collapsed": false,
+          "quote": "s",
+          "rect": {
+            "height": 46,
+            "width": 19,
+            "x": 203,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:7,\/1:8)",
+          "collapsed": false,
+          "quote": "t",
+          "rect": {
+            "height": 46,
+            "width": 14,
+            "x": 221,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:8,\/1:9)",
+          "collapsed": false,
+          "quote": " ",
+          "rect": {
+            "height": 46,
+            "width": 11,
+            "x": 234,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:9,\/1:10)",
+          "collapsed": false,
+          "quote": "u",
+          "rect": {
+            "height": 46,
+            "width": 24,
+            "x": 244,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:10,\/1:11)",
+          "collapsed": false,
+          "quote": "s",
+          "rect": {
+            "height": 46,
+            "width": 18,
+            "x": 267,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:11,\/1:12)",
+          "collapsed": false,
+          "quote": "e",
+          "rect": {
+            "height": 46,
+            "width": 21,
+            "x": 284,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:12,\/1:13)",
+          "collapsed": false,
+          "quote": "f",
+          "rect": {
+            "height": 46,
+            "width": 14,
+            "x": 304,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:13,\/1:14)",
+          "collapsed": false,
+          "quote": "u",
+          "rect": {
+            "height": 46,
+            "width": 24,
+            "x": 317,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:14,\/1:15)",
+          "collapsed": false,
+          "quote": "l",
+          "rect": {
+            "height": 46,
+            "width": 12,
+            "x": 340,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:15,\/1:16)",
+          "collapsed": false,
+          "quote": " ",
+          "rect": {
+            "height": 46,
+            "width": 11,
+            "x": 351,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:16,\/1:17)",
+          "collapsed": false,
+          "quote": "o",
+          "rect": {
+            "height": 46,
+            "width": 22,
+            "x": 361,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:17,\/1:18)",
+          "collapsed": false,
+          "quote": "b",
+          "rect": {
+            "height": 46,
+            "width": 24,
+            "x": 382,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:18,\/1:19)",
+          "collapsed": false,
+          "quote": "s",
+          "rect": {
+            "height": 46,
+            "width": 18,
+            "x": 405,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:19,\/1:20)",
+          "collapsed": false,
+          "quote": "e",
+          "rect": {
+            "height": 46,
+            "width": 20,
+            "x": 422,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:20,\/1:21)",
+          "collapsed": false,
+          "quote": "r",
+          "rect": {
+            "height": 46,
+            "width": 18,
+            "x": 441,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:21,\/1:22)",
+          "collapsed": false,
+          "quote": "v",
+          "rect": {
+            "height": 46,
+            "width": 21,
+            "x": 458,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:22,\/1:23)",
+          "collapsed": false,
+          "quote": "a",
+          "rect": {
+            "height": 46,
+            "width": 21,
+            "x": 478,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:23,\/1:24)",
+          "collapsed": false,
+          "quote": "t",
+          "rect": {
+            "height": 46,
+            "width": 15,
+            "x": 498,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:24,\/1:25)",
+          "collapsed": false,
+          "quote": "i",
+          "rect": {
+            "height": 46,
+            "width": 12,
+            "x": 512,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:25,\/1:26)",
+          "collapsed": false,
+          "quote": "o",
+          "rect": {
+            "height": 46,
+            "width": 23,
+            "x": 523,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:26,\/1:27)",
+          "collapsed": false,
+          "quote": "n",
+          "rect": {
+            "height": 46,
+            "width": 24,
+            "x": 545,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:27,\/1:28)",
+          "collapsed": false,
+          "quote": " ",
+          "rect": {
+            "height": 46,
+            "width": 10,
+            "x": 569,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:28,\/1:29)",
+          "collapsed": false,
+          "quote": "k",
+          "rect": {
+            "height": 46,
+            "width": 23,
+            "x": 578,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:29,\/1:30)",
+          "collapsed": false,
+          "quote": "e",
+          "rect": {
+            "height": 46,
+            "width": 20,
+            "x": 600,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:30,\/1:31)",
+          "collapsed": false,
+          "quote": "e",
+          "rect": {
+            "height": 46,
+            "width": 20,
+            "x": 619,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:31,\/1:32)",
+          "collapsed": false,
+          "quote": "p",
+          "rect": {
+            "height": 46,
+            "width": 24,
+            "x": 638,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:32,\/1:33)",
+          "collapsed": false,
+          "quote": "s",
+          "rect": {
+            "height": 46,
+            "width": 18,
+            "x": 661,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:33,\/1:34)",
+          "collapsed": false,
+          "quote": " ",
+          "rect": {
+            "height": 46,
+            "width": 11,
+            "x": 678,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:34,\/1:35)",
+          "collapsed": false,
+          "quote": "i",
+          "rect": {
+            "height": 46,
+            "width": 13,
+            "x": 688,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:35,\/1:36)",
+          "collapsed": false,
+          "quote": "t",
+          "rect": {
+            "height": 46,
+            "width": 15,
+            "x": 700,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:36,\/1:37)",
+          "collapsed": false,
+          "quote": "s",
+          "rect": {
+            "height": 46,
+            "width": 18,
+            "x": 714,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:37,\/1:38)",
+          "collapsed": false,
+          "quote": " ",
+          "rect": {
+            "height": 46,
+            "width": 10,
+            "x": 731,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:38,\/1:39)",
+          "collapsed": false,
+          "quote": "o",
+          "rect": {
+            "height": 46,
+            "width": 23,
+            "x": 740,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:39,\/1:40)",
+          "collapsed": false,
+          "quote": "r",
+          "rect": {
+            "height": 46,
+            "width": 17,
+            "x": 762,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:40,\/1:41)",
+          "collapsed": false,
+          "quote": "i",
+          "rect": {
+            "height": 46,
+            "width": 13,
+            "x": 778,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:41,\/1:42)",
+          "collapsed": false,
+          "quote": "g",
+          "rect": {
+            "height": 46,
+            "width": 22,
+            "x": 790,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:42,\/1:43)",
+          "collapsed": false,
+          "quote": "i",
+          "rect": {
+            "height": 46,
+            "width": 12,
+            "x": 811,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:43,\/1:44)",
+          "collapsed": false,
+          "quote": "n",
+          "rect": {
+            "height": 46,
+            "width": 25,
+            "x": 822,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:44,\/1:45)",
+          "collapsed": false,
+          "quote": "a",
+          "rect": {
+            "height": 46,
+            "width": 21,
+            "x": 846,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:45,\/1:46)",
+          "collapsed": false,
+          "quote": "l",
+          "rect": {
+            "height": 46,
+            "width": 11.984375,
+            "x": 866,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:46,\/1:47)",
+          "collapsed": true,
+          "quote": " ",
+          "rect": {
+            "height": 46,
+            "width": 1,
+            "x": 871.4921875,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:47,\/1:48)",
+          "collapsed": false,
+          "quote": "c",
+          "rect": {
+            "height": 46,
+            "width": 19,
+            "x": 70,
+            "y": 249.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:48,\/1:49)",
+          "collapsed": false,
+          "quote": "o",
+          "rect": {
+            "height": 46,
+            "width": 22,
+            "x": 88,
+            "y": 249.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:49,\/1:50)",
+          "collapsed": false,
+          "quote": "n",
+          "rect": {
+            "height": 46,
+            "width": 25,
+            "x": 109,
+            "y": 249.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:50,\/1:51)",
+          "collapsed": false,
+          "quote": "t",
+          "rect": {
+            "height": 46,
+            "width": 15,
+            "x": 133,
+            "y": 249.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:51,\/1:52)",
+          "collapsed": false,
+          "quote": "e",
+          "rect": {
+            "height": 46,
+            "width": 20,
+            "x": 147,
+            "y": 249.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:52,\/1:53)",
+          "collapsed": false,
+          "quote": "x",
+          "rect": {
+            "height": 46,
+            "width": 21,
+            "x": 166,
+            "y": 249.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:53,\/1:54)",
+          "collapsed": false,
+          "quote": "t",
+          "rect": {
+            "height": 46,
+            "width": 15,
+            "x": 186,
+            "y": 249.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:54,\/1:55)",
+          "collapsed": false,
+          "quote": ".",
+          "rect": {
+            "height": 46,
+            "width": 12,
+            "x": 200,
+            "y": 249.15625
+          }
+        }
+      ],
+      "id": "303BD4EF-664A-41FC-AB06-2596AC1CA44F",
+      "index": 1,
+      "lines": [
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:0,\/1:47)",
+          "quote": "The most useful observation keeps its original ",
+          "rect": {
+            "height": 46,
+            "width": 807.984375,
+            "x": 70,
+            "y": 185.15625
+          }
+        },
+        {
+          "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:47,\/1:55)",
+          "quote": "context.",
+          "rect": {
+            "height": 46,
+            "width": 142,
+            "x": 70,
+            "y": 249.15625
+          }
+        }
+      ],
+      "quote": "The most useful observation keeps its original context.",
+      "rects": [
+        {
+          "height": 46,
+          "width": 807.98828125,
+          "x": 70,
+          "y": 185.15625
+        },
+        {
+          "height": 46,
+          "width": 142,
+          "x": 70,
+          "y": 249.15625
+        }
+      ],
+      "status": "resolved",
+      "visible": [
+        {
+          "height": 46,
+          "width": 807.98828125,
+          "x": 70,
+          "y": 185.15625
+        },
+        {
+          "height": 46,
+          "width": 142,
+          "x": 70,
+          "y": 249.15625
+        }
+      ]
+    }
+  ],
+  "inputEvidence": "Simulator input; no physical Pencil verdict",
+  "iPadOS": "26.0",
+  "location": {
+    "cfi": "epubcfi(\/6\/4!\/4\/8\/1:122)",
+    "location": {
+      "current": 3,
+      "next": 3,
+      "total": 30
+    },
+    "section": {
+      "current": 1,
+      "total": 9
+    }
+  },
+  "markComparisonMode": "gap-reflow",
+  "measurementMilliseconds": 2,
+  "reason": "relocate",
+  "renderer": "BookOrbit Foliate at ce118e3890ea8c9019857cb7556552cdc9992f8e",
+  "sequence": 27,
+  "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+  "type": "geometry",
+  "viewport": {
+    "height": 927,
+    "width": 992
+  }
+}

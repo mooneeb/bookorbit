@@ -1,0 +1,13 @@
+{
+  "displayInkHash": "3a315ed8bbb21b6ea02af0744b346dce36c646f6a001be4b3f953b9b2c80d1b7",
+  "displayStrokes": 71,
+  "method": "Actual character CFIs and geometry; native masks intersect glyph-column clips before stroke transforms",
+  "projectionMilliseconds": 1.006007194519043,
+  "scope": "Explicit underline role, current sample, complete range on page. No circle reconstruction or general handwriting guarantee.",
+  "sourceCells": 55,
+  "sourceFont": 40,
+  "sourceInkHash": "3a315ed8bbb21b6ea02af0744b346dce36c646f6a001be4b3f953b9b2c80d1b7",
+  "sourceStrokes": 71,
+  "targetCells": 55,
+  "targetFont": 40
+}

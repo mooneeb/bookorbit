@@ -1,0 +1,28 @@
+# Keep an erased underline gap with its word
+
+Build 12 asks whether an actual erased gap follows its word through further EPUB reflow, with the moved underline still editable. The earlier local-edit checks kept the same line layout. Their passes do not answer this question.
+
+Open **Keep an erased underline gap with its word** in All walkthroughs. This standalone walkthrough has its own note, sample selection, six checks, controls, answer and reset. It needs no previous drawing. It explicitly asks for an underline, without handwritten comments or circles.
+
+1. With writing off, select the first whole sentence and tap Link selected words. Turn writing on, draw your own underline beneath it, then turn writing off.
+2. Tap **Prepare the wrapped underline**. With writing on, use the native pixel eraser to erase a small gap directly below useful on the first line. Turn writing off and remember which letters sit above the gap.
+3. Tap **Widen the text and follow the gap**. The gap must remain below those letters. Check the rest of the underline, especially joins between the old lines. Report extra gaps, broken joins or shifted ink.
+4. Tap **Make text larger and follow the gap**. Check the gap again, including that it was not repeated under other words.
+5. The whole displayed underline is now editable together. Turn writing on, erase below a different word, then Undo. That part must return while the earlier useful gap remains. Turn writing off. Changing layout starts a fresh Undo history.
+6. Tap **Reload the edited underline**. Check the saved gap, then erase a small part and Undo again. The saved gap must remain, while the new erasure is undone. Turn writing off.
+
+Each step has its own tester-controlled checkbox. The final question names the expected gap placement, readability, editing and reload behavior, with explicit positive, failure and inability-to-complete answers. The user judges the real native ink, including any unintended seams. Blue text boxes are only a reference.
+
+## Candidate and limits
+
+The EPUB is unchanged. The tester explicitly selects a sentence and assigns the underline role by following this walkthrough. The experiment does not infer arbitrary stroke meaning. Actual character ranges within that selection receive Foliate CFIs and measured text rectangles. The initial wrapped line copies retain native editable ink and its eraser masks. For a new layout, the candidate clips native strokes into character columns, intersects those clips with existing masks in pre-transform coordinates, and transforms the fragments to their matching text rectangles. Ink, original paths, masks and random seeds remain native data.
+
+A whitespace character collapsed at an old line break still has its real text CFI. Its source geometry borrows a one-point strip from the preceding character's underline. The strip comes from the middle of that character column, avoiding the fading endpoint of the pen stroke. If that space later becomes visible, a copy of that strip bridges the join. If the target space is collapsed, no fragment is displayed for it. This deliberately synthesizes a join from existing ink rather than pretending there was an authored stroke in the old line-break space. Boundary appearance, pressure and texture fidelity need live judgment. The first simulator run omitted these spaces and showed an unwanted extra gap at an old join; that failed appearance is retained privately.
+
+After projection, the complete displayed underline is the native editable canvas. A real edit saves the updated native drawing together with the text geometry in which it was edited. Subsequent reflow starts from that state. Reloading reads the actual saved drawing. Fixed text frames prevent partial erasing from stretching the remaining ink back into its old bounds. The original whole-sentence drawing, the initial line copies and the first erased snapshot are kept separately.
+
+This is bounded to a selected range of at most 160 characters, with the whole sentence visible on the page. The self-authored English fixture does not establish ligature, RTL, vertical writing, arbitrary handwriting, circle reconstruction, cross-page connectors or crowded-note behavior. Newly rendered fragments may show seams. The native stroke eraser and lasso can act on derived fragments rather than the original uninterrupted stroke; those interactions are not established by this pixel-eraser check. Manual target assignment and the reset of Undo history across layouts remain proposed interaction constraints. Native erasing, Undo and reflow acceptance require the live iPad check.
+
+Apple explains how native stroke masks retain partial erasures and why the full path alone does not describe visible ink in [Inspect, modify, and construct PencilKit drawings](https://developer.apple.com/videos/play/wwdc2020/10148/). The mask coordinate contract and API availability were also checked against the installed PencilKit SDK header. Core Graphics provides the [path operations](https://developer.apple.com/documentation/coregraphics/cgpath) used to intersect the clips. The code uses APIs available on the iPadOS 26 baseline; it does not use the newer stroke-identity or substroke APIs.
+
+See [build 12 evidence](evidence/reflow-build-12/README.md). No production reader, note schema, sync contract, server or database changed.

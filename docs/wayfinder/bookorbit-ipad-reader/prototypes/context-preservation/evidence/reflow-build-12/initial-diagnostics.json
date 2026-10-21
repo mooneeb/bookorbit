@@ -1,0 +1,7 @@
+{
+  "initialAppearanceIssue": "Without an explicit binding for whitespace collapsed at an old line break, widening the text left an unintended gap at the old join.",
+  "firstJoinAttempt": "A strip from the stroke endpoint was faint because it included the fading pen cap.",
+  "currentJoinRule": "Retain the actual space CFI; borrow a one-point strip from the middle of the preceding character column when it must become visible. Suppress it when the target space is collapsed.",
+  "rawSyntheticRunsRetainedPrivately": true,
+  "meaning": "This synthesizes a join from native ink. The final native composites show the candidate; pressure, texture and seam acceptance remain human questions."
+}

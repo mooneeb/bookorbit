@@ -17,7 +17,8 @@ struct ReflowScenario {
   var chapter: Int? = nil
   var markKind: String? = nil
   var answers: [String]? = nil
-  var localEditing: Bool { id.hasSuffix("-local-edit") }
+  var gapReflow: Bool { id == "underline-gap-reflow" }
+  var localEditing: Bool { id.hasSuffix("-local-edit") || gapReflow }
 
   static func localEdit(_ kind: String) -> ReflowScenario {
     let underline = kind == "underline"
@@ -313,5 +314,49 @@ struct ReflowScenario {
           "Keep the single original shape", "None of these appearances works for me",
           "I could not judge these appearances",
         ]),
-    ] + [localEdit("underline"), localEdit("circle")]
+    ] + [
+      localEdit("underline"), localEdit("circle"),
+      .init(
+        id: "underline-gap-reflow", title: "Keep an erased underline gap with its word",
+        aim:
+          "Erase below useful, change the line breaks, then check that the gap still belongs to useful and the underline remains editable.",
+        steps: [
+          .init(
+            instruction:
+              "With writing OFF, select the first whole sentence and tap Link selected words. Turn writing ON and draw only an underline beneath the sentence. Turn writing OFF. This walkthrough starts with its own fresh note.",
+            check: "I selected the first sentence and drew my own underline."),
+          .init(
+            instruction:
+              "Prepare the wrapped underline. Turn writing ON and use the native pixel eraser to make a small gap directly below useful on the first line. Turn writing OFF. Remember which letters are above your gap.",
+            check: "I erased a small gap below useful and checked its position.",
+            action: "local-prepare", button: "Prepare the wrapped underline"),
+          .init(
+            instruction:
+              "Widen the text. Look at useful in its new position: the same gap should still be beneath the same letters. Check the rest of the underline too, including where the old lines join. Report extra gaps, broken joins or shifted marks.",
+            check: "I checked the gap and the rest of the underline in wider text.",
+            action: "gap-wide", button: "Widen the text and follow the gap"),
+          .init(
+            instruction:
+              "Make the text larger again. The line breaks may change. Check that your gap still belongs to useful and that other words have not gained the same gap.",
+            check: "I checked the gap through another text-size change.", action: "gap-large",
+            button: "Make text larger and follow the gap"),
+          .init(
+            instruction:
+              "All the displayed underline is now editable together. Turn writing ON, erase a small part below another word, then Undo. That part should return while the earlier gap below useful stays. Turn writing OFF. A layout change starts a fresh Undo history.",
+            check: "I edited and restored the moved underline without closing the original gap."),
+          .init(
+            instruction:
+              "Reload the saved underline and chapter. Check useful and its gap again. Turn writing ON, erase a small part and Undo it. The saved gap should stay, and the new erasure should be undone. Turn writing OFF.",
+            check: "The saved gap survived reloading and the underline remained editable.",
+            action: "gap-reload", button: "Reload the edited underline"),
+        ],
+        question:
+          "Did your erased gap follow useful through both layouts, with the rest of the underline readable and still editable after reload?",
+        success: "Yes, the gap followed its word and editing worked", chapter: 1,
+        markKind: "underline",
+        answers: [
+          "Yes, the gap followed its word and editing worked",
+          "No, a gap or mark moved incorrectly", "I could not complete this walkthrough",
+        ]),
+    ]
 }

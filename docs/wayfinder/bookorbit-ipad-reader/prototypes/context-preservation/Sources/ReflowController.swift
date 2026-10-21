@@ -2,7 +2,7 @@ import PencilKit
 import UIKit
 import WebKit
 
-struct ReflowRect: Codable {
+struct ReflowRect: Codable, Equatable {
   var x: Double
   var y: Double
   var width: Double
@@ -37,6 +37,7 @@ struct ReflowReview: Codable {
   var localUnsentMarker = "Saved locally; not sent to a server"
   var markLayout: String?
   var lineCopies: [ReflowLineCopy]?
+  var gapSnapshot: ReflowGapSnapshot?
 }
 
 @MainActor
@@ -182,6 +183,10 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
   var lineDrawings: [String: PKDrawing] = [:]
   var activeLine = 0
   var preparingLines = false
+  var gapDrawing = PKDrawing()
+  var gapDisplayedCells: [ReflowGapCell] = []
+  var gapDisplayedFont = 24.0
+  var gapAssignedData: Data?
   let server = ReflowServer()
   var web: WKWebView!
   let canvas = PKCanvasView()
@@ -265,7 +270,10 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     }
     let undo = button("Undo") { [weak self] in self?.canvas.undoManager?.undo() }
     let redo = button("Redo") { [weak self] in self?.canvas.undoManager?.redo() }
-    column.addArrangedSubview(row([writeButton, link, switchNote, undo, redo]))
+    column.addArrangedSubview(
+      row(
+        scenario.gapReflow
+          ? [writeButton, link, undo, redo] : [writeButton, link, switchNote, undo, redo]))
     column.addArrangedSubview(reader)
     reader.heightAnchor.constraint(greaterThanOrEqualToConstant: 240).isActive = true
     reader.clipsToBounds = true
@@ -306,6 +314,12 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
       if let data = try? Data(contentsOf: folder.appending(path: copy.id + ".drawing")) {
         lineDrawings[copy.id] = try? PKDrawing(data: data)
       }
+    }
+    if let snapshot = review.gapSnapshot,
+      let data = try? Data(contentsOf: folder.appending(path: snapshot.file)),
+      let drawing = try? PKDrawing(data: data)
+    {
+      gapDrawing = drawing
     }
     updateWriting()
     renderStep()
@@ -359,7 +373,9 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     else { return }
     let target = review.groups.indices.contains(active) ? review.groups[active].cfi : ""
     let focus = String(data: try! JSONEncoder().encode(target), encoding: .utf8)!
-    js("window.reflow.setGroups(\(text),\(focus),\(scenario.localEditing ? "true" : "false"))")
+    js(
+      "window.reflow.setGroups(\(text),\(focus),\(scenario.localEditing ? "true" : "false"),\(scenario.gapReflow ? "true" : "false"))"
+    )
   }
   func toggleWriting() {
     if !scenario.localEditing && scenario.markKind != nil && review.markLayout != nil
@@ -411,7 +427,11 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
       sampleReady = true
       review.sourceHash = hash
       syncGroups()
-      if scenario.localEditing && review.lineCopies != nil {
+      if scenario.gapReflow && review.gapSnapshot != nil {
+        js(
+          "(async()=>{await window.reflow.layout('wide');await window.reflow.restoreFont(\(savedFont));})()"
+        )
+      } else if scenario.localEditing && review.lineCopies != nil {
         js(
           "(async()=>{await window.reflow.layout('narrow');await window.reflow.restoreFont(\(savedFont));})()"
         )
@@ -428,7 +448,9 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
           Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(1))
             guard let self else { return }
-            if self.scenario.localEditing {
+            if self.scenario.gapReflow {
+              await self.runGapProbe()
+            } else if self.scenario.localEditing {
               await self.runLocalEditProbe()
             } else {
               await self.runComparisonProbe()
@@ -567,6 +589,10 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
 
   func applyGeometry() {
     guard let resolved = latestPacket["groups"] as? [[String: Any]] else { return }
+    if scenario.gapReflow && review.gapSnapshot != nil {
+      applyGapGeometry()
+      return
+    }
     if scenario.localEditing && review.lineCopies != nil {
       applyLineGeometry()
       return
@@ -662,6 +688,10 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in self?.applyGeometry() }
   }
   func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+    if scenario.gapReflow && review.gapSnapshot != nil {
+      saveGapDrawing()
+      return
+    }
     if scenario.localEditing && review.lineCopies != nil {
       saveLineDrawing()
       return
@@ -763,6 +793,10 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
       button("I could not complete this step") { [weak self] in self?.renderVerdict() })
   }
   func perform(_ action: String) {
+    if action.hasPrefix("gap-") {
+      performGapAction(action)
+      return
+    }
     if action.hasPrefix("local-") {
       performLocalEdit(action)
       return
@@ -870,6 +904,9 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
           self.lineDrawings = [:]
           self.activeLine = 0
           self.preparingLines = false
+          self.gapDrawing = PKDrawing()
+          self.gapDisplayedCells = []
+          self.gapAssignedData = nil
           self.active = 0
           self.writing = false
           self.projectedGroupID = nil
