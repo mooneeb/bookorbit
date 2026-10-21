@@ -32,4 +32,4 @@ The existing EPUB is unchanged, with SHA256 `c5a447b71601559c898fa711bf69f45110f
 
 `ReflowReview.markLayout` is optional so existing saved reviews still decode. The actual build 10 controller was exercised with a copy of the build 9 physical single-word fixture: its group, source fingerprint, answer, checks and drawing hashes survived. This simulator compatibility check does not replace physical update or Pencil checks.
 
-See the [build 10 evidence](evidence/reflow-build-10/README.md). Physical comparison verdicts remain pending. No production reader, sync contract, server or database changed.
+See the [build 10 evidence](evidence/reflow-build-10/README.md). Physical choices favor reshaped copies per line for underlines. Both copied and neat per-line circles were acceptable; the user delegated the choice to ease of implementation, so copied outlines are carried forward. Edits must affect only the words on the edited line. These choices do not validate editing or later reflow of the adapted pieces. No production reader, sync contract, server or database changed.

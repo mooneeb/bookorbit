@@ -1,0 +1,68 @@
+{
+  "recordedUTC": "2026-10-21T10:36:57.494283+00:00",
+  "build": "10",
+  "walkthrough": "Compare circles when a sentence wraps",
+  "userReply": "between 1 and 2, whichever is easier to implement",
+  "acceptableAppearanceOptions": [
+    "Separate copies around each line",
+    "Neat outlines around each line"
+  ],
+  "implementationEaseChoiceDelegatedToAgent": true,
+  "selectedDirectionForFurtherInvestigation": "Separate copies around each line",
+  "rationale": "Reuse the existing native copy-and-resize approach used by the preferred underline appearance and preserve the source stroke style. This does not establish direct editing or later reflow feasibility.",
+  "snapshotExitCode": 0,
+  "deviceReviewState": {
+    "step": 6,
+    "tried": [true, true, true, true, true, true],
+    "answer": "Separate copies around each line",
+    "markLayout": "per-line",
+    "layoutActions": [
+      "mark-original",
+      "mark-per-line",
+      "mark-enclosing",
+      "mark-neat",
+      "mark-restore",
+      "mark-neat",
+      "mark-enclosing",
+      "mark-per-line",
+      "mark-neat",
+      "mark-original",
+      "mark-original",
+      "mark-per-line",
+      "mark-enclosing",
+      "mark-neat",
+      "mark-per-line"
+    ],
+    "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2"
+  },
+  "groupCount": 1,
+  "drawingFiles": [
+    {
+      "file": "07565BDC-B703-4F75-9861-42CBBE25DFCB-original.drawing",
+      "bytes": 17999,
+      "SHA256": "ae623aa7b7eaaf4ca0c22b340b0fb3b9c3b583a5e4214b64ccdc9fc616fab44e"
+    },
+    {
+      "file": "07565BDC-B703-4F75-9861-42CBBE25DFCB.drawing",
+      "bytes": 17999,
+      "SHA256": "ae623aa7b7eaaf4ca0c22b340b0fb3b9c3b583a5e4214b64ccdc9fc616fab44e"
+    },
+    {
+      "file": "comparison-enclosing.drawing",
+      "bytes": 18031,
+      "SHA256": "55b741bf95ef37bb078cf71ebdeead181f0fdff99bdf605ffdc8071b1d059912"
+    },
+    {
+      "file": "comparison-neat.drawing",
+      "bytes": 1868,
+      "SHA256": "33afe88fe24d4f6d6051fa266db97f2376e78e2bb6aef3c9a7f12e866c51c08e"
+    },
+    {
+      "file": "comparison-per-line.drawing",
+      "bytes": 53813,
+      "SHA256": "942b98e9f9cc0e8be8d8e8b6eb18de8f02ba4ce9e0ee9364107023995cb0e62e"
+    }
+  ],
+  "sourceInkBindingsAndGeometryRetainedPrivately": true,
+  "scope": "Appearance direction only. No physical local-editing, native erase/Undo result, or target/role assignment acceptance inferred from this answer."
+}

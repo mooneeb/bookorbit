@@ -1,0 +1,7 @@
+{
+  "recordedUTC": "2026-10-21T10:36:57.495136+00:00",
+  "question": "Suppose the marked sentence wraps onto two lines. You erase a small gap in the underline or circle on the first line. Should that edit affect only the words on that line, or should the same gap appear in every copy of the mark?",
+  "userChoice": "Only the words on the line I edited",
+  "requirement": "An edit to a line-specific mark affects only its own words. Other line-specific marks remain unchanged.",
+  "scope": "Desired behavior, not a physical validation result. The existing build 10 adapted copies are read-only. Direct native editing, saved piece identity, Undo/Redo and subsequent reflow still need concrete validation."
+}
