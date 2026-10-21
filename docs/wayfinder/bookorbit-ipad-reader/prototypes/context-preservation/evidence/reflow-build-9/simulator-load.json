@@ -1,0 +1,92 @@
+{
+  "recordedUTC": "2026-10-21T08:56:06.482851+00:00",
+  "build": "9",
+  "actualFoliateEPUBLoaded": true,
+  "sampleHTMLAndModuleAndEPUBRequestsSucceeded": true,
+  "resourceRequests": [
+    {
+      "bundleRootNeededNormalization": false,
+      "path": "/Fixtures/Reflow/index.html",
+      "status": 200,
+      "allowed": true
+    },
+    {
+      "allowed": true,
+      "path": "/Fixtures/Reflow/reader.js",
+      "bundleRootNeededNormalization": false,
+      "status": 200
+    },
+    {
+      "allowed": true,
+      "bundleRootNeededNormalization": false,
+      "status": 200,
+      "path": "/foliate/view.js"
+    },
+    {
+      "bundleRootNeededNormalization": false,
+      "path": "/foliate/epubcfi.js",
+      "allowed": true,
+      "status": 200
+    },
+    {
+      "allowed": true,
+      "status": 200,
+      "bundleRootNeededNormalization": false,
+      "path": "/foliate/progress.js"
+    },
+    {
+      "bundleRootNeededNormalization": false,
+      "path": "/foliate/overlayer.js",
+      "status": 200,
+      "allowed": true
+    },
+    {
+      "allowed": true,
+      "path": "/foliate/text-walker.js",
+      "status": 200,
+      "bundleRootNeededNormalization": false
+    },
+    {
+      "path": "/foliate/streaming-loader.js",
+      "allowed": true,
+      "bundleRootNeededNormalization": false,
+      "status": 200
+    },
+    {
+      "path": "/Fixtures/Reflow/reflow.epub",
+      "allowed": true,
+      "status": 200,
+      "bundleRootNeededNormalization": false
+    },
+    {
+      "allowed": true,
+      "status": 200,
+      "bundleRootNeededNormalization": false,
+      "path": "/foliate/vendor/zip.js"
+    },
+    {
+      "bundleRootNeededNormalization": false,
+      "status": 200,
+      "path": "/foliate/epub.js",
+      "allowed": true
+    },
+    {
+      "bundleRootNeededNormalization": false,
+      "status": 200,
+      "path": "/foliate/paginator.js",
+      "allowed": true
+    },
+    {
+      "status": 200,
+      "allowed": true,
+      "bundleRootNeededNormalization": false,
+      "path": "/foliate/iframe-loader.js"
+    }
+  ],
+  "geometryPackets": 30,
+  "completedLayoutAndChapterReloadSequence": true,
+  "groups": 1,
+  "humanAnswer": null,
+  "triedChecksSet": 0,
+  "input": "Separate simulator probe; programmatic selection and synthetic native strokes, no physical Pencil verdict"
+}

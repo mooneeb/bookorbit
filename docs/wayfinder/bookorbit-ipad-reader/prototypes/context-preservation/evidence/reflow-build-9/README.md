@@ -1,0 +1,11 @@
+# Reflow build 9: bundled-resource loading correction
+
+The [first physical build 8 walkthrough failed](build8-loading-failure.json) before opening its sample. The required HTML, JavaScript and EPUB were present in the SideStore-signed archive. The device's installed bundle URL uses `/private/var`; the server standardized the request URL while leaving the bundle root unnormalized. Reproducing the same asymmetry through the macOS `/private/tmp` alias rejects existing files. Build 8's successful process launch and simulator probe did not establish that this device path worked.
+
+Build 9 canonicalizes the bundle root, requested file and allowed directories consistently, including symlinks. It continues to refuse files outside the two bundled-resource directories. A bounded forty-request diagnostic records relative resource paths and status. Page commands wait for the sample to become ready, and module-loading errors are reported directly instead of cascading into an opaque bridge exception.
+
+The [native HTTP regression probe](resource-path-regression.json) runs the actual corrected server against the signed build 8 fixture archive through three root spellings. All twenty-one checks pass: required HTML, module, EPUB and renderer bytes match, and missing/outside-root requests return 404. Probe listeners were stopped. This is a disposable reproduction, not a production test suite.
+
+The [native simulator run](simulator-load.json) opens the actual EPUB, resolves an explicitly selected CFI, and completes the synthetic-ink layout and chapter-reload sequence. Its [screen](simulator-loaded.png) shows the loaded reading sample. Human answers remain absent and all tried checkboxes remain false. Simulator loading and synthetic strokes do not establish physical Pencil behavior or acceptance.
+
+The [iPad preparation record](ipad-preparation.json) records a new private backup of all 177 scratch files, unchanged hashes after staging, and a byte-matching round trip of Reader reflow - build 9.ipa. The existing application identifier is retained. The user must import this update through SideStore with Append Team ID unchecked. Physical installation, post-install preservation and sample-load confirmation remain pending. The later lifecycle walkthrough still requires a controlled update after the user has authored its own new reflow note.

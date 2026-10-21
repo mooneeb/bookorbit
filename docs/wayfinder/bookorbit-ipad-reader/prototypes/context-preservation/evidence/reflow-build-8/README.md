@@ -1,4 +1,4 @@
-# Reflow build 8: simulator evidence, physical review pending
+# Reflow build 8: simulator evidence and failed physical load
 
 For [Validate text-following ink through actual EPUB reflow](https://github.com/mooneeb/bookorbit/issues/17). See the [walkthrough guide and explicit candidate limits](../../REFLOW.md).
 
@@ -25,6 +25,8 @@ The user imported build 8 through SideStore with the existing identifier. The [p
 Before opening the reader, a fresh private snapshot contained 176 scratch files. The earlier temporary 176-file baseline no longer exists, so a full pre-install hash comparison is unavailable. All 21 files compared against published older fixtures match, including eight editable drawings, original backgrounds and previews, and the maintenance note's record and local marker. This narrower comparison does not establish equality of every file. No restore or note change was performed.
 
 The [native launch record](native-launch.json) confirms the app opened with the first reflow walkthrough requested and no automated probe enabled. The new reflow folder was absent in the pre-launch snapshot. Physical authoring and the live verdict are still pending. The earlier preserved-page notes and the new reflow walkthroughs use separate folders.
+
+The user subsequently reported a white page saying Not found and a JavaScript exception. The physical sample did not load: its saved review has no source hash, no ink groups and no geometry. A successful process launch did not establish a successful sample load. See the [build 9 correction and regression evidence](../reflow-build-9/README.md). No physical reflow acceptance is claimed for build 8.
 
 ## Remaining gates
 

@@ -1,0 +1,130 @@
+{
+  "scope": "Native HTTP regression probe of the actual corrected ReflowServer with an injected fixture root; no user answers or Pencil input",
+  "oldPathAlgorithmReproduction": {
+    "privateTmpSpelling": {
+      "fileExists": true,
+      "allowed": false
+    },
+    "iPadInstalledBundleUsesPrivateVar": true
+  },
+  "fixedServerChecks": [
+    {
+      "rootSpelling": "direct",
+      "resource": "Fixtures/Reflow/index.html",
+      "HTTPStatus": 200,
+      "bytesMatch": true
+    },
+    {
+      "rootSpelling": "direct",
+      "resource": "Fixtures/Reflow/reader.js",
+      "HTTPStatus": 200,
+      "bytesMatch": true
+    },
+    {
+      "rootSpelling": "direct",
+      "resource": "Fixtures/Reflow/reflow.epub",
+      "HTTPStatus": 200,
+      "bytesMatch": true
+    },
+    {
+      "rootSpelling": "direct",
+      "resource": "foliate/view.js",
+      "HTTPStatus": 200,
+      "bytesMatch": true
+    },
+    {
+      "rootSpelling": "direct",
+      "resource": "Fixtures/Reflow/%2e%2e/%2e%2e/Info.plist",
+      "HTTPStatus": 404
+    },
+    {
+      "rootSpelling": "direct",
+      "resource": "Info.plist",
+      "HTTPStatus": 404
+    },
+    {
+      "rootSpelling": "direct",
+      "resource": "foliate/not-present.js",
+      "HTTPStatus": 404
+    },
+    {
+      "rootSpelling": "private-tmp",
+      "resource": "Fixtures/Reflow/index.html",
+      "HTTPStatus": 200,
+      "bytesMatch": true
+    },
+    {
+      "rootSpelling": "private-tmp",
+      "resource": "Fixtures/Reflow/reader.js",
+      "HTTPStatus": 200,
+      "bytesMatch": true
+    },
+    {
+      "rootSpelling": "private-tmp",
+      "resource": "Fixtures/Reflow/reflow.epub",
+      "HTTPStatus": 200,
+      "bytesMatch": true
+    },
+    {
+      "rootSpelling": "private-tmp",
+      "resource": "foliate/view.js",
+      "HTTPStatus": 200,
+      "bytesMatch": true
+    },
+    {
+      "rootSpelling": "private-tmp",
+      "resource": "Fixtures/Reflow/%2e%2e/%2e%2e/Info.plist",
+      "HTTPStatus": 404
+    },
+    {
+      "rootSpelling": "private-tmp",
+      "resource": "Info.plist",
+      "HTTPStatus": 404
+    },
+    {
+      "rootSpelling": "private-tmp",
+      "resource": "foliate/not-present.js",
+      "HTTPStatus": 404
+    },
+    {
+      "rootSpelling": "tmp-alias",
+      "resource": "Fixtures/Reflow/index.html",
+      "HTTPStatus": 200,
+      "bytesMatch": true
+    },
+    {
+      "rootSpelling": "tmp-alias",
+      "resource": "Fixtures/Reflow/reader.js",
+      "HTTPStatus": 200,
+      "bytesMatch": true
+    },
+    {
+      "rootSpelling": "tmp-alias",
+      "resource": "Fixtures/Reflow/reflow.epub",
+      "HTTPStatus": 200,
+      "bytesMatch": true
+    },
+    {
+      "rootSpelling": "tmp-alias",
+      "resource": "foliate/view.js",
+      "HTTPStatus": 200,
+      "bytesMatch": true
+    },
+    {
+      "rootSpelling": "tmp-alias",
+      "resource": "Fixtures/Reflow/%2e%2e/%2e%2e/Info.plist",
+      "HTTPStatus": 404
+    },
+    {
+      "rootSpelling": "tmp-alias",
+      "resource": "Info.plist",
+      "HTTPStatus": 404
+    },
+    {
+      "rootSpelling": "tmp-alias",
+      "resource": "foliate/not-present.js",
+      "HTTPStatus": 404
+    }
+  ],
+  "allPassed": true
+}

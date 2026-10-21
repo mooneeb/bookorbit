@@ -1,0 +1,22 @@
+{
+  "recordedUTC": "2026-10-21T08:56:19.581594+00:00",
+  "failedBuild": "8",
+  "userReport": "i'm getting a Not found error. I don't see anything just a white screen and aJavaScript exception occurred error",
+  "stage": "First physical walkthrough could not load its sample; no ink was created",
+  "deviceScratchObservation": {
+    "sizeReviewPresent": true,
+    "groups": 0,
+    "sourceHashEmpty": true,
+    "geometryAbsent": true
+  },
+  "installedArchiveContainsRequiredResources": true,
+  "diagnosis": "Request URL was standardized before containment checking, while the bundle root was not. The physical installed bundle uses the /private/var alias. The previous algorithm rejects an existing resource for the reproduced /private/tmp alias.",
+  "fixBuild": "9",
+  "changes": [
+    "Canonicalize the bundle root, candidate file and allowed directories consistently, including symlinks",
+    "Keep a bounded resource-request record containing relative bundle paths and status only",
+    "Keep reading commands from invoking the bridge before the sample is ready",
+    "Report module-loading failures on the page and through the native status"
+  ],
+  "physicalFixConfirmation": "pending"
+}

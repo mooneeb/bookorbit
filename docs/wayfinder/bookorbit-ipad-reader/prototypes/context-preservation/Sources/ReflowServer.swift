@@ -3,7 +3,15 @@ import Network
 
 final class ReflowServer: @unchecked Sendable {
   private var listener: NWListener?
-  private let root = Bundle.main.resourceURL!
+  private let root: URL
+  private let rootNeededNormalization: Bool
+  private var requests: [[String: Any]] = []
+  var diagnosticURL: URL?
+
+  init(root: URL = Bundle.main.resourceURL!) {
+    self.root = root.resolvingSymlinksInPath().standardizedFileURL
+    rootNeededNormalization = self.root.path != root.path
+  }
 
   func start(ready: @escaping @Sendable (UInt16) -> Void) throws {
     let parameters = NWParameters.tcp
@@ -14,7 +22,7 @@ final class ReflowServer: @unchecked Sendable {
       if case .ready = state, let port = listener?.port { ready(port.rawValue) }
     }
     listener.newConnectionHandler = { [weak self] connection in
-      guard let root = self?.root else {
+      guard let self else {
         connection.cancel()
         return
       }
@@ -29,11 +37,14 @@ final class ReflowServer: @unchecked Sendable {
           connection.cancel()
           return
         }
-        let url = root.appending(path: path).standardizedFileURL
+        let url = self.root.appending(path: path).resolvingSymlinksInPath().standardizedFileURL
         let allowed = ["Fixtures/Reflow/", "foliate/"].contains {
-          url.path.hasPrefix(root.appending(path: $0).path + "/")
+          let directory = self.root.appending(path: $0).resolvingSymlinksInPath()
+            .standardizedFileURL
+          return url.path.hasPrefix(directory.path + "/")
         }
         let payload = allowed ? try? Data(contentsOf: url) : nil
+        self.record(path: path, allowed: allowed, found: payload != nil)
         let types = [
           "html": "text/html", "js": "text/javascript", "css": "text/css",
           "epub": "application/epub+zip", "json": "application/json", "svg": "image/svg+xml",
@@ -48,6 +59,21 @@ final class ReflowServer: @unchecked Sendable {
       }
     }
     listener.start(queue: .main)
+  }
+
+  private func record(path: String, allowed: Bool, found: Bool) {
+    requests.append([
+      "path": allowed ? path : "outside bundled resource directories",
+      "allowed": allowed, "status": found ? 200 : 404,
+      "bundleRootNeededNormalization": rootNeededNormalization,
+    ])
+    if requests.count > 40 { requests.removeFirst(requests.count - 40) }
+    guard let diagnosticURL,
+      let data = try? JSONSerialization.data(withJSONObject: requests, options: [.prettyPrinted])
+    else { return }
+    try? FileManager.default.createDirectory(
+      at: diagnosticURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try? data.write(to: diagnosticURL, options: .atomic)
   }
 
   func stop() {

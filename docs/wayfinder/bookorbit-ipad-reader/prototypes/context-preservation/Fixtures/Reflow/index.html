@@ -40,6 +40,22 @@
   <body>
     <foliate-view></foliate-view>
     <div id="problem">Opening the sample EPUB…</div>
+    <script>
+      const reportLoadingError = (event) => {
+        const detail =
+          event.message ||
+          event.reason?.message ||
+          "A bundled reader file did not load.";
+        const message = `The reading sample could not open. ${detail}`;
+        document.querySelector("#problem").textContent = message;
+        window.webkit?.messageHandlers?.reflow?.postMessage({
+          type: "error",
+          message,
+        });
+      };
+      window.addEventListener("error", reportLoadingError, true);
+      window.addEventListener("unhandledrejection", reportLoadingError);
+    </script>
     <script type="module" src="./reader.js"></script>
   </body>
 </html>

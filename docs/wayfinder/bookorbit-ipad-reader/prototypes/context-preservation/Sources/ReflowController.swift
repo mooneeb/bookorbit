@@ -172,6 +172,7 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
   var applying = false
   var writing = false
   var activeAvailable = false
+  var sampleReady = false
   var lastSequence = 0
   var projectedGroupID: String?
   var history: [[String: Any]] = []
@@ -293,6 +294,8 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     }
     updateWriting()
     renderStep()
+    server.diagnosticURL = folder.appending(path: "resource-requests.json")
+    status.text = "Opening this walkthrough's reading sample."
     do {
       try server.start { [weak self] port in
         Task { @MainActor [weak self] in
@@ -327,6 +330,10 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     return stack
   }
   func js(_ source: String) {
+    guard sampleReady else {
+      status.text = "The reading sample has not opened. Page controls will work after it loads."
+      return
+    }
     web.evaluateJavaScript(source + ";void 0") { [weak self] _, error in
       if let error { self?.status.text = error.localizedDescription }
     }
@@ -379,6 +386,7 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
         return
       }
       let savedFont = review.lastFont
+      sampleReady = true
       review.sourceHash = hash
       syncGroups()
       if savedFont != 24 { js("window.reflow.restoreFont(\(savedFont))") }

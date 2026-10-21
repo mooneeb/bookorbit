@@ -2,6 +2,8 @@
 
 Throwaway native prototype for [Validate text-following ink through actual EPUB reflow](https://github.com/mooneeb/bookorbit/issues/17), on `BO-17-text-following-ink`. Physical review is pending. This is planning evidence, not production app code.
 
+Current candidate: build 9. The first physical build 8 walkthrough failed to load its sample. The [loading failure and path correction](evidence/reflow-build-9/README.md) preserve that failed attempt and distinguish the corrected simulator result from the still-pending physical review.
+
 ## Aim and current candidate
 
 Find out whether a note still means the same thing after the EPUB changes layout, and whether the required authoring effort is acceptable. The exact first example is a Pencil mark on **useful**, an arrow and handwritten **important**.
@@ -49,6 +51,7 @@ New files live under Documents/`PROTOTYPE-WIPE-ME/reflow-walkthroughs/<walkthrou
 - `<group>.drawing`: authoritative current editable drawing in canonical coordinates.
 - `<group>-original.drawing`: retained pre-reflow drawing when a layout action is first used.
 - `geometry.json` and `geometry-history.json`: current/bounded recent range fragments, source validation, viewport/flow/location, projections, canonical stroke counts/hashes, runtime and measurement observations.
+- `resource-requests.json`: the last forty local bundled-resource requests, with relative paths, containment results and HTTP status. No complete device bundle paths are recorded.
 
 At most twelve groups can be created per walkthrough. One group has the active native canvas; other visible groups use native-rendered images. Foliate loads one resource at a time in this configuration. Geometry history keeps sixty packets. These are experiment bounds, not agreed product quotas or a library-scale test. JS measurement timing is not total bridge/reflow latency. Process RSS excludes separate WebKit/GPU processes.
 
@@ -56,7 +59,7 @@ The app starts an HTTP listener bound only to `127.0.0.1` for bundled EPUB and r
 
 ## Build and probe
 
-From this directory, `python3 Reflow-fixture.py` deterministically rebuilds the EPUB. Its content and font provenance are in `Fixtures/Reflow/fixture-provenance.json` and the existing font license. Run `./run.sh simulator 8` or `./run.sh device 8`. The app identity remains `dev.mooneeb.bookorbit.contextprototype`; the earlier preserved-page walkthroughs remain accessible from the home list, and their files are not reset.
+From this directory, `python3 Reflow-fixture.py` deterministically rebuilds the EPUB. Its content and font provenance are in `Fixtures/Reflow/fixture-provenance.json` and the existing font license. Run `./run.sh simulator 9` or `./run.sh device 9`. The app identity remains `dev.mooneeb.bookorbit.contextprototype`; the earlier preserved-page walkthroughs remain accessible from the home list, and their files are not reset.
 
 The optional simulator launch arguments `--reflow-scenario=size --reflow-probe --simulator-input` run a separately labelled probe. It programmatically selects the second occurrence through a DOM Range, uses Foliate-generated CFIs and synthetic native PKStroke data, then exercises size, width, flow and chapter reload. Its files use a separate `PROBE-` prefix. It writes no checkboxes or human answers. This can expose renderer/bridge failures and check source drawing hashes; it does not establish authoring usability, physical Pencil fidelity or acceptance.
 
