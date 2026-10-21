@@ -1,0 +1,18 @@
+{
+  "recordedUTC": "2026-10-21T10:47:23.416346+00:00",
+  "fixture": "Read-only copy of the actual physical build-10 circle comparison review",
+  "environment": "iPad Air 13-inch (M3) Simulator, iOS 26.0, build 11 controller",
+  "checks": {
+    "groups": true,
+    "sourceHash": true,
+    "answer": true,
+    "tried": true,
+    "layoutActions": true,
+    "markLayout": true,
+    "currentAndOriginalInkBytesUnchanged": true,
+    "actualBuild11ControllerLoaded": true
+  },
+  "preExistingAnswer": "Separate copies around each line",
+  "answerOrigin": "Existing user answer copied with the fixture, not supplied by automation",
+  "newPhysicalAcceptance": false
+}

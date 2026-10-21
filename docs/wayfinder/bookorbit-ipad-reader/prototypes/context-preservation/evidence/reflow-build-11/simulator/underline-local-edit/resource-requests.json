@@ -1,0 +1,80 @@
+[
+  {
+    "path": "\/Fixtures\/Reflow\/index.html",
+    "status": 200,
+    "allowed": true,
+    "bundleRootNeededNormalization": false
+  },
+  {
+    "bundleRootNeededNormalization": false,
+    "path": "\/Fixtures\/Reflow\/reader.js",
+    "allowed": true,
+    "status": 200
+  },
+  {
+    "bundleRootNeededNormalization": false,
+    "path": "\/foliate\/view.js",
+    "allowed": true,
+    "status": 200
+  },
+  {
+    "status": 200,
+    "path": "\/foliate\/epubcfi.js",
+    "allowed": true,
+    "bundleRootNeededNormalization": false
+  },
+  {
+    "allowed": true,
+    "path": "\/foliate\/progress.js",
+    "bundleRootNeededNormalization": false,
+    "status": 200
+  },
+  {
+    "bundleRootNeededNormalization": false,
+    "allowed": true,
+    "status": 200,
+    "path": "\/foliate\/overlayer.js"
+  },
+  {
+    "path": "\/foliate\/text-walker.js",
+    "allowed": true,
+    "bundleRootNeededNormalization": false,
+    "status": 200
+  },
+  {
+    "allowed": true,
+    "status": 200,
+    "bundleRootNeededNormalization": false,
+    "path": "\/foliate\/streaming-loader.js"
+  },
+  {
+    "status": 200,
+    "bundleRootNeededNormalization": false,
+    "allowed": true,
+    "path": "\/Fixtures\/Reflow\/reflow.epub"
+  },
+  {
+    "path": "\/foliate\/vendor\/zip.js",
+    "status": 200,
+    "allowed": true,
+    "bundleRootNeededNormalization": false
+  },
+  {
+    "status": 200,
+    "path": "\/foliate\/epub.js",
+    "bundleRootNeededNormalization": false,
+    "allowed": true
+  },
+  {
+    "bundleRootNeededNormalization": false,
+    "path": "\/foliate\/paginator.js",
+    "allowed": true,
+    "status": 200
+  },
+  {
+    "path": "\/foliate\/iframe-loader.js",
+    "allowed": true,
+    "bundleRootNeededNormalization": false,
+    "status": 200
+  }
+]

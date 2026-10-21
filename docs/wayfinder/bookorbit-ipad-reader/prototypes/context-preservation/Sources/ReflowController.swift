@@ -36,6 +36,7 @@ struct ReflowReview: Codable {
   var question: String?
   var localUnsentMarker = "Saved locally; not sent to a server"
   var markLayout: String?
+  var lineCopies: [ReflowLineCopy]?
 }
 
 @MainActor
@@ -101,7 +102,7 @@ final class ReflowHomeController: UIViewController {
       "Choose one walkthrough. Each has its own sample, notes, controls, checks and answer. Start with the first; no walkthrough depends on another.",
       .body)
     text(
-      "Select words first, then write an ink group for them. The first nine walkthroughs move that group with the first selected fragment. The separate underline and circle comparisons also show reshaped copies. You assign the words and mark type; automatic intent recognition is not part of this experiment.",
+      "Select words first, then write an ink group for them. The original nine walkthroughs move that group with the first selected fragment. Two appearance comparisons show reshaped copies. Two new walkthroughs test editing one line without changing another. You assign the words and mark type in this experiment.",
       .body)
     for (index, scenario) in ReflowScenario.all.enumerated() {
       let path = Self.root.appending(path: scenario.id).appending(path: "review.json")
@@ -178,6 +179,9 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
   var lastSequence = 0
   var projectedGroupID: String?
   var history: [[String: Any]] = []
+  var lineDrawings: [String: PKDrawing] = [:]
+  var activeLine = 0
+  var preparingLines = false
   let server = ReflowServer()
   var web: WKWebView!
   let canvas = PKCanvasView()
@@ -254,7 +258,11 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     column.addArrangedSubview(selected)
     writeButton.addAction(UIAction { [weak self] _ in self?.toggleWriting() }, for: .touchUpInside)
     let link = button("Link selected words") { [weak self] in self?.js("window.reflow.select()") }
-    let switchNote = button("Edit next note") { [weak self] in self?.switchGroup() }
+    let switchNote = button(scenario.localEditing ? "Edit next line" : "Edit next note") {
+      [weak self] in
+      guard let self else { return }
+      if self.scenario.localEditing { self.switchLine() } else { self.switchGroup() }
+    }
     let undo = button("Undo") { [weak self] in self?.canvas.undoManager?.undo() }
     let redo = button("Redo") { [weak self] in self?.canvas.undoManager?.redo() }
     column.addArrangedSubview(row([writeButton, link, switchNote, undo, redo]))
@@ -292,6 +300,11 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     for group in review.groups {
       if let data = try? Data(contentsOf: folder.appending(path: group.id + ".drawing")) {
         drawings[group.id] = try? PKDrawing(data: data)
+      }
+    }
+    for copy in review.lineCopies ?? [] {
+      if let data = try? Data(contentsOf: folder.appending(path: copy.id + ".drawing")) {
+        lineDrawings[copy.id] = try? PKDrawing(data: data)
       }
     }
     updateWriting()
@@ -346,10 +359,12 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     else { return }
     let target = review.groups.indices.contains(active) ? review.groups[active].cfi : ""
     let focus = String(data: try! JSONEncoder().encode(target), encoding: .utf8)!
-    js("window.reflow.setGroups(\(text),\(focus))")
+    js("window.reflow.setGroups(\(text),\(focus),\(scenario.localEditing ? "true" : "false"))")
   }
   func toggleWriting() {
-    if scenario.markKind != nil && review.markLayout != nil && review.markLayout != "original" {
+    if !scenario.localEditing && scenario.markKind != nil && review.markLayout != nil
+      && review.markLayout != "original"
+    {
       status.text =
         "This is an appearance comparison. Return to the original layout to edit your original mark."
       return
@@ -396,7 +411,13 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
       sampleReady = true
       review.sourceHash = hash
       syncGroups()
-      if savedFont != 24 { js("window.reflow.restoreFont(\(savedFont))") }
+      if scenario.localEditing && review.lineCopies != nil {
+        js(
+          "(async()=>{await window.reflow.layout('narrow');await window.reflow.restoreFont(\(savedFont));})()"
+        )
+      } else if savedFont != 24 {
+        js("window.reflow.restoreFont(\(savedFont))")
+      }
       if probe {
         if review.groups.isEmpty {
           js(
@@ -406,7 +427,12 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
         if scenario.markKind != nil {
           Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(1))
-            await self?.runComparisonProbe()
+            guard let self else { return }
+            if self.scenario.localEditing {
+              await self.runLocalEditProbe()
+            } else {
+              await self.runComparisonProbe()
+            }
           }
         } else {
           DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
@@ -467,6 +493,7 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
       lastSequence = sequence
       latestPacket = packet
       review.lastFont = packet["font"] as? Double ?? review.lastFont
+      if preparingLines { finishPreparingLines() }
       if drawingActive {
         status.text =
           "The layout changed during a stroke. Ink placement waits until the stroke ends."
@@ -540,6 +567,10 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
 
   func applyGeometry() {
     guard let resolved = latestPacket["groups"] as? [[String: Any]] else { return }
+    if scenario.localEditing && review.lineCopies != nil {
+      applyLineGeometry()
+      return
+    }
     if scenario.markKind != nil && review.markLayout != nil && review.markLayout != "original" {
       applyMarkComparison()
       return
@@ -631,6 +662,10 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in self?.applyGeometry() }
   }
   func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+    if scenario.localEditing && review.lineCopies != nil {
+      saveLineDrawing()
+      return
+    }
     guard !applying, activeAvailable, review.groups.indices.contains(active) else { return }
     let group = review.groups[active]
     let drawing = canvas.drawing.transformed(using: projection.inverted())
@@ -728,6 +763,10 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
       button("I could not complete this step") { [weak self] in self?.renderVerdict() })
   }
   func perform(_ action: String) {
+    if action.hasPrefix("local-") {
+      performLocalEdit(action)
+      return
+    }
     if action.hasPrefix("mark-") {
       performMarkComparison(action)
       return
@@ -771,7 +810,7 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
     feedback.borderStyle = .roundedRect
     feedback.text = review.feedback
     bottom.addArrangedSubview(feedback)
-    if scenario.markKind != nil {
+    if scenario.markKind != nil && !scenario.localEditing {
       bottom.addArrangedSubview(
         button("Compare: original shape after wrapping") { [weak self] in
           self?.performMarkComparison("mark-original")
@@ -828,6 +867,9 @@ final class ReflowController: UIViewController, WKScriptMessageHandler, PKCanvas
           self.review = ReflowReview(
             tried: Array(repeating: false, count: self.scenario.steps.count))
           self.drawings = [:]
+          self.lineDrawings = [:]
+          self.activeLine = 0
+          self.preparingLines = false
           self.active = 0
           self.writing = false
           self.projectedGroupID = nil

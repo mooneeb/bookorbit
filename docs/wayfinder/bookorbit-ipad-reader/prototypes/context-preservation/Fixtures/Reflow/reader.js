@@ -10,6 +10,7 @@ let scheduled = false;
 let sequence = 0;
 let chapter = Number(new URL(location.href).searchParams.get("chapter") || 0);
 let focusCFI = null;
+let includeLineBindings = false;
 const send = (message) => {
   const payload = JSON.parse(JSON.stringify(message));
   window.lastReflowMessage = payload;
@@ -36,6 +37,49 @@ function fragments(range) {
     }));
 }
 
+function selectedLines(range, index) {
+  if (range.toString().length > 500) throw new Error("Select at most 500 characters for this experiment.");
+  const doc = range.startContainer.ownerDocument;
+  const root = range.commonAncestorContainer;
+  const nodes = [];
+  if (root.nodeType === Node.TEXT_NODE) nodes.push(root);
+  else {
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (range.intersectsNode(node)) nodes.push(node);
+    }
+  }
+  const lines = [];
+  for (const node of nodes) {
+    const start = node === range.startContainer ? range.startOffset : 0;
+    const end = node === range.endContainer ? range.endOffset : node.textContent.length;
+    for (let offset = start; offset < end;) {
+      const length = String.fromCodePoint(node.textContent.codePointAt(offset)).length;
+      const character = doc.createRange();
+      character.setStart(node, offset);
+      character.setEnd(node, Math.min(offset + length, end));
+      offset += length;
+      const rect = fragments(character).find((r) => r.width > 0);
+      const last = lines.at(-1);
+      if (!rect) {
+        if (last) last.range.setEnd(character.endContainer, character.endOffset);
+        continue;
+      }
+      if (last && Math.abs(last.rect.y + last.rect.height / 2 - rect.y - rect.height / 2) < Math.max(last.rect.height, rect.height) * 0.4) {
+        last.range.setEnd(character.endContainer, character.endOffset);
+        const right = Math.max(last.rect.x + last.rect.width, rect.x + rect.width);
+        const bottom = Math.max(last.rect.y + last.rect.height, rect.y + rect.height);
+        last.rect.x = Math.min(last.rect.x, rect.x);
+        last.rect.y = Math.min(last.rect.y, rect.y);
+        last.rect.width = right - last.rect.x;
+        last.rect.height = bottom - last.rect.y;
+      } else lines.push({ range: character.cloneRange(), rect });
+    }
+  }
+  if (lines.length > 12) throw new Error("This experiment supports at most twelve lines.");
+  return lines.map((line) => ({ cfi: view.getCFI(index, line.range), quote: line.range.toString(), rect: line.rect }));
+}
+
 function measure(reason = "layout") {
   const started = performance.now();
   const contents = view.renderer?.getContents() || [];
@@ -49,7 +93,15 @@ function measure(reason = "layout") {
       if (range.toString() !== group.quote) return { id: group.id, status: "quote-mismatch" };
       const rects = fragments(range);
       const visible = rects.filter((r) => r.x + r.width > 0 && r.x < innerWidth && r.y + r.height > 0 && r.y < innerHeight);
-      return { id: group.id, status: visible.length ? "resolved" : "offscreen", quote: range.toString(), rects, visible, index: locator.index };
+      return {
+        id: group.id,
+        status: visible.length ? "resolved" : "offscreen",
+        quote: range.toString(),
+        rects,
+        visible,
+        index: locator.index,
+        ...(includeLineBindings ? { lines: selectedLines(range, locator.index) } : {}),
+      };
     } catch (error) {
       return { id: group.id, status: "unresolved", message: String(error) };
     }
@@ -88,9 +140,10 @@ view.addEventListener("load", ({ detail: { doc } }) => {
 });
 
 window.reflow = {
-  setGroups(value, activeCFI) {
+  setGroups(value, activeCFI, lineBindings = false) {
     groups = value;
     focusCFI = activeCFI;
+    includeLineBindings = lineBindings;
     schedule("groups-restored");
   },
   select() {

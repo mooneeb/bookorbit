@@ -1,0 +1,21 @@
+{
+  "recordedUTC": "2026-10-21T10:48:11.782717+00:00",
+  "build": "11",
+  "bundleIdentifier": "dev.mooneeb.bookorbit.contextprototype",
+  "scratchFilesBackedUp": 217,
+  "allScratchHashesUnchangedAfterStaging": true,
+  "stagingComparison": {
+    "beforeFiles": 217,
+    "afterFiles": 217,
+    "changedFiles": [],
+    "missingFiles": [],
+    "addedFiles": []
+  },
+  "preInstallBaseline": "Private fresh after-staging scratch snapshot and SHA256 manifest",
+  "stagedFile": "On My iPad / Orbit Context PROTOTYPE / Signing Trial / Reader local editing - build 11.ipa",
+  "unsignedIPASHA256": "28afd5c3a28cadd0347311cb8de3c6606fc121ad648bb9de539c02c8ea9fc5e2",
+  "stagedRoundTripMatches": true,
+  "EPUBSourceUnchanged": true,
+  "installed": false,
+  "physicalLocalEditingVerdicts": "pending"
+}

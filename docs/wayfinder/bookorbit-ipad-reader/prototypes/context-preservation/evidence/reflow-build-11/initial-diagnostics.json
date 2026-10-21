@@ -1,0 +1,8 @@
+{
+  "preparationFailure": "A zero-width space at the visual line break was omitted from the collected subrange quotes. The sentence integrity check correctly refused to materialize copies.",
+  "correction": "Keep zero-width separator characters in the preceding line range; the line subrange quotes now concatenate to the original selected sentence.",
+  "initialMeasurementIssue": "Inverse-transforming a native drawing, even by identity, changed its archive encoding. Comparing that archive to the original produced false isolation failures despite unchanged displayed ink.",
+  "correctedMeasurements": "Compare saved files directly for byte preservation, and compare native-rendered pixels for display equality. Both checks pass independently after switching and reloading. Identity transforms are avoided for normal canvas projection.",
+  "rawFailedRunsRetainedPrivately": true,
+  "humanChecksOrAnswersSupplied": false
+}

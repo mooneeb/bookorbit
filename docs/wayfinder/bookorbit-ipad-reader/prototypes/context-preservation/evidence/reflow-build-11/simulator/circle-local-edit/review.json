@@ -1,0 +1,56 @@
+{
+  "feedback": "",
+  "groups": [
+    {
+      "association": "Tester explicitly selected the words and started this ink group",
+      "cfi": "epubcfi(\/6\/4!\/4\/4,,\/1:55)",
+      "font": 24,
+      "id": "CB03B383-C210-49C8-BAF3-E98D84F2FC7F",
+      "origin": {
+        "height": 29,
+        "width": 576,
+        "x": 70,
+        "y": 121.28125
+      },
+      "placement": "Whole editable drawing uniformly scales with font size and follows the first range fragment",
+      "prefix": "",
+      "quote": "The most useful observation keeps its original context.",
+      "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+      "suffix": " A small mark can bring an old idea back into focus."
+    }
+  ],
+  "lastFont": 32,
+  "layoutActions": ["local-prepare", "local-reload"],
+  "lineCopies": [
+    {
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:0,\/1:38)",
+      "font": 32,
+      "id": "C97AF5B1-068C-4614-9008-6CFD3EA8B08F",
+      "quote": "The most useful observation keeps its ",
+      "reference": {
+        "height": 38,
+        "width": 529.078125,
+        "x": 219.390625,
+        "y": 152.71875
+      }
+    },
+    {
+      "cfi": "epubcfi(\/6\/4!\/4\/4,\/1:38,\/1:55)",
+      "font": 32,
+      "id": "29300841-55F1-4BE9-BD97-70FBD4D0EF2A",
+      "quote": "original context.",
+      "reference": {
+        "height": 38,
+        "width": 231,
+        "x": 219.390625,
+        "y": 203.71875
+      }
+    }
+  ],
+  "localUnsentMarker": "Saved locally; not sent to a server",
+  "markLayout": "local-edit",
+  "question": "Did each line keep its own edits, with Undo and Redo working and the saved gap surviving the chapter reload?",
+  "sourceHash": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+  "step": 0,
+  "tried": [false, false, false, false, false]
+}
