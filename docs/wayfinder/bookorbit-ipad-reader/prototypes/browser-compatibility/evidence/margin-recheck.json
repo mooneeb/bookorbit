@@ -1,0 +1,517 @@
+{
+  "recordedUTC": "2026-10-22T09:39:23.423457+00:00",
+  "status": "Correction prepared; live user margin verdict pending",
+  "before": {
+    "finding": "SVG overflow was visible at Fit but did not extend scroll bounds. Outside handwritten useful was unreachable at 2x/4x.",
+    "zoom2x": {
+      "wordTargetScrollX": 1182,
+      "scrollWidth": 960
+    },
+    "zoom4x": {
+      "wordTargetScrollX": 2352,
+      "scrollWidth": 1896
+    }
+  },
+  "correction": "Reserve transformed native-canvas margins in a scratch viewport and translate scroll metrics without changing PDF page geometry. Fit includes the full canvas; an optional fixture-specific button locates the outside word.",
+  "cases": [
+    {
+      "application": "chrome",
+      "browser": {
+        "protocolVersion": "1.3",
+        "product": "Chrome/155.0.8059.85",
+        "revision": "@0e66b94549a8bd85f03fbdf189b752d6e7b63c32",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+        "jsVersion": "15.5.35.25"
+      },
+      "method": "Isolated headless installed Mac browser. 390px is desktop emulation, not physical Android. Actual scroll requests and mouse selection/panning; no human verdicts filled.",
+      "combinations": 24,
+      "allWordBoundsReachable": true,
+      "rows": [
+        {
+          "width": 1280,
+          "zoom": 0.823,
+          "rotation": 0,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 2,
+          "rotation": 0,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 4,
+          "rotation": 0,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 0.617,
+          "rotation": 1,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 2,
+          "rotation": 1,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 4,
+          "rotation": 1,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 0.823,
+          "rotation": 2,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 2,
+          "rotation": 2,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 4,
+          "rotation": 2,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 0.617,
+          "rotation": 3,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 2,
+          "rotation": 3,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 4,
+          "rotation": 3,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 0.399,
+          "rotation": 0,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 2,
+          "rotation": 0,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 4,
+          "rotation": 0,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 0.497,
+          "rotation": 1,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 2,
+          "rotation": 1,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 4,
+          "rotation": 1,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 0.399,
+          "rotation": 2,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 2,
+          "rotation": 2,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 4,
+          "rotation": 2,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 0.497,
+          "rotation": 3,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 2,
+          "rotation": 3,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 4,
+          "rotation": 3,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        }
+      ],
+      "selectedText": ["A useful observation"],
+      "mousePanChanged": true,
+      "runtimeErrors": [],
+      "humanAnswersUnfilled": true
+    },
+    {
+      "application": "vivaldi",
+      "browser": {
+        "protocolVersion": "1.3",
+        "product": "Chrome/8.2.4133.89",
+        "revision": "@92a6f15143569cf59b340472d0b5030465d95722",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+        "jsVersion": "15.2.124.45"
+      },
+      "method": "Isolated headless installed Mac browser. 390px is desktop emulation, not physical Android. Actual scroll requests and mouse selection/panning; no human verdicts filled.",
+      "combinations": 24,
+      "allWordBoundsReachable": true,
+      "rows": [
+        {
+          "width": 1280,
+          "zoom": 0.823,
+          "rotation": 0,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 2,
+          "rotation": 0,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 4,
+          "rotation": 0,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 0.617,
+          "rotation": 1,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 2,
+          "rotation": 1,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 4,
+          "rotation": 1,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 0.823,
+          "rotation": 2,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 2,
+          "rotation": 2,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 4,
+          "rotation": 2,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 0.617,
+          "rotation": 3,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 2,
+          "rotation": 3,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 1280,
+          "zoom": 4,
+          "rotation": 3,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 1280,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 0.399,
+          "rotation": 0,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 2,
+          "rotation": 0,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 4,
+          "rotation": 0,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 0.497,
+          "rotation": 1,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 2,
+          "rotation": 1,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 4,
+          "rotation": 1,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 0.399,
+          "rotation": 2,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 2,
+          "rotation": 2,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 4,
+          "rotation": 2,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 0.497,
+          "rotation": 3,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 2,
+          "rotation": 3,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        },
+        {
+          "width": 390,
+          "zoom": 4,
+          "rotation": 3,
+          "wordBoundsReachable": true,
+          "corners": [true, true, true, true],
+          "documentScrollWidth": 390,
+          "inkLayers": 1
+        }
+      ],
+      "selectedText": ["A useful observation"],
+      "mousePanChanged": true,
+      "runtimeErrors": [],
+      "humanAnswersUnfilled": true
+    }
+  ],
+  "unchangedInputs": {
+    "background.pdf": "b986b99c51fd8c0647509b642f62bc5a5e6bceb4a04a272d24698392e938344e",
+    "ink.drawing": "da0221b8afd15e981f9b837aeb4d61b755c486b82bc7efc059efa4e853f65075",
+    "ink-preview.png": "dc53d101bab74f7359b62be0ef89fc2f4e7fee3148e4d192809011e106c978b3"
+  },
+  "limitations": [
+    "Programmatic viewport changes and mouse input in installed headless desktop browsers are not human acceptance.",
+    "390px emulation does not establish physical Android touch behavior.",
+    "Fixed 2x raster clarity at 4x, physical gestures and iPad original editing still require live review.",
+    "Vivaldi headless surface screenshots repeated viewport tiles, including after a fresh navigation; geometry and mouse checks do not establish its visual fidelity. Normal interactive Vivaldi review remains pending."
+  ],
+  "mountAndReflowChecks": [
+    {
+      "application": "chrome",
+      "actions": 24,
+      "exactQuotePreserved": true,
+      "typedSampleReopened": true,
+      "runtimeErrors": [],
+      "humanAnswersUnfilled": true
+    },
+    {
+      "application": "vivaldi",
+      "actions": 24,
+      "exactQuotePreserved": true,
+      "typedSampleReopened": true,
+      "runtimeErrors": [],
+      "humanAnswersUnfilled": true
+    }
+  ]
+}

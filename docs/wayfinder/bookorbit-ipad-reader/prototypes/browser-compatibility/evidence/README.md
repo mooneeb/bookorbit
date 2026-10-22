@@ -15,4 +15,16 @@ No unit-test suite was added to this throwaway prototype, following the Prototyp
 
 The fixed 2x PDF image may blur when enlarged. Native margin ink, crop geometry, fonts, pressure/texture appearance and text selection still need live review in the selected browsers. No complete BookOrbit sync, note-list integration, Trash or final reader/storage decision is claimed. Those later decisions remain open.
 
-The user explicitly chose to prepare the browser portion and connect the iPad later. The five browser walkthroughs are ready for live review; the two independent original-editing walkthroughs remain pending. The issue must stay open until its live browser and original-preservation verdicts are recorded.
+The user explicitly chose to prepare the browser portion and connect the iPad later. The original five Mac Chrome walkthroughs have now been reviewed; see the [human results](https://github.com/mooneeb/bookorbit/issues/19#issuecomment-6337329059). The failed zoom result and rotation visibility qualification remain recorded. Neither iPad original-editing walkthrough has a verdict.
+
+## Margin-clipping correction
+
+The native drawing extends beyond the numbered PDF frame into the original canvas margins. The first browser integration rendered SVG overflow but supplied only the paper rectangle as its scroll extent. At 2x/4x, the handwritten `useful` target was outside the reachable scroll bounds. This is a failed display case, not expected loss of note content.
+
+The scratch viewport now reserves the transformed native-canvas bounds and maps DOM scrolling back to the unchanged PDF origin. **Fit page and ink** includes the whole canvas. **Find handwritten useful** offers a fixture-specific location aid. The new independent **Read handwriting outside the PDF page edge** walkthrough asks for readability, reachability and alignment through zoom and rotation. Passed EPUB results do not need repeating for this correction.
+
+[Margin recheck observations](margin-recheck.json) record 24 combinations per installed headless browser: desktop and 390px emulation, Fit/2x/4x, and four document rotations. Every corner of the sample outside-word region could be brought into the viewport in all combinations. Actual mouse dragging still selected `A useful observation`, mouse panning changed scroll position, and no runtime exceptions were recorded. Original PDF, drawing and preview hashes are unchanged. Automated checks and human answers stayed unfilled.
+
+The previous 24-action mount/reflow sequence also completed again in each browser with exact EPUB quotes, reopened sample typed text and no runtime exceptions. Vivaldi's headless surface screenshots repeated viewport tiles even after a fresh navigation; those captures do not establish visual fidelity. Its normal interactive review remains pending.
+
+These are geometry and executable interaction observations. They do not settle human visual clarity, physical Android touch/gestures, or iPad editability. The fixed 2x PNG's possible 4x blurring is unchanged. The margin correction still needs a live user verdict; the issue remains open, with the remaining browser reviews and two independent iPad checks pending.

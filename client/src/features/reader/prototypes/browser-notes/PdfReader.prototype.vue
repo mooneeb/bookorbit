@@ -14,7 +14,7 @@ import { SelectionPluginPackage } from '@embedpdf/plugin-selection/vue'
 import { SpreadPluginPackage } from '@embedpdf/plugin-spread/vue'
 import { TilingPluginPackage } from '@embedpdf/plugin-tiling/vue'
 import { ViewportPluginPackage } from '@embedpdf/plugin-viewport/vue'
-import { ZoomMode, ZoomPluginPackage } from '@embedpdf/plugin-zoom/vue'
+import { ZoomPluginPackage } from '@embedpdf/plugin-zoom/vue'
 import PdfScene from './PdfScene.prototype.vue'
 import type { ProofManifest, ReaderHandle } from './types'
 
@@ -25,11 +25,11 @@ const problem = ref('')
 const { engine, error } = usePdfiumEngine({ wasmUrl: new URL(pdfiumWasmUrl, location.href).href, worker: true, fontFallback: null })
 const plugins = [
   createPluginRegistration(DocumentManagerPluginPackage, { maxDocuments: 1 }),
-  createPluginRegistration(ViewportPluginPackage, { viewportGap: 12 }),
+  createPluginRegistration(ViewportPluginPackage, { viewportGap: 0 }),
   createPluginRegistration(ScrollPluginPackage, { defaultPageGap: 12, defaultBufferSize: 1 }),
   createPluginRegistration(InteractionManagerPluginPackage),
   createPluginRegistration(PanPluginPackage, { defaultMode: 'mobile' }),
-  createPluginRegistration(ZoomPluginPackage, { defaultZoomLevel: ZoomMode.FitPage, minZoom: 0.25, maxZoom: 4 }),
+  createPluginRegistration(ZoomPluginPackage, { defaultZoomLevel: 1, minZoom: 0.25, maxZoom: 4 }),
   createPluginRegistration(SpreadPluginPackage),
   createPluginRegistration(RotatePluginPackage),
   createPluginRegistration(RenderPluginPackage),

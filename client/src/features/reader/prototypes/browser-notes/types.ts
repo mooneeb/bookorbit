@@ -16,7 +16,7 @@ export interface ProofManifest {
     width: number
     height: number
     nativeCanvas: { width: number; height: number }
-    canvasToPage: number[]
+    canvasToPage: [number, number, number, number, number, number]
     nativeWalkthrough: string
   }
   transfer: string

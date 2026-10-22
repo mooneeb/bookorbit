@@ -204,6 +204,52 @@ export const scenarios: ProofScenario[] = [
     ],
   },
   {
+    id: 'pdf-margin',
+    title: 'Read handwriting outside the PDF page edge',
+    format: 'pdf',
+    aim: 'Check that the blue handwritten useful beyond the numbered frame stays reachable while zooming and rotating.',
+    question: 'Could you read the outside handwriting at Fit, 2x, 4x and every rotation, with the ink still aligned?',
+    yes: 'Yes, the outside handwriting stayed reachable, readable and aligned',
+    no: 'No, the outside handwriting was clipped, unclear or misplaced',
+    steps: [
+      {
+        title: 'Find the handwriting beyond the frame',
+        instruction:
+          'Fit the page and ink. Find the blue handwritten useful outside the black numbered frame. Compare it with the saved iPad reference below.',
+        action: 'fit',
+        button: 'Fit page and ink',
+        expected: 'The outside word is part of the note and is visible along with the PDF page.',
+        check: 'I found the outside handwritten useful at Fit.',
+      },
+      {
+        title: 'Read it at 2x',
+        instruction: 'Zoom to 2x, then use Find handwritten useful in the reader toolbar. Pan around the word and back toward the numbered frame.',
+        action: '2x',
+        button: 'Zoom to 2x',
+        expected: 'Panning reaches the saved handwriting beyond the page edge. The marks inside the frame stay aligned.',
+        check: 'I read the outside word and checked alignment at 2x.',
+      },
+      {
+        title: 'Read it at 4x',
+        instruction:
+          'Zoom to 4x and use Find handwritten useful. On a narrow screen, pan across the word to read every letter. Report blur if the handwriting is not readable.',
+        action: '4x',
+        button: 'Zoom to 4x',
+        expected: 'Every part of the outside word can be reached. It may need panning to fit through a small viewport.',
+        check: 'I checked access and readability of the whole word at 4x.',
+      },
+      {
+        title: 'Reach it after each rotation',
+        instruction:
+          'Rotate once, then use Find handwritten useful and pan to read it. Use Rotate clockwise three more times, repeating that check at each position. Finish with Fit page and ink.',
+        action: 'rotate',
+        button: 'Rotate once',
+        expected: 'The outside word remains reachable in all four positions, and ink and page rotate together.',
+        check: 'I checked the outside handwriting in all four rotations and returned to Fit.',
+      },
+    ],
+  },
+  {
     id: 'native-original',
     title: 'Check the original EPUB handwriting on iPad',
     format: 'epub',
