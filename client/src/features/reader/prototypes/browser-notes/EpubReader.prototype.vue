@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ProofManifest } from './types'
 
 interface FoliateContent {
@@ -20,6 +20,7 @@ interface FoliateView extends HTMLElement {
 const props = defineProps<{ manifest: ProofManifest; typed?: boolean }>()
 const emit = defineEmits<{ ready: [value: boolean]; change: [message: string] }>()
 const host = ref<HTMLElement | null>(null)
+const notePanel = ref<HTMLElement | null>(null)
 const noteOpen = ref(false)
 const ready = ref(false)
 const problem = ref('')
@@ -71,6 +72,7 @@ function drawHighlight(event: Event) {
 function openNote() {
   noteOpen.value = true
   report()
+  void nextTick(() => notePanel.value?.scrollIntoView({ block: 'nearest' }))
 }
 
 function closeNote() {
@@ -211,32 +213,39 @@ defineExpose({ act, evidence })
         Find the noted words
       </button>
     </div>
-    <div ref="host" class="h-[400px] overflow-hidden rounded-lg border border-border bg-card text-card-foreground sm:h-[480px]" data-proof-epub />
-    <section
-      v-if="noteOpen"
-      aria-label="Linked reading note"
-      class="fixed bottom-4 left-4 right-4 z-50 max-h-[70vh] overflow-auto rounded-lg border border-primary bg-card p-4 text-card-foreground shadow-lg sm:bottom-auto sm:left-auto sm:right-6 sm:top-12 sm:w-96"
-    >
-      <div class="flex items-center justify-between gap-3">
-        <h3 class="font-semibold">{{ bodyLabel }}</h3>
-        <button class="rounded border border-border px-3 py-2 text-sm" @click="closeNote">Close note</button>
-      </div>
-      <p class="my-3 text-sm">
-        Selected words: <strong>{{ manifest.epub.quote }}</strong>
-      </p>
-      <template v-if="typed">
-        <label for="sample-note" class="mb-2 block text-sm">Your sample note</label>
-        <textarea id="sample-note" v-model="draft" class="min-h-28 w-full rounded border border-input bg-background p-3 text-foreground" />
-        <button class="mt-2 rounded bg-primary px-3 py-2 text-primary-foreground" @click="saveNote">Save this sample note</button>
-        <p aria-live="polite" class="mt-2 text-sm text-muted-foreground">{{ noteStatus }}</p>
-      </template>
-      <img
-        v-else
-        src="/proof-input/epub-note.png"
-        alt="Saved handwriting rendered from the original iPad drawing"
-        class="max-h-80 w-full object-contain"
+    <div class="grid items-start gap-4" :class="noteOpen ? 'lg:grid-cols-[minmax(0,1fr)_20rem]' : ''">
+      <div
+        ref="host"
+        class="order-2 h-[400px] min-w-0 overflow-hidden rounded-lg border border-border bg-card text-card-foreground sm:h-[480px] lg:order-1"
+        data-proof-epub
       />
-    </section>
+      <section
+        v-if="noteOpen"
+        ref="notePanel"
+        aria-label="Linked reading note"
+        class="order-1 min-w-0 rounded-lg border border-primary bg-card p-4 text-card-foreground lg:order-2"
+      >
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="font-semibold">{{ bodyLabel }}</h3>
+          <button class="rounded border border-border px-3 py-2 text-sm" @click="closeNote">Close note</button>
+        </div>
+        <p class="my-3 text-sm">
+          Selected words: <strong>{{ manifest.epub.quote }}</strong>
+        </p>
+        <template v-if="typed">
+          <label for="sample-note" class="mb-2 block text-sm">Your sample note</label>
+          <textarea id="sample-note" v-model="draft" class="min-h-28 w-full rounded border border-input bg-background p-3 text-foreground" />
+          <button class="mt-2 rounded bg-primary px-3 py-2 text-primary-foreground" @click="saveNote">Save this sample note</button>
+          <p aria-live="polite" class="mt-2 text-sm text-muted-foreground">{{ noteStatus }}</p>
+        </template>
+        <img
+          v-else
+          src="/proof-input/epub-note.png"
+          alt="Saved handwriting rendered from the original iPad drawing"
+          class="max-h-80 w-full object-contain"
+        />
+      </section>
+    </div>
     <p v-if="originalHint" class="mt-3 rounded border border-border p-3 text-sm">
       On iPad: All walkthroughs → {{ manifest.epub.nativeWalkthrough }}. Open its saved drawing, erase a small mark, then Undo. Keep this check
       pending until you try it on the iPad.

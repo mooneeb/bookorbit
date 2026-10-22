@@ -1,5 +1,5 @@
 {
-  "recordedUTC": "2026-10-22T07:53:30.209045+00:00",
+  "recordedUTC": "2026-10-22T08:04:29.455817+00:00",
   "status": "Prepared for live review; no human verdicts supplied",
   "macOS": "27.0.1",
   "method": "Actual installed desktop engines, local static build. 390px mobile emulation is not physical Android. Chrome also exercised plain HTTP LAN origin with isSecureContext=false.",
@@ -7,7 +7,6 @@
     {
       "application": "Google Chrome",
       "applicationVersion": "155.0.8059.85",
-      "engine": "Chrome/155.0.8059.85",
       "mode": "headless installed macOS browser",
       "actions": 24,
       "exactQuotePreserved": true,
@@ -24,7 +23,7 @@
           "action": "larger",
           "font": 40,
           "narrow": false,
-          "fragments": 1,
+          "fragments": 2,
           "quote": "most useful observation keeps"
         },
         {
@@ -111,12 +110,13 @@
         "pdfImages": 2
       },
       "runtimeErrors": [],
-      "humanAnswersUnfilled": true
+      "humanAnswersUnfilled": true,
+      "engineReportedProduct": "Chrome/155.0.8059.85",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36"
     },
     {
       "application": "Vivaldi",
       "applicationVersion": "8.2.4133.89",
-      "engine": "Chrome/8.2.4133.89",
       "mode": "headless installed macOS browser",
       "actions": 24,
       "exactQuotePreserved": true,
@@ -133,7 +133,7 @@
           "action": "larger",
           "font": 40,
           "narrow": false,
-          "fragments": 1,
+          "fragments": 2,
           "quote": "most useful observation keeps"
         },
         {
@@ -220,7 +220,9 @@
         "pdfImages": 2
       },
       "runtimeErrors": [],
-      "humanAnswersUnfilled": true
+      "humanAnswersUnfilled": true,
+      "engineReportedProduct": "Chrome/8.2.4133.89",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36"
     }
   ],
   "actualHighlightedRangeClickOpenedInkNote": true,
