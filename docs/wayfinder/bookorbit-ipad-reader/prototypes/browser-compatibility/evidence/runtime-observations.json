@@ -1,0 +1,255 @@
+{
+  "recordedUTC": "2026-10-22T07:53:30.209045+00:00",
+  "status": "Prepared for live review; no human verdicts supplied",
+  "macOS": "27.0.1",
+  "method": "Actual installed desktop engines, local static build. 390px mobile emulation is not physical Android. Chrome also exercised plain HTTP LAN origin with isSecureContext=false.",
+  "cases": [
+    {
+      "application": "Google Chrome",
+      "applicationVersion": "155.0.8059.85",
+      "engine": "Chrome/155.0.8059.85",
+      "mode": "headless installed macOS browser",
+      "actions": 24,
+      "exactQuotePreserved": true,
+      "typedSampleSavedAndReopened": true,
+      "epubLayouts": [
+        {
+          "action": "open",
+          "font": 24,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "larger",
+          "font": 40,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "narrow",
+          "font": 40,
+          "narrow": true,
+          "fragments": 3,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "normal",
+          "font": 24,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "open",
+          "font": 24,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "close",
+          "font": 24,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "larger",
+          "font": 40,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "open",
+          "font": 40,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "open",
+          "font": 24,
+          "narrow": false,
+          "fragments": 2,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "larger",
+          "font": 40,
+          "narrow": false,
+          "fragments": 3,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "narrow",
+          "font": 40,
+          "narrow": true,
+          "fragments": 3,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "normal",
+          "font": 24,
+          "narrow": false,
+          "fragments": 2,
+          "quote": "most useful observation keeps"
+        }
+      ],
+      "pdfZoomValues": [0.532, 0.663, 0.823, 1.098, 2, 4],
+      "pdfDocumentRotations": [0, 1, 2, 3],
+      "narrowLayout": {
+        "width": 390,
+        "scrollWidth": 390
+      },
+      "pdfLayout": {
+        "width": 390,
+        "scrollWidth": 390,
+        "inkLayers": 1,
+        "pdfImages": 2
+      },
+      "runtimeErrors": [],
+      "humanAnswersUnfilled": true
+    },
+    {
+      "application": "Vivaldi",
+      "applicationVersion": "8.2.4133.89",
+      "engine": "Chrome/8.2.4133.89",
+      "mode": "headless installed macOS browser",
+      "actions": 24,
+      "exactQuotePreserved": true,
+      "typedSampleSavedAndReopened": true,
+      "epubLayouts": [
+        {
+          "action": "open",
+          "font": 24,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "larger",
+          "font": 40,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "narrow",
+          "font": 40,
+          "narrow": true,
+          "fragments": 3,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "normal",
+          "font": 24,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "open",
+          "font": 24,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "close",
+          "font": 24,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "larger",
+          "font": 40,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "open",
+          "font": 40,
+          "narrow": false,
+          "fragments": 1,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "open",
+          "font": 24,
+          "narrow": false,
+          "fragments": 2,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "larger",
+          "font": 40,
+          "narrow": false,
+          "fragments": 3,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "narrow",
+          "font": 40,
+          "narrow": true,
+          "fragments": 3,
+          "quote": "most useful observation keeps"
+        },
+        {
+          "action": "normal",
+          "font": 24,
+          "narrow": false,
+          "fragments": 2,
+          "quote": "most useful observation keeps"
+        }
+      ],
+      "pdfZoomValues": [0.532, 0.663, 0.823, 1.098, 2, 4],
+      "pdfDocumentRotations": [0, 1, 2, 3],
+      "narrowLayout": {
+        "width": 390,
+        "scrollWidth": 390
+      },
+      "pdfLayout": {
+        "width": 390,
+        "scrollWidth": 390,
+        "inkLayers": 1,
+        "pdfImages": 2
+      },
+      "runtimeErrors": [],
+      "humanAnswersUnfilled": true
+    }
+  ],
+  "actualHighlightedRangeClickOpenedInkNote": true,
+  "mouseDragPDFTextSelection": {
+    "selection": ["A useful observation"],
+    "mode": "pointerMode",
+    "errors": []
+  },
+  "nativeEPUBArchiveHash": "3ad11e866c684e5289afe8651f3bd8003583babdba2db0277fdea493d51f998c",
+  "nativeArchiveUnchangedOnMac": true,
+  "deterministicNativePreviewHash": "32af5449ebb92170fba4ac45bcf741b11320fe81e9a4d135a1c7e2ecec3e5c17",
+  "nativePreviewCrop": {
+    "height": 158,
+    "width": 240,
+    "x": 299,
+    "y": 14
+  },
+  "firstVivaldiDiagnostic": "Queued paginator resize could access an absent iframe body; scratch-only public-render guard now waits for a body and refuses post-teardown calls. Final runs recorded zero runtime errors.",
+  "knownLimits": [
+    "One small, cropped, intrinsically rotated PDF and one small EPUB fixture.",
+    "PDF display derivative is a fixed 2x transparent PNG; 4x clarity and margin accessibility require the user verdict.",
+    "EPUB ink is a macOS PencilKit render from unchanged real iPad drawing bytes; fresh iPad appearance/editability pending.",
+    "Public replay uses previously published ink with a supplied text association; exact native CFI fixture remains private."
+  ],
+  "pending": [
+    "User Mac Chrome review",
+    "User Mac Vivaldi review",
+    "Actual Android Chrome review and exact version",
+    "Actual iPad EPUB original erase/Undo",
+    "Actual iPad PDF original erase/Undo"
+  ]
+}

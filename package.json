@@ -18,6 +18,7 @@
     "dev": "concurrently --names \"types,server,client\" --prefix-colors \"cyan,blue,green\" \"pnpm --filter @bookorbit/types dev\" \"pnpm run dev:server\" \"pnpm run dev:client\"",
     "dev:client": "cd client && pnpm dev -- --host",
     "dev:server": "cd server && pnpm start:dev",
+    "prototype:browser-notes": "pnpm --filter client exec vite --config vite.reader-prototype.config.ts",
     "verify:fast": "pnpm run lint:check && pnpm run typecheck",
     "verify": "pnpm run lint:check && pnpm run typecheck && pnpm run test",
     "verify:strict": "pnpm run format:check && pnpm run lint:check && pnpm run typecheck:full && pnpm run test",

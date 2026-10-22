@@ -27,6 +27,8 @@ The prototype now has eleven independent, guided walkthroughs that separate page
 
 ## Current browser contract
 
+- [Browser compatibility walkthroughs](prototypes/browser-compatibility/README.md): actual Foliate/EmbedPDF readers with native ink fixtures, isolated review steps and pending live browser/iPad verdicts.
+
 - [Resolved browser note behavior](https://github.com/mooneeb/bookorbit/issues/7#issuecomment-6290292381)
 - [Native-to-browser inline ink compatibility investigation](https://github.com/mooneeb/bookorbit/issues/18)
 - [MacBook and Android browser ink validation](https://github.com/mooneeb/bookorbit/issues/19)
