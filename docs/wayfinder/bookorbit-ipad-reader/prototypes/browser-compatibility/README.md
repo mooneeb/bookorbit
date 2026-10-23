@@ -14,7 +14,7 @@ pnpm prototype:browser-notes
 
 Open `http://127.0.0.1:8767/`. Choose the browser you are using and start any walkthrough. Each starts from its own fresh reader and scratch note. You do not need to complete another walkthrough first. Restart affects only that sample and its review answers. Closing/reloading the tab discards its in-memory review; copy the summary or save the detailed review file first.
 
-Use the six browser walkthroughs in Mac Chrome, Mac Vivaldi and Android Chrome. The two iPad checks can wait until the end and need only be reviewed once against the same originals. The user explicitly deferred connecting the iPad while the browser portion is prepared. No native update or new signing action is needed for this proof.
+Use the six browser walkthroughs in Mac Chrome, Mac Vivaldi and Android Chrome. The two iPad checks can wait until the end and need only be reviewed once against the same originals. No native update or new signing action is needed for this proof. The [completed live review](evidence/live-review.json) records all selected browser and physical iPad checks, finished on 2026-10-23.
 
 The first Mac Chrome review completed the original five browser walkthroughs. EPUB ink, typed-note editing and PDF navigation passed; PDF rotation alignment passed with a visibility qualification, and PDF zoom failed because outside handwriting was inaccessible. The [unaltered human verdicts](https://github.com/mooneeb/bookorbit/issues/19#issuecomment-6337329059) remain recorded. The added **Read handwriting outside the PDF page edge** walkthrough is the focused recheck for that failure. The passed EPUB walkthroughs do not need repeating for this correction.
 
@@ -44,7 +44,7 @@ The default public replay uses already published iPad handwriting with an explic
 
 ## Native ink provenance
 
-The local exact-range replay reuses the drawing created in **Keep a note on a word as text grows**. The saved native selection is the 29-character range **most useful observation keeps**, not just useful. Its source-file hash matches the unchanged EPUB, and the current/original drawing archives have matching bytes. The authoritative original remains separately editable on iPad.
+The local exact-range replay reuses the drawing created in **Keep a note on a word as text grows**. The saved native selection is the 29-character range **most useful observation keeps**, not just useful. Its source-file hash matches the unchanged EPUB. Before the final physical edit/Undo check, the current/original drawing archives matched the browser source bytes. The user's subsequent editing changed the working revision; its byte identity is not claimed. The immutable original remains intact, the quote/CFI are unchanged, and the working archive still decodes with native PencilKit.
 
 [export-ink.swift](export-ink.swift) reads a scratch `.drawing` copy, crops to `PKDrawing.bounds` with padding and renders transparent PNG using macOS PencilKit. It records the original and derivative hashes, crop, pixel size and stroke count, then checks the original bytes remain unchanged. This is an Apple-native render of an iPad drawing, not a new physical iPad capture. Its appearance must still be compared with the iPad. Private drawings and derivatives are not committed here.
 
@@ -64,13 +64,15 @@ The first review found that visible SVG overflow alone did not enlarge the brows
 
 The fixed 2x raster derivative is a candidate with a clarity limit. Testing 4x viewer zoom does not imply the PNG has 4x native detail. Blurring or inaccessible margin ink is a valid failure to report. This proof does not select the final export resolution, representation or reader stack.
 
-## Runtime review and remaining gates
+## Runtime and completed live review
 
 See [runtime observations](evidence/README.md) for exact automated versions and limits. Desktop headless checks and a narrow viewport are preliminary evidence, not the user's Mac/browser verdict or a physical Android result.
 
 An initial Vivaldi run exposed a queued Foliate resize calling layout while the iframe body was absent. The scratch adapter guards its instance's public render call until a body exists and after teardown. The vendored files are unchanged. This finding must inform the later reader-stack decision; it is not a production fix or a general renderer certification.
 
-The corrected margin behavior still needs the user's Mac Chrome verdict. Mac Vivaldi and Chrome on the Oppo Find X9 Pro also need live review, recording the current phone browser version. The current installed Mac Chrome has updated to **155.0.8059.85**; Vivaldi remains **8.2.4133.89**. The actual iPad must later reopen each corresponding original and complete erase/Undo. Until those live verdicts are recorded, the issue remains open. No automated observation substitutes for them.
+The [live review evidence](evidence/live-review.json) records acceptance in Mac Chrome **155.0.8059.85**, Mac Vivaldi **8.2.4133.89** and Chrome **155.0.8059.84** on the Oppo Find X9 Pro with the user-reported Android 17 baseline. Chrome's initial PDF zoom failure and qualified rotation result remain in the history; the focused margin correction then passed. Vivaldi and Android each passed all six browser walkthroughs.
+
+The connected **iPad Air 13-inch (M2), iPadOS 26.6.1**, running **Orbit Context PROTOTYPE 0.1, build 13**, reopened both matching originals. The user confirmed erase/Undo restored the mark for each. Read-only before/after copies and native PencilKit decoding support the provenance record without claiming identical working bytes after editing. These results complete the display experiment's live gates for the retained fixtures. Final storage, sync, production integration, reader selection and large-library behavior remain later decisions.
 
 For a self-contained static runtime, build and serve the generated directory:
 

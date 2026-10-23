@@ -1,0 +1,296 @@
+{
+  "recordedDate": "2026-10-23",
+  "issue": "https://github.com/mooneeb/bookorbit/issues/19",
+  "status": "All selected live browser and native-original checks passed for the retained fixtures",
+  "prototypeRuntimeCommit": "d87286675e9995453be58e39e2ebff7aee5ff222",
+  "engines": {
+    "EPUB": "Repository-vendored Foliate from the pinned prototype runtime commit; actual File/ZIP loading, CFI range resolution and annotation events",
+    "PDF": "Patched EmbedPDF/PDFium 2.15.1; actual worker/WASM, crop geometry, intrinsic/viewer rotation, tiling and pointer/selection stack"
+  },
+  "browserReviews": [
+    {
+      "browser": "Google Chrome",
+      "version": "155.0.8059.85",
+      "device": "MacBook",
+      "os": "macOS 27.0.1",
+      "mode": "live human review in actual browser",
+      "source": "https://github.com/mooneeb/bookorbit/issues/19#issuecomment-6343601559",
+      "method": "Initial five-scenario human report, then focused four-step margin correction accepted as Done looks good. This is not a new six-scenario report.",
+      "results": [
+        {
+          "id": "epub-ink",
+          "title": "Read a handwritten EPUB note as the text changes",
+          "checks": 4,
+          "verdict": "passed",
+          "checksTried": 4
+        },
+        {
+          "id": "epub-typed",
+          "title": "Edit a typed note linked to EPUB words",
+          "checks": 3,
+          "verdict": "passed",
+          "checksTried": 3
+        },
+        {
+          "id": "pdf-zoom",
+          "title": "Read PDF handwriting at different zoom levels",
+          "checks": 4,
+          "verdict": "passed",
+          "checksTried": 4
+        },
+        {
+          "id": "pdf-rotate",
+          "title": "Keep PDF handwriting aligned through rotation",
+          "checks": 4,
+          "verdict": "passed",
+          "checksTried": 4
+        },
+        {
+          "id": "pdf-navigation",
+          "title": "Read and select PDF text with ink visible",
+          "checks": 3,
+          "verdict": "passed",
+          "checksTried": 3
+        },
+        {
+          "id": "pdf-margin",
+          "title": "Read handwriting outside the PDF page edge",
+          "checks": 4,
+          "verdict": "passed",
+          "checksTried": 4
+        }
+      ]
+    },
+    {
+      "browser": "Vivaldi",
+      "version": "8.2.4133.89",
+      "device": "MacBook",
+      "os": "macOS 27.0.1",
+      "mode": "live human review in actual browser",
+      "source": "https://github.com/mooneeb/bookorbit/issues/19#issuecomment-6359729391",
+      "method": "User pasted six-of-eight live browser review; both native checks were deferred.",
+      "results": [
+        {
+          "id": "epub-ink",
+          "title": "Read a handwritten EPUB note as the text changes",
+          "checks": 4,
+          "verdict": "passed",
+          "checksTried": 4
+        },
+        {
+          "id": "epub-typed",
+          "title": "Edit a typed note linked to EPUB words",
+          "checks": 3,
+          "verdict": "passed",
+          "checksTried": 3
+        },
+        {
+          "id": "pdf-zoom",
+          "title": "Read PDF handwriting at different zoom levels",
+          "checks": 4,
+          "verdict": "passed",
+          "checksTried": 4
+        },
+        {
+          "id": "pdf-rotate",
+          "title": "Keep PDF handwriting aligned through rotation",
+          "checks": 4,
+          "verdict": "passed",
+          "checksTried": 4
+        },
+        {
+          "id": "pdf-navigation",
+          "title": "Read and select PDF text with ink visible",
+          "checks": 3,
+          "verdict": "passed",
+          "checksTried": 3
+        },
+        {
+          "id": "pdf-margin",
+          "title": "Read handwriting outside the PDF page edge",
+          "checks": 4,
+          "verdict": "passed",
+          "checksTried": 4
+        }
+      ]
+    },
+    {
+      "browser": "Google Chrome",
+      "version": "155.0.8059.84",
+      "device": "Oppo Find X9 Pro",
+      "os": "Android 17, user-reported baseline",
+      "mode": "live human review in actual browser",
+      "source": "https://github.com/mooneeb/bookorbit/issues/19#issuecomment-6362863910",
+      "method": "User pasted six-of-eight physical-phone review, then supplied the exact missing browser version separately.",
+      "results": [
+        {
+          "id": "epub-ink",
+          "title": "Read a handwritten EPUB note as the text changes",
+          "checks": 4,
+          "verdict": "passed",
+          "checksTried": 4
+        },
+        {
+          "id": "epub-typed",
+          "title": "Edit a typed note linked to EPUB words",
+          "checks": 3,
+          "verdict": "passed",
+          "checksTried": 3
+        },
+        {
+          "id": "pdf-zoom",
+          "title": "Read PDF handwriting at different zoom levels",
+          "checks": 4,
+          "verdict": "passed",
+          "checksTried": 4
+        },
+        {
+          "id": "pdf-rotate",
+          "title": "Keep PDF handwriting aligned through rotation",
+          "checks": 4,
+          "verdict": "passed",
+          "checksTried": 4
+        },
+        {
+          "id": "pdf-navigation",
+          "title": "Read and select PDF text with ink visible",
+          "checks": 3,
+          "verdict": "passed",
+          "checksTried": 3
+        },
+        {
+          "id": "pdf-margin",
+          "title": "Read handwriting outside the PDF page edge",
+          "checks": 4,
+          "verdict": "passed",
+          "checksTried": 4
+        }
+      ]
+    }
+  ],
+  "chromeInitialFailure": {
+    "source": "https://github.com/mooneeb/bookorbit/issues/19#issuecomment-6337329059",
+    "clarification": "https://github.com/mooneeb/bookorbit/issues/19#issuecomment-6343258645",
+    "failedScenario": "pdf-zoom",
+    "rotationQualification": "Positions aligned, but the same margin handwriting was inaccessible",
+    "reportedContent": "Blue handwritten useful outside the numbered frame",
+    "cause": "Visible SVG overflow did not enlarge the PDF scroll extent",
+    "correction": "Reserve the transformed full native-canvas bounds in the viewport while preserving PDF coordinates",
+    "correctedLiveVerdict": "Done looks good",
+    "acceptance": "https://github.com/mooneeb/bookorbit/issues/19#issuecomment-6343601559",
+    "historyPreserved": true
+  },
+  "nativeDevice": {
+    "model": "iPad Air 13-inch (M2)",
+    "osVersion": "26.6.1",
+    "appVersion": "0.1",
+    "appBuild": "13",
+    "method": "Observed connected physical device and installed app; no signing or installation change during this check"
+  },
+  "nativePreEditVerification": {
+    "PDF": {
+      "originalMatches": true,
+      "sourceMatches": true,
+      "previewMatches": true
+    },
+    "EPUB": {
+      "matchingOriginals": 1,
+      "matches": [
+        {
+          "quoteMatches": true,
+          "cfiMatches": true,
+          "activeInkMatches": true,
+          "originalMatches": true
+        }
+      ]
+    }
+  },
+  "nativeReviews": [
+    {
+      "format": "EPUB",
+      "walkthrough": "Keep a note on a word as text grows",
+      "verdict": "passed",
+      "humanReply": "yes",
+      "source": "https://github.com/mooneeb/bookorbit/issues/19#issuecomment-6363191058",
+      "checked": "Saved handwriting present; writing enabled; small erase followed by Undo restored the mark",
+      "quote": "most useful observation keeps",
+      "cfi": "epubcfi(/6/2!/4/4,/1:4,/1:33)",
+      "sourceSha256": "c5a447b71601559c898fa711bf69f45110fee59a18e029a2d8062d05352aa0a2",
+      "originalInkSha256": "3ad11e866c684e5289afe8651f3bd8003583babdba2db0277fdea493d51f998c",
+      "browserPreviewSha256": "32af5449ebb92170fba4ac45bcf741b11320fe81e9a4d135a1c7e2ecec3e5c17",
+      "afterHumanVerification": {
+        "originalByteIdentityPreserved": true,
+        "activeInkSha256": "478f64f8cdb4336d88db91ef30a7e89945f441c2fc5360bbf5d699c89299d189",
+        "activeBytesMatchBefore": false,
+        "quotePreserved": true,
+        "cfiPreserved": true
+      },
+      "workingArchiveNativeDecode": {
+        "crop": {
+          "height": 400,
+          "width": 330,
+          "x": 299,
+          "y": 14
+        },
+        "originalSha256": "478f64f8cdb4336d88db91ef30a7e89945f441c2fc5360bbf5d699c89299d189",
+        "pixels": {
+          "height": 800,
+          "width": 660
+        },
+        "previewSha256": "f3e65fa20ab1194346bc989d9597100f908e3df6b49714facf3470868e0c5700",
+        "renderer": "macOS PencilKit from unchanged iPad PKDrawing; not a fresh iPad render",
+        "strokeCount": 12
+      }
+    },
+    {
+      "format": "PDF",
+      "walkthrough": "Check a saved PDF page",
+      "verdict": "passed",
+      "humanReply": "Yes, editing works and Undo restored the mark",
+      "source": "Live user reply on 2026-10-23, recorded with the final resolution on the linked issue",
+      "checked": "Same saved page ink present; writing enabled; small erase followed by native three-finger swipe-left Undo restored the mark",
+      "sourceSha256": "b986b99c51fd8c0647509b642f62bc5a5e6bceb4a04a272d24698392e938344e",
+      "originalInkSha256": "da0221b8afd15e981f9b837aeb4d61b755c486b82bc7efc059efa4e853f65075",
+      "browserPreviewSha256": "dc53d101bab74f7359b62be0ef89fc2f4e7fee3148e4d192809011e106c978b3",
+      "afterHumanVerification": {
+        "originalPDFMatches": true,
+        "workingInkSha256": "0e076ad8893a1f6a3e7d7243114298e3eea387207818f59ec224d62821db58c1",
+        "workingInkMatchesBefore": false,
+        "sourcePresent": true
+      },
+      "workingArchiveNativeDecode": {
+        "crop": {
+          "height": 405,
+          "width": 390,
+          "x": 235,
+          "y": 6
+        },
+        "originalSha256": "0e076ad8893a1f6a3e7d7243114298e3eea387207818f59ec224d62821db58c1",
+        "pixels": {
+          "height": 810,
+          "width": 780
+        },
+        "previewSha256": "e818ad82eb1d9d34a9e58f95f284dcab9f0a431222e22fc3349ee8ca9aa6f77d",
+        "renderer": "macOS PencilKit from unchanged iPad PKDrawing; not a fresh iPad render",
+        "strokeCount": 20
+      }
+    }
+  ],
+  "preservationInterpretation": "Read-only pre-edit copies matched the browser source originals. Both originals were then edited by the user on iPad. Post-check working archives decode with native PencilKit and have changed bytes; byte-for-byte restoration of those working revisions is not claimed. The immutable EPUB original and source PDF remain unchanged, and pre-edit drawings remain privately backed up.",
+  "replayProvenance": {
+    "liveLocalEPUB": "Actual native exact-range fixture with its saved quote/CFI and matching original ink; private drawing and derivative remain local",
+    "publicDefaultEPUB": "Already published physical ink with an explicitly supplied sample text association; not a native-authored CFI binding for that public drawing",
+    "PDF": "Previously published physical iPad page, raw drawing and transparent preview; matched current native original before editing",
+    "export": "EPUB browser derivative and post-check validation renders use macOS PencilKit on copied iPad drawing bytes, not fresh iPad captures",
+    "transfer": "Local fixture delivery; typed-note saves are in-memory sample edits; no production network sync",
+    "automatedVerdicts": "No script supplied human checkboxes or answers; headless observations are separate historical preparation evidence"
+  },
+  "limits": [
+    "One small self-authored EPUB and one cropped, intrinsically rotated PDF; not arbitrary-book or library-scale certification.",
+    "PDF fixed 2x raster accepted at the tested Fit/2x/4x views and rotations only; final export resolution and representation remain undecided.",
+    "Native ink editing is preserved on iPad; browser ink is display-only.",
+    "No production API/auth, note-list integration, Trash, automatic arrival, concurrent edits, deletion protocol, sync or final reader-stack selection was exercised.",
+    "Physical Android OS is the recorded user baseline; exact Chrome version was supplied by the user. macOS baseline came from the local environment.",
+    "Earlier Vivaldi headless screenshot limitation remains automation history; the actual live Vivaldi review passed."
+  ]
+}
