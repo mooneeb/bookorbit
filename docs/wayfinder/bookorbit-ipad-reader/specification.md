@@ -1,0 +1,74 @@
+# Start here: personal BookOrbit iPad reader
+
+Working handoff for [Agree the complete reading journey and build-readiness criteria](https://github.com/mooneeb/bookorbit/issues/13), part of [Find the design for a personal BookOrbit iPad reader](https://github.com/mooneeb/bookorbit/issues/1). This document assembles the accepted decisions. Its complete-journey review is still in progress; it is not a production acceptance result or implementation authorization.
+
+## Intended experience
+
+Open a chosen book on the iPad, read comfortably, make a note with the Apple Pencil Pro, and keep reading. Downloaded EPUB and PDF reading and note editing work without the server. Reconnection sends complete note revisions to the self-hosted BookOrbit and refreshes the Mac/Android browser reader and both note lists. The iPad preserves editable handwriting; the browser displays it and edits typed text.
+
+EPUB notes belong to exact selected words and can contain text, an editable handwriting canvas, or both. They open beside the reading context and stay associated through reflow. PDF page ink remains directly visible on the page while reading. Writing mode controls Pencil input; with it on, fingers still navigate. The native Apple tool picker and supported system settings govern Pencil behavior.
+
+The app also provides native browsing/search, chosen downloads, notes and sync status. Advanced connected book management opens existing BookOrbit pages inside the app for all server-supported formats. Server/user/Kobo administration remains on the website. Existing whole-book personal notes and journals remain online features with their own owners.
+
+## How to read this specification
+
+1. Use the scope and decision index below to find the authoritative policy for a behavior.
+2. Use the [reader walkthroughs](acceptance/reader-walkthroughs.md) to see concrete setup, actions and observable results. Each scenario starts independently; no prior review supplies its notes or checkmarks. The full technical/operational collection is still to be assembled after the remaining scope choices.
+3. Treat completed prototype evidence as evidence for its named fixture and runtime. Run the new production acceptance cases after implementation; their presence in this handoff does not mark them passed.
+4. Record a newly exposed product/architecture choice on the GitHub map before calling an affected requirement settled. Routine implementation details can be resolved within these contracts.
+
+## Authoritative decisions
+
+GitHub resolution comments record human acceptance. Repository decision files contain the detailed contracts at a published snapshot. This index links them instead of creating a second policy owner.
+
+| Area                            | Accepted resolution                                                                                                                           | Contract/evidence                                                                                                                                                                            |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reading and Pencil input        | [Validate the reading and Pencil interaction model](https://github.com/mooneeb/bookorbit/issues/6#issuecomment-6289693465)                    | Explicit writing, continued finger navigation, linked-note behavior and native tool expectations. The later format decision supersedes arbitrary EPUB page ink.                              |
+| EPUB/PDF split                  | [Validate text-following ink through actual EPUB reflow](https://github.com/mooneeb/bookorbit/issues/17#issuecomment-6334584037)              | PDF page ink and EPUB exact-text-linked notes; general reshaped EPUB page ink was rejected.                                                                                                  |
+| Browser behavior                | [Define how iPad notes appear in the existing browser app](https://github.com/mooneeb/bookorbit/issues/7#issuecomment-6290292381)             | Both lists, browser typed editing, recoverable Trash and automatic arrival.                                                                                                                  |
+| Identity and ownership          | [Choose note identity, anchoring, and storage ownership](https://github.com/mooneeb/bookorbit/issues/8#issuecomment-6364511603)               | [Note model](decisions/note-model.md): one mixed note per exact range, one PDF page-ink entry, verified sources, durable originals/previews/context, removal/reimport and private ownership. |
+| Sync and recovery behavior      | [Choose offline sync, conflict, and deletion behavior](https://github.com/mooneeb/bookorbit/issues/9#issuecomment-6369476364)                 | [Offline sync](decisions/offline-sync.md): durable queue, immutable retries, part/lifecycle conflicts, deletion recovery, source-bound resume and browser freshness.                         |
+| Native app and management       | [Choose the native app boundary and reader stack](https://github.com/mooneeb/bookorbit/issues/10#issuecomment-6371209757)                     | [Native stack](decisions/native-stack.md): SwiftUI/UIKit, PencilKit, contained Foliate, PDFKit, GRDB, transfer/management seams and accessibility.                                           |
+| Installation and updates        | [Choose personal installation, connectivity, and upgrade maintenance](https://github.com/mooneeb/bookorbit/issues/11#issuecomment-6291640322) | Free signing with manual SideStore renewal and Xcode fallback, signing-bounded disconnected use and reviewed upgrades.                                                                       |
+| Storage and recovery objectives | [Set library scale, storage, backup, and export requirements](https://github.com/mooneeb/bookorbit/issues/12#issuecomment-6372048257)         | [Storage/recovery](decisions/storage-recovery.md): explicit downloads, protected local work, resource limits, unencrypted app recovery, restic, retention and measured targets.              |
+| Combining books                 | [Choose how book merges preserve notes and personal book state](https://github.com/mooneeb/bookorbit/issues/21#issuecomment-6373188163)       | [Book merges](decisions/book-merge.md): confirmation, verified copies/aliases, private collision review, history attribution and durable recovery.                                           |
+
+Use the [glossary](../../../GLOSSARY.md) for note types, saved context, source version, competing positions and merge review. The [brief](brief.md) preserves intake history; current decisions supersede its earlier requirements where expressly stated.
+
+## Supported environment and boundaries
+
+- Main physical target: iPad Air 13-inch (M2), Apple Pencil Pro, user-confirmed iPadOS 26.6.1. The chosen deployment minimum is 26.0; do not require an OS update or silently introduce 27-only archive/input behavior.
+- Server: the existing HTTPS BookOrbit at books.mooneeb.dev, with declared compatible capabilities. Offline reading does not require server reachability; sync/management do.
+- Recorded browser acceptance baselines: Mac Chrome 155.0.8059.85, Mac Vivaldi 8.2.4133.89, and Oppo Find X9 Pro with user-reported Android 17 and Chrome 155.0.8059.84. Record versions again when running future checks; these numbers are historical baselines, not a claim that they remain the latest releases.
+- Initial native reading: ordinary, unprotected EPUB and PDF. DRM/password protection, native reading of other formats, arbitrary EPUB page ink, book-page/handwriting OCR and native apps for other devices are outside the selected scope. Management of other server-supported formats remains available online.
+- The first export requirement is an unencrypted app recovery file with notes/context/download list, excluding complete books and credentials. New readable PDF/text reading-note exports are outside scope. Existing website exports remain existing features.
+- Automatic unmerge, public App Store distribution and an offline library-management queue are outside the first version. Background sync/renewal has no unconditional completion guarantee.
+
+## Specification readiness and app acceptance
+
+Specification readiness means that required behaviors, ownership, technical boundaries, refusal/recovery states and acceptance criteria are concrete and traceable, with no unassigned core choice hidden behind a prototype result. It does not mean production code, migrations, integrations or performance/restore tests have passed.
+
+Daily-use acceptance requires the implemented system to satisfy its mandatory scenarios on the supported devices and declared dataset/profile. Required workflows include both reading formats, offline notes and automatic browser arrival, full online book management, accessibility, private ownership, maintenance and recovery. A feature cannot be silently deferred because the reader prototype did not exercise it.
+
+The [accepted complete-journey review choices](https://github.com/mooneeb/bookorbit/issues/13#issuecomment-6374170330) require at least thirty minutes of reading per format, private copies from the actual library alongside controlled fixtures, and every mandatory workflow passing before daily use. Documented minor cosmetic defects may remain only with no known data-loss, privacy, anchoring, recovery or required-accessibility failure. Cosmetic classification cannot defer a required function or dismiss unreadable handwriting.
+
+The [storage acceptance matrix](decisions/storage-recovery.md#recovery-order-and-acceptance-targets) owns numeric scale, latency, memory, backup and recovery conditions. Repeat those measurements under declared conditions, without replacing them with an easier dataset or percentile inferred from one capture. Fault and boundary cases require their exact correctness outcomes.
+
+## Evidence boundary
+
+| Completed evidence                                                                                      | What it establishes                                                                                                                                                           | Limit retained                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Original-context preservation](https://github.com/mooneeb/bookorbit/issues/15#issuecomment-6300054724) | Named EPUB/PDF retained contexts, tested zooms, source-free editing, failed-capture recovery and update continuity in the scratch app.                                        | Retained fixtures and scratch persistence; not a production download/store/sync system.                                                                             |
+| [Free signing renewal](https://github.com/mooneeb/bookorbit/issues/20#issuecomment-6299949060)          | Manual fixed-AppID SideStore renewal/update preserved the prototype's saved data and editable ink.                                                                            | Production bundle identity, credentials and ordinary badge refresh are not certified by this result.                                                                |
+| [Reflow investigation](https://github.com/mooneeb/bookorbit/issues/17#issuecomment-6334584037)          | User rejected general EPUB page-ink reshaping and chose the hybrid model.                                                                                                     | Earlier word-level successes do not prove sentence-level arbitrary ink or reverse the accepted scope.                                                               |
+| [Browser/native review](https://github.com/mooneeb/bookorbit/issues/19#issuecomment-6363414485)         | Selected Mac/Android readers displayed the named EPUB/PDF handwriting, including the corrected outside-page margin; both matching iPad originals remained editable with Undo. | Fixture transfer, in-memory typed edits and fixture-specific geometry; not authenticated sync, both lists, conflict/lifecycle handling or arbitrary PDF transforms. |
+
+The planning checks for this handoff validate documents and references. Future implementation must supply executable API/DTO/response checks, migrations, native/server/browser integration evidence, fault tests and operator restore evidence. Do not copy human verdicts into a new run or report an unrun scenario as successful.
+
+## Handoff contents and unresolved items
+
+The [readiness audit](research/complete-journey-readiness-facts.md) found two precise product choices that block final acceptance: [Choose everyday reading controls and preference behavior](https://github.com/mooneeb/bookorbit/issues/22) and [Define supported EPUB and PDF publication profiles](https://github.com/mooneeb/bookorbit/issues/23). Those decisions must supply the control/preference inventory and the initial content-coverage matrix. The current draft must not silently choose either.
+
+The complete handoff will also index technical fault/compatibility tests and operational acceptance. Required coverage remains in the authoritative sync, native-stack, storage/recovery and merge matrices above. Integrate those checks and the two missing decisions before final shared-understanding confirmation. Existing ownership/migration/backward-compatibility policies are settled requirements; their implementation tests remain outstanding, rather than an unbounded placeholder for a new policy.
+
+Planning does not authorize a real book merge, server update, backup/restore, app installation or production implementation. A later implementation task can use this specification and the retained fixture evidence as its starting point.

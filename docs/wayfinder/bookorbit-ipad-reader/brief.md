@@ -37,6 +37,12 @@ Colliding notes on the same verified exact range/PDF page become one active note
 
 The [book-merge proposal](decisions/book-merge.md) records concrete identity, private reachability, retry/recovery and compatibility contracts. The linked decision holds final acceptance status. These are planning requirements, not authorization to merge books or evidence that existing collapse paths preserve data.
 
+## Current acceptance scope, 2026-10-24
+
+The [complete-journey review choices](https://github.com/mooneeb/bookorbit/issues/13#issuecomment-6374170330) require at least thirty minutes of reading in each format, using a small private actual-library set alongside controlled fixtures. Daily-use acceptance requires every mandatory workflow to pass. Documented minor cosmetic defects may remain only with no known data-loss, privacy, anchoring, recovery or required-accessibility failure.
+
+The [specification assembly](specification.md) remains in progress. [Everyday reading controls and preference behavior](https://github.com/mooneeb/bookorbit/issues/22) and [supported publication profiles](https://github.com/mooneeb/bookorbit/issues/23) are precise unresolved prerequisites, rather than assumptions made by the acceptance draft. These live choices must be settled before the complete handoff is approved; no implementation is authorized here.
+
 ## Initial intake
 
 - Destination: a build-ready specification and settled decisions before implementation.

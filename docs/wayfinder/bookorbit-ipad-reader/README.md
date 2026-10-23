@@ -4,6 +4,8 @@ Canonical map: [Find the design for a personal BookOrbit iPad reader](https://gi
 
 ## Intake and language
 
+- [Start here: specification assembly in progress](specification.md)
+- [Standalone reader acceptance walkthroughs in progress](acceptance/reader-walkthroughs.md)
 - [Accepted brief](brief.md)
 - [Reading-note glossary](../../../GLOSSARY.md)
 
