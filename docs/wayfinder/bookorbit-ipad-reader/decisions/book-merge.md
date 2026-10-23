@@ -1,0 +1,134 @@
+# Book merges: identity, personal state and recovery
+
+Canonical decision: [Choose how book merges preserve notes and personal book state](https://github.com/mooneeb/bookorbit/issues/21). This is a complete planning proposal for shared-understanding review. The issue's resolution comment, when present, records final acceptance. It does not authorize production implementation or a real merge.
+
+## Accepted product choices
+
+The [first round](https://github.com/mooneeb/bookorbit/issues/21#issuecomment-6372349614), [file/confirmation round](https://github.com/mooneeb/bookorbit/issues/21#issuecomment-6372670832) and [personal-state/history round](https://github.com/mooneeb/bookorbit/issues/21#issuecomment-6372728431) record all thirteen answers:
+
+| Choice                     | Required behavior                                                                                                                            |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Colliding reading notes | One active note on the same verified exact range or PDF page, with both contents preserved as versions for owner review.                     |
+| 2. Personal book notes     | Preserve different whole-book note bodies for their owner to choose/combine.                                                                 |
+| 3. Journals                | Combine the lists, preserving every independent entry and its original-book provenance.                                                      |
+| 4. Other owners            | Complete the catalog merge while each owner reviews privately later.                                                                         |
+| 5. Reversal                | Preview, confirmation and retained merge record/data; no automatic unmerge in the first version.                                             |
+| 6. Automatic collapse      | Explicit preview/confirmation for every combination of existing book identities, including rename and scanner repair.                        |
+| 7. Different files         | Retain different contents, editions and formats, with distinct labels/names and original note placement.                                     |
+| 8. Identical copies        | Deduplicate only fully verified identical content and format, preserving old identities and personal state.                                  |
+| 9. Catalog result          | Choose the surviving entry and review metadata/title/cover changes before confirmation.                                                      |
+| 10. Provisional display    | Show the surviving value with Needs review while preserving conflicting alternatives. Keep open pages and unsaved editors in place.          |
+| 11. Reading history        | Combine history, preserving records and reviewing possible duplicate completions/competing current reads. Unresolved counts are provisional. |
+| 12. Collections            | Preserve both entries' memberships per owner, showing the surviving book once in each collection.                                            |
+| 13. Historical attribution | Preserve the original library attribution of past reading activity. A merge adds no reading time or completion.                              |
+
+This extends the accepted [note model](note-model.md), [sync model](offline-sync.md), [native stack](native-stack.md) and [storage/recovery policy](storage-recovery.md). It does not change the EPUB/PDF format split, native reader scope or ownership of existing online whole-book features.
+
+## What the reader experiences
+
+The online management page offers a Merge action with a preview of the two entries, the entry to keep, destination library, proposed metadata/cover/primary file, and the resulting file list. It identifies different editions/formats and explains exact-copy deduplication. The reader can cancel without combining the entries. A move or rename that encounters an existing entry offers this explicit process or keeps/skips the entries; it cannot silently merge them.
+
+After confirmation, one catalog entry represents the book. A combined notes/history view retains original-entry labels where needed to distinguish sources or alternatives. Selecting a reading note opens its original verified source or saved context, including notes from different editions. No merge action moves ink to different text, changes an open reading position or replaces an unsaved draft.
+
+Each owner sees Needs review on their own competing values. The surviving entry's value is provisional; if only the other entry has a value, that value carries forward. Equal values can display once while retaining their provenance. Review is available later and does not block the shared catalog operation. The person performing the merge receives no other owner's private note, rating, status, history, device details or private conflict counts.
+
+## Catalog and source identities
+
+- Distinguish a path/library move that preserves one entry from a merge that retires an entry. A merge has an immutable operation identity and an explicit surviving catalog identity. Retired public book identities continue through authorized aliases, with origin information; do not delete the parent row and rely on cascading foreign keys to preserve state.
+- Fold existing user-owned book associations into the surviving association only because this operation explicitly combines the entries. Preserve old association identities as resolvable origins. Create associations lazily for affected owners; do not generate a user-by-library cross product. Identical source bytes alone never merge otherwise independent associations.
+- Verify both complete, stable file contents using SHA-256, byte length and validated format before exact-copy deduplication. Detect changes during hashing/staging and invalidate verification. Filenames, titles, ISBNs, modification times and the current sampled MD5 fingerprint do not establish equality. Copy verification of one incoming file does not compare it with the other source.
+- Exact copies may use one stored content object, while both old file IDs/public UUIDs remain working links to that verified source. Preserve source-version records, locator conventions, geometry, progress identities and origin labels. A file alias must not make an unverified position verified. Resolve and compare the exact range/page under the shared source before declaring a note collision.
+- Keep different bytes and formats as distinct source versions/files. Resolve filename collisions with distinct reviewed names; never overwrite a file because its name matches. Keep the chosen primary file explicit. If a library's organization policy cannot retain the resulting files, block the merge and explain how to keep the entries separate or choose a compatible destination.
+- Missing original files retain their missing-source identity, private data and saved context. Do not synthesize a complete digest from a sampled hash or substitute the surviving primary file. Revised or metadata-only changed files follow the accepted source-replacement verification/approval rules.
+- Choosing catalog metadata does not silently rewrite the book files. A later metadata-to-file operation is a source change and follows the source-version safeguards. Old aliases authorize no additional library access.
+
+## Reading notes and late edits
+
+The active uniqueness key remains owner, merged book association, verified source version and exact text range or PDF page. Overlapping different ranges remain different notes. Different source versions/formats remain different placements even when their quotes look the same. Unverified legacy annotations retain their identities and context until verified; similarity is not grounds to collapse them.
+
+When active notes collide on that key, retain one canonical active note identity, using the surviving entry's note when available. Preserve the other identity as an origin alias and preserve both complete text/ink versions with their editable originals, matching previews and context. Show the surviving contents provisionally with Needs review. Do not concatenate bodies, overlay two drawings or reshape handwriting automatically. Owner review may choose a version, combine text or create a revised drawing; all resulting content must satisfy the accepted size and encoding contracts. Preserve alternatives until resolution is accepted durably.
+
+An old note identity and base revision identify the original branch of work. An offline operation arriving through an alias must not be silently rebased onto the provisional canonical contents. Preserve its version and apply the accepted same-part conflict/different-part merge rules within the appropriate branch. A final review checks the latest heads and active-key occupancy before accepting a result. Keep immutable pending operation payloads/digests unchanged; record canonical routing separately in the response/local mapping.
+
+Lifecycle checks precede alias routing:
+
+- A trashed origin remains recoverable in Trash. An active colliding note can remain the one active entry; restoring the older note uses the already-agreed collision review under one note.
+- A permanently deleted origin cannot become an alias that grants permission to recreate it or modify a different active note. Its late offline edits remain local Recovered changes under the accepted deletion rule.
+- A stale delete/Trash operation against an old identity cannot delete the newly combined canonical note without a valid current lifecycle precondition. Preserve the old branch and require the accepted review/retry path.
+- Preserve operation receipts, deletion acknowledgments, replay barriers and device identities across the routing change. A merge does not reset sync generations, revive Trash or turn a retry into a new note.
+
+Removing highlight colour still keeps the note. Browser ink remains read-only; iPad ink remains editable. A merge never creates a new annotation owner in Notebook or copies notes into another user's account.
+
+## Other personal state
+
+| State                                 | Preservation and presentation contract                                                                                                                                                                                                                                                                                             |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Personal book note                    | One provisional active body with owner-only alternatives and original-entry labels. Do not silently overwrite or concatenate. Review must respect the existing 10,000-character contract or explicitly introduce a new validated contract; never truncate a combined body. This remains an online whole-book feature.              |
+| Journal                               | Preserve every independent entry, client UUID, original timestamps, locators, provenance and Trash state. Proven retries of the same identity are not new entries. Matching body/date is not a duplicate test. Legacy locators without source bindings must not be opened on a guessed primary file.                               |
+| Rating and reading status             | Carry a sole value; otherwise retain alternatives and provisionally display the survivor's value with Needs review. A private review cannot change another owner's state. Status remains consistent with the reading-attempt projection rather than an independently overwritten scalar.                                           |
+| Reading attempts                      | Preserve both histories and their identities/outcomes, including soft-deleted records. Competing current attempts remain review candidates while one provisional current value satisfies the active-attempt constraint. Review can identify a duplicate or choose the current attempt; the merge itself never finishes an attempt. |
+| Reading sessions and time             | Retain every independent session, source/device cursor and attempt link. Deduplicate only proven retry identities. Preserve historical library attribution, distinguish uncertainty in legacy data, and make unresolved completion counts provisional.                                                                             |
+| Reading positions                     | Different source files retain separate positions. For a verified identical source, competing positions use the accepted choice-between-places behavior. Keep an already-open page in place; do not choose the greatest percentage or let a delayed save win by arrival time.                                                       |
+| Reader/audio preferences and progress | Preserve file-specific settings and source/manifest bindings. For colliding book-level settings, use the survivor's value provisionally and retain origin alternatives. Preserve audiobook progress/revision and TTS identities through their existing online owners; this adds no native audiobook reader.                        |
+| Bookmarks                             | Preserve identities, labels, verified placement and device mappings. If existing uniqueness constraints collide, retain origin alternatives under the combined position rather than dropping a row. Different or unverified sources are not interchangeable.                                                                       |
+| Collections                           | Union stored memberships per collection owner. Where both entries belong to the same collection, show once, keeping the survivor's position if present; otherwise carry the other position. Retain original membership provenance in the merge record.                                                                             |
+| Smart scopes                          | Keep each owner's rules. Recompute accessible results from the resulting catalog and provisional personal values; do not turn matching results into new stored memberships or expand access.                                                                                                                                       |
+| Integrations                          | Preserve external IDs, mappings, delivery/removal state and acknowledgments through the owning adapters. Do not infer provider identity from matching dates or recreate a missing mapping as new content.                                                                                                                          |
+
+The combined history records original entry and library-at-event independently of the book's current catalog library. Rebuilding statistics must use that provenance. Existing daily aggregates and sessions do not always contain enough information to reconstruct the original library; preserve known attribution/aggregates and mark unknown provenance instead of fabricating it from the current library. The merge must not create time/completion events, silently double-count proven retries or discard independent sessions. A current catalog book count can decrease because two entries become one; that is distinct from deleting reading history.
+
+## Ownership, access and reachability
+
+The server authorizes the actor for both entries, their content restrictions, the destination library and the retire/delete consequence, using explicit metadata/edit and book-deletion permissions with the project's documented superuser exceptions. A source-only rename permission or a frontend button is insufficient. Recheck authorization when confirming and before publishing the result.
+
+Mechanical preservation of other owners' records is a narrowly scoped system operation within the confirmed merge. It grants the actor no read/review access to those records. Catalog previews/status contain only authorized shared fields and the caller's private review data. Logs use IDs/counters authorized for their audience and omit private bodies, credentials and other owners' device identities. Private conflict-resolution routes always use the authenticated owner, including when the actor is a superuser managing the catalog.
+
+Owners must retain access to their own saved notes/context, personal book notes, journals and reading history after an entry is retired or moved to a library they cannot currently open. Provide an owner-scoped retained-history/review route independent of complete-book access. Existing whole-book features remain online and can use the embedded management pages. This is a required extension to current routes, not a claim that their existing book-access checks already provide it.
+
+Aliases and history views do not grant access to the complete surviving book, another owner's data or a newly inaccessible library. Fresh book/file requests check current target access and content restrictions. Own saved excerpts/pages remain available under the retention contract. Device adapters reconcile eligibility/removals without exposing private histories to the merge initiator. Existing offline content cannot promise instantaneous revocation while disconnected.
+
+## Durable operation and module boundaries
+
+Use one merge coordinator at the management boundary. It calls exported interfaces of the catalog/file, association/annotation, personal-note, journal, reading-history, collection and integration owners. Each owner validates its constraints and preserves its own data; the coordinator does not reach into another module's ORM internals. Keep the public operations focused on preview, confirm, bounded status/results and owner review. Native management pages use the same contracts as the website.
+
+The proposed durable operation has these stages:
+
+1. **Prepare and preview:** create a server/actor-scoped operation UUID and immutable plan digest. Inventory affected data with cursors/batches; capture catalog/source generations, file verification and the chosen survivor/destination. Private-owner plans contain protected references, not bodies exposed to the actor. Show the required changes and confirmation consequences.
+2. **Confirm:** validate the digest, current permissions and catalog/source preconditions. A material catalog/file change invalidates the preview and needs another confirmation. Private edits after preview are preserved by revision-aware reconciliation; they must not be lost or disclosed to the actor.
+3. **Stage:** durably prepare file copies/links, owner-state preservation, alias mappings and review candidates without deleting originals. Acquire database-visible leases for both book/file identities in stable order. Coordinate scanner, rename, sync, backup and asset-GC writers through those leases; process-local locks alone are insufficient.
+4. **Publish:** validate a final generation cut and atomically expose the surviving catalog identity and complete resolver mapping after all required preservation references are durable. Large owner inventories can stage in bounded batches, with deltas checked before the visibility change. Readers see the old pair before publication and one combined result afterward, not a partially migrated personal history. Retired rows remain protected from destructive cascades.
+5. **Finish and reconcile:** persist the operation receipt, invalidate relevant lists, emit deletion-aware alias/review changes, and reconcile device/external mappings. Cleanup can retry after catalog completion. It removes redundant physical data only after references, leases and replay requirements permit it; retained private alternatives remain protected.
+
+Track preparing, awaiting confirmation, staging, committing, completed, cleanup pending, failed, cancelled and recovery-required outcomes durably, with paginated progress and sanitized failure details. A duplicate confirmation/retry with the same identity/digest returns the existing job or receipt. A changed payload under the same operation identity is rejected. Stream disconnection does not erase confirmed intent or imply that a published merge was cancelled.
+
+Before publication, cancellation/failure leaves both entries and source files available; if safe rollback cannot be established, mark recovery required and block further destructive work. After publication, report the merge as completed with any cleanup/reconciliation pending. Resume that confirmed operation idempotently after restart; do not rerun it as another merge or offer an automatic unmerge. A retained record stores origins, chosen metadata, file mappings, preserved-state references and outcomes, supporting diagnosis and deliberate recovery after later edits.
+
+Concurrent writes either complete against a valid pre-merge generation or resolve against the published mapping. A stale writer receives a retry/review response that preserves its draft. Never acknowledge an edit as Synced before its durable acceptance. Legacy annotation, journal, progress, session and integration writers require equivalent guarded routing; pause affected unsupported writes with an actionable compatibility message rather than silently discarding them or creating duplicates.
+
+All three audited collapse paths, plus duplicate-management UI, must route through this contract. A scanner can propose a candidate, not confirm one. Unsupported merge cases stop with a useful explanation. Ordinary deletion remains a distinct operation subject to the accepted book-removal retention policy.
+
+## Scale, sync and backup integration
+
+- Apply the accepted scale targets and budgets: 50,000-book/100,000-reading-note primary account, isolated other owners, 100-item pages/work batches and bounded job concurrency of two per user/four globally. Stream full-file hashes/copies and checkpoint inventories; never retain a whole library, every owner's body or the entire plan/result set in memory. Bound database transactions and provide resumable progress for large merges.
+- Indexed owner/source/range keys, alias lookup, operation identity, generation and per-owner review indexes must support targeted routing and cursor reads. Bulk management selects explicit bounded IDs or persists a cursor-driven query job; it does not expand an entire selection into a request body.
+- Emit canonical identity/lifecycle changes through the accepted deletion-aware sync feed. Keep old identities and origin revisions long enough for permitted offline/retry clients, with the existing replay floors and retirement policy. Browser convergence preserves unsaved editors; online note/review changes follow the accepted automatic-refresh contract.
+- Coordinate the merge's filesystem staging, publication and cleanup with the server backup write gate. Protect staged and referenced assets with leases. Restic recovery must include durable merge jobs/receipts, mappings, review alternatives, source manifests and required assets alongside the database. Do not claim a coordinated restore if these references are incomplete.
+- After a server restore, rotate the accepted recovery generation and reconcile; an old client must not replay a merge or overwrite preserved alternatives against the restored state. App recovery includes its note identity mappings, origin/base revisions and pending operations, without rewriting immutable operation bodies or adding complete books/credentials to its recovery file.
+- Retain the minimum merge record/aliases and referenced private versions while they remain required for review, replay, history or recovery. Apply the accepted reference-aware retention rules; a fixed age alone does not authorize deleting a replay barrier or a still-referenced original. This does not require unlimited snapshots of every later revision.
+
+New capabilities, DTOs, shared types and native transport fixtures must explicitly describe these contracts. Existing move/rename/progress endpoints do not already provide them. An incompatible server pauses affected sync/management while keeping local reading notes usable.
+
+## Evidence, validation and resolution boundary
+
+The [current merge and personal-state facts](../research/book-merge-current-facts.md) audit commit `40c0ed85755a4860d089327b55d08c121a8f0d10`. Move collision merge, folder rename and scanner repair currently delete one book identity, with inconsistent survivor selection and personal-data cascades. Their sampled duplicate test, permissions, filesystem ordering and aggregate-only restart records do not meet this proposal. These are static findings; no real merge, runtime preservation, backup restoration or device check was performed for this decision.
+
+The prior native/browser/signing proofs remain accepted within their fixture limits. They do not validate production merge behavior. Carry these acceptance cases into [Agree the complete reading journey and build-readiness criteria](https://github.com/mooneeb/bookorbit/issues/13):
+
+- Distinct and colliding mixed text/ink notes, PDF page ink, editable originals/context, overlapping ranges, exact-copy aliases and revised/different-format sources, including filename/hash false positives and incompatible destination policies.
+- Private reviews for multiple owners, the initiator's permissions/content filters, loss of destination-library access, retained whole-book notes/journals, and absence of private disclosures in preview/status/logs.
+- Trash/permanent deletion, stale lifecycle operations, late offline edits, restore collision, concurrent owner review and legacy/device writers using old identities without duplication or silent overwrite.
+- Independent journal/session identities, competing current attempts, possible duplicate completions, provisional values/counts, stable historical library attribution and collection union without new reading events.
+- Explicit confirmation at every collapse entry point, stale-preview refusal, cancellation, retry and restart before/after staging, publication, receipt persistence and cleanup, including changed permissions/source bytes.
+- Bounded processing at the declared library/note scale, scanner exclusion of staging/retired paths, backup/GC lease coordination and coordinated restore with generation reconciliation.
+
+All thirteen product choices are answered. Final confirmation of this complete proposal is required before resolving this planning decision. Implementation, migrations, executable failure/scale tests and the complete journey remain outstanding; resolving this decision closes neither that work nor the map.

@@ -29,6 +29,14 @@ The [storage priorities](https://github.com/mooneeb/bookorbit/issues/12#issuecom
 
 The iPad scale-validation set is 20 downloaded books, without a download-count cap. Replacement devices fetch historical assets for offline books/opened notes. Server backups use restic outside primary storage, seven daily/four weekly recovery points, at most 24 hours of synced-work loss, a five-minute write-pause bound, and notes/context-first recovery targeted within four hours after prerequisites are ready. Complete library file recovery proceeds separately. The [storage proposal](decisions/storage-recovery.md) records technical limits, measurement conditions and final acceptance status through its linked decision.
 
+## Current book-merge scope, 2026-10-24
+
+The [note/history choices](https://github.com/mooneeb/bookorbit/issues/21#issuecomment-6372349614), [file/confirmation choices](https://github.com/mooneeb/bookorbit/issues/21#issuecomment-6372670832) and [private-state/history choices](https://github.com/mooneeb/bookorbit/issues/21#issuecomment-6372728431) require explicit preview and confirmation whenever existing book identities combine. The reader chooses the surviving catalog entry and reviews metadata changes. Different files retain original note placement; exact copies can deduplicate only after complete content/format verification, preserving old identities and state.
+
+Colliding notes on the same verified exact range/PDF page become one active note with reviewable versions. Whole-book note alternatives remain private, journal lists preserve every independent entry, and each owner can review after the catalog merge finishes. Pending conflicts display the surviving value provisionally with Needs review. Reading history combines with duplicate/current-read review and provisional unresolved counts; collection memberships combine, and past reading activity retains its original library attribution. No automatic unmerge is required initially.
+
+The [book-merge proposal](decisions/book-merge.md) records concrete identity, private reachability, retry/recovery and compatibility contracts. The linked decision holds final acceptance status. These are planning requirements, not authorization to merge books or evidence that existing collapse paths preserve data.
+
 ## Initial intake
 
 - Destination: a build-ready specification and settled decisions before implementation.

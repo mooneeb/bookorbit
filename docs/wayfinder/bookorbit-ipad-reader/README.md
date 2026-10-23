@@ -58,6 +58,14 @@ The accepted scope includes all online book management using existing pages insi
 
 Accepted inputs require explicit downloads, confirmed removal, protected local work, unencrypted app recovery backups, manually emptied Trash, a 20-book offline validation set, and daily server recovery points with notes-first restoration. A new readable PDF/text export is outside the first version. The proposal defines resource limits, retention/replay rules and declared performance/restore targets; these are not measured production results.
 
+## Book merges and personal histories
+
+- [Book-merge identity, personal-state and recovery proposal](decisions/book-merge.md)
+- [Choose how book merges preserve notes and personal book state](https://github.com/mooneeb/bookorbit/issues/21): thirteen live choices, complete shared review and resolution status.
+- [Current merge paths and personal-state ownership facts](research/book-merge-current-facts.md)
+
+Every combination of existing entries requires explicit preview/confirmation. Different files keep their sources; fully verified identical copies can deduplicate while preserving identities. Colliding notes and private values retain owner-only review alternatives, journals/history combine with provenance, collections retain both memberships and past reading keeps its historical library attribution. The proposal defines durable retry/recovery and authorization contracts; it is not a production merge result. Automatic unmerge is outside the first version.
+
 ## Browser compatibility
 
 - [Browser compatibility walkthroughs](prototypes/browser-compatibility/README.md): actual Foliate/EmbedPDF readers with native ink fixtures and isolated review steps.

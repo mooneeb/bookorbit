@@ -7,11 +7,26 @@ The language for reading, taking notes and managing books across BookOrbit and t
 **Book management**:
 Importing, describing, organizing and removing books in the reader's library, individually or in bulk. It is distinct from server, account, permission and device administration.
 
+**Book merge**:
+An explicitly confirmed combination of two existing library entries into one book, retaining their reading notes and personal histories.
+
+**Surviving book**:
+The library entry chosen to represent the combined book after a book merge.
+
+**Merge review**:
+The reader's review of competing personal content retained when book entries are merged.
+
 **Personal book note**:
 The reader's single general note about a book, separate from text-linked notes, page ink and journal entries.
 
 **Journal entry**:
 One entry in the reader's whole-book journal. A book can have several journal entries, each separate from annotations on selected words or PDF pages.
+
+**Reading attempt**:
+One occasion of reading a book, with its own dates and outcome.
+
+**Reading history**:
+The reader's retained record of reading a book, including separate attempts, sessions and their original library context.
 
 **Image-only page**:
 A book page whose words are stored as an image rather than as selectable book text.
@@ -46,7 +61,7 @@ A book excerpt or annotated page kept with a reading note so the note remains un
 The particular EPUB or PDF content used when a reading note was created. Replacing that content creates another source version; changing text size or reading layout does not.
 
 **Note conflict**:
-Competing edits to the same part of a reading note, or an edit that arrives after the note was moved to Trash. The competing versions remain attached to one note for review rather than becoming separate reading notes.
+Competing content brought into one reading note by edits, a book merge, or an edit arriving after Trash. The competing versions remain attached to one note for review rather than becoming separate reading notes.
 
 **Conflicting version**:
 A version of a reading note preserved for comparison and resolution alongside another version. Preserving it does not restore a note from Trash.
