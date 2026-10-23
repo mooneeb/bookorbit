@@ -12,11 +12,20 @@ _Avoid_: Scribble note
 A reading note expressed as editable text, whether entered with a keyboard or through Scribble.
 
 **Text-linked note**:
-A typed or handwritten note attached to the exact words selected in a book. The note's content stays separate from the reading page's changing layout.
+A reading note attached to an exact selection of words, whose text, editable handwriting, or both stay separate from the book's changing layout. Reselecting the same range reopens its note; different ranges have separate notes, even if they overlap.
 _Avoid_: Passage-linked note, page note
 
+**Highlight**:
+A visual marking of selected words, optionally accompanied by a text-linked note. Its appearance can be removed while keeping the note and its selected range.
+
 **Page ink**:
-Handwriting or drawings placed directly over the book's displayed content.
+The editable handwriting and drawings placed directly on one PDF page, grouped into one entry in the reading notes.
+
+**Saved context**:
+A book excerpt or annotated page kept with a reading note so the note remains understandable after the book is replaced or removed.
+
+**Source version**:
+The particular EPUB or PDF content used when a reading note was created. Replacing that content creates another source version; changing text size or reading layout does not.
 
 **Text-anchored ink**:
 Page ink positioned relative to specific words across reading layouts. This differs from handwriting contained in a text-linked note.

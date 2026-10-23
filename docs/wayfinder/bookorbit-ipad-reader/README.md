@@ -25,7 +25,14 @@ The completed reviews and scope decision are linked above. Historical preservati
 
 The prototype now has eleven independent, guided walkthroughs that separate page clarity from offline recovery, browser viewing, failed saves, original words and app-update preservation. The earlier combined review was rejected as confusing. Each walkthrough has a complete task and specific per-step questions. It now opens on the intended Air M2 running iPadOS 26.6.1 through free Xcode signing. A first manually inked EPUB capture and a normal in-place update preserved the saved backgrounds, drawing and original context. Each clarity step names one saved format and zoom level rather than asking a generic verdict. The build 4 physical review accepted page clarity at all tested sizes, EPUB/PDF source-free offline editing, failure recovery and the named browser previews. The final build 5 review also accepted the corrected original/revised page comparison and post-update editing, completing all eleven prototype behavior verdicts. The subsequent [free-signing renewal review](https://github.com/mooneeb/bookorbit/issues/20#issuecomment-6299949060) and [preservation resolution](https://github.com/mooneeb/bookorbit/issues/15#issuecomment-6300054724) complete that earlier decision. Exact browser versions at the preservation review remain a provenance limit; the later browser proof records its own exact versions.
 
-## Current browser contract
+## Note identity and storage
+
+- [Reading-note model and storage specification](decisions/note-model.md)
+- [Choose note identity, anchoring, and storage ownership](https://github.com/mooneeb/bookorbit/issues/8): canonical live choices, final acceptance and status.
+
+The specification captures mixed text/ink notes, exact-range identity, PDF page grouping, editable server originals and retained context after book removal. It proposes extending the existing annotation owner; the linked decision records acceptance. Sync protocol, final reader stack and backup/scale policy remain separate decisions.
+
+## Browser compatibility
 
 - [Browser compatibility walkthroughs](prototypes/browser-compatibility/README.md): actual Foliate/EmbedPDF readers with native ink fixtures and isolated review steps.
 - [Completed live browser and iPad review](prototypes/browser-compatibility/evidence/live-review.json): three selected browser reviews and both matching native erase/Undo checks passed; the initial margin failure and correction remain recorded.
