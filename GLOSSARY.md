@@ -27,6 +27,21 @@ A book excerpt or annotated page kept with a reading note so the note remains un
 **Source version**:
 The particular EPUB or PDF content used when a reading note was created. Replacing that content creates another source version; changing text size or reading layout does not.
 
+**Note conflict**:
+Competing edits to the same part of a reading note, or an edit that arrives after the note was moved to Trash. The competing versions remain attached to one note for review rather than becoming separate reading notes.
+
+**Conflicting version**:
+A version of a reading note preserved for comparison and resolution alongside another version. Preserving it does not restore a note from Trash.
+
+**Recovered changes**:
+Reading-note edits kept on their device after the corresponding note was permanently deleted. They stay separate from active notes unless the reader explicitly saves them as a new note.
+
+**Reading position**:
+The location where the reader stopped in a particular source file, used to resume reading. It is distinct from a note's selected words or PDF page-ink placement.
+
+**Competing reading positions**:
+Different places reached independently on devices, kept as alternatives until the reader chooses where to continue.
+
 **Text-anchored ink**:
 Page ink positioned relative to specific words across reading layouts. This differs from handwriting contained in a text-linked note.
 

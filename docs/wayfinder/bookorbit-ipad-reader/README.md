@@ -32,6 +32,13 @@ The prototype now has eleven independent, guided walkthroughs that separate page
 
 The specification captures mixed text/ink notes, exact-range identity, PDF page grouping, editable server originals and retained context after book removal. It proposes extending the existing annotation owner; the linked decision records acceptance. Sync protocol, final reader stack and backup/scale policy remain separate decisions.
 
+## Offline sync and recovery
+
+- [Offline note sync, conflicts and recovery proposal](decisions/offline-sync.md)
+- [Choose offline sync, conflict, and deletion behavior](https://github.com/mooneeb/bookorbit/issues/9): canonical live choices, final acceptance and status.
+
+The proposal covers durable local notes, retry identity, revision checks, text/ink merging, conflict review, deletion recovery, source-bound reading positions and browser freshness. It distinguishes server acceptance from local saving and conditional background attempts. Its network and failure behavior requires later implementation and validation.
+
 ## Browser compatibility
 
 - [Browser compatibility walkthroughs](prototypes/browser-compatibility/README.md): actual Foliate/EmbedPDF readers with native ink fixtures and isolated review steps.
