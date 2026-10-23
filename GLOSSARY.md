@@ -1,8 +1,20 @@
-# BookOrbit Reading Notes
+# BookOrbit Reading and Book Management
 
-The language for reading and taking notes across BookOrbit and the personal iPad app.
+The language for reading, taking notes and managing books across BookOrbit and the personal iPad app.
 
 ## Language
+
+**Book management**:
+Importing, describing, organizing and removing books in the reader's library, individually or in bulk. It is distinct from server, account, permission and device administration.
+
+**Personal book note**:
+The reader's single general note about a book, separate from text-linked notes, page ink and journal entries.
+
+**Journal entry**:
+One entry in the reader's whole-book journal. A book can have several journal entries, each separate from annotations on selected words or PDF pages.
+
+**Image-only page**:
+A book page whose words are stored as an image rather than as selectable book text.
 
 **Ink note**:
 A reading note that preserves the reader's handwriting or drawings as editable marks.

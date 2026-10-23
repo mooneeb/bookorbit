@@ -39,6 +39,16 @@ The specification captures mixed text/ink notes, exact-range identity, PDF page 
 
 The proposal covers durable local notes, retry identity, revision checks, text/ink merging, conflict review, deletion recovery, source-bound reading positions and browser freshness. It distinguishes server acceptance from local saving and conditional background attempts. Its network and failure behavior requires later implementation and validation.
 
+## Native app stack and management
+
+- [Stack and module-interface proposal](decisions/native-stack.md)
+- [Choose the native app boundary and reader stack](https://github.com/mooneeb/bookorbit/issues/10): live scope choices, shared review and resolution status.
+- [Current reader, license and official-source facts](research/reader-stack-current-facts.md)
+- [Native platform, input and persistence facts](research/native-platform-stack-facts.md)
+- [Free packaging, web containment and asset provenance](research/native-packaging-containment-facts.md)
+
+The accepted scope includes all online book management using existing pages inside the app, with native library, reader controls, notes, downloads and sync status. Management covers all server formats; initial native reading covers unprotected EPUB/PDF. Server/user/Kobo administration and existing whole-book notes keep their separate web roles. The linked proposal records technical recommendations and the integration checks still required.
+
 ## Browser compatibility
 
 - [Browser compatibility walkthroughs](prototypes/browser-compatibility/README.md): actual Foliate/EmbedPDF readers with native ink fixtures and isolated review steps.

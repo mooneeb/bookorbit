@@ -12,6 +12,17 @@ The user's [accepted hybrid approach](https://github.com/mooneeb/bookorbit/issue
 
 Research into existing readers that support handwriting directly over EPUB pages is a separate comparison. It does not reverse this accepted choice. The intake and review below preserve the earlier requirements as history; use this section where they conflict.
 
+## Current app scope, 2026-10-23
+
+The live scope choices in [Choose the native app boundary and reader stack](https://github.com/mooneeb/bookorbit/issues/10#issuecomment-6369981693), its [management/accessibility round](https://github.com/mooneeb/bookorbit/issues/10#issuecomment-6370068019) and [format/whole-book-note round](https://github.com/mooneeb/bookorbit/issues/10#issuecomment-6370708393) add:
+
+- All book management is included while connected: imports, metadata, organization, bulk actions and removal. Native library/reader controls/reading notes/downloads/sync UI can open existing management pages inside the app for advanced actions.
+- Manage all server-supported formats, while the initial native reader opens ordinary, unprotected EPUB/PDF. Server configuration, user/permission administration and Kobo setup remain in the website.
+- Existing personal book notes and journals remain online features with their existing owners. Downloaded reading and the new reading annotations retain the agreed native offline behavior; there is no new offline library-management queue.
+- VoiceOver book/reading-note navigation and larger interface text are initial acceptance requirements. Handwriting uses selected words and optional typed descriptions for identification, without automatic transcription. Under the [image-only accessibility choice](https://github.com/mooneeb/bookorbit/issues/10#issuecomment-6371017678), image-only book pages announce unavailable text and remain visually readable; book-page OCR is outside the first version. The [stack proposal](decisions/native-stack.md) records content limitations and remaining verification.
+
+These are current product requirements. The linked stack decision records final technical acceptance; the following intake remains historical where superseded.
+
 ## Initial intake
 
 - Destination: a build-ready specification and settled decisions before implementation.
