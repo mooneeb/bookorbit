@@ -49,6 +49,15 @@ The proposal covers durable local notes, retry identity, revision checks, text/i
 
 The accepted scope includes all online book management using existing pages inside the app, with native library, reader controls, notes, downloads and sync status. Management covers all server formats; initial native reading covers unprotected EPUB/PDF. Server/user/Kobo administration and existing whole-book notes keep their separate web roles. The linked proposal records technical recommendations and the integration checks still required.
 
+## Storage, backups and recovery
+
+- [Storage and recovery proposal](decisions/storage-recovery.md)
+- [Set library scale, storage, backup, and export requirements](https://github.com/mooneeb/bookorbit/issues/12): live choices, complete review and resolution status.
+- [Inspected fixture sizes and existing backup/export/scale contracts](research/storage-baseline-facts.md)
+- [Recovery container, database and server-tool mechanisms](research/recovery-mechanisms-facts.md)
+
+Accepted inputs require explicit downloads, confirmed removal, protected local work, unencrypted app recovery backups, manually emptied Trash, a 20-book offline validation set, and daily server recovery points with notes-first restoration. A new readable PDF/text export is outside the first version. The proposal defines resource limits, retention/replay rules and declared performance/restore targets; these are not measured production results.
+
 ## Browser compatibility
 
 - [Browser compatibility walkthroughs](prototypes/browser-compatibility/README.md): actual Foliate/EmbedPDF readers with native ink fixtures and isolated review steps.

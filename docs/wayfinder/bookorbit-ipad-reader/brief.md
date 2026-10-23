@@ -23,6 +23,12 @@ The live scope choices in [Choose the native app boundary and reader stack](http
 
 These are current product requirements. The linked stack decision records final technical acceptance; the following intake remains historical where superseded.
 
+## Current recovery scope, 2026-10-23
+
+The [storage priorities](https://github.com/mooneeb/bookorbit/issues/12#issuecomment-6371410842), [recovery/working-set choices](https://github.com/mooneeb/bookorbit/issues/12#issuecomment-6371518636) and [server operational choices](https://github.com/mooneeb/bookorbit/issues/12#issuecomment-6371711106) require explicit downloads with confirmed removal, protected notes/pending work, manual Trash emptying, and an unencrypted app recovery backup containing notes/context and the download list. It excludes complete books and does not require a new readable note export.
+
+The iPad scale-validation set is 20 downloaded books, without a download-count cap. Replacement devices fetch historical assets for offline books/opened notes. Server backups use restic outside primary storage, seven daily/four weekly recovery points, at most 24 hours of synced-work loss, a five-minute write-pause bound, and notes/context-first recovery targeted within four hours after prerequisites are ready. Complete library file recovery proceeds separately. The [storage proposal](decisions/storage-recovery.md) records technical limits, measurement conditions and final acceptance status through its linked decision.
+
 ## Initial intake
 
 - Destination: a build-ready specification and settled decisions before implementation.

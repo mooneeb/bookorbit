@@ -16,6 +16,12 @@ One entry in the reader's whole-book journal. A book can have several journal en
 **Image-only page**:
 A book page whose words are stored as an image rather than as selectable book text.
 
+**Offline book**:
+A book the reader has chosen to keep available for reading without a server connection.
+
+**Reading-note recovery backup**:
+A restorable copy of the reader's notes, editable handwriting, saved context and local changes, including work not yet synced to BookOrbit.
+
 **Ink note**:
 A reading note that preserves the reader's handwriting or drawings as editable marks.
 _Avoid_: Scribble note
