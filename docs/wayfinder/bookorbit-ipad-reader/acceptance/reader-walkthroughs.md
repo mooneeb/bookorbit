@@ -184,7 +184,7 @@ Trace: [Cross-format placement](../decisions/note-model.md).
 
 **Question:** Can the reader use the required controls and notes comfortably through sustained actual reading?
 
-**Setup:** Fresh private copies of one EPUB and one PDF chosen from the reader's actual library, within the eventual supported profiles. Prepare this run's own signed-in account, downloads and note state. The test operator records the chosen sources privately. Neither book nor its handwritten contents is published. Control inventory and profile coverage must first be settled in the two linked decisions below.
+**Setup:** Fresh private copies of one EPUB and one PDF chosen from the reader's actual library, within the eventual supported profiles. Prepare this run's own signed-in account, downloads and note state. The test operator records the chosen sources privately. Neither book nor its handwritten contents is published. Use the [reading-control contract and cases](reading-controls.md); final profile coverage must first be settled in the linked publication decision below.
 
 - [ ] Read the EPUB for at least thirty minutes. Navigate normally, make/reopen typed and ink notes, change supported reading preferences and continue from the saved place after reopening.
 - [ ] In a separate fresh session, read the PDF for at least thirty minutes. Navigate normally, write on a page, disable writing, revisit the visible ink, zoom/pan and continue after reopening.
@@ -197,4 +197,4 @@ Trace: [Accepted complete-journey review choices](https://github.com/mooneeb/boo
 
 ## Review status
 
-These walkthroughs have not been run against production code. The reader-control inventory is pending in [Choose everyday reading controls and preference behavior](https://github.com/mooneeb/bookorbit/issues/22), and content coverage is pending in [Define supported EPUB and PDF publication profiles](https://github.com/mooneeb/bookorbit/issues/23). Incorporate those answers and the technical conflict/failure, management, installation, recovery and scale scenarios before declaring the handoff complete. The current steps do not silently decide missing reading controls or profiles.
+These walkthroughs have not been run against production code. Use the [standalone control/bookmark cases](reading-controls.md) and the final confirmation/status in [Choose everyday reading controls and preference behavior](https://github.com/mooneeb/bookorbit/issues/22). Content coverage is still pending in [Define supported EPUB and PDF publication profiles](https://github.com/mooneeb/bookorbit/issues/23). Incorporate that answer and the technical conflict/failure, management, installation, recovery and scale scenarios before declaring the handoff complete. The current steps do not silently choose publication profiles.

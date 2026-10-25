@@ -51,6 +51,15 @@ The proposal covers durable local notes, retry identity, revision checks, text/i
 
 The accepted scope includes all online book management using existing pages inside the app, with native library, reader controls, notes, downloads and sync status. Management covers all server formats; initial native reading covers unprotected EPUB/PDF. Server/user/Kobo administration and existing whole-book notes keep their separate web roles. The linked proposal records technical recommendations and the integration checks still required.
 
+## Everyday reading controls and preferences
+
+- [Reading-control and bookmark proposal](decisions/reader-controls.md)
+- [Standalone control, preference and bookmark acceptance](acceptance/reading-controls.md)
+- [Choose everyday reading controls and preference behavior](https://github.com/mooneeb/bookorbit/issues/22): eleven live choices, complete review and resolution status.
+- [Current controls, preference and bookmark contracts](research/reader-controls-current-facts.md)
+
+The chosen controls cover EPUB page turns/scrolling and appearance, PDF continuous/single-page reading and view controls, contents/search/location navigation, footnotes/return and device-local defaults/book overrides. Bookmarks retain their own source-bound owner and sync with editable labels, Undo without Trash and explicit conflict/recovery rules. These are proposed implementation contracts and unrun acceptance cases. Publication-profile coverage and final complete-journey assembly remain separate decisions.
+
 ## Storage, backups and recovery
 
 - [Storage and recovery proposal](decisions/storage-recovery.md)

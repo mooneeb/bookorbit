@@ -35,7 +35,7 @@ A book page whose words are stored as an image rather than as selectable book te
 A book the reader has chosen to keep available for reading without a server connection.
 
 **Reading-note recovery backup**:
-A restorable copy of the reader's notes, editable handwriting, saved context and local changes, including work not yet synced to BookOrbit.
+A restorable copy of the reader's notes, bookmarks, editable handwriting, saved context and local changes, including work not yet synced to BookOrbit.
 
 **Ink note**:
 A reading note that preserves the reader's handwriting or drawings as editable marks.
@@ -67,7 +67,16 @@ Competing content brought into one reading note by edits, a book merge, or an ed
 A version of a reading note preserved for comparison and resolution alongside another version. Preserving it does not restore a note from Trash.
 
 **Recovered changes**:
-Reading-note edits kept on their device after the corresponding note was permanently deleted. They stay separate from active notes unless the reader explicitly saves them as a new note.
+Local edits kept after their reading note was permanently deleted or their bookmark was removed. They stay separate from active notes and bookmarks unless the reader explicitly saves them as a new item of the same kind.
+
+**Bookmark**:
+A deliberately saved text location or PDF page with its own label, separate from the automatically saved reading position and from a text-linked note.
+
+**Book contents**:
+The chapter or section navigation supplied by a book, including a PDF's document outline. It is separate from the reader's personal bookmarks.
+
+**Reading preferences**:
+The reader's device-specific choices for book appearance and reading mode, with defaults and optional choices for individual books.
 
 **Reading position**:
 The location where the reader stopped in a particular source file, used to resume reading. It is distinct from a note's selected words or PDF page-ink placement.

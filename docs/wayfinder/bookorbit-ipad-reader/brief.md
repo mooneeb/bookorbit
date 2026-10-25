@@ -43,6 +43,14 @@ The [complete-journey review choices](https://github.com/mooneeb/bookorbit/issue
 
 The [specification assembly](specification.md) remains in progress. [Everyday reading controls and preference behavior](https://github.com/mooneeb/bookorbit/issues/22) and [supported publication profiles](https://github.com/mooneeb/bookorbit/issues/23) are precise unresolved prerequisites, rather than assumptions made by the acceptance draft. These live choices must be settled before the complete handoff is approved; no implementation is authorized here.
 
+## Current reader-control scope, 2026-10-25
+
+The [reading-mode/control round](https://github.com/mooneeb/bookorbit/issues/22#issuecomment-6395961203), [bookmark round](https://github.com/mooneeb/bookorbit/issues/22#issuecomment-6396042520) and [bookmark conflict round](https://github.com/mooneeb/bookorbit/issues/22#issuecomment-6396103196) establish both EPUB modes starting with page turns, both PDF modes starting with continuous scrolling, supplied contents/outline, search/location jumps, bookmarks and links/footnotes with return. EPUB includes font choice/size, spacing, margins, light/dark/sepia/system theme and publisher styling; PDF includes fit, zoom, rotation and thumbnails. Appearance/mode defaults and book overrides remain device-specific.
+
+Bookmarks sync iPad/browser in both formats, including offline changes. They save a source text point/PDF page with an editable label, without a new comment editor or bookmark Trash. Removal offers Undo; missing/changed sources retain unavailable original locations. Competing labels require review under one bookmark; a removed bookmark's late offline rename remains local Recovered changes, without automatic restoration.
+
+The [reading-control proposal](decisions/reader-controls.md) records ownership, guarded bookmark sync and recovery-format additions; the linked decision holds complete-review/resolution status. The [supported publication profiles](https://github.com/mooneeb/bookorbit/issues/23) and final journey remain open. These choices do not authorize production implementation.
+
 ## Initial intake
 
 - Destination: a build-ready specification and settled decisions before implementation.
