@@ -60,6 +60,15 @@ The accepted scope includes all online book management using existing pages insi
 
 The chosen controls cover EPUB page turns/scrolling and appearance, PDF continuous/single-page reading and view controls, contents/search/location navigation, footnotes/return and device-local defaults/book overrides. Bookmarks retain their own source-bound owner and sync with editable labels, Undo without Trash and explicit conflict/recovery rules. These are proposed implementation contracts and unrun acceptance cases. Publication-profile coverage and final complete-journey assembly remain separate decisions.
 
+## Supported EPUB and PDF profiles
+
+- [Complete publication-support and partial-reading proposal](decisions/publication-profiles.md)
+- [Sixteen standalone publication-profile walkthroughs](acceptance/publication-profiles.md)
+- [Define supported EPUB and PDF publication profiles](https://github.com/mooneeb/bookorbit/issues/23): eleven live choices, complete review and resolution status.
+- [Pinned engine and primary-source profile facts](research/publication-profile-current-facts.md)
+
+The selected initial scope covers uniform reflowable/fixed-layout EPUBs, horizontal LTR/RTL/mixed text, local fonts and static tables/SVG/MathML, plus static text/scanned PDFs and read-only existing PDF marks/comments. Image-only fixed EPUB pages gain source-bound page bookmarks without adding EPUB page ink. The proposal defines honest font substitution, partial reading, offline availability and required adapter/recovery additions. The linked issue holds final confirmation; these acceptance cases are unrun.
+
 ## Storage, backups and recovery
 
 - [Storage and recovery proposal](decisions/storage-recovery.md)

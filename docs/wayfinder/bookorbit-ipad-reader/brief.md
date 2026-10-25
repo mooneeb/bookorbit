@@ -41,7 +41,7 @@ The [book-merge proposal](decisions/book-merge.md) records concrete identity, pr
 
 The [complete-journey review choices](https://github.com/mooneeb/bookorbit/issues/13#issuecomment-6374170330) require at least thirty minutes of reading in each format, using a small private actual-library set alongside controlled fixtures. Daily-use acceptance requires every mandatory workflow to pass. Documented minor cosmetic defects may remain only with no known data-loss, privacy, anchoring, recovery or required-accessibility failure.
 
-The [specification assembly](specification.md) remains in progress. [Everyday reading controls and preference behavior](https://github.com/mooneeb/bookorbit/issues/22) and [supported publication profiles](https://github.com/mooneeb/bookorbit/issues/23) are precise unresolved prerequisites, rather than assumptions made by the acceptance draft. These live choices must be settled before the complete handoff is approved; no implementation is authorized here.
+The [specification assembly](specification.md) remains in progress. [Everyday reading controls and preference behavior](https://github.com/mooneeb/bookorbit/issues/22#issuecomment-6396296559) is confirmed. The [publication-profile decision](https://github.com/mooneeb/bookorbit/issues/23) now records eleven accepted choices, with final complete-proposal status in that decision. Complete-journey handoff approval remains separate; no implementation is authorized here.
 
 ## Current reader-control scope, 2026-10-25
 
@@ -50,6 +50,14 @@ The [reading-mode/control round](https://github.com/mooneeb/bookorbit/issues/22#
 Bookmarks sync iPad/browser in both formats, including offline changes. They save a source text point/PDF page with an editable label, without a new comment editor or bookmark Trash. Removal offers Undo; missing/changed sources retain unavailable original locations. Competing labels require review under one bookmark; a removed bookmark's late offline rename remains local Recovered changes, without automatic restoration.
 
 The [reading-control proposal](decisions/reader-controls.md) records ownership, guarded bookmark sync and recovery-format additions; the linked decision holds complete-review/resolution status. The [supported publication profiles](https://github.com/mooneeb/bookorbit/issues/23) and final journey remain open. These choices do not authorize production implementation.
+
+## Current publication scope, 2026-10-25
+
+The [initial profile round](https://github.com/mooneeb/bookorbit/issues/23#issuecomment-6397939205) and [fixed-page/content round](https://github.com/mooneeb/bookorbit/issues/23#issuecomment-6398122462) require both uniform reflowable and fixed-layout EPUB reading, horizontal LTR/RTL/mixed text, local fonts with recognized obfuscation and disclosed readable fallback, plus static tables/SVG/MathML. Fixed pages use page navigation, zoom and optional spreads. Image-only fixed EPUB pages permit source-bound page bookmarks under the existing sync/Undo/conflict/recovery rules, without selected-word notes or EPUB page ink where no real selection exists.
+
+PDF initially covers static text and scanned-page reading/notes; existing embedded annotations and available comment text are shown read-only, separately from editable BookOrbit notes. Mixed-layout EPUB, vertical writing, EPUB media/read-aloud and interactive PDF workflows are outside the initial required profile. Clearly labelled partial reading identifies unavailable content/features without claiming complete offline availability or passing a failed required feature.
+
+The [complete support proposal](decisions/publication-profiles.md), [sixteen standalone cases](acceptance/publication-profiles.md) and [factual audit](research/publication-profile-current-facts.md) record the matrix, adapter work and evidence limits. Final shared-understanding status remains in the linked profile decision. These choices do not authorize implementation or establish runtime compatibility.
 
 ## Initial intake
 

@@ -31,6 +31,15 @@ The reader's retained record of reading a book, including separate attempts, ses
 **Image-only page**:
 A book page whose words are stored as an image rather than as selectable book text.
 
+**Reflowable EPUB**:
+An EPUB whose text changes its line and page layout to fit the reader's chosen text size and available space.
+
+**Fixed-layout EPUB**:
+An EPUB whose pages keep the publisher's designed positions for text and images when viewed at different sizes.
+
+**Partial reading**:
+Access to the readable parts of a book with its unavailable content or features explicitly identified.
+
 **Offline book**:
 A book the reader has chosen to keep available for reading without a server connection.
 
@@ -54,6 +63,9 @@ A visual marking of selected words, optionally accompanied by a text-linked note
 **Page ink**:
 The editable handwriting and drawings placed directly on one PDF page, grouped into one entry in the reading notes.
 
+**Embedded PDF annotation**:
+A highlight, drawing or comment stored inside a source PDF, separate from the reader's BookOrbit notes and page ink.
+
 **Saved context**:
 A book excerpt or annotated page kept with a reading note so the note remains understandable after the book is replaced or removed.
 
@@ -70,7 +82,7 @@ A version of a reading note preserved for comparison and resolution alongside an
 Local edits kept after their reading note was permanently deleted or their bookmark was removed. They stay separate from active notes and bookmarks unless the reader explicitly saves them as a new item of the same kind.
 
 **Bookmark**:
-A deliberately saved text location or PDF page with its own label, separate from the automatically saved reading position and from a text-linked note.
+A deliberately saved text location or book page with its own label, separate from the automatically saved reading position and from a text-linked note. A fixed-layout EPUB page can be bookmarked even when it has no selectable words.
 
 **Book contents**:
 The chapter or section navigation supplied by a book, including a PDF's document outline. It is separate from the reader's personal bookmarks.

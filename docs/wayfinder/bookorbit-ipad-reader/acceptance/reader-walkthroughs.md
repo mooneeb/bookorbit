@@ -2,6 +2,8 @@
 
 Working collection for [Agree the complete reading journey and build-readiness criteria](https://github.com/mooneeb/bookorbit/issues/13). These are future checks of the implemented app. None is marked passed by this document. Start with the [specification](../specification.md); authoritative policies remain in its linked decisions.
 
+The [reading-control cases](reading-controls.md) cover the confirmed control/bookmark model. The [publication-profile cases](publication-profiles.md) add independent fixed-layout, direction, static-rich-content, font, scan, PDF-comment and partial-reading checks; their linked decision holds final shared-understanding status. These collections add required future coverage without marking existing or new runs passed.
+
 ## Run one walkthrough
 
 Each walkthrough answers one stated question. Its setup provides everything it needs; completing a previous walkthrough is never a prerequisite. The test runner prepares fresh, separately named book copies and account-scoped data for each run. The human creates the handwriting called for here. Repeating or restarting a walkthrough resets only that run's test data, preserving its earlier evidence. Use a test deployment and copies of sources for replacement/removal checks.
