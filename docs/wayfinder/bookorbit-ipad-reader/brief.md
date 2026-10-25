@@ -41,7 +41,7 @@ The [book-merge proposal](decisions/book-merge.md) records concrete identity, pr
 
 The [complete-journey review choices](https://github.com/mooneeb/bookorbit/issues/13#issuecomment-6374170330) require at least thirty minutes of reading in each format, using a small private actual-library set alongside controlled fixtures. Daily-use acceptance requires every mandatory workflow to pass. Documented minor cosmetic defects may remain only with no known data-loss, privacy, anchoring, recovery or required-accessibility failure.
 
-The [specification assembly](specification.md) remains in progress. [Everyday reading controls and preference behavior](https://github.com/mooneeb/bookorbit/issues/22#issuecomment-6396296559) is confirmed. The [publication-profile decision](https://github.com/mooneeb/bookorbit/issues/23) now records eleven accepted choices, with final complete-proposal status in that decision. Complete-journey handoff approval remains separate; no implementation is authorized here.
+The [specification handoff](specification.md) assembles the confirmed models and future acceptance. [Everyday reading controls and preference behavior](https://github.com/mooneeb/bookorbit/issues/22#issuecomment-6396296559) is confirmed. The [publication-profile model](https://github.com/mooneeb/bookorbit/issues/23#issuecomment-6398411746) is also confirmed. Complete-journey handoff approval remains in its linked decision; no implementation is authorized here.
 
 ## Current reader-control scope, 2026-10-25
 
@@ -49,7 +49,7 @@ The [reading-mode/control round](https://github.com/mooneeb/bookorbit/issues/22#
 
 Bookmarks sync iPad/browser in both formats, including offline changes. They save a source text point/PDF page with an editable label, without a new comment editor or bookmark Trash. Removal offers Undo; missing/changed sources retain unavailable original locations. Competing labels require review under one bookmark; a removed bookmark's late offline rename remains local Recovered changes, without automatic restoration.
 
-The [reading-control proposal](decisions/reader-controls.md) records ownership, guarded bookmark sync and recovery-format additions; the linked decision holds complete-review/resolution status. The [supported publication profiles](https://github.com/mooneeb/bookorbit/issues/23) and final journey remain open. These choices do not authorize production implementation.
+The [reading-control proposal](decisions/reader-controls.md) records ownership, guarded bookmark sync and recovery-format additions; the linked decision holds complete-review/resolution status. The [supported publication profiles](https://github.com/mooneeb/bookorbit/issues/23#issuecomment-6398411746) are confirmed; the final journey holds handoff approval/status. These choices do not authorize production implementation.
 
 ## Current publication scope, 2026-10-25
 
@@ -57,7 +57,13 @@ The [initial profile round](https://github.com/mooneeb/bookorbit/issues/23#issue
 
 PDF initially covers static text and scanned-page reading/notes; existing embedded annotations and available comment text are shown read-only, separately from editable BookOrbit notes. Mixed-layout EPUB, vertical writing, EPUB media/read-aloud and interactive PDF workflows are outside the initial required profile. Clearly labelled partial reading identifies unavailable content/features without claiming complete offline availability or passing a failed required feature.
 
-The [complete support proposal](decisions/publication-profiles.md), [sixteen standalone cases](acceptance/publication-profiles.md) and [factual audit](research/publication-profile-current-facts.md) record the matrix, adapter work and evidence limits. Final shared-understanding status remains in the linked profile decision. These choices do not authorize implementation or establish runtime compatibility.
+The [complete support proposal](decisions/publication-profiles.md), [sixteen standalone cases](acceptance/publication-profiles.md) and [factual audit](research/publication-profile-current-facts.md) record the matrix, adapter work and evidence limits. The [publication-profile resolution](https://github.com/mooneeb/bookorbit/issues/23#issuecomment-6398411746) records complete-model confirmation. These choices do not authorize implementation or establish runtime compatibility.
+
+## Final journey handoff, 2026-10-26
+
+The [assembled specification](specification.md) and [acceptance index](acceptance/README.md) combine the confirmed models with 53 standalone walkthrough families, including library/lifecycle/recovery, and a grouped technical fault/operational matrix. Every named variant has an independent run and outcome; none is marked passed by this plan. The [final factual audit](research/final-handoff-readiness-facts.md) found no new unanswered core decision and identifies retained prototype/evidence limits.
+
+The already-accepted daily-use criteria remain thirty minutes per format, private library copies plus fixtures, every mandatory flow passing and only documented minor cosmetic defects afterward. Final shared-understanding approval of the assembled handoff and current planning status remain in [Agree the complete reading journey and build-readiness criteria](https://github.com/mooneeb/bookorbit/issues/13). This does not authorize implementation or a production operation.
 
 ## Initial intake
 

@@ -70,7 +70,7 @@ A highlight, drawing or comment stored inside a source PDF, separate from the re
 A book excerpt or annotated page kept with a reading note so the note remains understandable after the book is replaced or removed.
 
 **Source version**:
-The particular EPUB or PDF content used when a reading note was created. Replacing that content creates another source version; changing text size or reading layout does not.
+The particular EPUB or PDF content used by a reading note, bookmark or reading position. Replacing that content creates another source version; changing text size or reading layout does not.
 
 **Note conflict**:
 Competing content brought into one reading note by edits, a book merge, or an edit arriving after Trash. The competing versions remain attached to one note for review rather than becoming separate reading notes.
@@ -97,7 +97,7 @@ The location where the reader stopped in a particular source file, used to resum
 Different places reached independently on devices, kept as alternatives until the reader chooses where to continue.
 
 **Text-anchored ink**:
-Page ink positioned relative to specific words across reading layouts. This differs from handwriting contained in a text-linked note.
+The historical EPUB experiment in which handwriting drawn over words was intended to follow them across changing layouts. It is distinct from current PDF page ink and handwriting contained in a text-linked note.
 
 **Writing mode**:
 A reader state in which Pencil input creates or edits ink.

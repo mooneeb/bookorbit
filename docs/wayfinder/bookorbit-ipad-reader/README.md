@@ -4,8 +4,11 @@ Canonical map: [Find the design for a personal BookOrbit iPad reader](https://gi
 
 ## Intake and language
 
-- [Start here: specification assembly in progress](specification.md)
-- [Standalone reader acceptance walkthroughs in progress](acceptance/reader-walkthroughs.md)
+- [Start here: specification handoff](specification.md)
+- [Complete acceptance index: 53 standalone walkthrough families](acceptance/README.md)
+- [Technical fault and operational gates](acceptance/technical-and-operations.md)
+- [Library, lifecycle and recovery walkthroughs](acceptance/library-and-recovery.md)
+- [Final source-audit readiness facts](research/final-handoff-readiness-facts.md)
 - [Accepted brief](brief.md)
 - [Reading-note glossary](../../../GLOSSARY.md)
 
@@ -32,7 +35,7 @@ The prototype now has eleven independent, guided walkthroughs that separate page
 - [Reading-note model and storage specification](decisions/note-model.md)
 - [Choose note identity, anchoring, and storage ownership](https://github.com/mooneeb/bookorbit/issues/8): canonical live choices, final acceptance and status.
 
-The specification captures mixed text/ink notes, exact-range identity, PDF page grouping, editable server originals and retained context after book removal. It proposes extending the existing annotation owner; the linked decision records acceptance. Sync protocol, final reader stack and backup/scale policy remain separate decisions.
+The confirmed specification captures mixed text/ink notes, exact-range identity, PDF page grouping, editable server originals and retained context after book removal. Existing annotations remain the owner. Sync, native stack and storage/recovery have their own confirmed contracts below.
 
 ## Offline sync and recovery
 
@@ -58,7 +61,7 @@ The accepted scope includes all online book management using existing pages insi
 - [Choose everyday reading controls and preference behavior](https://github.com/mooneeb/bookorbit/issues/22): eleven live choices, complete review and resolution status.
 - [Current controls, preference and bookmark contracts](research/reader-controls-current-facts.md)
 
-The chosen controls cover EPUB page turns/scrolling and appearance, PDF continuous/single-page reading and view controls, contents/search/location navigation, footnotes/return and device-local defaults/book overrides. Bookmarks retain their own source-bound owner and sync with editable labels, Undo without Trash and explicit conflict/recovery rules. These are proposed implementation contracts and unrun acceptance cases. Publication-profile coverage and final complete-journey assembly remain separate decisions.
+The chosen controls cover EPUB page turns/scrolling and appearance, PDF continuous/single-page reading and view controls, contents/search/location navigation, footnotes/return and device-local defaults/book overrides. Bookmarks retain their own source-bound owner and sync with editable labels, Undo without Trash and explicit conflict/recovery rules. These are confirmed implementation contracts and unrun acceptance cases. Publication-profile coverage is confirmed separately; the final journey records handoff approval/status.
 
 ## Supported EPUB and PDF profiles
 
@@ -67,7 +70,7 @@ The chosen controls cover EPUB page turns/scrolling and appearance, PDF continuo
 - [Define supported EPUB and PDF publication profiles](https://github.com/mooneeb/bookorbit/issues/23): eleven live choices, complete review and resolution status.
 - [Pinned engine and primary-source profile facts](research/publication-profile-current-facts.md)
 
-The selected initial scope covers uniform reflowable/fixed-layout EPUBs, horizontal LTR/RTL/mixed text, local fonts and static tables/SVG/MathML, plus static text/scanned PDFs and read-only existing PDF marks/comments. Image-only fixed EPUB pages gain source-bound page bookmarks without adding EPUB page ink. The proposal defines honest font substitution, partial reading, offline availability and required adapter/recovery additions. The linked issue holds final confirmation; these acceptance cases are unrun.
+The selected initial scope covers uniform reflowable/fixed-layout EPUBs, horizontal LTR/RTL/mixed text, local fonts and static tables/SVG/MathML, plus static text/scanned PDFs and read-only existing PDF marks/comments. Image-only fixed EPUB pages gain source-bound page bookmarks without adding EPUB page ink. The proposal defines honest font substitution, partial reading, offline availability and required adapter/recovery additions. The [publication-profile resolution](https://github.com/mooneeb/bookorbit/issues/23#issuecomment-6398411746) records confirmation; these acceptance cases are unrun.
 
 ## Storage, backups and recovery
 
@@ -103,6 +106,10 @@ PDF page ink must appear directly inside the browser reader. EPUB uses notes att
 - [SideStore preferred for free on-device renewal, with Xcode fallback](https://github.com/mooneeb/bookorbit/issues/11#issuecomment-6291640322)
 
 Use the confirmed current iPadOS baseline and selected Mac/Android browsers. The [validated free signing route](https://github.com/mooneeb/bookorbit/issues/20#issuecomment-6299949060) uses manual SideStore IPA import with the fixed AppID and Append Team ID unchecked; retain Xcode for build/bootstrap and fallback. Free signing requires renewal within seven days of profile issuance, so fully disconnected use is bounded by the remaining signing lifetime. The tested renewal and update preserved editable notes. Ordinary reader badge refresh remains unvalidated.
+
+## Final complete-journey review
+
+The [specification](specification.md) and [acceptance index](acceptance/README.md) assemble all seven confirmed policy models, 53 standalone walkthrough families and grouped technical/operational gates. The [current readiness audit](research/final-handoff-readiness-facts.md) found no new unanswered core decision; dated research and prototype verdicts retain their original limits. The [complete-journey decision](https://github.com/mooneeb/bookorbit/issues/13) records final shared-understanding confirmation/status. Planning completion does not report production tests passed or authorize implementation.
 
 ## Research evidence
 
