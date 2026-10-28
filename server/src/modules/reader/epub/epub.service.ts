@@ -463,6 +463,10 @@ export class EpubService {
   // The web reader always renders the original EPUB: every stored CFI is epub-DOM.
   // Precise Kobo positions are produced server-side by the kepub span codec, which
   // replaced the earlier kepub-serving mechanism (BO-249).
+  async resolveOriginalPath(bookId: number, fileId: number, user: RequestUser): Promise<string> {
+    return this.resolveEpubPath(bookId, fileId, user);
+  }
+
   private async resolveEpubPath(bookId: number, fileId: number | undefined, user: RequestUser): Promise<string> {
     return (await this.resolveEpubFile(bookId, fileId, user)).readerPath;
   }

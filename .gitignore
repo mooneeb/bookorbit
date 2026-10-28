@@ -39,3 +39,8 @@ test-results/
 
 # vite-plugin-pwa dev service worker output
 dev-dist
+
+# Native build output
+native/build/
+native/BookOrbit.xcodeproj/xcuserdata/
+native/BookOrbit.xcodeproj/project.xcworkspace/xcuserdata/

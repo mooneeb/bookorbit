@@ -1,0 +1,25 @@
+{
+  "foliate": {
+    "source": "client/public/assets/foliate",
+    "commit": "f2a7a111881899e7c6cb233a0ec2d8a9c25235c6",
+    "upstream": "https://github.com/johnfactotum/foliate-js",
+    "license": "MIT",
+    "notice": "BookOrbit/Resources/Notices/Foliate-MIT.txt",
+    "files": {
+      "epub.js": "bc089d33cfa644ce2be6918544c5427bd9094ad3b3581ecf05262840193a2c18",
+      "epubcfi.js": "1f52ed74c38fb0d601044640b51b1e69f009bc5fc68843d02fb530bd601e50b5",
+      "fixed-layout.js": "849afec4d46baf02f509cf3a95906276afb3dbdcdeacd1a858cc1041bd6ac71e",
+      "iframe-loader.js": "738cd641d7d19ea276ef7a93a505205199360fd5bbdefbf60581316a3ec1f5d8",
+      "overlayer.js": "5c5f1684181e7b7ab3865ed772e12577ebe99bbad844f715957483bd25a2ca86",
+      "paginator.js": "82c0090ee6f22ab7dd25638e5e3c4c68e8c3981bd711b4ae6be0281dda26eb16",
+      "progress.js": "a84bee7454c3c326937530d1c73ef5bf586d000b43303061c4c88dcc784450e1",
+      "search.js": "5b11579496616e2e551eeef04d676a52ca7cf5f5545e9981d432fed00ec92dc2",
+      "streaming-loader.js": "8cddc71329e04e463c5ef4adb0d41cfd45ff14255f583b633295e636524f09bc",
+      "text-walker.js": "2b92677783335225624e42f3098208cc3a9ad8a70def77672bc2ebb3dae82d14",
+      "tts.js": "aae0d5b80ddc2f752c36af6d5e6df80924dee26e1915cb4319ddd90f4725ba02",
+      "view.js": "5a27c30cc5b7cf4694514bac39c5e507c61118f711994236362ad785b486f91d"
+    }
+  },
+  "apple": "SwiftUI, UIKit, WebKit, Network, Security, CryptoKit and ImageIO from Xcode 27.0 SDK; deployment iPadOS 26.0",
+  "excluded": "No ZIP, fflate, PDFium, GRDB or third-party Swift package is bundled in this connected read-only increment."
+}
