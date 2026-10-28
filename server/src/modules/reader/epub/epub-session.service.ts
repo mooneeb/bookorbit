@@ -151,7 +151,7 @@ export class EpubSessionService implements OnModuleDestroy {
   }
 
   private owned(id: string, user: RequestUser) {
-    const lease = this.leases.get(id);
+    const lease = this.leases.get(id.toLowerCase());
     if (!lease || Date.parse(lease.manifest.expiresAt) <= Date.now()) throw new NotFoundException('Reader lease expired. Reopen the book');
     if (lease.owner !== user.id) throw new ForbiddenException('Reader belongs to another account');
     return lease;
