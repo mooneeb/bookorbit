@@ -40,12 +40,13 @@ final class ReadingFlowTests: XCTestCase {
         let lease = "791a43bd-e918-4ea3-ad2c-4c1fc4a9bc51"
         let files = [
             ("META-INF/container.xml", """
-            <?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>
+            <?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="decoy.opf" media-type="application/unknown"/><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>
             """),
             ("book.opf", """
             <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">fixture</dc:identifier><dc:title>Readable fixture</dc:title><dc:language>en</dc:language></metadata><manifest><item id="cover" href="cover.bin" media-type="application/xhtml+xml"/><item id="chapter" href="chapter.bin" media-type="application/xhtml+xml"/><item id="logo" href="logo.svg" media-type="image/svg+xml"/></manifest><spine><itemref idref="cover"/><itemref idref="chapter"/></spine></package>
             """),
             ("cover.bin", "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Cover</title></head><body><img src=\"logo.svg\" alt=\"Fixture cover\"/></body></html>"),
+            ("decoy.opf", "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\"><metadata/><manifest/><spine/></package>"),
             ("logo.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"100\"><title>Fixture cover</title><rect width=\"100\" height=\"100\"/></svg>"),
             ("chapter.bin", """
             <html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter</title><script>window.webkit.messageHandlers.reader.postMessage({kind:'error',value:'publication script ran'});document.body.textContent='ATTACK';</script></head><body><h1>Readable chapter</h1><p>Original words remain readable.</p><p>Hello&nbsp;world</p><p>\(String(repeating: "Page navigation retains original words. ", count: 600))</p><img src="https://unsolicited.invalid/track.png" alt="Blocked remote image"/></body></html>
@@ -139,12 +140,19 @@ final class ReadingFlowTests: XCTestCase {
         let chapterIndex = try XCTUnwrap(files.firstIndex(where: { $0.0 == "chapter.bin" }))
         let opfIndex = try XCTUnwrap(files.firstIndex(where: { $0.0 == "book.opf" }))
         let duplicateOPF = files[opfIndex].1.replacingOccurrences(of: "</manifest>", with: "<item id=\"shadow\" href=\"chapter.bin\" media-type=\"text/plain\"/></manifest>")
-        let variants = [(chapterIndex, Data(repeating: 32, count: 4 * 1024 * 1024 + 1)),
-                        (chapterIndex, Data(("<html xmlns=\"http://www.w3.org/1999/xhtml\"><head/><body>" + String(repeating: "<i/>", count: 100_001) + "</body></html>").utf8)),
-                        (opfIndex, Data(duplicateOPF.utf8))]
-        for (memberIndex, payload) in variants {
+        let fragmentOPF = files[opfIndex].1.replacingOccurrences(of: "chapter.bin", with: "chapter.bin#x")
+        let queryOPF = files[opfIndex].1.replacingOccurrences(of: "chapter.bin", with: "chapter.bin?x")
+        let variants: [(Int, Data, String?)] = [
+            (chapterIndex, Data(repeating: 32, count: 4 * 1024 * 1024 + 1), nil),
+            (chapterIndex, Data(("<html xmlns=\"http://www.w3.org/1999/xhtml\"><head/><body>" + String(repeating: "<i/>", count: 100_001) + "</body></html>").utf8), nil),
+            (opfIndex, Data(duplicateOPF.utf8), nil),
+            (opfIndex, Data(fragmentOPF.utf8), "chapter.bin#x"),
+            (opfIndex, Data(queryOPF.utf8), nil),
+        ]
+        for (memberIndex, payload, chapterPath) in variants {
             var changed = try JSONSerialization.jsonObject(with: manifest) as! [String: Any]
             var changedMembers = changed["members"] as! [[String: Any]]
+            if let chapterPath { changedMembers[chapterIndex]["path"] = chapterPath }
             changedMembers[memberIndex]["bytes"] = payload.count
             changedMembers[memberIndex]["sha256"] = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
             changed["members"] = changedMembers

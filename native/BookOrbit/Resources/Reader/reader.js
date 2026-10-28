@@ -35,6 +35,13 @@ const manifest = await fetch("manifest.json").then((response) => response.json()
 const members = new Map(manifest.members.map((member, index) => [member.path, { ...member, index }]));
 const mediaTypes = new Map();
 let packagePath;
+const bootstrapText = new Set([
+  "META-INF/container.xml",
+  "META-INF/encryption.xml",
+  "META-INF/com.apple.ibooks.display-options.xml",
+  "META-INF/com.kobobooks.display-options.xml",
+  "META-INF/calibre_bookmarks.txt",
+]);
 const textTypes = /\.(?:xhtml|html?|css|xml|opf|ncx|svg)$/i;
 const load = async (name, textOnly = false) => {
   if (failed) throw new Error("Reader stopped");
@@ -112,22 +119,25 @@ const contain = (text, type) => {
 try {
   const epub = await new EPUB({
     loadText: async (name) => {
+      if (!bootstrapText.has(name) && name !== packagePath && !mediaTypes.has(name)) return refuse();
       const data = await load(name, true);
       if (data === null) return null;
       const text = new TextDecoder("utf-8", { fatal: true }).decode(data);
       if (name === "META-INF/container.xml") {
         const doc = parseDocument(text, "application/xml");
-        packagePath = doc.getElementsByTagNameNS("*", "rootfile")[0]?.getAttribute("full-path");
-        if (!packagePath || !members.has(packagePath)) return refuse();
+        packagePath = Array.from(doc.getElementsByTagNameNS("*", "rootfile"))
+          .find((root) => root.getAttribute("media-type") === "application/oebps-package+xml")
+          ?.getAttribute("full-path");
+        if (!packagePath || /[?#]/.test(packagePath) || !members.has(packagePath)) return refuse();
       }
       if (name === packagePath) {
         const doc = parseDocument(text, "application/xml");
         if (/pre-paginated|fixed-layout/i.test(text)) return refuse();
         const itemTypes = new Map();
         for (const item of doc.getElementsByTagNameNS("*", "item")) {
-          const url = new URL(item.getAttribute("href"), "https://publication.invalid/" + packagePath);
-          url.search = "";
-          url.hash = "";
+          const href = item.getAttribute("href");
+          if (!href || /[?#]/.test(href)) return refuse();
+          const url = new URL(href, "https://publication.invalid/" + packagePath);
           if (url.origin !== "https://publication.invalid") return refuse();
           const path = decodeURI(url.pathname.slice(1));
           const type = item.getAttribute("media-type")?.split(";")[0].trim().toLowerCase();
@@ -146,6 +156,7 @@ try {
       return text;
     },
     loadBlob: async (name) => {
+      if (!mediaTypes.has(name)) return refuse();
       const type = mediaTypes.get(name);
       const documentType = ["application/xhtml+xml", "text/html", "image/svg+xml"].includes(type);
       const textual = documentType || type?.startsWith("text/") || type?.endsWith("+xml") || type === "application/xml";
