@@ -1,4 +1,6 @@
 import { Test } from '@nestjs/testing';
+import { once } from 'node:events';
+import { EPUB_SESSION_LIMITS } from './epub-session-limits';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -141,6 +143,105 @@ it('rejects overlapping preparation for one owner while allowing a retry after c
     await expect(service.open(1, 2, owner)).resolves.toMatchObject({ bookId: 1, fileId: 2 });
   } finally {
     release(path);
+    await service.onModuleDestroy();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it.each([
+  { scope: 'account', count: 1, globalBytes: 100_000, accountBytes: 3072, leases: 20 },
+  { scope: 'global', count: 3, globalBytes: 5120, accountBytes: 100_000, leases: 20 },
+  { scope: 'metadata', count: 2, globalBytes: 100_000, accountBytes: 100_000, leases: 2 },
+])('enforces the $scope storage limit and admits a reader again after space is released', async (limit) => {
+  const root = await mkdtemp(join(tmpdir(), 'epub-session-budget-'));
+  const path = await createZipArchiveFixture(root, 'book.epub', [{ path: 'resource.bin', content: Buffer.alloc(512, 42), store: true }]);
+  const module = await Test.createTestingModule({
+    providers: [
+      EpubSessionService,
+      { provide: EpubService, useValue: { resolveOriginalPath: vi.fn().mockResolvedValue(path) } },
+      { provide: EPUB_SESSION_LIMITS, useValue: { ...limit, sourceBytes: 1024, expandedBytes: 1024 } },
+    ],
+  }).compile();
+  const service = module.get(EpubSessionService);
+  const owners = Array.from(
+    { length: limit.count + 1 },
+    (_, index) => ({ id: limit.scope === 'account' ? 51 : 51 + index, sessionId: 401 + index, isSuperuser: false }) as RequestUser,
+  );
+  try {
+    const first = await service.open(1, 2, owners[0]);
+    for (const owner of owners.slice(1, limit.count)) await service.open(1, 2, owner);
+    await expect(service.open(1, 2, owners[limit.count])).rejects.toThrow('Temporary reader storage is full');
+    if (limit.scope === 'account') await expect(service.open(1, 2, { ...owners[0], id: 99, sessionId: 999 })).resolves.toMatchObject({ bookId: 1 });
+    await service.close(first.id, owners[0]);
+    await expect(service.open(1, 2, owners[limit.count])).resolves.toMatchObject({ bookId: 1 });
+  } finally {
+    await service.onModuleDestroy();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('reserves disk for in-flight preparation before admitting another owner', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'epub-session-reservation-'));
+  const path = await createZipArchiveFixture(root, 'book.epub', [{ path: 'resource.bin', content: Buffer.alloc(512, 42), store: true }]);
+  const resolveOriginalPath = vi.fn().mockResolvedValue(path);
+  const module = await Test.createTestingModule({
+    providers: [
+      EpubSessionService,
+      { provide: EpubService, useValue: { resolveOriginalPath } },
+      { provide: EPUB_SESSION_LIMITS, useValue: { sourceBytes: 1024, expandedBytes: 1024, globalBytes: 5120, accountBytes: 100_000, leases: 20 } },
+    ],
+  }).compile();
+  const service = module.get(EpubSessionService);
+  let release!: (path: string) => void;
+  let entered!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const owner = { id: 61, sessionId: 501, isSuperuser: false } as RequestUser;
+  try {
+    await service.open(1, 2, owner);
+    resolveOriginalPath.mockImplementationOnce(() => {
+      entered();
+      return new Promise<string>((resolve) => {
+        release = resolve;
+      });
+    });
+    const second = service.open(1, 2, { ...owner, id: 62, sessionId: 502 });
+    await waiting;
+    await expect(service.open(1, 2, { ...owner, id: 63, sessionId: 503 })).rejects.toThrow('Temporary reader storage is full');
+    release(path);
+    await second;
+    await expect(service.open(1, 2, { ...owner, id: 63, sessionId: 503 })).resolves.toMatchObject({ bookId: 1 });
+  } finally {
+    release?.(path);
+    await service.onModuleDestroy();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('closes backpressured original and member streams before reclaiming a snapshot', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'epub-session-streams-'));
+  const path = await createZipArchiveFixture(root, 'book.epub', [{ path: 'chapter.xhtml', content: '<p>Readable after reopen</p>' }]);
+  const module = await Test.createTestingModule({
+    providers: [EpubSessionService, { provide: EpubService, useValue: { resolveOriginalPath: vi.fn().mockResolvedValue(path) } }],
+  }).compile();
+  const service = module.get(EpubSessionService);
+  const owner = { id: 71, sessionId: 601, isSuperuser: false } as RequestUser;
+  try {
+    const first = await service.open(1, 2, owner);
+    const original = (await service.original(first.id, owner)).stream;
+    const chapter = (await service.resource(first.id, 0, owner)).stream;
+    await Promise.all([once(original, 'open'), once(chapter, 'open')]);
+    const reopened = await service.open(1, 2, owner);
+    expect(original.closed).toBe(true);
+    expect(chapter.closed).toBe(true);
+    expect(original.fd).toBeNull();
+    expect(chapter.fd).toBeNull();
+    const fresh = await service.resource(reopened.id, 0, owner);
+    let text = '';
+    for await (const chunk of fresh.stream) text += chunk.toString();
+    expect(text).toBe('<p>Readable after reopen</p>');
+  } finally {
     await service.onModuleDestroy();
     await rm(root, { recursive: true, force: true });
   }

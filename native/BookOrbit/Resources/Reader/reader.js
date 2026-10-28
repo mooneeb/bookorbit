@@ -123,21 +123,36 @@ try {
       if (name === packagePath) {
         const doc = parseDocument(text, "application/xml");
         if (/pre-paginated|fixed-layout/i.test(text)) return refuse();
+        const itemTypes = new Map();
         for (const item of doc.getElementsByTagNameNS("*", "item")) {
           const url = new URL(item.getAttribute("href"), "https://publication.invalid/" + packagePath);
           url.search = "";
           url.hash = "";
           if (url.origin !== "https://publication.invalid") return refuse();
-          mediaTypes.set(decodeURI(url.pathname.slice(1)), item.getAttribute("media-type"));
+          const path = decodeURI(url.pathname.slice(1));
+          const type = item.getAttribute("media-type")?.split(";")[0].trim().toLowerCase();
+          if (mediaTypes.has(path) && mediaTypes.get(path) !== type) return refuse();
+          mediaTypes.set(path, type);
+          const id = item.getAttribute("id");
+          if (!id || itemTypes.has(id)) return refuse();
+          itemTypes.set(id, type);
         }
+        const spine = Array.from(doc.getElementsByTagNameNS("*", "itemref"));
+        if (!spine.length || spine.some((item) => !["application/xhtml+xml", "text/html"].includes(itemTypes.get(item.getAttribute("idref")))))
+          return refuse();
       }
       const type = mediaTypes.get(name);
       if (["application/xhtml+xml", "text/html", "image/svg+xml"].includes(type)) return contain(text, type);
       return text;
     },
     loadBlob: async (name) => {
-      const data = await load(name);
-      return data === null ? null : new Blob([data]);
+      const type = mediaTypes.get(name);
+      const documentType = ["application/xhtml+xml", "text/html", "image/svg+xml"].includes(type);
+      const textual = documentType || type?.startsWith("text/") || type?.endsWith("+xml") || type === "application/xml";
+      const data = await load(name, textual);
+      if (data === null) return null;
+      if (documentType) return new Blob([contain(new TextDecoder("utf-8", { fatal: true }).decode(data), type)]);
+      return new Blob([data]);
     },
     getSize: (name) => members.get(name)?.bytes ?? 0,
     sha1: (data) => crypto.subtle.digest("SHA-1", data),

@@ -2,13 +2,15 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Inject,
+  Optional,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
   type OnModuleDestroy,
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
 import { mkdtemp, open, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,6 +21,7 @@ import type { NativeEpubSession } from '@bookorbit/types';
 import type { RequestUser } from '../../../common/types/request-user';
 import { sanitizeLogValue } from '../../../common/utils/log-sanitize.utils';
 import { EpubService } from './epub.service';
+import { DEFAULT_EPUB_SESSION_LIMITS, EPUB_SESSION_LIMITS, type EpubSessionLimits } from './epub-session-limits';
 
 const MiB = 1024 * 1024;
 const TTL = 30 * 60 * 1000;
@@ -27,6 +30,8 @@ interface Lease {
   sessionId?: number;
   directory: string;
   manifest: NativeEpubSession;
+  streams: Set<ReadStream>;
+  closing: boolean;
 }
 
 @Injectable()
@@ -38,7 +43,10 @@ export class EpubSessionService implements OnModuleDestroy {
     void this.expire();
   }, 60_000).unref();
 
-  constructor(private readonly epub: EpubService) {}
+  constructor(
+    private readonly epub: EpubService,
+    @Optional() @Inject(EPUB_SESSION_LIMITS) private readonly limits: EpubSessionLimits = DEFAULT_EPUB_SESSION_LIMITS,
+  ) {}
 
   async open(bookId: number, fileId: number, user: RequestUser): Promise<NativeEpubSession> {
     await this.expire();
@@ -52,7 +60,12 @@ export class EpubSessionService implements OnModuleDestroy {
       }
       const stored = [...this.leases.values()].reduce((sum, lease) => sum + this.diskBytes(lease), 0);
       const owned = [...this.leases.values()].filter((lease) => lease.owner === user.id).reduce((sum, lease) => sum + this.diskBytes(lease), 0);
-      if (stored + this.preparing.size * 2560 * MiB > 10240 * MiB || owned + 2560 * MiB > 5120 * MiB || this.leases.size >= 512) {
+      const reservation = this.limits.sourceBytes + this.limits.expandedBytes;
+      if (
+        stored + this.preparing.size * reservation > this.limits.globalBytes ||
+        owned + reservation > this.limits.accountBytes ||
+        this.leases.size >= this.limits.leases
+      ) {
         throw new ServiceUnavailableException('Temporary reader storage is full. Close an unused reader and retry');
       }
     } catch (error) {
@@ -65,10 +78,10 @@ export class EpubSessionService implements OnModuleDestroy {
     try {
       const source = await this.epub.resolveOriginalPath(bookId, fileId, user);
       const before = await stat(source);
-      if (before.size > 512 * MiB) throw new BadRequestException('EPUB exceeds 512 MiB');
+      if (before.size > this.limits.sourceBytes) throw new BadRequestException('EPUB exceeds source size limit');
       directory = await mkdtemp(join(tmpdir(), 'bookorbit-reader-'));
       const original = join(directory, 'original');
-      const sourceHash = await this.copy(createReadStream(source), original, 512 * MiB);
+      const sourceHash = await this.copy(createReadStream(source), original, this.limits.sourceBytes);
       const after = await stat(source);
       if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ino !== after.ino)
         throw new BadRequestException('Source changed during preparation. Retry');
@@ -92,7 +105,8 @@ export class EpubSessionService implements OnModuleDestroy {
         paths.add(path);
         const limit = /\.(?:xhtml|html?|css|xml|opf|ncx|svg)$/i.test(path) ? 4 * MiB : 32 * MiB;
         total += entry.uncompressedSize;
-        if (entry.uncompressedSize > limit || total > 2048 * MiB) throw new BadRequestException('EPUB expanded resource limit exceeded');
+        if (entry.uncompressedSize > limit || total > this.limits.expandedBytes)
+          throw new BadRequestException('EPUB expanded resource limit exceeded');
         const result = await this.copy(entry.stream(), join(directory, String(members.length)), limit, started + 120_000);
         if (result.bytes !== entry.uncompressedSize) throw new BadRequestException('Incorrect archive member size');
         members.push({ path, ...result });
@@ -108,7 +122,7 @@ export class EpubSessionService implements OnModuleDestroy {
         members,
       };
       if (Buffer.byteLength(JSON.stringify(manifest)) > 256 * 1024) throw new BadRequestException('EPUB manifest exceeds 256 KiB');
-      this.leases.set(manifest.id, { owner: user.id, sessionId: user.sessionId, directory, manifest });
+      this.leases.set(manifest.id, { owner: user.id, sessionId: user.sessionId, directory, manifest, streams: new Set(), closing: false });
       this.logger.log(
         `[epub.session] [end] bookId=${bookId} fileId=${fileId} userId=${user.id} durationMs=${Date.now() - started} members=${members.length} - online reader prepared`,
       );
@@ -127,23 +141,56 @@ export class EpubSessionService implements OnModuleDestroy {
   async resource(id: string, index: number, user: RequestUser) {
     const lease = this.owned(id, user);
     await this.epub.resolveOriginalPath(lease.manifest.bookId, lease.manifest.fileId, user);
+    this.owned(id, user);
     lease.manifest.expiresAt = new Date(Date.now() + TTL).toISOString();
     const member = lease.manifest.members[index];
     if (!member) throw new NotFoundException('Resource unavailable');
-    return { stream: createReadStream(join(lease.directory, String(index))), bytes: member.bytes };
+    return { stream: this.openStream(lease, String(index)), bytes: member.bytes };
   }
 
   async original(id: string, user: RequestUser) {
     const lease = this.owned(id, user);
     await this.epub.resolveOriginalPath(lease.manifest.bookId, lease.manifest.fileId, user);
+    this.owned(id, user);
     lease.manifest.expiresAt = new Date(Date.now() + TTL).toISOString();
-    return { stream: createReadStream(join(lease.directory, 'original')), bytes: lease.manifest.sourceBytes };
+    return { stream: this.openStream(lease, 'original'), bytes: lease.manifest.sourceBytes };
   }
 
   async heartbeat(id: string, user: RequestUser) {
     const lease = this.owned(id, user);
     await this.epub.resolveOriginalPath(lease.manifest.bookId, lease.manifest.fileId, user);
+    this.owned(id, user);
     lease.manifest.expiresAt = new Date(Date.now() + TTL).toISOString();
+  }
+
+  private openStream(lease: Lease, name: string) {
+    if (lease.closing) throw new NotFoundException('Reader lease is closing');
+    const stream = createReadStream(join(lease.directory, name));
+    lease.streams.add(stream);
+    stream.once('close', () => lease.streams.delete(stream));
+    return stream;
+  }
+
+  private async closeStreams(lease: Lease) {
+    lease.closing = true;
+    await Promise.all(
+      [...lease.streams].map(
+        (stream) =>
+          new Promise<void>((resolve) => {
+            if (stream.closed) {
+              resolve();
+              return;
+            }
+            const ignoreError = () => undefined;
+            stream.on('error', ignoreError);
+            stream.once('close', () => {
+              stream.removeListener('error', ignoreError);
+              resolve();
+            });
+            stream.destroy();
+          }),
+      ),
+    );
   }
 
   private diskBytes(lease: Lease) {
@@ -160,6 +207,7 @@ export class EpubSessionService implements OnModuleDestroy {
     const ids = `bookId=${bookId} fileId=${fileId} userId=${lease.owner} sessionId=${id}`;
     this.logger.log(`[epub.session_cleanup] [start] ${ids} reason=${reason} - release online snapshot`);
     try {
+      await this.closeStreams(lease);
       await rm(lease.directory, { recursive: true, force: true });
       this.leases.delete(id);
       this.logger.log(`[epub.session_cleanup] [end] ${ids} durationMs=${Date.now() - started} removed=true - snapshot released`);
@@ -173,7 +221,8 @@ export class EpubSessionService implements OnModuleDestroy {
 
   private owned(id: string, user: RequestUser) {
     const lease = this.leases.get(id.toLowerCase());
-    if (!lease || Date.parse(lease.manifest.expiresAt) <= Date.now()) throw new NotFoundException('Reader lease expired. Reopen the book');
+    if (!lease || lease.closing || Date.parse(lease.manifest.expiresAt) <= Date.now())
+      throw new NotFoundException('Reader lease expired. Reopen the book');
     if (lease.owner !== user.id) throw new ForbiddenException('Reader belongs to another account');
     return lease;
   }

@@ -137,17 +137,21 @@ final class ReadingFlowTests: XCTestCase {
         do { _ = try await api.detail(99); XCTFail("Denied book was exposed") } catch { XCTAssertTrue(error.localizedDescription.contains("cannot access")) }
         let normal = FixtureProtocol.reply
         let chapterIndex = try XCTUnwrap(files.firstIndex(where: { $0.0 == "chapter.bin" }))
-        for payload in [Data(repeating: 32, count: 4 * 1024 * 1024 + 1),
-                        Data(("<html xmlns=\"http://www.w3.org/1999/xhtml\"><head/><body>" + String(repeating: "<i/>", count: 100_001) + "</body></html>").utf8)] {
+        let opfIndex = try XCTUnwrap(files.firstIndex(where: { $0.0 == "book.opf" }))
+        let duplicateOPF = files[opfIndex].1.replacingOccurrences(of: "</manifest>", with: "<item id=\"shadow\" href=\"chapter.bin\" media-type=\"text/plain\"/></manifest>")
+        let variants = [(chapterIndex, Data(repeating: 32, count: 4 * 1024 * 1024 + 1)),
+                        (chapterIndex, Data(("<html xmlns=\"http://www.w3.org/1999/xhtml\"><head/><body>" + String(repeating: "<i/>", count: 100_001) + "</body></html>").utf8)),
+                        (opfIndex, Data(duplicateOPF.utf8))]
+        for (memberIndex, payload) in variants {
             var changed = try JSONSerialization.jsonObject(with: manifest) as! [String: Any]
             var changedMembers = changed["members"] as! [[String: Any]]
-            changedMembers[chapterIndex]["bytes"] = payload.count
-            changedMembers[chapterIndex]["sha256"] = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
+            changedMembers[memberIndex]["bytes"] = payload.count
+            changedMembers[memberIndex]["sha256"] = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
             changed["members"] = changedMembers
             let encoded = try JSONSerialization.data(withJSONObject: changed)
             FixtureProtocol.reply = { request in
                 if request.url!.path == "/api/v1/epub-sessions/books/7/files/9" { return (200, encoded) }
-                if request.url!.path.hasSuffix("/members/\(chapterIndex)") { return (200, payload) }
+                if request.url!.path.hasSuffix("/members/\(memberIndex)") { return (200, payload) }
                 return try normal(request)
             }
             let limited = try await api.open(book: 7, file: 9)
