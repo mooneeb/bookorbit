@@ -95,7 +95,7 @@ final class ReaderModel: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
 
     func turn(_ direction: String) {
         guard ready, direction == "next" || direction == "prev" else { return }
-        web?.evaluateJavaScript("window.readerTurn('\(direction)')") { [weak self] _, error in
+        web?.evaluateJavaScript("void window.readerTurn('\(direction)')") { [weak self] _, error in
             if error != nil { self?.fail("Page navigation failed. Reopen the book.") }
         }
     }

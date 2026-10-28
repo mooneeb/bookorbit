@@ -19,6 +19,13 @@ final class FixtureProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 }
 
+final class RefreshCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var total = 0
+    func claim() -> Bool { lock.withLock { total += 1; return total == 1 } }
+    var count: Int { lock.withLock { total } }
+}
+
 @MainActor
 final class ReadingFlowTests: XCTestCase {
     func testHTTPSOriginsAndScopeAreRequired() throws {
@@ -52,6 +59,7 @@ final class ReadingFlowTests: XCTestCase {
         let originalHash = SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
         let manifest = try JSONSerialization.data(withJSONObject: ["version": 1, "id": lease, "bookId": 7, "fileId": 9,
             "sourceSha256": originalHash, "sourceBytes": 1000, "expiresAt": "2099-01-01T00:00:00Z", "members": members])
+        let refreshes = RefreshCounter()
         FixtureProtocol.reply = { request in
             let path = request.url!.path
             if request.value(forHTTPHeaderField: "Authorization") == "Bearer expired", path != "/api/v1/auth/refresh" { return (401, Data()) }
@@ -59,7 +67,9 @@ final class ReadingFlowTests: XCTestCase {
             switch path {
             case "/api/v1/server-identity": json = "{\"product\":\"bookorbit\",\"protocolVersion\":1,\"instanceId\":\"\(identity)\"}"
             case "/api/v1/auth/login": json = "{\"accessToken\":\"owner-access\",\"refreshToken\":\"owner-refresh\",\"user\":{\"id\":11,\"username\":\"owner\",\"permissions\":[]}}"
-            case "/api/v1/auth/refresh": json = "{\"accessToken\":\"owner-access\",\"refreshToken\":\"rotated-refresh\"}"
+            case "/api/v1/auth/refresh":
+                guard refreshes.claim() else { return (401, Data()) }
+                json = "{\"accessToken\":\"owner-access\",\"refreshToken\":\"rotated-refresh\"}"
             case "/api/v1/auth/me": json = "{\"id\":11,\"username\":\"owner\",\"permissions\":[]}"
             case "/api/v1/books/query": json = "{\"items\":[{\"id\":7,\"title\":\"Readable fixture\",\"files\":[{\"id\":9,\"format\":\"epub\",\"role\":\"primary\"}]}]}"
             case "/api/v1/books/7": json = "{\"id\":7,\"title\":\"Readable fixture\",\"files\":[{\"id\":9,\"format\":\"epub\",\"role\":\"primary\"}]}"
@@ -86,7 +96,13 @@ final class ReadingFlowTests: XCTestCase {
         let scope = SessionReference(origin: api.origin, identity: before.instanceId, account: account.id)
         defer { CredentialStore().remove(scope: scope) }
         await api.authorize(Credentials(accessToken: "expired", refreshToken: "owner-refresh", user: account), scope: scope)
-        let books = try await api.books(query: "Readable", page: 0)
+        async let listing = api.books(query: "Readable", page: 0)
+        async let concurrentDetail = api.detail(7)
+        let books = try await listing
+        _ = try await concurrentDetail
+        XCTAssertEqual(refreshes.count, 1)
+        XCTAssertEqual(try CredentialStore().load(scope: scope).refreshToken, "rotated-refresh")
+        XCTAssertThrowsError(try CredentialStore().load(scope: SessionReference(origin: scope.origin, identity: scope.identity, account: 12)))
         XCTAssertEqual(books.map(\.id), [7])
         let detail = try await api.detail(7)
         let publication = try await api.open(book: detail.id, file: detail.files[0].id)
