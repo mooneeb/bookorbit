@@ -112,7 +112,7 @@ final class ReadingFlowTests: XCTestCase {
         let web = try XCTUnwrap(reader.web)
         web.frame = window.bounds
         window.addSubview(web)
-        defer { web.removeFromSuperview() }
+        defer { reader.close(); web.removeFromSuperview() }
         for _ in 0..<100 where !reader.ready && reader.error == nil { try await Task.sleep(for: .milliseconds(100)) }
         XCTAssertTrue(reader.ready, reader.error ?? "Reader did not open")
         XCTAssertEqual(reader.warning, "Text is unavailable in this image-only section.")

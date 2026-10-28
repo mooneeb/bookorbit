@@ -109,8 +109,18 @@ final class LoopbackServer {
             for offset in stride(from: 0, to: body.count, by: 64 * 1024) {
                 try await send(connection, data: body.subdata(in: offset..<min(offset + 64 * 1024, body.count)))
             }
+            try await finish(connection)
         } catch {
             try? await send(connection, data: Data("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8))
+            try? await finish(connection)
+        }
+    }
+
+    private func finish(_ connection: NWConnection) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { error in
+                if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+            })
         }
     }
 
@@ -145,7 +155,7 @@ final class LoopbackServer {
             return (data, "application/octet-stream")
         }
         let asset: String
-        if route == "index.html" || route == "reader.js" { asset = route }
+        if route == "index.html" || route == "reader.js" || route == "bootstrap.js" { asset = route }
         else if route.hasPrefix("assets/"), !route.dropFirst(7).contains("/"), route.hasSuffix(".js") { asset = route }
         else { throw ReaderFailure.message("Unknown reader resource.") }
         guard let path = Bundle.main.resourceURL?.appendingPathComponent("Reader/\(asset)"),
