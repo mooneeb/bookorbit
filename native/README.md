@@ -29,8 +29,11 @@ Run native transport/rendering tests on an available iPad simulator:
 ```sh
 xcodebuild -project native/BookOrbit.xcodeproj -scheme BookOrbit \
   -destination 'platform=iOS Simulator,name=iPad Air 13-inch (M3)' \
-  -derivedDataPath native/build CODE_SIGNING_ALLOWED=NO test
+  -parallel-testing-enabled NO -derivedDataPath native/build \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
 ```
+
+Keychain integration tests require ad-hoc simulator signing; the unsigned command above is a compile check. Xcode supplies the simulated application identity used for Keychain access. See [Apple's Keychain access-group documentation](https://developer.apple.com/documentation/security/sharing-access-to-keychain-items-among-a-collection-of-apps).
 
 The native executable test connects through the real transport adapter with fault-controlled URLSession responses, opens Foliate in WKWebView, asserts chapter text, turns a page, returns and checks denied/disconnected states. The real NestJS HTTP adapter test uses isolated PostgreSQL, scanned files, native login, catalog/details, a second permitted owner, a denied account and immutable source replacement:
 
