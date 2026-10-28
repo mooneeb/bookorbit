@@ -35,7 +35,7 @@ struct CredentialStore {
     }
 }
 
-struct SessionReference: Codable {
+struct SessionReference: Codable, Sendable {
     let origin: URL
     let identity: UUID
     let account: Int

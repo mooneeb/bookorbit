@@ -57,9 +57,14 @@ final class RedirectGuard: NSObject, URLSessionTaskDelegate, Sendable {
 }
 
 actor Transport {
-    let origin: URL
+    nonisolated let origin: URL
     private let session: URLSession
     private var token: String?
+    private var credentials: Credentials?
+    private var scope: SessionReference?
+    private var refreshTask: Task<Credentials, Error>?
+    private var closed = false
+    private var downloads: [UUID: URLSession] = [:]
 
     init(server: String, configuration: URLSessionConfiguration = .ephemeral) throws {
         guard let url = URL(string: server), url.scheme == "https", url.host != nil,
@@ -70,14 +75,48 @@ actor Transport {
         origin = url
         configuration.httpCookieStorage = nil
         configuration.urlCache = nil
-        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForRequest = 130
         configuration.timeoutIntervalForResource = 130
         session = URLSession(configuration: configuration, delegate: RedirectGuard(), delegateQueue: nil)
     }
 
-    func authorize(_ credentials: Credentials) { token = credentials.accessToken }
+    func authorize(_ credentials: Credentials, scope: SessionReference? = nil) {
+        self.credentials = credentials
+        token = credentials.accessToken
+        if let scope { self.scope = scope }
+    }
 
-    private func responseBytes(_ path: String, method: String, body: Data?, limit: Int) async throws -> URLSession.AsyncBytes {
+    func invalidate() {
+        closed = true
+        refreshTask?.cancel()
+        session.invalidateAndCancel()
+        for download in downloads.values { download.invalidateAndCancel() }
+        downloads.removeAll()
+    }
+
+    private func renew(rejected: String?) async throws {
+        guard !closed, let stored = credentials, let scope else { throw ReaderFailure.message("Sign in again to reconnect.") }
+        if token != rejected { return }
+        let flight: Task<Credentials, Error>
+        if let refreshTask { flight = refreshTask }
+        else {
+            flight = Task { try await self.refresh(stored) }
+            refreshTask = flight
+        }
+        do {
+            let renewed = try await flight.value
+            guard !closed else { throw CancellationError() }
+            if token == rejected {
+                try CredentialStore().save(renewed, scope: scope)
+                credentials = renewed
+                token = renewed.accessToken
+            }
+            refreshTask = nil
+        } catch { refreshTask = nil; throw error }
+    }
+
+    private func serverRequest(_ path: String, method: String, body: Data?) throws -> URLRequest {
+        guard !closed else { throw CancellationError() }
         guard path.hasPrefix("/api/v1/"), !path.contains(".."), let url = URL(string: path, relativeTo: origin)?.absoluteURL,
               url.host == origin.host, url.port == origin.port, url.scheme == origin.scheme else {
             throw ReaderFailure.message("Invalid server request.")
@@ -87,7 +126,17 @@ actor Transport {
         request.httpBody = body
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        return request
+    }
+
+    private func responseBytes(_ path: String, method: String, body: Data?, limit: Int, retry: Bool = true) async throws -> URLSession.AsyncBytes {
+        let rejected = token
+        let request = try serverRequest(path, method: method, body: body)
         let (stream, response) = try await session.bytes(for: request)
+        if (response as? HTTPURLResponse)?.statusCode == 401, retry, !path.hasPrefix("/api/v1/auth/") {
+            try await renew(rejected: rejected)
+            return try await responseBytes(path, method: method, body: body, limit: limit, retry: false)
+        }
         guard let response = response as? HTTPURLResponse else { throw ReaderFailure.message("Invalid response.") }
         guard (200..<300).contains(response.statusCode) else {
             throw ReaderFailure.message(response.statusCode == 401 ? "Session expired. Sign out and reconnect." :
@@ -162,24 +211,64 @@ actor Transport {
         return result
     }
 
-    private func verifyOriginal(_ publication: Publication) async throws {
-        let stream = try await responseBytes("/api/v1/epub-sessions/\(publication.id.uuidString)/original", method: "GET", body: nil, limit: publication.sourceBytes)
-        var hash = SHA256()
-        var buffer = Data()
-        var count = 0
-        for try await byte in stream {
-            guard count < publication.sourceBytes else { throw ReaderFailure.message("Original EPUB size mismatch.") }
-            count += 1
-            buffer.append(byte)
-            if buffer.count == 64 * 1024 { hash.update(data: buffer); buffer.removeAll(keepingCapacity: true) }
+    private func verifyOriginal(_ publication: Publication, retry: Bool = true) async throws {
+        let configuration = session.configuration
+        configuration.timeoutIntervalForResource = max(130, Double(publication.sourceBytes) / (64 * 1024) + 120)
+        let downloadSession = URLSession(configuration: configuration, delegate: RedirectGuard(), delegateQueue: nil)
+        let keepAlive = Task {
+            do {
+                while !Task.isCancelled {
+                    try await Task.sleep(for: .seconds(60))
+                    try await self.heartbeat(publication)
+                }
+            } catch is CancellationError {} catch { downloadSession.invalidateAndCancel() }
         }
-        hash.update(data: buffer)
+        defer { keepAlive.cancel(); downloadSession.invalidateAndCancel() }
+        let downloadID = UUID()
+        downloads[downloadID] = downloadSession
+        defer { downloads.removeValue(forKey: downloadID) }
+        let rejected = token
+        let request = try serverRequest("/api/v1/epub-sessions/\(publication.id.uuidString)/original", method: "GET", body: nil)
+        let (file, response) = try await downloadSession.download(for: request, delegate: OriginalDownloadGuard(limit: publication.sourceBytes))
+        defer { try? FileManager.default.removeItem(at: file) }
+        if (response as? HTTPURLResponse)?.statusCode == 401, retry {
+            try await renew(rejected: rejected)
+            return try await verifyOriginal(publication, retry: false)
+        }
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw ReaderFailure.message("Original EPUB download failed.") }
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        var hash = SHA256()
+        var count = 0
+        while let data = try handle.read(upToCount: 64 * 1024), !data.isEmpty {
+            count += data.count
+            guard count <= publication.sourceBytes else { throw ReaderFailure.message("Original EPUB size mismatch.") }
+            hash.update(data: data)
+        }
         guard count == publication.sourceBytes, hash.finalize().map({ String(format: "%02x", $0) }).joined() == publication.sourceSha256 else {
             throw ReaderFailure.message("Original EPUB verification failed.")
         }
     }
 
+    func heartbeat(_ publication: Publication) async throws {
+        _ = try await request("/api/v1/epub-sessions/\(publication.id.uuidString)/heartbeat", method: "POST")
+    }
+
     func close(_ publication: Publication) async {
         _ = try? await request("/api/v1/epub-sessions/\(publication.id.uuidString)", method: "DELETE")
+    }
+}
+
+final class OriginalDownloadGuard: NSObject, URLSessionDownloadDelegate, Sendable {
+    let limit: Int
+    init(limit: Int) { self.limit = limit }
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
+                    totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        if totalBytesWritten > limit || totalBytesExpectedToWrite > limit { downloadTask.cancel() }
+    }
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }

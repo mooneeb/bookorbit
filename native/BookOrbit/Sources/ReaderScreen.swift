@@ -42,6 +42,7 @@ final class ReaderModel: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
     var warning: String?
     private var server: LoopbackServer?
     private var timeout: Task<Void, Never>?
+    private var heartbeat: Task<Void, Never>?
 
     func open(publication: Publication, api: Transport) async {
         do {
@@ -62,6 +63,14 @@ final class ReaderModel: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
             web.isInspectable = false
             self.web = web
             web.load(URLRequest(url: url))
+            heartbeat = Task { @MainActor [weak self] in
+                do {
+                    while !Task.isCancelled {
+                        try await Task.sleep(for: .seconds(60))
+                        try await api.heartbeat(publication)
+                    }
+                } catch is CancellationError {} catch { self?.fail("Connection lost. Return to details and reopen the book.") }
+            }
             timeout = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(10))
                 guard !Task.isCancelled, self?.ready == false else { return }
@@ -106,6 +115,7 @@ final class ReaderModel: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
 
     func close() {
         timeout?.cancel()
+        heartbeat?.cancel()
         web?.configuration.userContentController.removeScriptMessageHandler(forName: "reader")
         web?.stopLoading()
         web = nil

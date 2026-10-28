@@ -33,7 +33,7 @@ struct LibraryScreen: View {
                                 .disabled(library.books.count < 50 || library.busy)
                         }
                     }
-                    .toolbar { Button("Sign out", action: library.signOut) }
+                    .toolbar { Button("Sign out") { Task { await library.signOut() } } }
                 } else {
                     Form {
                         TextField("HTTPS server", text: $library.server).textInputAutocapitalization(.never).keyboardType(.URL)
@@ -58,6 +58,8 @@ struct BookScreen: View {
     @State private var detail: Book?
     @State private var publication: Publication?
     @State private var busy = false
+    @State private var visible = true
+    @State private var opening: Task<Void, Never>?
     @State private var error: String?
 
     var body: some View {
@@ -66,7 +68,7 @@ struct BookScreen: View {
             if let detail {
                 ForEach(detail.files) { file in
                     if file.format == "epub", file.role == "content" || file.role == "primary" {
-                        Button("Read EPUB") { Task { await open(file) } }.disabled(busy)
+                        Button("Read EPUB") { opening = Task { await open(file) } }.disabled(busy)
                     } else { Text("\(file.format?.uppercased() ?? "Unknown format"): native reading unavailable") }
                 }
             }
@@ -75,6 +77,8 @@ struct BookScreen: View {
             if let error { Text(error).foregroundStyle(.red) }
         }
         .navigationTitle("Book details")
+        .onAppear { visible = true }
+        .onDisappear { visible = false; opening?.cancel() }
         .task {
             do { detail = try await api.detail(book.id) } catch { self.error = error.localizedDescription }
         }
@@ -86,7 +90,12 @@ struct BookScreen: View {
     private func open(_ file: BookFile) async {
         busy = true
         defer { busy = false }
-        do { publication = try await api.open(book: book.id, file: file.id); error = nil }
+        do {
+            let opened = try await api.open(book: book.id, file: file.id)
+            guard visible, !Task.isCancelled else { await api.close(opened); return }
+            publication = opened
+            error = nil
+        }
         catch { self.error = error.localizedDescription }
     }
 }

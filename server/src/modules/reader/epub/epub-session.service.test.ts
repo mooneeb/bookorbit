@@ -59,10 +59,88 @@ it('refuses ambiguous paths and oversized chapters without retaining a broken le
     resolveOriginalPath.mockResolvedValue(valid);
     const publication = await service.open(1, 2, owner);
     expect(publication.members).toHaveLength(1);
-    await expect(service.open(1, 2, owner)).rejects.toThrow('Close the current reader');
-    await service.close(publication.id, owner);
+    const reopened = await service.open(1, 2, owner);
+    await expect(service.resource(publication.id, 0, owner)).rejects.toThrow('Reader lease expired');
+    await service.close(reopened.id, owner);
     await expect(service.resource(publication.id, 0, owner)).rejects.toThrow('Reader lease expired');
   } finally {
+    await service.onModuleDestroy();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('renews active reading, expires idle snapshots and lets independent readers and reopened sessions continue', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'epub-session-lifecycle-'));
+  const path = await createZipArchiveFixture(root, 'book.epub', [{ path: 'chapter.xhtml', content: '<p>Still reading</p>' }]);
+  const resolveOriginalPath = vi.fn().mockResolvedValue(path);
+  const module = await Test.createTestingModule({
+    providers: [EpubSessionService, { provide: EpubService, useValue: { resolveOriginalPath } }],
+  }).compile();
+  const service = module.get(EpubSessionService);
+  const owner = { id: 21, sessionId: 101, isSuperuser: false } as RequestUser;
+  const start = Date.now();
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(start);
+  try {
+    const first = await service.open(1, 2, owner);
+    clock.mockReturnValue(start + 29 * 60_000);
+    await service.heartbeat(first.id, owner);
+    clock.mockReturnValue(start + 31 * 60_000);
+    const ongoing = await service.resource(first.id, 0, owner);
+    ongoing.stream.destroy();
+    const otherDevice = { ...owner, sessionId: 102 };
+    const second = await service.open(1, 2, otherDevice);
+    const reopened = await service.open(1, 2, owner);
+    await expect(service.resource(first.id, 0, owner)).rejects.toThrow('Reader lease expired');
+    (await service.resource(second.id, 0, otherDevice)).stream.destroy();
+    (await service.resource(reopened.id, 0, owner)).stream.destroy();
+    for (let index = 0; index < 5; index++) {
+      const independent = { ...owner, id: 30 + index, sessionId: 200 + index };
+      const opened = await service.open(1, 2, independent);
+      (await service.resource(opened.id, 0, independent)).stream.destroy();
+    }
+    clock.mockReturnValue(start + 62 * 60_000);
+    await expect(service.resource(reopened.id, 0, owner)).rejects.toThrow('Reader lease expired');
+    const afterIdle = await service.open(1, 2, owner);
+    expect(afterIdle.id).not.toBe(reopened.id);
+    await service.close(afterIdle.id, owner);
+  } finally {
+    clock.mockRestore();
+    await service.onModuleDestroy();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('rejects overlapping preparation for one owner while allowing a retry after completion', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'epub-session-busy-'));
+  const path = await createZipArchiveFixture(root, 'book.epub', [{ path: 'chapter.xhtml', content: '<p>Readable</p>' }]);
+  let release!: (path: string) => void;
+  let entered!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const resolveOriginalPath = vi
+    .fn()
+    .mockImplementationOnce(() => {
+      entered();
+      return new Promise<string>((resolve) => {
+        release = resolve;
+      });
+    })
+    .mockResolvedValue(path);
+  const module = await Test.createTestingModule({
+    providers: [EpubSessionService, { provide: EpubService, useValue: { resolveOriginalPath } }],
+  }).compile();
+  const service = module.get(EpubSessionService);
+  const owner = { id: 40, sessionId: 301, isSuperuser: false } as RequestUser;
+  try {
+    const preparing = service.open(1, 2, owner);
+    await waiting;
+    await expect(service.open(1, 2, owner)).rejects.toThrow('preparation is busy');
+    release(path);
+    await preparing;
+    await expect(service.open(1, 2, owner)).resolves.toMatchObject({ bookId: 1, fileId: 2 });
+  } finally {
+    release(path);
     await service.onModuleDestroy();
     await rm(root, { recursive: true, force: true });
   }

@@ -36,6 +36,11 @@ export class EpubSessionController {
     return reply.send(resource.stream);
   }
 
+  @Post(':id/heartbeat')
+  heartbeat(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: RequestUser) {
+    return this.sessions.heartbeat(id, user);
+  }
+
   @Delete(':id')
   close(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: RequestUser) {
     return this.sessions.close(id, user);

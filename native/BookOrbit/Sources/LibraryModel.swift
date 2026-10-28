@@ -31,6 +31,7 @@ final class LibraryModel {
             let reference = SessionReference(origin: api.origin, identity: before.instanceId, account: me.id)
             try CredentialStore().save(credentials, scope: reference)
             UserDefaults.standard.set(try JSONEncoder().encode(reference), forKey: "verified-session")
+            await api.authorize(credentials, scope: reference)
             identity = before
             account = me
             transport = api
@@ -66,7 +67,7 @@ final class LibraryModel {
             let stored = try CredentialStore().load(scope: reference)
             let renewed = try await api.refresh(stored)
             try CredentialStore().save(renewed, scope: reference)
-            await api.authorize(renewed)
+            await api.authorize(renewed, scope: reference)
             let me = try await api.account()
             guard me.id == reference.account, try await api.identity() == identity else { throw ReaderFailure.message("Account scope changed. Sign in again.") }
             self.identity = identity
@@ -76,7 +77,8 @@ final class LibraryModel {
         } catch { self.error = error.localizedDescription }
     }
 
-    func signOut() {
+    func signOut() async {
+        await transport?.invalidate()
         if let transport, let identity, let account {
             CredentialStore().remove(scope: SessionReference(origin: transport.origin, identity: identity.instanceId, account: account.id))
         }

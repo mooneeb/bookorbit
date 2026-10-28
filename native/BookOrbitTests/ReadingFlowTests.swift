@@ -36,10 +36,12 @@ final class ReadingFlowTests: XCTestCase {
             <?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>
             """),
             ("book.opf", """
-            <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">fixture</dc:identifier><dc:title>Readable fixture</dc:title><dc:language>en</dc:language></metadata><manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="chapter"/></spine></package>
+            <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">fixture</dc:identifier><dc:title>Readable fixture</dc:title><dc:language>en</dc:language></metadata><manifest><item id="cover" href="cover.bin" media-type="application/xhtml+xml"/><item id="chapter" href="chapter.bin" media-type="application/xhtml+xml"/><item id="logo" href="logo.svg" media-type="image/svg+xml"/></manifest><spine><itemref idref="cover"/><itemref idref="chapter"/></spine></package>
             """),
-            ("chapter.xhtml", """
-            <html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter</title><script>window.webkit.messageHandlers.reader.postMessage({kind:'error',value:'publication script ran'});document.body.textContent='ATTACK';</script></head><body><h1>Readable chapter</h1><p>Original words remain readable.</p><p>\(String(repeating: "Page navigation retains original words. ", count: 600))</p><img src="https://unsolicited.invalid/track.png" alt="Blocked remote image"/></body></html>
+            ("cover.bin", "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Cover</title></head><body><img src=\"logo.svg\" alt=\"Fixture cover\"/></body></html>"),
+            ("logo.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"100\"><title>Fixture cover</title><rect width=\"100\" height=\"100\"/></svg>"),
+            ("chapter.bin", """
+            <html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter</title><script>window.webkit.messageHandlers.reader.postMessage({kind:'error',value:'publication script ran'});document.body.textContent='ATTACK';</script></head><body><h1>Readable chapter</h1><p>Original words remain readable.</p><p>Hello&nbsp;world</p><p>\(String(repeating: "Page navigation retains original words. ", count: 600))</p><img src="https://unsolicited.invalid/track.png" alt="Blocked remote image"/></body></html>
             """),
         ]
         let members: [[String: Any]] = files.map { path, text in
@@ -52,10 +54,12 @@ final class ReadingFlowTests: XCTestCase {
             "sourceSha256": originalHash, "sourceBytes": 1000, "expiresAt": "2099-01-01T00:00:00Z", "members": members])
         FixtureProtocol.reply = { request in
             let path = request.url!.path
+            if request.value(forHTTPHeaderField: "Authorization") == "Bearer expired", path != "/api/v1/auth/refresh" { return (401, Data()) }
             let json: String
             switch path {
             case "/api/v1/server-identity": json = "{\"product\":\"bookorbit\",\"protocolVersion\":1,\"instanceId\":\"\(identity)\"}"
             case "/api/v1/auth/login": json = "{\"accessToken\":\"owner-access\",\"refreshToken\":\"owner-refresh\",\"user\":{\"id\":11,\"username\":\"owner\",\"permissions\":[]}}"
+            case "/api/v1/auth/refresh": json = "{\"accessToken\":\"owner-access\",\"refreshToken\":\"rotated-refresh\"}"
             case "/api/v1/auth/me": json = "{\"id\":11,\"username\":\"owner\",\"permissions\":[]}"
             case "/api/v1/books/query": json = "{\"items\":[{\"id\":7,\"title\":\"Readable fixture\",\"files\":[{\"id\":9,\"format\":\"epub\",\"role\":\"primary\"}]}]}"
             case "/api/v1/books/7": json = "{\"id\":7,\"title\":\"Readable fixture\",\"files\":[{\"id\":9,\"format\":\"epub\",\"role\":\"primary\"}]}"
@@ -79,6 +83,9 @@ final class ReadingFlowTests: XCTestCase {
         XCTAssertEqual(account.id, credentials.user?.id)
         let after = try await api.identity()
         XCTAssertEqual(before, after)
+        let scope = SessionReference(origin: api.origin, identity: before.instanceId, account: account.id)
+        defer { CredentialStore().remove(scope: scope) }
+        await api.authorize(Credentials(accessToken: "expired", refreshToken: "owner-refresh", user: account), scope: scope)
         let books = try await api.books(query: "Readable", page: 0)
         XCTAssertEqual(books.map(\.id), [7])
         let detail = try await api.detail(7)
@@ -92,7 +99,14 @@ final class ReadingFlowTests: XCTestCase {
         defer { web.removeFromSuperview() }
         for _ in 0..<100 where !reader.ready && reader.error == nil { try await Task.sleep(for: .milliseconds(100)) }
         XCTAssertTrue(reader.ready, reader.error ?? "Reader did not open")
-        let text = try await reader.web?.evaluateJavaScript("document.querySelector('foliate-view').renderer.getContents().map(x=>x.doc.body.textContent).join(' ')") as? String
+        XCTAssertEqual(reader.warning, "Text is unavailable in this image-only section.")
+        reader.turn("next")
+        var text: String?
+        for _ in 0..<100 {
+            text = try await reader.web?.evaluateJavaScript("document.querySelector('foliate-view').renderer.getContents().map(x=>x.doc.body.textContent).join(' ')") as? String
+            if text?.contains("Original words remain readable.") == true { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
         XCTAssertTrue(text?.contains("Original words remain readable.") == true)
         XCTAssertFalse(text?.contains("ATTACK") == true)
         let width = try await web.evaluateJavaScript("document.querySelector('foliate-view').getBoundingClientRect().width") as? Double
@@ -106,6 +120,34 @@ final class ReadingFlowTests: XCTestCase {
         await api.close(publication)
         do { _ = try await api.detail(99); XCTFail("Denied book was exposed") } catch { XCTAssertTrue(error.localizedDescription.contains("cannot access")) }
         let normal = FixtureProtocol.reply
+        let chapterIndex = try XCTUnwrap(files.firstIndex(where: { $0.0 == "chapter.bin" }))
+        for payload in [Data(repeating: 32, count: 4 * 1024 * 1024 + 1),
+                        Data(("<html xmlns=\"http://www.w3.org/1999/xhtml\"><head/><body>" + String(repeating: "<i/>", count: 100_001) + "</body></html>").utf8)] {
+            var changed = try JSONSerialization.jsonObject(with: manifest) as! [String: Any]
+            var changedMembers = changed["members"] as! [[String: Any]]
+            changedMembers[chapterIndex]["bytes"] = payload.count
+            changedMembers[chapterIndex]["sha256"] = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
+            changed["members"] = changedMembers
+            let encoded = try JSONSerialization.data(withJSONObject: changed)
+            FixtureProtocol.reply = { request in
+                if request.url!.path == "/api/v1/epub-sessions/books/7/files/9" { return (200, encoded) }
+                if request.url!.path.hasSuffix("/members/\(chapterIndex)") { return (200, payload) }
+                return try normal(request)
+            }
+            let limited = try await api.open(book: 7, file: 9)
+            let refused = ReaderModel()
+            await refused.open(publication: limited, api: api)
+            let limitedWeb = try XCTUnwrap(refused.web)
+            limitedWeb.frame = window.bounds
+            window.addSubview(limitedWeb)
+            for _ in 0..<100 where !refused.ready && refused.error == nil { try await Task.sleep(for: .milliseconds(100)) }
+            refused.turn("next")
+            for _ in 0..<100 where refused.error == nil { try await Task.sleep(for: .milliseconds(100)) }
+            XCTAssertNotNil(refused.error, "Extensionless XHTML exceeded the resource envelope")
+            refused.close()
+            limitedWeb.removeFromSuperview()
+            await api.close(limited)
+        }
         FixtureProtocol.reply = { request in
             if request.url!.path.hasSuffix("/original") { return (200, Data(repeating: 43, count: 1000)) }
             return try normal(request)
