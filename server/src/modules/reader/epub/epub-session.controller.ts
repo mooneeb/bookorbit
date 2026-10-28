@@ -13,6 +13,15 @@ export class EpubSessionController {
     return this.sessions.open(bookId, fileId, user);
   }
 
+  @Get(':id/original')
+  async original(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: RequestUser, @Res() reply: FastifyReply) {
+    const resource = await this.sessions.original(id, user);
+    reply.header('Cache-Control', 'private, no-store');
+    reply.header('Content-Type', 'application/epub+zip');
+    reply.header('Content-Length', resource.bytes);
+    return reply.send(resource.stream);
+  }
+
   @Get(':id/members/:index')
   async member(
     @Param('id', ParseUUIDPipe) id: string,

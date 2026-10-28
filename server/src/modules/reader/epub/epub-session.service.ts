@@ -123,10 +123,31 @@ export class EpubSessionService implements OnModuleDestroy {
     return { stream: createReadStream(join(lease.directory, String(index))), bytes: member.bytes };
   }
 
-  async close(id: string, user: RequestUser) {
+  async original(id: string, user: RequestUser) {
     const lease = this.owned(id, user);
-    this.leases.delete(id);
-    await rm(lease.directory, { recursive: true, force: true });
+    await this.epub.resolveOriginalPath(lease.manifest.bookId, lease.manifest.fileId, user);
+    return { stream: createReadStream(join(lease.directory, 'original')), bytes: lease.manifest.sourceBytes };
+  }
+
+  async close(id: string, user: RequestUser) {
+    await this.release(this.owned(id, user), 'close');
+  }
+
+  private async release(lease: Lease, reason: string) {
+    const started = Date.now();
+    const { bookId, fileId, id } = lease.manifest;
+    const ids = `bookId=${bookId} fileId=${fileId} userId=${lease.owner} sessionId=${id}`;
+    this.logger.log(`[epub.session_cleanup] [start] ${ids} reason=${reason} - release online snapshot`);
+    try {
+      await rm(lease.directory, { recursive: true, force: true });
+      this.leases.delete(id);
+      this.logger.log(`[epub.session_cleanup] [end] ${ids} durationMs=${Date.now() - started} removed=true - snapshot released`);
+    } catch (error) {
+      this.logger.warn(
+        `[epub.session_cleanup] [fail] ${ids} durationMs=${Date.now() - started} errorClass=${error instanceof Error ? error.name : 'Unknown'} error="${sanitizeLogValue(error instanceof Error ? error.message : 'Cleanup failed')}" - snapshot cleanup failed`,
+      );
+      throw new ServiceUnavailableException('Snapshot cleanup failed. Retry later');
+    }
   }
 
   private owned(id: string, user: RequestUser) {
@@ -172,17 +193,15 @@ export class EpubSessionService implements OnModuleDestroy {
   }
 
   private async expire() {
-    for (const [id, lease] of this.leases) {
+    for (const lease of this.leases.values()) {
       if (Date.parse(lease.manifest.expiresAt) > Date.now()) continue;
-      this.leases.delete(id);
-      await rm(lease.directory, { recursive: true, force: true }).catch(() => undefined);
+      await this.release(lease, 'expiry').catch(() => undefined);
     }
   }
 
   async onModuleDestroy() {
     clearInterval(this.expiryTimer);
     const leases = [...this.leases.values()];
-    this.leases.clear();
-    await Promise.all(leases.map((lease) => rm(lease.directory, { recursive: true, force: true })));
+    await Promise.all(leases.map((lease) => this.release(lease, 'shutdown')));
   }
 }

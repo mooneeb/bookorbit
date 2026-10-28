@@ -46,8 +46,10 @@ final class ReadingFlowTests: XCTestCase {
             let bytes = Data(text.utf8)
             return ["path": path, "bytes": bytes.count, "sha256": SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()]
         }
+        let original = Data(repeating: 42, count: 1000)
+        let originalHash = SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
         let manifest = try JSONSerialization.data(withJSONObject: ["version": 1, "id": lease, "bookId": 7, "fileId": 9,
-            "sourceSha256": String(repeating: "a", count: 64), "sourceBytes": 1000, "expiresAt": "2099-01-01T00:00:00Z", "members": members])
+            "sourceSha256": originalHash, "sourceBytes": 1000, "expiresAt": "2099-01-01T00:00:00Z", "members": members])
         FixtureProtocol.reply = { request in
             let path = request.url!.path
             let json: String
@@ -58,6 +60,7 @@ final class ReadingFlowTests: XCTestCase {
             case "/api/v1/books/query": json = "{\"items\":[{\"id\":7,\"title\":\"Readable fixture\",\"files\":[{\"id\":9,\"format\":\"epub\",\"role\":\"primary\"}]}]}"
             case "/api/v1/books/7": json = "{\"id\":7,\"title\":\"Readable fixture\",\"files\":[{\"id\":9,\"format\":\"epub\",\"role\":\"primary\"}]}"
             case "/api/v1/epub-sessions/books/7/files/9": return (200, manifest)
+            case let path where path.hasSuffix("/original"): return (200, original)
             case let path where path.contains("/members/"):
                 guard request.value(forHTTPHeaderField: "Authorization") == "Bearer owner-access", let index = Int(path.split(separator: "/").last!), files.indices.contains(index) else { return (403, Data()) }
                 return (200, Data(files[index].1.utf8))
@@ -94,6 +97,7 @@ final class ReadingFlowTests: XCTestCase {
         XCTAssertFalse(text?.contains("ATTACK") == true)
         let width = try await web.evaluateJavaScript("document.querySelector('foliate-view').getBoundingClientRect().width") as? Double
         XCTAssertGreaterThan(width ?? 0, 500)
+        XCTAssertNotNil(reader.warning)
         reader.turn("next")
         try await Task.sleep(for: .milliseconds(500))
         XCTAssertEqual(reader.status, "EPUB page changed")
@@ -101,6 +105,13 @@ final class ReadingFlowTests: XCTestCase {
         XCTAssertNil(reader.web)
         await api.close(publication)
         do { _ = try await api.detail(99); XCTFail("Denied book was exposed") } catch { XCTAssertTrue(error.localizedDescription.contains("cannot access")) }
+        let normal = FixtureProtocol.reply
+        FixtureProtocol.reply = { request in
+            if request.url!.path.hasSuffix("/original") { return (200, Data(repeating: 43, count: 1000)) }
+            return try normal(request)
+        }
+        do { _ = try await api.open(book: 7, file: 9); XCTFail("Tampered original opened") }
+        catch { XCTAssertTrue(error.localizedDescription.contains("verification failed")) }
         FixtureProtocol.reply = { _ in throw URLError(.notConnectedToInternet) }
         do { _ = try await api.books(query: "", page: 0); XCTFail("Disconnected catalog succeeded") } catch { XCTAssertNotNil(error) }
     }

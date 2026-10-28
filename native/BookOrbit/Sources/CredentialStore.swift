@@ -2,14 +2,14 @@ import Foundation
 import Security
 
 struct CredentialStore {
-    private func key(origin: URL, identity: UUID, account: Int) -> [String: Any] {
+    private func key(_ scope: SessionReference) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: "dev.mooneeb.bookorbit.reader.session",
-         kSecAttrAccount as String: "\(origin.absoluteString)|\(identity.uuidString)|\(account)"]
+         kSecAttrAccount as String: "\(scope.origin.absoluteString)|\(scope.identity.uuidString)|\(scope.account)"]
     }
 
-    func save(_ value: Credentials, origin: URL, identity: UUID, account: Int) throws {
-        var query = key(origin: origin, identity: identity, account: account)
+    func save(_ value: Credentials, scope: SessionReference) throws {
+        var query = key(scope)
         let data = try JSONEncoder().encode(value)
         let result = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if result == errSecItemNotFound {
@@ -19,8 +19,8 @@ struct CredentialStore {
         } else if result != errSecSuccess { throw ReaderFailure.message("Credentials could not be saved securely.") }
     }
 
-    func load(origin: URL, identity: UUID, account: Int) throws -> Credentials {
-        var query = key(origin: origin, identity: identity, account: account)
+    func load(scope: SessionReference) throws -> Credentials {
+        var query = key(scope)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
@@ -30,8 +30,8 @@ struct CredentialStore {
         return try JSONDecoder().decode(Credentials.self, from: data)
     }
 
-    func remove(origin: URL, identity: UUID, account: Int) {
-        SecItemDelete(key(origin: origin, identity: identity, account: account) as CFDictionary)
+    func remove(scope: SessionReference) {
+        SecItemDelete(key(scope) as CFDictionary)
     }
 }
 

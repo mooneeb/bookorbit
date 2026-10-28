@@ -10,6 +10,8 @@ final class LoopbackServer {
     private let api: Transport
     private var startContinuation: CheckedContinuation<URL, Error>?
     private var listener: NWListener?
+    private var activeResponses = 0
+    private var waitingResponses: [CheckedContinuation<Bool, Never>] = []
     private var connections: [UUID: NWConnection] = [:]
     private(set) var url: URL?
 
@@ -54,10 +56,12 @@ final class LoopbackServer {
         listener = nil
         for connection in connections.values { connection.cancel() }
         connections.removeAll()
+        for waiter in waitingResponses { waiter.resume(returning: false) }
+        waitingResponses.removeAll()
     }
 
     private func accept(_ connection: NWConnection) {
-        guard connections.count < 2 else { connection.cancel(); return }
+        guard connections.count < 16 else { connection.cancel(); return }
         let id = UUID()
         connections[id] = connection
         connection.start(queue: DispatchQueue.global(qos: .userInitiated))
@@ -84,7 +88,12 @@ final class LoopbackServer {
     }
 
     private func respond(_ connection: NWConnection, id: UUID, input: Data) async {
-        defer { connections.removeValue(forKey: id)?.cancel() }
+        guard await acquireResponse() else { return }
+        defer {
+            connections.removeValue(forKey: id)?.cancel()
+            if waitingResponses.isEmpty { activeResponses -= 1 }
+            else { waitingResponses.removeFirst().resume(returning: true) }
+        }
         do {
             guard let text = String(data: input, encoding: .utf8), let url else { return }
             let lines = text.components(separatedBy: "\r\n")
@@ -103,6 +112,11 @@ final class LoopbackServer {
         } catch {
             try? await send(connection, data: Data("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8))
         }
+    }
+
+    private func acquireResponse() async -> Bool {
+        if activeResponses < 2 { activeResponses += 1; return true }
+        return await withCheckedContinuation { waitingResponses.append($0) }
     }
 
     private func send(_ connection: NWConnection, data: Data) async throws {

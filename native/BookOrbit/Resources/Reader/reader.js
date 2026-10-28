@@ -8,7 +8,22 @@ const fail = () =>
     "error",
     "This publication could not be read safely. A resource may be missing, unsupported, oversized or disconnected. Return to details and retry.",
   );
-let used = 0;
+let retained = 0;
+const objectURLs = new Map();
+const createObjectURL = URL.createObjectURL.bind(URL);
+const revokeObjectURL = URL.revokeObjectURL.bind(URL);
+URL.createObjectURL = (blob) => {
+  if (retained + blob.size > 128 * 1024 * 1024) return refuse();
+  const url = createObjectURL(blob);
+  objectURLs.set(url, blob.size);
+  retained += blob.size;
+  return url;
+};
+URL.revokeObjectURL = (url) => {
+  retained -= objectURLs.get(url) ?? 0;
+  objectURLs.delete(url);
+  revokeObjectURL(url);
+};
 let failed = false;
 let partial = false;
 const refuse = () => {
@@ -28,8 +43,7 @@ const load = async (name) => {
     return refuse();
   }
   const limit = textTypes.test(name) ? 4 * 1024 * 1024 : 32 * 1024 * 1024;
-  if (member.bytes > limit || used + member.bytes > 128 * 1024 * 1024) return refuse();
-  used += member.bytes;
+  if (member.bytes > limit) return refuse();
   const response = await fetch(`member/${member.index}`, { signal: AbortSignal.timeout(10_000) });
   if (!response.ok) return refuse();
   const data = await response.arrayBuffer();
@@ -48,7 +62,13 @@ const contain = (text, name) => {
   while (walker.nextNode()) if (++count > 100_000) return refuse();
   if (doc.querySelector('meta[http-equiv="refresh" i], iframe, object, embed, video, audio') || /writing-mode\s*:\s*vertical/i.test(text))
     return refuse();
-  if (doc.querySelector('script, [src^="http:"], [src^="https:"], link[href^="http:"], link[href^="https:"]') || /https?:|@import/i.test(text))
+  if (
+    doc.querySelector('script, [src^="http:"], [src^="https:"], link[href^="http:"], link[href^="https:"]') ||
+    Array.from(doc.querySelectorAll("style, [style], [src], [srcset], [poster], link[href]")).some((element) => {
+      const values = element.matches("style") ? [element.textContent] : Array.from(element.attributes, (attribute) => attribute.value);
+      return values.some((value) => /(?:^|[\s("',])(?:https?:)?\/\//i.test(value));
+    })
+  )
     partial = true;
   const head = doc.querySelector("head");
   if (!head) return refuse();

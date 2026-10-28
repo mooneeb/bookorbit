@@ -69,6 +69,11 @@ describe('Native connected EPUB adapter', { timeout: 120_000 }, () => {
     const opened = await ctx.app.inject({ method: 'POST', url: openUrl, headers });
     expect(opened.statusCode).toBe(201);
     const manifest = opened.json();
+    const originalUrl = `/api/v1/epub-sessions/${manifest.id}/original`;
+    const original = await ctx.app.inject({ method: 'GET', url: originalUrl, headers });
+    expect(original.statusCode).toBe(200);
+    expect(createHash('sha256').update(original.rawPayload).digest('hex')).toBe(manifest.sourceSha256);
+    expect((await ctx.app.inject({ method: 'GET', url: originalUrl, headers: authHeader(second.accessToken) })).statusCode).toBe(403);
     const chapterIndex = manifest.members.findIndex((item: { path: string }) => item.path.endsWith('chapter.xhtml'));
     expect(chapterIndex).toBeGreaterThanOrEqual(0);
     const url = `/api/v1/epub-sessions/${manifest.id}/members/${chapterIndex}`;

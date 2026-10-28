@@ -28,8 +28,8 @@ final class LibraryModel {
             guard credentials.user?.id == me.id, try await api.identity() == before else {
                 throw ReaderFailure.message("Server or account changed during sign-in.")
             }
-            try CredentialStore().save(credentials, origin: api.origin, identity: before.instanceId, account: me.id)
             let reference = SessionReference(origin: api.origin, identity: before.instanceId, account: me.id)
+            try CredentialStore().save(credentials, scope: reference)
             UserDefaults.standard.set(try JSONEncoder().encode(reference), forKey: "verified-session")
             identity = before
             account = me
@@ -63,9 +63,9 @@ final class LibraryModel {
             let api = try Transport(server: reference.origin.absoluteString)
             let identity = try await api.identity()
             guard identity.instanceId == reference.identity else { throw ReaderFailure.message("Server identity changed. Sign in again.") }
-            let stored = try CredentialStore().load(origin: reference.origin, identity: reference.identity, account: reference.account)
+            let stored = try CredentialStore().load(scope: reference)
             let renewed = try await api.refresh(stored)
-            try CredentialStore().save(renewed, origin: reference.origin, identity: reference.identity, account: reference.account)
+            try CredentialStore().save(renewed, scope: reference)
             await api.authorize(renewed)
             let me = try await api.account()
             guard me.id == reference.account, try await api.identity() == identity else { throw ReaderFailure.message("Account scope changed. Sign in again.") }
@@ -78,7 +78,7 @@ final class LibraryModel {
 
     func signOut() {
         if let transport, let identity, let account {
-            CredentialStore().remove(origin: transport.origin, identity: identity.instanceId, account: account.id)
+            CredentialStore().remove(scope: SessionReference(origin: transport.origin, identity: identity.instanceId, account: account.id))
         }
         UserDefaults.standard.removeObject(forKey: "verified-session")
         transport = nil

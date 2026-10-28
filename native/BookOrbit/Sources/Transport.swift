@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct ServerIdentity: Codable, Equatable, Sendable {
     let product: String
@@ -76,7 +77,7 @@ actor Transport {
 
     func authorize(_ credentials: Credentials) { token = credentials.accessToken }
 
-    func request(_ path: String, method: String = "GET", body: Data? = nil, limit: Int = 4 * 1024 * 1024) async throws -> Data {
+    private func responseBytes(_ path: String, method: String, body: Data?, limit: Int) async throws -> URLSession.AsyncBytes {
         guard path.hasPrefix("/api/v1/"), !path.contains(".."), let url = URL(string: path, relativeTo: origin)?.absoluteURL,
               url.host == origin.host, url.port == origin.port, url.scheme == origin.scheme else {
             throw ReaderFailure.message("Invalid server request.")
@@ -93,6 +94,11 @@ actor Transport {
                 response.statusCode == 403 ? "This account cannot access this book." : "Server request failed (\(response.statusCode)).")
         }
         guard response.expectedContentLength <= limit else { throw ReaderFailure.message("Response exceeds the reader limit.") }
+        return stream
+    }
+
+    func request(_ path: String, method: String = "GET", body: Data? = nil, limit: Int = 4 * 1024 * 1024) async throws -> Data {
+        let stream = try await responseBytes(path, method: method, body: body, limit: limit)
         var data = Data()
         for try await byte in stream {
             if data.count >= limit { throw ReaderFailure.message("Response exceeds the reader limit.") }
@@ -135,7 +141,7 @@ actor Transport {
     func open(book: Int, file: Int) async throws -> Publication {
         let result = try JSONDecoder().decode(Publication.self, from: await request("/api/v1/epub-sessions/books/\(book)/files/\(file)", method: "POST", limit: 256 * 1024))
         guard result.version == 1, result.bookId == book, result.fileId == file,
-              result.sourceBytes <= 512 * 1024 * 1024, result.members.count <= 20_000,
+              result.sourceBytes >= 22, result.sourceBytes <= 512 * 1024 * 1024, result.members.count <= 20_000,
               result.sourceSha256.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil else {
             throw ReaderFailure.message("Unsupported publication manifest.")
         }
@@ -151,7 +157,26 @@ actor Transport {
             expanded += member.bytes
             guard expanded <= 2 * 1024 * 1024 * 1024 else { throw ReaderFailure.message("Publication is too large.") }
         }
+        do { try await verifyOriginal(result) }
+        catch { await close(result); throw error }
         return result
+    }
+
+    private func verifyOriginal(_ publication: Publication) async throws {
+        let stream = try await responseBytes("/api/v1/epub-sessions/\(publication.id.uuidString)/original", method: "GET", body: nil, limit: publication.sourceBytes)
+        var hash = SHA256()
+        var buffer = Data()
+        var count = 0
+        for try await byte in stream {
+            guard count < publication.sourceBytes else { throw ReaderFailure.message("Original EPUB size mismatch.") }
+            count += 1
+            buffer.append(byte)
+            if buffer.count == 64 * 1024 { hash.update(data: buffer); buffer.removeAll(keepingCapacity: true) }
+        }
+        hash.update(data: buffer)
+        guard count == publication.sourceBytes, hash.finalize().map({ String(format: "%02x", $0) }).joined() == publication.sourceSha256 else {
+            throw ReaderFailure.message("Original EPUB verification failed.")
+        }
     }
 
     func close(_ publication: Publication) async {
