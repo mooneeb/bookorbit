@@ -1415,7 +1415,7 @@ end
 function BookOrbitCatalog:showSortDialog(item)
     local dialog
     local buttons = {}
-    for _, sort in ipairs(SORTS) do
+    for _i, sort in ipairs(SORTS) do
         table.insert(buttons, {
             {
                 text = sort.text .. (item.current_sort == sort.id and " *" or ""),
