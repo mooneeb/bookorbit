@@ -15,6 +15,7 @@ struct ReaderScreen: View {
             }.padding()
             if let web = model.web { ReaderWebView(web: web) }
             else { ProgressView("Opening EPUB") }
+            if let warning = model.warning { Text(warning).padding() }
             if let error = model.error { Text(error).foregroundStyle(.red).padding() }
             HStack {
                 Button("Previous page") { model.turn("prev") }
@@ -38,6 +39,7 @@ final class ReaderModel: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
     var ready = false
     var status = "Opening EPUB"
     var error: String?
+    var warning: String?
     private var server: LoopbackServer?
     private var timeout: Task<Void, Never>?
 
@@ -75,7 +77,7 @@ final class ReaderModel: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
               let body = message.body as? [String: String], body.count == 3, body["session"] == server.token,
               let value = body["value"], value.utf8.count <= 256 else { return }
         switch body["kind"] {
-        case "ready": ready = true; status = "EPUB ready"; timeout?.cancel()
+        case "ready": warning = value.isEmpty ? nil : value; ready = true; status = "EPUB ready"; timeout?.cancel()
         case "location": status = value
         case "error": fail(value)
         default: break

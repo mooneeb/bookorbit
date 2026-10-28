@@ -10,6 +10,7 @@ const fail = () =>
   );
 let used = 0;
 let failed = false;
+let partial = false;
 const refuse = () => {
   failed = true;
   fail();
@@ -47,6 +48,8 @@ const contain = (text, name) => {
   while (walker.nextNode()) if (++count > 100_000) return refuse();
   if (doc.querySelector('meta[http-equiv="refresh" i], iframe, object, embed, video, audio') || /writing-mode\s*:\s*vertical/i.test(text))
     return refuse();
+  if (doc.querySelector('script, [src^="http:"], [src^="https:"], link[href^="http:"], link[href^="https:"]') || /https?:|@import/i.test(text))
+    partial = true;
   const head = doc.querySelector("head");
   if (!head) return refuse();
   const policy = doc.createElementNS("http://www.w3.org/1999/xhtml", "meta");
@@ -81,7 +84,7 @@ try {
   view.addEventListener("load", (event) => {
     const doc = event.detail.doc;
     if (!doc?.body?.textContent?.trim()) return refuse();
-    report("ready");
+    report("ready", partial ? "Partial reading: publication scripts and remote content are unavailable." : "");
   });
   await view.open(epub);
   view.renderer.setAttribute("flow", "paginated");
