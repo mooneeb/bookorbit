@@ -1587,6 +1587,7 @@ export class BookRepository {
     const [file] = await this.db
       .select({
         id: bookFiles.id,
+        publicId: bookFiles.publicId,
         absolutePath: bookFiles.absolutePath,
         relPath: bookFiles.relPath,
         format: bookFiles.format,

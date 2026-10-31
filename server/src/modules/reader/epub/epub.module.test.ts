@@ -8,11 +8,14 @@ import { LibraryModule } from '../../library/library.module';
 import { EpubController } from './epub.controller';
 import { EpubModule } from './epub.module';
 import { EpubService } from './epub.service';
+import { EpubSessionService } from './epub-session.service';
+import { EpubSessionController } from './epub-session.controller';
+import { ServerIdentityModule } from '../../server-identity/server-identity.module';
 
 describe('EpubModule', () => {
   it('registers expected imports/controllers/providers', () => {
-    expect(Reflect.getMetadata('imports', EpubModule)).toEqual([BookModule, LibraryModule]);
-    expect(Reflect.getMetadata('controllers', EpubModule)).toEqual([EpubController]);
-    expect(Reflect.getMetadata('providers', EpubModule)).toEqual([EpubService]);
+    expect(Reflect.getMetadata('imports', EpubModule)).toEqual([BookModule, LibraryModule, ServerIdentityModule]);
+    expect(Reflect.getMetadata('controllers', EpubModule)).toEqual([EpubController, EpubSessionController]);
+    expect(Reflect.getMetadata('providers', EpubModule)).toEqual([EpubService, EpubSessionService]);
   });
 });

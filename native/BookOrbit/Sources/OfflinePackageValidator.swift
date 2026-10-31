@@ -1,0 +1,56 @@
+import Foundation
+
+private final class PackageXML: NSObject, XMLParserDelegate {
+    var elements: [(String, [String: String])] = []
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes: [String: String]) {
+        guard elements.count < 100_000 else { parser.abortParsing(); return }
+        elements.append((elementName.components(separatedBy: ":").last ?? elementName, attributes))
+    }
+
+    static func read(_ data: Data) throws -> PackageXML {
+        guard data.count <= 4 * 1024 * 1024, let text = String(data: data, encoding: .utf8),
+              text.range(of: "<!DOCTYPE", options: .caseInsensitive) == nil,
+              text.range(of: "<!ENTITY", options: .caseInsensitive) == nil else {
+            throw ReaderFailure.message("Unsupported publication XML.")
+        }
+        let parser = XMLParser(data: data)
+        parser.shouldResolveExternalEntities = false
+        let delegate = PackageXML()
+        parser.delegate = delegate
+        guard parser.parse() else { throw ReaderFailure.message("Invalid publication XML.") }
+        return delegate
+    }
+}
+
+enum OfflinePackageValidator {
+    static func validate(_ local: LocalPublication) async throws {
+        let members = Dictionary(uniqueKeysWithValues: local.publication.members.enumerated().map { ($0.element.path, $0.offset) })
+        func read(_ path: String) async throws -> Data {
+            guard let index = members[path] else { throw ReaderFailure.message("A required publication member is missing.") }
+            return try await local.member(index)
+        }
+        let container = try PackageXML.read(await read("META-INF/container.xml"))
+        guard let packagePath = container.elements.first(where: { $0.0 == "rootfile" && $0.1["media-type"] == "application/oebps-package+xml" })?.1["full-path"] else {
+            throw ReaderFailure.message("The publication package document is missing.")
+        }
+        let package = try PackageXML.read(await read(packagePath))
+        var items = [String: String]()
+        for (name, attributes) in package.elements where name == "item" {
+            guard let id = attributes["id"], items[id] == nil, let href = attributes["href"],
+                  let base = URL(string: "https://publication.invalid/" + packagePath),
+                  let url = URL(string: href, relativeTo: base)?.absoluteURL else {
+                throw ReaderFailure.message("Invalid publication manifest item.")
+            }
+            if url.host == "publication.invalid", url.scheme == "https" {
+                guard members[String(url.path.dropFirst())] != nil else {
+                    throw ReaderFailure.message("A required publication member is missing.")
+                }
+            }
+            items[id] = attributes["media-type"] ?? ""
+        }
+        let spine = package.elements.filter { $0.0 == "itemref" }
+        guard !spine.isEmpty, spine.allSatisfy({ ["application/xhtml+xml", "text/html"].contains(items[$0.1["idref"] ?? ""] ?? "") }) else {
+            throw ReaderFailure.message("Unsupported publication spine.")
+        }
+    }
+}
