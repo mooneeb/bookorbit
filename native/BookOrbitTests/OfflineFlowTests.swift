@@ -5,6 +5,33 @@ import WebKit
 
 @MainActor
 final class OfflineFlowTests: XCTestCase {
+    func testDownloadAcceptsSectionsWithinTheReaderNodeLimit() async throws {
+        let fixture = try OfflineFixture(paragraphs: 34_000)
+        let api = try fixture.transport()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try PublicationStore(root: root, scope: fixture.scope, reserveBytes: 0)
+        let book = Book(id: 7, title: "QA Prose", files: [BookFile(id: 9, format: "epub", role: "primary")])
+        try await store.download(book: book, file: 9, api: api)
+        let local = try await store.open(book: 7)
+        XCTAssertEqual(local.book.title, "QA Prose")
+    }
+
+    func testDownloadRefusesSectionsBeyondTheReaderNodeLimit() async throws {
+        let fixture = try OfflineFixture(paragraphs: 25_001, paragraph: "<p>x<!-- divider -->y</p>")
+        let api = try fixture.transport()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try PublicationStore(root: root, scope: fixture.scope, reserveBytes: 0)
+        let book = Book(id: 7, title: "QA Prose", files: [BookFile(id: 9, format: "epub", role: "primary")])
+        do {
+            try await store.download(book: book, file: 9, api: api)
+            XCTFail("A section with more than 100,000 DOM nodes cannot become ready offline")
+        } catch { XCTAssertTrue(error.localizedDescription.contains("node limit")) }
+        let saved = try await store.books(page: 0)
+        XCTAssertTrue(saved.isEmpty)
+    }
+
     func testStorageReconciliationPreservesLeasedReadersAndReclaimsAbandonedPackages() async throws {
         let fixture = try OfflineFixture()
         let api = try fixture.transport()
@@ -141,7 +168,7 @@ struct OfflineFixture {
     let manifest: Data
     let members: [(String, Data)]
 
-    init(omitImage: Bool = false) throws {
+    init(omitImage: Bool = false, paragraphs: Int = 0, paragraph: String = "<p>Paragraph.</p>") throws {
         var files: [(String, Data)] = [
             ("META-INF/container.xml", Data("<container xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\"><rootfiles><rootfile full-path=\"book.opf\" media-type=\"application/oebps-package+xml\"/></rootfiles></container>".utf8)),
             ("book.opf", Data("<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"id\"><metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:identifier id=\"id\">qa-prose</dc:identifier><dc:title>QA Prose</dc:title><dc:language>en</dc:language></metadata><manifest><item id=\"one\" href=\"one.xhtml\" media-type=\"application/xhtml+xml\"/><item id=\"two\" href=\"two.xhtml\" media-type=\"application/xhtml+xml\"/><item id=\"image\" href=\"image.png\" media-type=\"image/png\"/><item id=\"font\" href=\"font.woff2\" media-type=\"font/woff2\"/></manifest><spine><itemref idref=\"one\"/><itemref idref=\"two\"/></spine></package>".utf8)),
@@ -149,6 +176,10 @@ struct OfflineFixture {
             ("two.xhtml", Data("<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Two</title></head><body><h1>Chapter Two</h1></body></html>".utf8)),
             ("image.png", image), ("font.woff2", font),
         ]
+        if paragraphs > 0 {
+            let chapter = "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>One</title></head><body>" + String(repeating: paragraph, count: paragraphs) + "</body></html>"
+            files[2].1 = Data(chapter.utf8)
+        }
         if omitImage { files.removeAll { $0.0 == "image.png" } }
         members = files
         manifest = try JSONSerialization.data(withJSONObject: [

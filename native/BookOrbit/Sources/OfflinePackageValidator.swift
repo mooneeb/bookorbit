@@ -29,6 +29,48 @@ private final class PackageXML: NSObject, XMLParserDelegate {
     }
 }
 
+private final class SectionNodeCounter: NSObject, XMLParserDelegate {
+    private var count = 0
+    private var inText = false
+
+    private func add(_ parser: XMLParser) {
+        count += 1
+        if count > 100_000 { parser.abortParsing() }
+    }
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes: [String: String]) {
+        inText = false
+        add(parser)
+    }
+    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) { inText = false }
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        guard !string.isEmpty else { return }
+        if !inText { add(parser) }
+        inText = true
+    }
+    func parser(_ parser: XMLParser, foundIgnorableWhitespace whitespaceString: String) { self.parser(parser, foundCharacters: whitespaceString) }
+    func parser(_ parser: XMLParser, foundComment comment: String) { inText = false; add(parser) }
+    func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) { inText = false; add(parser) }
+    func parser(_ parser: XMLParser, foundProcessingInstructionWithTarget target: String, data: String?) { inText = false; add(parser) }
+
+    static func validate(_ text: String, bytes: Data) throws {
+        var tags = 0
+        for byte in text.utf8 where byte == 60 {
+            tags += 1
+            if tags > 100_000 { throw ReaderFailure.message("Publication section exceeds the node limit.") }
+        }
+        // Legacy HTML and entity-bearing documents use the server's DOM validation and the contained reader's HTML fallback.
+        guard text.range(of: "<!DOCTYPE", options: .caseInsensitive) == nil,
+              text.range(of: "<!ENTITY", options: .caseInsensitive) == nil else { return }
+        let parser = XMLParser(data: bytes)
+        parser.shouldResolveExternalEntities = false
+        let counter = SectionNodeCounter()
+        parser.delegate = counter
+        _ = parser.parse()
+        guard counter.count <= 100_000 else { throw ReaderFailure.message("Publication section exceeds the node limit.") }
+    }
+}
+
 enum OfflinePackageValidator {
     static func validate(_ local: LocalPublication) async throws {
         let members = Dictionary(uniqueKeysWithValues: local.publication.members.enumerated().map { ($0.element.path, $0.offset) })
@@ -64,13 +106,7 @@ enum OfflinePackageValidator {
                 if text.range(of: #"<(?:[\w.-]+:)?(?:iframe|object|embed|video|audio)(?:\s|/|>)|writing-mode\s*:\s*vertical|http-equiv\s*=\s*["']refresh["']"#, options: [.regularExpression, .caseInsensitive]) != nil {
                     throw ReaderFailure.message("This publication requires an unsupported interactive or vertical layout.")
                 }
-                let tokens = try NSRegularExpression(pattern: #"<[^>]*>|[^<]+"#)
-                var count = 0
-                tokens.enumerateMatches(in: text, range: NSRange(text.startIndex..., in: text)) { _, _, stop in
-                    count += 1
-                    if count > 100_000 { stop.pointee = true }
-                }
-                guard count <= 100_000 else { throw ReaderFailure.message("Publication section exceeds the node limit.") }
+                if type != "text/css" { try SectionNodeCounter.validate(text, bytes: bytes) }
             }
             items[id] = type
         }
