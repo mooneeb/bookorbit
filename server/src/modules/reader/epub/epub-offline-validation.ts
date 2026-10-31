@@ -29,6 +29,7 @@ export async function validateOfflineEpub(directory: string, members: NativeEpub
     } catch {
       throw new BadRequestException('Invalid EPUB resource reference');
     }
+    if (url.protocol === 'data:') throw new BadRequestException('Embedded data resources are unsupported; use archive image and font members');
     if (url.origin !== 'https://publication.invalid') return null;
     let path: string;
     try {
@@ -36,7 +37,7 @@ export async function validateOfflineEpub(directory: string, members: NativeEpub
     } catch {
       throw new BadRequestException('Invalid EPUB resource encoding');
     }
-    if (!index.has(path)) throw new BadRequestException('EPUB required member is missing');
+    if (!index.has(path)) throw new BadRequestException(`EPUB required member is missing: ${path}`);
     return path;
   };
   const container = xml(await read('META-INF/container.xml'));
@@ -49,23 +50,40 @@ export async function validateOfflineEpub(directory: string, members: NativeEpub
   const spine = packageDocument?.spine?.itemref;
   if (!Array.isArray(items) || !Array.isArray(spine) || !spine.length) throw new BadRequestException('EPUB manifest or spine is missing');
   const ids = new Map<string, Record<string, string>>();
+  const declared = new Map<string, string>();
   for (const item of items) {
     if (typeof item['@_id'] !== 'string' || ids.has(item['@_id']) || typeof item['@_href'] !== 'string')
       throw new BadRequestException('Ambiguous EPUB manifest');
     ids.set(item['@_id'], item);
     const path = resolve(item['@_href'], packagePath);
     if (path === null) continue;
-    const type = item['@_media-type'];
+    declared.set(path, item['@_media-type']);
+  }
+  const resource = (value: string, base: string) => {
+    const path = resolve(value, base);
+    if (path !== null && !declared.has(path)) throw new BadRequestException('EPUB required resource is not declared in its manifest');
+  };
+  const css = (text: string, path: string) => {
+    for (const match of text.matchAll(/url\(\s*["']?([^'"\n]*?)\s*["']?\s*\)/gi)) resource(match[1], path);
+    for (const match of text.matchAll(/@import\s*["']([^"'\n]*?)["']/gi)) resource(match[1], path);
+  };
+  for (const [path, type] of declared) {
     if (['application/xhtml+xml', 'text/html', 'image/svg+xml', 'text/css'].includes(type)) {
       const text = await read(path);
       if (type === 'text/css') {
-        for (const match of text.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) resolve(match[1].trim(), path);
+        css(text, path);
       } else {
         const doc = load(text, { xmlMode: type !== 'text/html' });
-        for (const element of doc('[src], link[href], image[href], image[xlink\\:href]').toArray()) {
+        for (const element of doc('[src], link[href], image[href], image[xlink\\:href], use[href], use[xlink\\:href]').toArray()) {
           const ref = doc(element).attr('src') ?? doc(element).attr('href') ?? doc(element).attr('xlink:href');
-          if (ref && !ref.startsWith('#')) resolve(ref, path);
+          if (ref && !ref.startsWith('#')) resource(ref, path);
         }
+        for (const element of doc('[srcset]').toArray()) {
+          for (const match of (doc(element).attr('srcset') ?? '').matchAll(/(\s*)(.+?)\s*((?:\s[\d.]+[wx])+\s*(?:,|$)|,\s+|$)/g))
+            resource(match[2], path);
+        }
+        for (const element of doc('style').toArray()) css(doc(element).text(), path);
+        for (const element of doc('[style]').toArray()) css(doc(element).attr('style') ?? '', path);
       }
     }
   }

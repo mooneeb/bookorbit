@@ -76,6 +76,8 @@ const parseDocument = (text, type) => {
 };
 const contain = (text, type) => {
   const doc = parseDocument(text, type);
+  if (doc.querySelector('[src^="data:" i], [href^="data:" i], [srcset^="data:" i]') ||
+      Array.from(doc.querySelectorAll("style, [style]")).some((element) => /url\(\s*["']?\s*data:/i.test(element.textContent + " " + element.getAttribute("style")))) return refuse();
   const walker = doc.createTreeWalker(doc, NodeFilter.SHOW_ALL);
   let count = 0;
   while (walker.nextNode()) if (++count > 100_000) return refuse();
@@ -110,7 +112,7 @@ const contain = (text, type) => {
   policy.setAttribute("http-equiv", "Content-Security-Policy");
   policy.setAttribute(
     "content",
-    "default-src 'none'; script-src 'none'; connect-src 'none'; img-src blob: data:; style-src 'unsafe-inline' blob:; font-src blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
+    "default-src 'none'; script-src 'none'; connect-src 'none'; img-src blob:; style-src 'unsafe-inline' blob:; font-src blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
   );
   head.prepend(policy);
   return new XMLSerializer().serializeToString(doc);

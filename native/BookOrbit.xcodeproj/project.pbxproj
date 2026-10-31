@@ -11,6 +11,7 @@
 		202BAB817A0C32C37D478749 /* LoopbackServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAF7F5190247D13C17EF543B /* LoopbackServer.swift */; };
 		3F93EE42D083592753A3A8FA /* ReadingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F77D65BB915F2EB6CB27E49 /* ReadingFlowTests.swift */; };
 		4908228A7F0ACC6E4BBE9E91 /* OfflineFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D600D68D1CACD484078FD5DE /* OfflineFlowTests.swift */; };
+		66892F99A54876E8D7F119C3 /* PublicationIntegrity.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF766E1446FAD636BB4F5B5E /* PublicationIntegrity.swift */; };
 		75A30C01BD4BF66D6BE74D9E /* RealWorkflowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB5F077B71075BE60329B221 /* RealWorkflowTests.swift */; };
 		7BBEF0C77686273E82B3F2DD /* BookOrbitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2613E870758AD475BD1EC2BE /* BookOrbitApp.swift */; };
 		932F39BB6339A3135E284D88 /* Reader in Resources */ = {isa = PBXBuildFile; fileRef = 104B949D8B5422A760BFAACB /* Reader */; };
@@ -48,6 +49,7 @@
 		D4B0D20D1FF79D2028415BF3 /* Notices */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Notices; path = BookOrbit/Resources/Notices; sourceTree = SOURCE_ROOT; };
 		D600D68D1CACD484078FD5DE /* OfflineFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineFlowTests.swift; sourceTree = "<group>"; };
 		E086A0822CF2D7BA081D8A24 /* Transport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transport.swift; sourceTree = "<group>"; };
+		EF766E1446FAD636BB4F5B5E /* PublicationIntegrity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicationIntegrity.swift; sourceTree = "<group>"; };
 		FAF7F5190247D13C17EF543B /* LoopbackServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopbackServer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -81,6 +83,7 @@
 				06C0C753416E1B5F81B2C8A8 /* LibraryModel.swift */,
 				FAF7F5190247D13C17EF543B /* LoopbackServer.swift */,
 				C8B26598D85FD42A2F00B378 /* OfflinePackageValidator.swift */,
+				EF766E1446FAD636BB4F5B5E /* PublicationIntegrity.swift */,
 				C3FDD0DED2B8A577E45A958E /* PublicationStore.swift */,
 				4BE80791AEB17BB8686D3712 /* ReaderScreen.swift */,
 				E086A0822CF2D7BA081D8A24 /* Transport.swift */,
@@ -212,6 +215,7 @@
 				D322F94D2D10F06EE30DA02A /* LibraryModel.swift in Sources */,
 				202BAB817A0C32C37D478749 /* LoopbackServer.swift in Sources */,
 				F848F37F671E324D598AE0AA /* OfflinePackageValidator.swift in Sources */,
+				66892F99A54876E8D7F119C3 /* PublicationIntegrity.swift in Sources */,
 				98D178A49569C1AA2F1E75F3 /* PublicationStore.swift in Sources */,
 				DE0720B10FEAFEA12BF8C3FA /* ReaderScreen.swift in Sources */,
 				DA6A10D3A032A35A6C3DBD00 /* Transport.swift in Sources */,

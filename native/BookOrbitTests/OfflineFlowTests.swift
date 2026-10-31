@@ -5,6 +5,29 @@ import WebKit
 
 @MainActor
 final class OfflineFlowTests: XCTestCase {
+    func testOnlyOneExplicitBookDownloadCanRunAtATime() async throws {
+        let fixture = try OfflineFixture()
+        let api = try fixture.transport()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try PublicationStore(root: root, scope: fixture.scope, reserveBytes: 0)
+        let book = Book(id: 7, title: "QA Prose", files: [BookFile(id: 9, format: "epub", role: "primary")])
+        let successes = await withTaskGroup(of: Bool.self, returning: Int.self) { group in
+            for _ in 0..<8 {
+                group.addTask {
+                    do { try await store.download(book: book, file: 9, api: api); return true }
+                    catch { return false }
+                }
+            }
+            var count = 0
+            for await succeeded in group { if succeeded { count += 1 } }
+            return count
+        }
+        XCTAssertEqual(successes, 1)
+        let saved = try await store.books(page: 0)
+        XCTAssertEqual(saved.count, 1)
+    }
+
     func testRefuseAnIncompleteOrHostilePackage() async throws {
         let fixture = try OfflineFixture(omitImage: true)
         let api = try fixture.transport()

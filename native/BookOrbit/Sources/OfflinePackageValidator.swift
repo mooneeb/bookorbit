@@ -46,7 +46,15 @@ enum OfflinePackageValidator {
                     throw ReaderFailure.message("A required publication member is missing.")
                 }
             }
-            items[id] = attributes["media-type"] ?? ""
+            let type = attributes["media-type"] ?? ""
+            if ["application/xhtml+xml", "text/html", "image/svg+xml", "text/css"].contains(type), url.host == "publication.invalid" {
+                let bytes = try await read(String(url.path.dropFirst()))
+                guard bytes.count <= 4 * 1024 * 1024, let text = String(data: bytes, encoding: .utf8) else { throw ReaderFailure.message("Publication text exceeds the reader limit.") }
+                if text.range(of: #"(?:\b(?:src|href|srcset)\s*=\s*["']\s*|url\(\s*["']?\s*)data:"#, options: [.regularExpression, .caseInsensitive]) != nil {
+                    throw ReaderFailure.message("Embedded data resources are unsupported. Use archive image and font members.")
+                }
+            }
+            items[id] = type
         }
         let spine = package.elements.filter { $0.0 == "itemref" }
         guard !spine.isEmpty, spine.allSatisfy({ ["application/xhtml+xml", "text/html"].contains(items[$0.1["idref"] ?? ""] ?? "") }) else {

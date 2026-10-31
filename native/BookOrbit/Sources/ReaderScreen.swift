@@ -13,7 +13,7 @@ struct ReaderScreen: View {
                 Text(model.status).accessibilityAddTraits(.updatesFrequently)
             }.padding()
             if let web = model.web { ReaderWebView(web: web) }
-            else { ProgressView("Opening EPUB") }
+            else if model.error == nil { ProgressView("Opening EPUB") }
             if let warning = model.warning { Text(warning).padding() }
             if let error = model.error { Text(error).foregroundStyle(.red).padding() }
             HStack {
@@ -41,7 +41,7 @@ final class ReaderModel: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
     var warning: String?
     private var server: LoopbackServer?
     private var timeout: Task<Void, Never>?
-    private var heartbeat: Task<Void, Never>?
+    private var turning = false
 
     func open(publication: Publication, api: Transport) async {
         await configure(server: LoopbackServer(publication: publication, api: api))
@@ -59,7 +59,7 @@ final class ReaderModel: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
             let configuration = WKWebViewConfiguration()
             configuration.websiteDataStore = .nonPersistent()
             configuration.userContentController.add(self, name: "reader")
-            let rules = #"[{"trigger":{"url-filter":".*"},"action":{"type":"block"}},{"trigger":{"url-filter":"^blob:"},"action":{"type":"ignore-previous-rules"}},{"trigger":{"url-filter":"^data:"},"action":{"type":"ignore-previous-rules"}},{"trigger":{"url-filter":"^http://127\\.0\\.0\\.1:PORT/TOKEN/"},"action":{"type":"ignore-previous-rules"}}]"#
+            let rules = #"[{"trigger":{"url-filter":".*"},"action":{"type":"block"}},{"trigger":{"url-filter":"^blob:"},"action":{"type":"ignore-previous-rules"}},{"trigger":{"url-filter":"^http://127\\.0\\.0\\.1:PORT/TOKEN/"},"action":{"type":"ignore-previous-rules"}}]"#
                 .replacingOccurrences(of: "PORT", with: String(url.port!)).replacingOccurrences(of: "TOKEN", with: server.token)
             let ruleList = try await WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "BookOrbit-\(server.token)", encodedContentRuleList: rules)
             guard let ruleList else { throw ReaderFailure.message("Reader containment could not be enabled.") }
@@ -69,11 +69,7 @@ final class ReaderModel: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
             web.isInspectable = false
             self.web = web
             web.load(URLRequest(url: url))
-            timeout = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(10))
-                guard !Task.isCancelled, self?.ready == false else { return }
-                self?.fail("The chapter did not load within ten seconds. Return to details and retry.")
-            }
+            armDeadline()
         } catch { fail(error.localizedDescription) }
     }
 
@@ -84,8 +80,10 @@ final class ReaderModel: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
               let body = message.body as? [String: String], body.count == 3, body["session"] == server.token,
               let value = body["value"], value.utf8.count <= 256 else { return }
         switch body["kind"] {
-        case "ready": warning = value.isEmpty ? nil : value; ready = true; status = "EPUB ready"; timeout?.cancel()
-        case "location": status = value
+        case "ready":
+            warning = value.isEmpty ? nil : value
+            if !turning { ready = true; status = "EPUB ready"; timeout?.cancel() }
+        case "location": turning = false; ready = true; status = value; timeout?.cancel()
         case "error": fail(value)
         default: break
         }
@@ -93,6 +91,10 @@ final class ReaderModel: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
 
     func turn(_ direction: String) {
         guard ready, direction == "next" || direction == "prev" else { return }
+        turning = true
+        ready = false
+        status = "Opening EPUB page"
+        armDeadline()
         web?.evaluateJavaScript("void window.readerTurn('\(direction)')") { [weak self] _, error in
             if error != nil { self?.fail("Page navigation failed. Reopen the book.") }
         }
@@ -109,11 +111,21 @@ final class ReaderModel: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { fail("Reader stopped. Return to details and reopen the book.") }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { fail("Reader could not connect. Return to details and retry.") }
 
-    private func fail(_ message: String) { ready = false; error = message; status = "Reading unavailable"; web?.stopLoading() }
+    private func armDeadline() {
+        timeout?.cancel()
+        timeout = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            self?.fail("The chapter did not load within ten seconds. Return to details and retry.")
+        }
+    }
+
+    private func fail(_ message: String) { ready = false; error = message; status = "Reading unavailable"; close() }
 
     func close() {
         timeout?.cancel()
-        heartbeat?.cancel()
+        turning = false
+        web?.navigationDelegate = nil
         web?.configuration.userContentController.removeScriptMessageHandler(forName: "reader")
         web?.stopLoading()
         web = nil

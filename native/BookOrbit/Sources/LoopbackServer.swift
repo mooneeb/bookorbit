@@ -110,7 +110,7 @@ final class LoopbackServer {
                   first[1].hasPrefix("/\(token)/"), !first[1].contains("%"), !first[1].contains("..") else { return }
             let route = String(first[1].dropFirst(token.count + 2))
             let (body, mime) = try await resource(route)
-            let csp = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' blob:; img-src blob: data:; font-src blob:; frame-src blob: 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
+            let csp = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' blob:; img-src blob:; font-src blob:; frame-src blob: 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
             let headers = "HTTP/1.1 200 OK\r\nContent-Length: \(body.count)\r\nContent-Type: \(mime)\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: \(csp)\r\nConnection: close\r\n\r\n"
             try await send(connection, data: Data(headers.utf8))
             for offset in stride(from: 0, to: body.count, by: 64 * 1024) {

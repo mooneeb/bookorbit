@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { Permission } from '@bookorbit/types';
+import sharp from 'sharp';
 import * as schema from '../../../src/db/schema';
 import {
   createLibraryWithFolder,
@@ -34,13 +35,39 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
   const font = await readFile(fileURLToPath(new URL('../../../../native/QAFixtures/ABeeZee-Regular.ttf', import.meta.url)));
   const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=', 'base64');
   const files: Record<string, Awaited<ReturnType<typeof locateBookByAbsolutePath>>> = {};
-  for (const title of ['QA Prose', 'QA Broken', 'QA Hostile', 'QA Traversal', 'QA Fixed', 'B Secret']) {
+  const paths = new Map<string, string>();
+  const titles = [
+    'QA Prose',
+    'QA Broken',
+    'QA Hostile',
+    'QA Traversal',
+    'QA Fixed',
+    'QA Broken Srcset',
+    'QA Broken Style',
+    'QA Broken Import',
+    'QA Embedded',
+    'B Secret',
+  ];
+  const embeddedImage = await sharp({ create: { width: 9000, height: 2000, channels: 3, background: '#ffffff' } })
+    .png()
+    .toBuffer();
+  for (const title of titles) {
     const target = title === 'B Secret' ? secret : library;
     const fixed = title === 'QA Fixed' ? '<meta property="rendition:layout">pre-paginated</meta>' : '';
     const hostile =
       title === 'QA Hostile'
         ? '<script>document.body.textContent="ATTACK";fetch("https://unsolicited.invalid/secret");window.webkit.messageHandlers.reader.postMessage({kind:"ready"})</script><img src="https://unsolicited.invalid/pixel" alt="Blocked remote image"/>'
         : '';
+    const fault =
+      title === 'QA Broken Srcset'
+        ? '<img srcset="missing.png 1x" alt="Missing"/>'
+        : title === 'QA Broken Style'
+          ? '<p style="background-image:url(missing.png)">Missing image</p>'
+          : title === 'QA Broken Import'
+            ? '<style>@import "missing.css";</style>'
+            : title === 'QA Embedded'
+              ? `<img src="data:image/png;base64,${embeddedImage.toString('base64')}" alt="Oversized"/>`
+              : '';
     const entries = [
       { path: 'mimetype', content: 'application/epub+zip', store: true },
       {
@@ -54,7 +81,7 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
       },
       {
         path: 'one.xhtml',
-        content: `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>One</title><meta name="viewport" content="width=800,height=1000"/><style>@font-face{font-family:QA;src:url('font.ttf')}p{font-family:QA}</style></head><body><h1>Chapter One</h1><p>The moon keeps its own time.</p><img src="image.png" alt="Moon"/>${hostile}</body></html>`,
+        content: `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>One</title><meta name="viewport" content="width=800,height=1000"/><style>@font-face{font-family:QA;src:url('font.ttf')}p{font-family:QA}</style></head><body><h1>Chapter One</h1><p>The moon keeps its own time.</p><img src="image.png" alt="Moon"/>${hostile}${fault}</body></html>`,
       },
       {
         path: 'two.xhtml',
@@ -73,7 +100,11 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
         Buffer.from('../escape').copy(bytes, offset);
       await writeFile(path, bytes);
     }
-    await triggerAndWaitForLibraryScan(ctx, target.libraryId);
+    paths.set(title, path);
+  }
+  await triggerAndWaitForLibraryScan(ctx, library.libraryId);
+  await triggerAndWaitForLibraryScan(ctx, secret.libraryId);
+  for (const [title, path] of paths) {
     const file = await locateBookByAbsolutePath(ctx, path);
     files[title] = file;
     await ctx.db
@@ -85,7 +116,7 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
     await ctx.db.execute(sql`
       WITH seeded AS (
         INSERT INTO books (library_id, library_folder_id, folder_path)
-        SELECT ${library.libraryId}, ${library.libraryFolderId}, 'qa-catalog-' || n FROM generate_series(1, 49995) n RETURNING id
+        SELECT ${library.libraryId}, ${library.libraryFolderId}, 'qa-catalog-' || n FROM generate_series(1, ${50_000 - (titles.length - 1)}) n RETURNING id
       )
       INSERT INTO book_metadata (book_id, title) SELECT id, 'Catalog ' || lpad(id::text, 8, '0') FROM seeded
     `);

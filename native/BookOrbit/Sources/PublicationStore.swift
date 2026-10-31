@@ -133,10 +133,10 @@ actor PublicationStore {
 
     func download(book: Book, file: Int, api: Transport, progress: @Sendable (Int64, Int64) -> Void = { _, _ in }) async throws {
         guard !downloading else { throw ReaderFailure.message("One book is already downloading. Wait or cancel it.") }
-        let exists = try await db.read { try Bool.fetchOne($0, sql: "SELECT EXISTS(SELECT 1 FROM downloads WHERE bookId = ?)", arguments: [book.id]) ?? false }
-        if exists, (try? open(book: book.id)) != nil { throw ReaderFailure.message("This book is already downloaded.") }
         downloading = true
         defer { downloading = false }
+        let exists = try await db.read { try Bool.fetchOne($0, sql: "SELECT EXISTS(SELECT 1 FROM downloads WHERE bookId = ?)", arguments: [book.id]) ?? false }
+        if exists, (try? open(book: book.id)) != nil { throw ReaderFailure.message("This book is already downloaded.") }
         let publication = try await api.open(book: book.id, file: file)
         do {
             try validate(publication)
@@ -192,24 +192,6 @@ actor PublicationStore {
               publication.sourceRevision == publication.sourceSha256 else {
             throw ReaderFailure.message("The package does not belong to the verified server and account.")
         }
-        guard publication.sourceBytes >= 22, publication.sourceBytes <= 512 * 1024 * 1024,
-              publication.members.count <= 20_000,
-              publication.sourceSha256.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil else {
-            throw ReaderFailure.message("Unsupported publication manifest.")
-        }
-        var names = Set<String>()
-        var total: Int64 = 0
-        for member in publication.members {
-            guard member.bytes >= 0, member.bytes <= 32 * 1024 * 1024, member.path.utf8.count <= 1024,
-                  !member.path.hasPrefix("/"), !member.path.contains("\\"),
-                  !member.path.unicodeScalars.contains(where: { $0.value < 32 || $0.value == 127 }),
-                  !member.path.split(separator: "/", omittingEmptySubsequences: false).contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }),
-                  names.insert(member.path.precomposedStringWithCanonicalMapping).inserted,
-                  member.sha256.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil else {
-                throw ReaderFailure.message("Invalid publication member.")
-            }
-            total += Int64(member.bytes)
-            guard total <= 2 * 1024 * 1024 * 1024 else { throw ReaderFailure.message("Publication expansion limit exceeded.") }
-        }
+        try publication.validateIntegrity()
     }
 }

@@ -164,6 +164,17 @@ actor Transport {
         }
         guard let response = response as? HTTPURLResponse else { throw ReaderFailure.message("Invalid response.") }
         guard (200..<300).contains(response.statusCode) else {
+            if response.statusCode == 400 || response.statusCode == 413 {
+                var detail = Data()
+                for try await byte in stream {
+                    guard detail.count < 4096 else { break }
+                    detail.append(byte)
+                }
+                if let error = try? JSONSerialization.jsonObject(with: detail) as? [String: Any],
+                   let message = error["message"] as? String, !message.isEmpty, message.utf8.count <= 1024 {
+                    throw ReaderFailure.message(message)
+                }
+            }
             throw ReaderFailure.message(response.statusCode == 401 ? "Session expired. Sign out and reconnect." :
                 response.statusCode == 403 ? "This account cannot access this book." : "Server request failed (\(response.statusCode)).")
         }
@@ -227,23 +238,8 @@ actor Transport {
 
     func open(book: Int, file: Int) async throws -> Publication {
         let result = try JSONDecoder().decode(Publication.self, from: await request("/api/v1/epub-sessions/books/\(book)/files/\(file)", method: "POST", limit: 256 * 1024))
-        guard result.version == 1, result.bookId == book, result.fileId == file,
-              result.sourceBytes >= 22, result.sourceBytes <= 512 * 1024 * 1024, result.members.count <= 20_000,
-              result.sourceSha256.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil else {
-            throw ReaderFailure.message("Unsupported publication manifest.")
-        }
-        var names = Set<String>()
-        var expanded = 0
-        for member in result.members {
-            guard member.bytes >= 0, member.bytes <= 32 * 1024 * 1024, member.path.utf8.count <= 1024,
-                  !member.path.hasPrefix("/"), !member.path.contains("\\"),
-                  !member.path.split(separator: "/", omittingEmptySubsequences: false).contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }),
-                  names.insert(member.path).inserted, member.sha256.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil else {
-                throw ReaderFailure.message("Invalid publication member.")
-            }
-            expanded += member.bytes
-            guard expanded <= 2 * 1024 * 1024 * 1024 else { throw ReaderFailure.message("Publication is too large.") }
-        }
+        guard result.bookId == book, result.fileId == file else { throw ReaderFailure.message("Publication source does not match the selected book.") }
+        try result.validateIntegrity()
         return result
     }
 

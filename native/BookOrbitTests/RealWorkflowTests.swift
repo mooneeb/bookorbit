@@ -135,7 +135,7 @@ final class RealWorkflowTests: XCTestCase {
         let store = try PublicationStore(root: root, scope: scope, reserveBytes: 0)
         let valid = try await detail("QA Prose", api: api)
         try await store.download(book: valid, file: XCTUnwrap(valid.files.first).id, api: api)
-        for title in ["QA Broken", "QA Traversal"] {
+        for title in ["QA Broken", "QA Traversal", "QA Broken Srcset", "QA Broken Style", "QA Broken Import", "QA Embedded"] {
             let book = try await detail(title, api: api)
             do {
                 try await store.download(book: book, file: XCTUnwrap(book.files.first).id, api: api)
@@ -154,6 +154,27 @@ final class RealWorkflowTests: XCTestCase {
         XCTAssertTrue(reader.warning?.contains("Partial reading") == true)
         let contained = try await web.evaluateJavaScript("(() => { const d = document.querySelector('foliate-view').renderer.getContents()[0].doc; return d.body.textContent.includes('The moon keeps its own time.') && !d.body.textContent.startsWith('ATTACK') && !d.images[1].naturalWidth })()") as? Bool
         XCTAssertEqual(contained, true)
+    }
+
+    func testStalledChapterTransitionTearsDownTheContainedHost() async throws {
+        let (api, scope) = try await connect()
+        let book = try await detail("QA Prose", api: api)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try PublicationStore(root: root, scope: scope, reserveBytes: 0)
+        try await store.download(book: book, file: XCTUnwrap(book.files.first).id, api: api)
+        let local = try await store.open(book: book.id)
+        let reader = ReaderModel()
+        await reader.open(local: local)
+        let (window, web) = try await display(reader)
+        defer { reader.close(); window.isHidden = true }
+        _ = try await web.evaluateJavaScript("window.readerTurn = () => new Promise(() => {}); undefined")
+        reader.turn("next")
+        for _ in 0..<120 where reader.error == nil { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertTrue(reader.error?.contains("ten seconds") == true)
+        XCTAssertNil(reader.web)
+        let preserved = try await store.open(book: book.id)
+        XCTAssertEqual(preserved.book.title, "QA Prose")
     }
 
     private func display(_ reader: ReaderModel) async throws -> (UIWindow, WKWebView) {

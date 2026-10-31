@@ -182,31 +182,28 @@ export class EpubSessionService implements OnModuleDestroy {
   }
 
   async resource(id: string, index: number, user: RequestUser) {
-    const lease = this.owned(id, user);
-    await this.epub.resolveOriginalPath(lease.manifest.bookId, lease.manifest.fileId, user);
-    await this.books.verifyBookAccess(lease.manifest.bookId, user);
-    this.owned(id, user);
-    lease.manifest.expiresAt = new Date(Date.now() + TTL).toISOString();
+    const lease = await this.authorizedLease(id, user);
     const member = lease.manifest.members[index];
     if (!member) throw new NotFoundException('Resource unavailable');
     return { stream: this.openStream(lease, String(index)), bytes: member.bytes };
   }
 
   async original(id: string, user: RequestUser) {
-    const lease = this.owned(id, user);
-    await this.epub.resolveOriginalPath(lease.manifest.bookId, lease.manifest.fileId, user);
-    await this.books.verifyBookAccess(lease.manifest.bookId, user);
-    this.owned(id, user);
-    lease.manifest.expiresAt = new Date(Date.now() + TTL).toISOString();
+    const lease = await this.authorizedLease(id, user);
     return { stream: this.openStream(lease, 'original'), bytes: lease.manifest.sourceBytes };
   }
 
   async heartbeat(id: string, user: RequestUser) {
+    await this.authorizedLease(id, user);
+  }
+
+  private async authorizedLease(id: string, user: RequestUser) {
     const lease = this.owned(id, user);
     await this.epub.resolveOriginalPath(lease.manifest.bookId, lease.manifest.fileId, user);
     await this.books.verifyBookAccess(lease.manifest.bookId, user);
     this.owned(id, user);
     lease.manifest.expiresAt = new Date(Date.now() + TTL).toISOString();
+    return lease;
   }
 
   private openStream(lease: Lease, name: string) {
