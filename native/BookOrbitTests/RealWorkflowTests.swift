@@ -135,7 +135,7 @@ final class RealWorkflowTests: XCTestCase {
         let store = try PublicationStore(root: root, scope: scope, reserveBytes: 0)
         let valid = try await detail("QA Prose", api: api)
         try await store.download(book: valid, file: XCTUnwrap(valid.files.first).id, api: api)
-        for title in ["QA Broken", "QA Traversal", "QA Broken Srcset", "QA Broken Style", "QA Broken Import", "QA Embedded"] {
+        for title in ["QA Broken", "QA Traversal", "QA Broken Srcset", "QA Broken Style", "QA Broken Import", "QA Embedded", "QA Media", "QA Vertical", "QA Mixed", "QA Nodes"] {
             let book = try await detail(title, api: api)
             do {
                 try await store.download(book: book, file: XCTUnwrap(book.files.first).id, api: api)

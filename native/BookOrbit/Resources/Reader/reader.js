@@ -76,8 +76,13 @@ const parseDocument = (text, type) => {
 };
 const contain = (text, type) => {
   const doc = parseDocument(text, type);
-  if (doc.querySelector('[src^="data:" i], [href^="data:" i], [srcset^="data:" i]') ||
-      Array.from(doc.querySelectorAll("style, [style]")).some((element) => /url\(\s*["']?\s*data:/i.test(element.textContent + " " + element.getAttribute("style")))) return refuse();
+  if (
+    doc.querySelector('[src^="data:" i], [href^="data:" i], [srcset^="data:" i]') ||
+    Array.from(doc.querySelectorAll("style, [style]")).some((element) =>
+      /url\(\s*["']?\s*data:/i.test(element.textContent + " " + element.getAttribute("style")),
+    )
+  )
+    return refuse();
   const walker = doc.createTreeWalker(doc, NodeFilter.SHOW_ALL);
   let count = 0;
   while (walker.nextNode()) if (++count > 100_000) return refuse();
@@ -134,12 +139,19 @@ try {
       }
       if (name === packagePath) {
         const doc = parseDocument(text, "application/xml");
-        const spineLayouts = new Set(Array.from(doc.getElementsByTagNameNS("*", "itemref"), (item) => {
-          const properties = item.getAttribute("properties") ?? "";
-          if (properties.includes("rendition:layout-pre-paginated")) return "fixed";
-          if (properties.includes("rendition:layout-reflowable")) return "reflow";
-          return /pre-paginated|fixed-layout/i.test(text) ? "fixed" : "reflow";
-        }));
+        const defaultFixed = Array.from(doc.getElementsByTagNameNS("*", "meta")).some(
+          (meta) =>
+            (meta.getAttribute("property") === "rendition:layout" && meta.textContent.trim() === "pre-paginated") ||
+            (meta.getAttribute("name") === "fixed-layout" && /^(true|yes)$/i.test(meta.getAttribute("content") ?? "")),
+        );
+        const spineLayouts = new Set(
+          Array.from(doc.getElementsByTagNameNS("*", "itemref"), (item) => {
+            const properties = item.getAttribute("properties") ?? "";
+            if (properties.includes("rendition:layout-pre-paginated")) return "fixed";
+            if (properties.includes("rendition:layout-reflowable")) return "reflow";
+            return defaultFixed ? "fixed" : "reflow";
+          }),
+        );
         if (spineLayouts.size !== 1) return refuse();
         const itemTypes = new Map();
         for (const item of doc.getElementsByTagNameNS("*", "item")) {

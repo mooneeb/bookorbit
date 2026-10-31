@@ -46,6 +46,10 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
     'QA Broken Style',
     'QA Broken Import',
     'QA Embedded',
+    'QA Media',
+    'QA Vertical',
+    'QA Mixed',
+    'QA Nodes',
     'B Secret',
   ];
   const embeddedImage = await sharp({ create: { width: 9000, height: 2000, channels: 3, background: '#ffffff' } })
@@ -54,6 +58,7 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
   for (const title of titles) {
     const target = title === 'B Secret' ? secret : library;
     const fixed = title === 'QA Fixed' ? '<meta property="rendition:layout">pre-paginated</meta>' : '';
+    const spineProperty = title === 'QA Mixed' ? ' properties="rendition:layout-pre-paginated"' : '';
     const hostile =
       title === 'QA Hostile'
         ? '<script>document.body.textContent="ATTACK";fetch("https://unsolicited.invalid/secret");window.webkit.messageHandlers.reader.postMessage({kind:"ready"})</script><img src="https://unsolicited.invalid/pixel" alt="Blocked remote image"/>'
@@ -67,7 +72,13 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
             ? '<style>@import "missing.css";</style>'
             : title === 'QA Embedded'
               ? `<img src="data:image/png;base64,${embeddedImage.toString('base64')}" alt="Oversized"/>`
-              : '';
+              : title === 'QA Media'
+                ? '<audio/>'
+                : title === 'QA Vertical'
+                  ? '<style>body{writing-mode:vertical-rl}</style>'
+                  : title === 'QA Nodes'
+                    ? '<b>word</b>'.repeat(50010)
+                    : '';
     const entries = [
       { path: 'mimetype', content: 'application/epub+zip', store: true },
       {
@@ -77,7 +88,7 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
       },
       {
         path: 'book.opf',
-        content: `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">qa-${title}</dc:identifier><dc:title>${title}</dc:title><dc:language>en</dc:language>${fixed}</metadata><manifest><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="two.xhtml" media-type="application/xhtml+xml"/><item id="image" href="image.png" media-type="image/png"/><item id="font" href="font.ttf" media-type="font/ttf"/></manifest><spine><itemref idref="one"/><itemref idref="two"/></spine></package>`,
+        content: `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">qa-${title}</dc:identifier><dc:title>${title}</dc:title><dc:language>en</dc:language>${fixed}</metadata><manifest><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="two.xhtml" media-type="application/xhtml+xml"/><item id="image" href="image.png" media-type="image/png"/><item id="font" href="font.ttf" media-type="font/ttf"/></manifest><spine><itemref idref="one"${spineProperty}/><itemref idref="two"/></spine></package>`,
       },
       {
         path: 'one.xhtml',

@@ -64,16 +64,29 @@ export async function validateOfflineEpub(directory: string, members: NativeEpub
     if (path !== null && !declared.has(path)) throw new BadRequestException('EPUB required resource is not declared in its manifest');
   };
   const css = (text: string, path: string) => {
+    if (/writing-mode\s*:\s*vertical/i.test(text)) throw new BadRequestException('EPUB vertical writing is unsupported');
     for (const match of text.matchAll(/url\(\s*["']?([^'"\n]*?)\s*["']?\s*\)/gi)) resource(match[1], path);
     for (const match of text.matchAll(/@import\s*["']([^"'\n]*?)["']/gi)) resource(match[1], path);
   };
   for (const [path, type] of declared) {
     if (['application/xhtml+xml', 'text/html', 'image/svg+xml', 'text/css'].includes(type)) {
       const text = await read(path);
+      let tags = 0;
+      for (const character of text) if (character === '<' && ++tags > 100_000) throw new BadRequestException('EPUB section exceeds the node limit');
       if (type === 'text/css') {
         css(text, path);
       } else {
         const doc = load(text, { xmlMode: type !== 'text/html' });
+        if (doc('meta[http-equiv="refresh" i], iframe, object, embed, video, audio').length)
+          throw new BadRequestException('EPUB interactive media is unsupported');
+        const pending = [...(doc.root().get(0)?.children ?? [])];
+        let nodes = 0;
+        while (pending.length) {
+          const node = pending.pop();
+          if (!node) break;
+          if (++nodes > 100_000) throw new BadRequestException('EPUB section exceeds the node limit');
+          if ('children' in node) for (const child of node.children) pending.push(child);
+        }
         for (const element of doc('[src], link[href], image[href], image[xlink\\:href], use[href], use[xlink\\:href]').toArray()) {
           const ref = doc(element).attr('src') ?? doc(element).attr('href') ?? doc(element).attr('xlink:href');
           if (ref && !ref.startsWith('#')) resource(ref, path);
@@ -92,4 +105,24 @@ export async function validateOfflineEpub(directory: string, members: NativeEpub
     if (!manifestItem || !['application/xhtml+xml', 'text/html'].includes(manifestItem['@_media-type']))
       throw new BadRequestException('Unsupported EPUB spine');
   }
+  const rawMetadata = packageDocument.metadata?.meta;
+  const metadata = Array.isArray(rawMetadata) ? rawMetadata : rawMetadata ? [rawMetadata] : [];
+  const defaultFixed = metadata.some(
+    (meta: Record<string, string>) =>
+      (meta['@_property'] === 'rendition:layout' && String(meta['#text']).trim() === 'pre-paginated') ||
+      (meta['@_name'] === 'fixed-layout' && /^(?:true|yes)$/i.test(meta['@_content'] ?? '')),
+  );
+  const layouts = new Set(
+    spine.map((item: Record<string, string>) => {
+      const properties = item['@_properties'] ?? '';
+      return properties.includes('rendition:layout-pre-paginated')
+        ? 'fixed'
+        : properties.includes('rendition:layout-reflowable')
+          ? 'reflow'
+          : defaultFixed
+            ? 'fixed'
+            : 'reflow';
+    }),
+  );
+  if (layouts.size !== 1) throw new BadRequestException('EPUB mixed spine layouts are unsupported');
 }

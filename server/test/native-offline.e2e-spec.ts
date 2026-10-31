@@ -119,7 +119,18 @@ describe('Native verified offline EPUB HTTP workflow', { timeout: 180_000 }, () 
   });
 
   it('Refuse an incomplete or hostile package', async () => {
-    for (const title of ['QA Broken', 'QA Traversal', 'QA Broken Srcset', 'QA Broken Style', 'QA Broken Import', 'QA Embedded']) {
+    for (const title of [
+      'QA Broken',
+      'QA Traversal',
+      'QA Broken Srcset',
+      'QA Broken Style',
+      'QA Broken Import',
+      'QA Embedded',
+      'QA Media',
+      'QA Vertical',
+      'QA Mixed',
+      'QA Nodes',
+    ]) {
       const file = qa.files[title];
       const response = await ctx.app.inject({
         method: 'POST',

@@ -18,7 +18,9 @@ struct LibraryScreen: View {
                         Section {
                             Stepper("Download budget: \(library.budgetGiB) GiB", value: $library.budgetGiB, in: 1...1000)
                                 .onChange(of: library.budgetGiB) { Task { await library.updateBudget() } }
-                            Text("Downloaded book files: \(ByteCountFormatter.string(fromByteCount: library.usageBytes, countStyle: .file))")
+                            if library.measuringStorage { ProgressView("Measuring download storage") }
+                            else { Text("Download storage: \(ByteCountFormatter.string(fromByteCount: library.usageBytes, countStyle: .file))") }
+                            Button("Refresh storage usage") { Task { await library.refreshStorage() } }.disabled(library.measuringStorage)
                             Toggle("Downloaded books only", isOn: $library.downloadsOnly)
                                 .disabled(library.transport == nil)
                                 .onChange(of: library.downloadsOnly) { Task { await library.load(page: 0) } }
@@ -124,6 +126,7 @@ struct BookScreen: View {
                 Task { @MainActor in completed = count; total = size }
             }
             available = true
+            Task { await library.refreshStorage() }
             error = nil
         }
         catch { self.error = error.localizedDescription }

@@ -5,6 +5,37 @@ import WebKit
 
 @MainActor
 final class OfflineFlowTests: XCTestCase {
+    func testStorageReconciliationPreservesLeasedReadersAndReclaimsAbandonedPackages() async throws {
+        let fixture = try OfflineFixture()
+        let api = try fixture.transport()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try PublicationStore(root: root, scope: fixture.scope, reserveBytes: 0)
+        let book = Book(id: 7, title: "QA Prose", files: [BookFile(id: 9, format: "epub", role: "primary")])
+        try await store.download(book: book, file: 9, api: api)
+        var active: LocalPublication? = try await store.open(book: 7)
+        let old = try XCTUnwrap(active).directory
+        try Data([0]).write(to: old.appendingPathComponent("original"))
+        try await store.download(book: book, file: 9, api: api)
+        let retained = try await store.diskBytes()
+        withExtendedLifetime(active) {}
+        XCTAssertTrue(FileManager.default.fileExists(atPath: old.path))
+        active = nil
+        let collected = try await store.diskBytes()
+        XCTAssertLessThan(collected, retained)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
+        let scopeRoot = old.deletingLastPathComponent()
+        for name in [UUID().uuidString, "staging-\(UUID().uuidString)"] {
+            let orphan = scopeRoot.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: orphan, withIntermediateDirectories: false)
+            try Data(repeating: 0, count: 4096).write(to: orphan.appendingPathComponent("partial"))
+            _ = try await store.diskBytes()
+            XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
+        }
+        let valid = try await store.open(book: 7)
+        XCTAssertEqual(valid.book.title, "QA Prose")
+    }
+
     func testOnlyOneExplicitBookDownloadCanRunAtATime() async throws {
         let fixture = try OfflineFixture()
         let api = try fixture.transport()

@@ -16,6 +16,7 @@
 		7BBEF0C77686273E82B3F2DD /* BookOrbitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2613E870758AD475BD1EC2BE /* BookOrbitApp.swift */; };
 		932F39BB6339A3135E284D88 /* Reader in Resources */ = {isa = PBXBuildFile; fileRef = 104B949D8B5422A760BFAACB /* Reader */; };
 		98D178A49569C1AA2F1E75F3 /* PublicationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FDD0DED2B8A577E45A958E /* PublicationStore.swift */; };
+		9A3235C6D49F8C166AA86756 /* PublicationStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FDB8B8FCDC1C77E179A561E /* PublicationStorage.swift */; };
 		9F2F15850FCB47C3B1DEFD2D /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D132E8F993D3BEAF9AB00E73 /* CredentialStore.swift */; };
 		CE689F649EAC99D3A04AE72A /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = EACBD8A1A01121B6916410BE /* GRDB */; };
 		D322F94D2D10F06EE30DA02A /* LibraryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06C0C753416E1B5F81B2C8A8 /* LibraryModel.swift */; };
@@ -40,6 +41,7 @@
 		2613E870758AD475BD1EC2BE /* BookOrbitApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookOrbitApp.swift; sourceTree = "<group>"; };
 		2F77D65BB915F2EB6CB27E49 /* ReadingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingFlowTests.swift; sourceTree = "<group>"; };
 		4BE80791AEB17BB8686D3712 /* ReaderScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderScreen.swift; sourceTree = "<group>"; };
+		7FDB8B8FCDC1C77E179A561E /* PublicationStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicationStorage.swift; sourceTree = "<group>"; };
 		9B7B120BD9BBDB55BBFDE8B3 /* BookOrbit.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BookOrbit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C3FDD0DED2B8A577E45A958E /* PublicationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicationStore.swift; sourceTree = "<group>"; };
 		C8B26598D85FD42A2F00B378 /* OfflinePackageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflinePackageValidator.swift; sourceTree = "<group>"; };
@@ -84,6 +86,7 @@
 				FAF7F5190247D13C17EF543B /* LoopbackServer.swift */,
 				C8B26598D85FD42A2F00B378 /* OfflinePackageValidator.swift */,
 				EF766E1446FAD636BB4F5B5E /* PublicationIntegrity.swift */,
+				7FDB8B8FCDC1C77E179A561E /* PublicationStorage.swift */,
 				C3FDD0DED2B8A577E45A958E /* PublicationStore.swift */,
 				4BE80791AEB17BB8686D3712 /* ReaderScreen.swift */,
 				E086A0822CF2D7BA081D8A24 /* Transport.swift */,
@@ -216,6 +219,7 @@
 				202BAB817A0C32C37D478749 /* LoopbackServer.swift in Sources */,
 				F848F37F671E324D598AE0AA /* OfflinePackageValidator.swift in Sources */,
 				66892F99A54876E8D7F119C3 /* PublicationIntegrity.swift in Sources */,
+				9A3235C6D49F8C166AA86756 /* PublicationStorage.swift in Sources */,
 				98D178A49569C1AA2F1E75F3 /* PublicationStore.swift in Sources */,
 				DE0720B10FEAFEA12BF8C3FA /* ReaderScreen.swift in Sources */,
 				DA6A10D3A032A35A6C3DBD00 /* Transport.swift in Sources */,

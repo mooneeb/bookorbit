@@ -16,6 +16,7 @@ final class LibraryModel {
     var downloadsOnly = false
     var budgetGiB = 10
     var usageBytes: Int64 = 0
+    var measuringStorage = false
     var busy = false
     var error: String?
     private var restored = false
@@ -73,7 +74,6 @@ final class LibraryModel {
             } else if let transport { result = try await transport.books(query: query, page: target) }
             else { return }
             guard generation == self.generation else { return }
-            usageBytes = try await store?.diskBytes() ?? 0
             books = result
             page = target
             error = nil
@@ -135,6 +135,8 @@ final class LibraryModel {
         password = ""
         error = nil
         busy = false
+        measuringStorage = false
+        usageBytes = 0
     }
 
     func reconnect() async { restored = false; await restore() }
@@ -149,7 +151,19 @@ final class LibraryModel {
         let saved = UserDefaults.standard.integer(forKey: "download-budget-\(scope.key)")
         budgetGiB = saved > 0 && saved <= 1000 ? saved : 10
         await store?.setBudget(Int64(budgetGiB) * 1024 * 1024 * 1024)
-        usageBytes = (try? await store?.diskBytes()) ?? 0
+        Task { await refreshStorage() }
+    }
+
+    func refreshStorage() async {
+        guard !measuringStorage, let store else { return }
+        let generation = generation
+        measuringStorage = true
+        defer { if generation == self.generation { measuringStorage = false } }
+        do {
+            let bytes = try await store.diskBytes()
+            guard generation == self.generation else { return }
+            usageBytes = bytes
+        } catch { if generation == self.generation { self.error = error.localizedDescription } }
     }
 
     static var storageRoot: URL {

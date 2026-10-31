@@ -9,6 +9,7 @@ struct LocalPublication: Sendable, Identifiable {
     let publication: Publication
     let book: Book
     let directory: URL
+    let lease: PublicationLease?
     var original: URL { directory.appendingPathComponent("original") }
 
     func member(_ index: Int) async throws -> Data {
@@ -60,6 +61,8 @@ actor PublicationStore {
     private let reserveBytes: Int64
     private var budgetBytes: Int64
     private var downloading = false
+    private var storageCheck: (id: UUID, task: Task<Int64, Error>)?
+    private var storageWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(root: URL, scope: SessionReference, reserveBytes: Int64 = 1024 * 1024 * 1024, budgetBytes: Int64 = 10 * 1024 * 1024 * 1024) throws {
         self.scope = scope
@@ -110,19 +113,39 @@ actor PublicationStore {
 
     func setBudget(_ bytes: Int64) { budgetBytes = max(1024 * 1024 * 1024, bytes) }
 
-    func diskBytes() throws -> Int64 {
-        try db.read { try Int64.fetchOne($0, sql: "SELECT COALESCE(SUM(bytes), 0) FROM downloads") ?? 0 }
+    func diskBytes() async throws -> Int64 {
+        while downloading { await withCheckedContinuation { storageWaiters.append($0) } }
+        try Task.checkCancellation()
+        return try await measureStorage()
+    }
+
+    private func measureStorage() async throws -> Int64 {
+        let flight: (id: UUID, task: Task<Int64, Error>)
+        if let storageCheck { flight = storageCheck }
+        else {
+            let directory = directory, db = db
+            flight = (UUID(), Task.detached { try await PublicationStorage.usage(directory: directory, db: db) })
+            storageCheck = flight
+        }
+        defer { if storageCheck?.id == flight.id { storageCheck = nil } }
+        return try await flight.task.value
     }
 
     func open(book: Int) throws -> LocalPublication {
-        let row = try db.read { try Row.fetchOne($0, sql: "SELECT book, manifest, package FROM downloads WHERE bookId = ?", arguments: [book]) }
-        guard let row else { throw ReaderFailure.message("Choose Download to keep this book offline.") }
+        // Acquire the lease before a concurrent database writer can retire this package.
+        let record = try db.read { db -> (Row, PublicationLease)? in
+            guard let row = try Row.fetchOne(db, sql: "SELECT book, manifest, package FROM downloads WHERE bookId = ?", arguments: [book]) else { return nil }
+            let name: String = row["package"]
+            guard UUID(uuidString: name) != nil else { throw ReaderFailure.message("Invalid local package.") }
+            return (row, PublicationLease(directory.appendingPathComponent(name)))
+        }
+        guard let (row, lease) = record else { throw ReaderFailure.message("Choose Download to keep this book offline.") }
         let publication = try JSONDecoder().decode(Publication.self, from: row["manifest"] as Data)
         try validate(publication)
         let name: String = row["package"]
         guard UUID(uuidString: name) != nil else { throw ReaderFailure.message("Invalid local package.") }
         let local = LocalPublication(publication: publication, book: try JSONDecoder().decode(Book.self, from: row["book"] as Data),
-            directory: directory.appendingPathComponent(name))
+            directory: directory.appendingPathComponent(name), lease: lease)
         try PublicationFiles.verify(local.original, bytes: publication.sourceBytes, digest: publication.sourceSha256)
         for (index, member) in publication.members.enumerated() {
             try Task.checkCancellation()
@@ -134,19 +157,29 @@ actor PublicationStore {
     func download(book: Book, file: Int, api: Transport, progress: @Sendable (Int64, Int64) -> Void = { _, _ in }) async throws {
         guard !downloading else { throw ReaderFailure.message("One book is already downloading. Wait or cancel it.") }
         downloading = true
-        defer { downloading = false }
+        defer {
+            downloading = false
+            let waiters = storageWaiters
+            storageWaiters.removeAll()
+            for waiter in waiters { waiter.resume() }
+        }
         let exists = try await db.read { try Bool.fetchOne($0, sql: "SELECT EXISTS(SELECT 1 FROM downloads WHERE bookId = ?)", arguments: [book.id]) ?? false }
         if exists, (try? open(book: book.id)) != nil { throw ReaderFailure.message("This book is already downloaded.") }
         let publication = try await api.open(book: book.id, file: file)
         do {
             try validate(publication)
             let total = Int64(publication.sourceBytes) + publication.members.reduce(Int64(0)) { $0 + Int64($1.bytes) }
-            let used = try await db.read { try Int64.fetchOne($0, sql: "SELECT COALESCE(SUM(bytes), 0) FROM downloads") ?? 0 }
+            let used = try await measureStorage()
             let available = try directory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage ?? 0
             guard total <= budgetBytes - used, total <= available - reserveBytes else {
                 throw ReaderFailure.message("There is not enough download space. Free space or adjust the download budget.")
             }
             let staging = directory.appendingPathComponent("staging-\(UUID().uuidString)")
+            let package = UUID().uuidString
+            let final = directory.appendingPathComponent(package)
+            // The renamed directory is briefly unreferenced until the database commit.
+            let stagingLease = PublicationLease(staging), finalLease = PublicationLease(final)
+            defer { withExtendedLifetime((stagingLease, finalLease)) {} }
             try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
             defer { try? FileManager.default.removeItem(at: staging) }
             var completed: Int64 = 0
@@ -165,10 +198,8 @@ actor PublicationStore {
                 completed += Int64(member.bytes)
                 progress(completed, total)
             }
-            try await OfflinePackageValidator.validate(LocalPublication(publication: publication, book: book, directory: staging))
+            try await OfflinePackageValidator.validate(LocalPublication(publication: publication, book: book, directory: staging, lease: stagingLease))
             try PublicationFiles.flush(staging, directory: true)
-            let package = UUID().uuidString
-            let final = directory.appendingPathComponent(package)
             try FileManager.default.moveItem(at: staging, to: final)
             try PublicationFiles.flush(directory, directory: true)
             let encodedBook = try JSONEncoder().encode(book)
