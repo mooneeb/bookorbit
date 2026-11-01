@@ -50,3 +50,33 @@ Requires Docker, pnpm, Xcode, XcodeGen and a previously selected iPad simulator.
 The QA database has a four-core/eight-GiB container limit. Node runs on the host; TCP is loopback and PostgreSQL buffers remain warm. Both Fastify and native transport tests record 30 first/next-page repetitions, p50/p95 and failures. These results identify the actual setup and do not certify the complete four-core/eight-GiB server plus conditioned network deployment. `native/build/qa-native.log` and the `.xcresult` bundle contain native results. Review-time results are recorded separately.
 
 The ABeeZee font is an OFL-licensed test fixture, excluded from the app. Its immutable source is google/fonts commit `a8bc01c6dcb2933dca0f37180df6c516e226b346`; see `QAFixtures/OFL.txt`. The image is a generated one-pixel PNG. No personal contents or credentials are test evidence. Follow [the physical smoke check](scripts/smoke-check.md) for the remaining device verdict.
+
+### Visible app verification
+
+Run `native/scripts/qa-visible.sh` in one terminal. It serves the generated 50,000-book/100,000-annotation deployment until `native/build/qa-session/stop` exists. `NATIVE_QA_LARGE=0` selects only the format/fault fixtures. `NATIVE_QA_TMPFS=1` places the disposable PostgreSQL data on a bounded one-GiB memory filesystem when investigating low-disk conditions; those runs cannot certify the SSD reference profile.
+
+Build the separate simulator-only verification app with the production screens and model:
+
+```sh
+xcodebuild -project native/BookOrbit.xcodeproj -scheme BookOrbitQA \
+  -destination 'platform=iOS Simulator,id=<selected simulator UUID>' \
+  -derivedDataPath native/build CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
+```
+
+Install and open `native/build/Build/Products/Debug-iphonesimulator/BookOrbitQA.app` using the device tools. The bundle ID is `dev.mooneeb.bookorbit.reader.qa`, with its own app storage and Keychain identity. Simulator ad-hoc signing is required for Keychain writes. It starts at the isolated origin and uses a QA-target-only URLProtocol adapter to forward it to the real listener on `127.0.0.1:55458`. Other native origins are refused. This is a transport adapter, not a test of TLS certificates. Production builds do not contain that adapter.
+
+Sign in using the generated QA accounts, then drive the issue's connection, search, explicit download and reader controls. For offline reopen, stop the isolated server using `touch native/build/qa-session/stop`, relaunch the QA app and read its downloaded catalog. Do not substitute a DOM-only assertion for the visible workflow. Preserve failed captures and record source identities, versions and actual observations separately.
+
+### Shared server reference profile
+
+`native/scripts/qa-profile.sh` builds and starts an isolated Linux test image with the API and PostgreSQL in one shared four-CPU/eight-GiB cgroup. It requires a clean committed checkout and at least five GiB free on both the host and Docker storage for a build. A cached image whose revision matches the current commit can be reused with a two-GiB startup reserve. The database uses disk-backed container storage. Only the loopback API/probe ports are published; no certificate, production deployment or library is changed. Stop the visible-app deployment first so port 55458 is free.
+
+Once `native/build/qa-profile/ready.json` exists, run:
+
+```sh
+node native/scripts/qa-catalog-benchmark.mjs
+```
+
+The benchmark refuses an incorrect dataset, memory-backed database or incorrect CPU/memory limit. It checks three distinct pages and authorized/private search, then records thirty first/next-page requests, raw samples, p50/p95 and every failure. Requests use new HTTP connections without client response caching; database/filesystem buffers remain populated after seed/ANALYZE. A bounded TCP probe measures the client link against the accepted minimum of 100 Mbit/s. Record the host's SSD backing separately. `profile.json` records the source commit, Node/PostgreSQL/kernel identities and actual cgroup limits; `catalog-results.json` records conditions and results. These results cover the catalog increment, not the later note/sync/recovery workload of the parent specification.
+
+The same native adapter tests and visible QA app can use this listener. End the session using `touch native/build/qa-profile/stop`. Physical iPad Air M2 VoiceOver, focus, larger interface text, provisioning and combined native/WebKit memory-pressure acceptance still require the actual device and must retain their independent verdicts.

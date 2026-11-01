@@ -7,22 +7,37 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		002C69129FBE5D4A53D4DD55 /* OfflinePackageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8B26598D85FD42A2F00B378 /* OfflinePackageValidator.swift */; };
+		00ADA761BED9446CF1035A29 /* PublicationStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FDB8B8FCDC1C77E179A561E /* PublicationStorage.swift */; };
 		063F01443BD497D218F0FB91 /* Notices in Resources */ = {isa = PBXBuildFile; fileRef = D4B0D20D1FF79D2028415BF3 /* Notices */; };
+		179C578C50F48826069A2404 /* LibraryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06C0C753416E1B5F81B2C8A8 /* LibraryModel.swift */; };
+		1950819510064909821076FF /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E086A0822CF2D7BA081D8A24 /* Transport.swift */; };
 		202BAB817A0C32C37D478749 /* LoopbackServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAF7F5190247D13C17EF543B /* LoopbackServer.swift */; };
+		30D5D302B7FE8E449FD76092 /* Notices in Resources */ = {isa = PBXBuildFile; fileRef = D4B0D20D1FF79D2028415BF3 /* Notices */; };
 		3F93EE42D083592753A3A8FA /* ReadingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F77D65BB915F2EB6CB27E49 /* ReadingFlowTests.swift */; };
+		47D5A447459CC90B6642D1CC /* LoopbackServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAF7F5190247D13C17EF543B /* LoopbackServer.swift */; };
 		4908228A7F0ACC6E4BBE9E91 /* OfflineFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D600D68D1CACD484078FD5DE /* OfflineFlowTests.swift */; };
+		50A4E2DD3A1D3AD7D995903B /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D132E8F993D3BEAF9AB00E73 /* CredentialStore.swift */; };
 		66892F99A54876E8D7F119C3 /* PublicationIntegrity.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF766E1446FAD636BB4F5B5E /* PublicationIntegrity.swift */; };
 		75A30C01BD4BF66D6BE74D9E /* RealWorkflowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB5F077B71075BE60329B221 /* RealWorkflowTests.swift */; };
+		75FC22F03F398CD5ECD2F14E /* BookOrbitQAApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14008B13320576AB1602D1E /* BookOrbitQAApp.swift */; };
 		7BBEF0C77686273E82B3F2DD /* BookOrbitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2613E870758AD475BD1EC2BE /* BookOrbitApp.swift */; };
 		932F39BB6339A3135E284D88 /* Reader in Resources */ = {isa = PBXBuildFile; fileRef = 104B949D8B5422A760BFAACB /* Reader */; };
+		9615376D16FA9B3F10591E2F /* Reader in Resources */ = {isa = PBXBuildFile; fileRef = 104B949D8B5422A760BFAACB /* Reader */; };
 		98D178A49569C1AA2F1E75F3 /* PublicationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FDD0DED2B8A577E45A958E /* PublicationStore.swift */; };
 		9A3235C6D49F8C166AA86756 /* PublicationStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FDB8B8FCDC1C77E179A561E /* PublicationStorage.swift */; };
 		9F2F15850FCB47C3B1DEFD2D /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D132E8F993D3BEAF9AB00E73 /* CredentialStore.swift */; };
+		AAA52241B57C61A6EF153D89 /* LibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B94192AB841DDF1DB77B5A9C /* LibraryScreen.swift */; };
+		BAA1AAFEA02FE5C4B191553F /* ReaderScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE80791AEB17BB8686D3712 /* ReaderScreen.swift */; };
+		BB9874A9B52BD99107311E58 /* PublicationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FDD0DED2B8A577E45A958E /* PublicationStore.swift */; };
 		CE689F649EAC99D3A04AE72A /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = EACBD8A1A01121B6916410BE /* GRDB */; };
 		D322F94D2D10F06EE30DA02A /* LibraryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06C0C753416E1B5F81B2C8A8 /* LibraryModel.swift */; };
 		DA6A10D3A032A35A6C3DBD00 /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E086A0822CF2D7BA081D8A24 /* Transport.swift */; };
 		DE0720B10FEAFEA12BF8C3FA /* ReaderScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE80791AEB17BB8686D3712 /* ReaderScreen.swift */; };
+		E026A14A46C2BF79448BB4DD /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 8C0B67571AD57C2B83434D83 /* GRDB */; };
+		E9CE949511E74A973530DCAA /* PublicationIntegrity.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF766E1446FAD636BB4F5B5E /* PublicationIntegrity.swift */; };
 		F848F37F671E324D598AE0AA /* OfflinePackageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8B26598D85FD42A2F00B378 /* OfflinePackageValidator.swift */; };
+		FEC06ED9708A6FAB79465657 /* LibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B94192AB841DDF1DB77B5A9C /* LibraryScreen.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,11 +57,15 @@
 		2F77D65BB915F2EB6CB27E49 /* ReadingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingFlowTests.swift; sourceTree = "<group>"; };
 		4BE80791AEB17BB8686D3712 /* ReaderScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderScreen.swift; sourceTree = "<group>"; };
 		7FDB8B8FCDC1C77E179A561E /* PublicationStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicationStorage.swift; sourceTree = "<group>"; };
+		86E6B0283B1F0776EE02552A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		9B7B120BD9BBDB55BBFDE8B3 /* BookOrbit.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BookOrbit.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B94192AB841DDF1DB77B5A9C /* LibraryScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryScreen.swift; sourceTree = "<group>"; };
+		BE1CC12E5B023FA102DF0D08 /* BookOrbitQA.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BookOrbitQA.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C3FDD0DED2B8A577E45A958E /* PublicationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicationStore.swift; sourceTree = "<group>"; };
 		C8B26598D85FD42A2F00B378 /* OfflinePackageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflinePackageValidator.swift; sourceTree = "<group>"; };
 		CB5F077B71075BE60329B221 /* RealWorkflowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealWorkflowTests.swift; sourceTree = "<group>"; };
 		D132E8F993D3BEAF9AB00E73 /* CredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialStore.swift; sourceTree = "<group>"; };
+		D14008B13320576AB1602D1E /* BookOrbitQAApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookOrbitQAApp.swift; sourceTree = "<group>"; };
 		D42047A7C5A2F2362C6D1D3E /* BookOrbitTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = BookOrbitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D4B0D20D1FF79D2028415BF3 /* Notices */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Notices; path = BookOrbit/Resources/Notices; sourceTree = SOURCE_ROOT; };
 		D600D68D1CACD484078FD5DE /* OfflineFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineFlowTests.swift; sourceTree = "<group>"; };
@@ -56,6 +75,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		AEB003891DDF36AFBAFD9B88 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E026A14A46C2BF79448BB4DD /* GRDB in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E6119B6CF730BC03856FAB36 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -77,12 +104,22 @@
 			path = BookOrbitTests;
 			sourceTree = "<group>";
 		};
+		23CFD23FC6303976E4E61640 /* QA */ = {
+			isa = PBXGroup;
+			children = (
+				D14008B13320576AB1602D1E /* BookOrbitQAApp.swift */,
+				86E6B0283B1F0776EE02552A /* Info.plist */,
+			);
+			path = QA;
+			sourceTree = "<group>";
+		};
 		5391CBA587A8DC62837EF013 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
 				2613E870758AD475BD1EC2BE /* BookOrbitApp.swift */,
 				D132E8F993D3BEAF9AB00E73 /* CredentialStore.swift */,
 				06C0C753416E1B5F81B2C8A8 /* LibraryModel.swift */,
+				B94192AB841DDF1DB77B5A9C /* LibraryScreen.swift */,
 				FAF7F5190247D13C17EF543B /* LoopbackServer.swift */,
 				C8B26598D85FD42A2F00B378 /* OfflinePackageValidator.swift */,
 				EF766E1446FAD636BB4F5B5E /* PublicationIntegrity.swift */,
@@ -101,6 +138,7 @@
 				D4B0D20D1FF79D2028415BF3 /* Notices */,
 				104B949D8B5422A760BFAACB /* Reader */,
 				014A5D7717325E9EA039939D /* BookOrbitTests */,
+				23CFD23FC6303976E4E61640 /* QA */,
 				5391CBA587A8DC62837EF013 /* Sources */,
 				92B3C85B8AAB612EF2DA7A7C /* Products */,
 			);
@@ -110,6 +148,7 @@
 			isa = PBXGroup;
 			children = (
 				9B7B120BD9BBDB55BBFDE8B3 /* BookOrbit.app */,
+				BE1CC12E5B023FA102DF0D08 /* BookOrbitQA.app */,
 				D42047A7C5A2F2362C6D1D3E /* BookOrbitTests.xctest */,
 			);
 			name = Products;
@@ -156,6 +195,26 @@
 			productReference = 9B7B120BD9BBDB55BBFDE8B3 /* BookOrbit.app */;
 			productType = "com.apple.product-type.application";
 		};
+		67C2D417F9F9D75A6DFE792D /* BookOrbitQA */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4B22B410F69D632AA1536E55 /* Build configuration list for PBXNativeTarget "BookOrbitQA" */;
+			buildPhases = (
+				03AE987D6CEEF664A97992C5 /* Sources */,
+				1135A08967B65EB06DBAD394 /* Resources */,
+				AEB003891DDF36AFBAFD9B88 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BookOrbitQA;
+			packageProductDependencies = (
+				8C0B67571AD57C2B83434D83 /* GRDB */,
+			);
+			productName = BookOrbitQA;
+			productReference = BE1CC12E5B023FA102DF0D08 /* BookOrbitQA.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -169,6 +228,9 @@
 						ProvisioningStyle = Automatic;
 					};
 					1E059B29CC7644B050667FA5 = {
+						ProvisioningStyle = Automatic;
+					};
+					67C2D417F9F9D75A6DFE792D = {
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -192,11 +254,21 @@
 			targets = (
 				1E059B29CC7644B050667FA5 /* BookOrbit */,
 				19BA6C70D34A3EB33FC6C422 /* BookOrbitTests */,
+				67C2D417F9F9D75A6DFE792D /* BookOrbitQA */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		1135A08967B65EB06DBAD394 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				30D5D302B7FE8E449FD76092 /* Notices in Resources */,
+				9615376D16FA9B3F10591E2F /* Reader in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C084E91DC596F9F5A2462D46 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -209,6 +281,24 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		03AE987D6CEEF664A97992C5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				75FC22F03F398CD5ECD2F14E /* BookOrbitQAApp.swift in Sources */,
+				50A4E2DD3A1D3AD7D995903B /* CredentialStore.swift in Sources */,
+				179C578C50F48826069A2404 /* LibraryModel.swift in Sources */,
+				AAA52241B57C61A6EF153D89 /* LibraryScreen.swift in Sources */,
+				47D5A447459CC90B6642D1CC /* LoopbackServer.swift in Sources */,
+				002C69129FBE5D4A53D4DD55 /* OfflinePackageValidator.swift in Sources */,
+				E9CE949511E74A973530DCAA /* PublicationIntegrity.swift in Sources */,
+				00ADA761BED9446CF1035A29 /* PublicationStorage.swift in Sources */,
+				BB9874A9B52BD99107311E58 /* PublicationStore.swift in Sources */,
+				BAA1AAFEA02FE5C4B191553F /* ReaderScreen.swift in Sources */,
+				1950819510064909821076FF /* Transport.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		1EF895B5D692D42295A1ABC9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -216,6 +306,7 @@
 				7BBEF0C77686273E82B3F2DD /* BookOrbitApp.swift in Sources */,
 				9F2F15850FCB47C3B1DEFD2D /* CredentialStore.swift in Sources */,
 				D322F94D2D10F06EE30DA02A /* LibraryModel.swift in Sources */,
+				FEC06ED9708A6FAB79465657 /* LibraryScreen.swift in Sources */,
 				202BAB817A0C32C37D478749 /* LoopbackServer.swift in Sources */,
 				F848F37F671E324D598AE0AA /* OfflinePackageValidator.swift in Sources */,
 				66892F99A54876E8D7F119C3 /* PublicationIntegrity.swift in Sources */,
@@ -347,6 +438,24 @@
 			};
 			name = Release;
 		};
+		844F0E68157CF19082EE8659 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = QA/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "BookOrbit QA";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.mooneeb.bookorbit.reader.qa;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = iphonesimulator;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		9E4D6B07A0775F768FB9689E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -454,6 +563,24 @@
 			};
 			name = Debug;
 		};
+		E5F1DE285642E7DDD1AB3165 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = QA/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "BookOrbit QA";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.mooneeb.bookorbit.reader.qa;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = iphonesimulator;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -462,6 +589,15 @@
 			buildConfigurations = (
 				CD071A2260D7E431146B6F64 /* Debug */,
 				7ED52DF40D497FA4758426D1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		4B22B410F69D632AA1536E55 /* Build configuration list for PBXNativeTarget "BookOrbitQA" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E5F1DE285642E7DDD1AB3165 /* Debug */,
+				844F0E68157CF19082EE8659 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -498,6 +634,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		8C0B67571AD57C2B83434D83 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9D845B02EDE81D26ED9FBAC1 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
 		EACBD8A1A01121B6916410BE /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 9D845B02EDE81D26ED9FBAC1 /* XCRemoteSwiftPackageReference "GRDB.swift" */;

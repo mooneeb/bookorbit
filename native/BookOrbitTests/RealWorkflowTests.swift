@@ -67,7 +67,7 @@ final class RealWorkflowTests: XCTestCase {
         let text = try await web.evaluateJavaScript("document.querySelector('foliate-view').renderer.getContents()[0].doc.body.textContent") as? String
         XCTAssertTrue(text?.contains("The moon keeps its own time.") == true)
         let assetJSON: String = try await withCheckedThrowingContinuation { continuation in
-            web.callAsyncJavaScript("const d = document.querySelector('foliate-view').renderer.getContents()[0].doc; await d.images[0].decode(); await d.fonts.load('16px QA'); return JSON.stringify({ imageDecoded: d.images[0].naturalWidth === 1, fontLoaded: Array.from(d.fonts).some(f => f.family === 'QA' && f.status === 'loaded'), fonts: Array.from(d.fonts).map(f => ({ family: f.family, status: f.status })) });", arguments: [:], in: nil, in: .page) { result in
+            web.callAsyncJavaScript("const d = document.querySelector('foliate-view').renderer.getContents()[0].doc; await d.images[0].decode(); await d.fonts.load('16px QA'); return JSON.stringify({ imageDecoded: d.images[0].naturalWidth === 96, fontLoaded: Array.from(d.fonts).some(f => f.family === 'QA' && f.status === 'loaded'), fonts: Array.from(d.fonts).map(f => ({ family: f.family, status: f.status })) });", arguments: [:], in: nil, in: .page) { result in
                 switch result {
                 case .success(let value): continuation.resume(returning: value as? String ?? "{}")
                 case .failure(let error): continuation.resume(throwing: error)
@@ -113,8 +113,16 @@ final class RealWorkflowTests: XCTestCase {
     }
 
     func testUniformFixedLayoutEPUBOpens() async throws {
+        try await assertPublicationOpens("QA Fixed")
+    }
+
+    func testOrdinaryEPUB2Opens() async throws {
+        try await assertPublicationOpens("QA EPUB2")
+    }
+
+    private func assertPublicationOpens(_ title: String) async throws {
         let (api, scope) = try await connect()
-        let book = try await detail("QA Fixed", api: api)
+        let book = try await detail(title, api: api)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try PublicationStore(root: root, scope: scope, reserveBytes: 0)
@@ -126,6 +134,36 @@ final class RealWorkflowTests: XCTestCase {
         defer { reader.close(); window.isHidden = true }
         let text = try await web.evaluateJavaScript("document.querySelector('foliate-view').renderer.getContents().map(x => x.doc.body.textContent).join(' ')") as? String
         XCTAssertTrue(text?.contains("The moon keeps its own time.") == true)
+    }
+
+    func testLibraryModelRestoresVerifiedDownloadsWithoutAConnection() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = LibraryModel(storageRoot: root) { origin in
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [QAHTTPProtocol.self]
+            return try Transport(server: origin, configuration: configuration)
+        }
+        model.server = "https://bookorbit-qa.test"
+        model.username = "reader-a@example.test"
+        model.password = "ReaderA-QA-24!"
+        await model.connect()
+        XCTAssertNil(model.error)
+        XCTAssertNotNil(model.scope)
+        XCTAssertEqual(model.books.count, 50)
+        let api = try XCTUnwrap(model.transport)
+        let book = try await detail("QA Prose", api: api)
+        try await XCTUnwrap(model.store).download(book: book, file: XCTUnwrap(book.files.first).id, api: api)
+        let offline = LibraryModel(storageRoot: root) { _ in throw URLError(.notConnectedToInternet) }
+        await offline.restore()
+        XCTAssertEqual(offline.scope?.key, model.scope?.key)
+        XCTAssertTrue(offline.downloadsOnly)
+        XCTAssertEqual(offline.books.map(\.title), ["QA Prose"])
+        XCTAssertNil(offline.transport)
+        let local = try await XCTUnwrap(offline.store).open(book: book.id)
+        XCTAssertEqual(local.book.publisher, "BookOrbit QA")
+        await offline.signOut()
+        await model.signOut()
     }
 
     func testRefuseAnIncompleteOrHostilePackage() async throws {
@@ -178,7 +216,9 @@ final class RealWorkflowTests: XCTestCase {
     }
 
     private func display(_ reader: ReaderModel) async throws -> (UIWindow, WKWebView) {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1024, height: 768))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 1024, height: 768)
         let controller = UIViewController()
         window.rootViewController = controller
         window.makeKeyAndVisible()

@@ -2,6 +2,8 @@ import SwiftUI
 
 @MainActor @Observable
 final class LibraryModel {
+    private let makeTransport: (String) throws -> Transport
+    private let publicationRoot: URL
     var server = "https://books.mooneeb.dev"
     var username = ""
     var password = ""
@@ -23,13 +25,18 @@ final class LibraryModel {
     private var generation = 0
     private var connectingTransport: Transport?
 
+    init(storageRoot: URL = LibraryModel.storageRoot, makeTransport: @escaping (String) throws -> Transport = { try Transport(server: $0) }) {
+        self.makeTransport = makeTransport
+        publicationRoot = storageRoot
+    }
+
     func connect() async {
         guard !busy else { return }
         busy = true
         let generation = generation
         defer { if generation == self.generation { busy = false; password = ""; connectingTransport = nil } }
         do {
-            let api = try Transport(server: server)
+            let api = try makeTransport(server)
             connectingTransport = api
             let before = try await api.identity()
             let credentials = try await api.login(username: username, password: password)
@@ -43,7 +50,7 @@ final class LibraryModel {
             guard generation == self.generation else { await api.invalidate(); return }
             await api.authorize(credentials, scope: reference)
             guard generation == self.generation else { await api.invalidate(); return }
-            let localStore = try PublicationStore(root: Self.storageRoot, scope: reference)
+            let localStore = try PublicationStore(root: publicationRoot, scope: reference)
             try CredentialStore().save(credentials, scope: reference)
             UserDefaults.standard.set(try JSONEncoder().encode(reference), forKey: "verified-session")
             store = localStore
@@ -89,7 +96,7 @@ final class LibraryModel {
         let generation = generation
         defer { if generation == self.generation { busy = false; connectingTransport = nil } }
         do {
-            store = try PublicationStore(root: Self.storageRoot, scope: reference)
+            store = try PublicationStore(root: publicationRoot, scope: reference)
             scope = reference
             await configureBudget(reference)
             guard generation == self.generation else { return }
@@ -97,7 +104,7 @@ final class LibraryModel {
             let offline = try await store?.books(page: 0) ?? []
             guard generation == self.generation else { return }
             books = offline
-            let api = try Transport(server: reference.origin.absoluteString)
+            let api = try makeTransport(reference.origin.absoluteString)
             connectingTransport = api
             let identity = try await api.identity()
             guard identity.instanceId == reference.identity else { throw ReaderFailure.message("Server identity changed. Sign in again.") }

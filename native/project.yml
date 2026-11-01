@@ -50,7 +50,34 @@ targets:
     sources: [BookOrbitTests]
     dependencies:
       - target: BookOrbit
+  BookOrbitQA:
+    type: application
+    platform: iOS
+    dependencies:
+      - package: GRDB
+    sources:
+      - path: BookOrbit/Sources
+        excludes: [BookOrbitApp.swift]
+      - path: QA
+      - path: BookOrbit/Resources/Reader
+        type: folder
+      - path: BookOrbit/Resources/Notices
+        type: folder
+    info:
+      path: QA/Info.plist
+      properties:
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.mooneeb.bookorbit.reader.qa
+        INFOPLIST_KEY_CFBundleDisplayName: BookOrbit QA
+        SUPPORTED_PLATFORMS: iphonesimulator
 schemes:
+  BookOrbitQA:
+    build:
+      targets:
+        BookOrbitQA: all
   BookOrbit:
     build:
       targets:

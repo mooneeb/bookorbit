@@ -33,7 +33,15 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
   await grantLibraryAccess(ctx, owner.userId, library.libraryId, 'owner');
   await grantLibraryAccess(ctx, other.userId, secret.libraryId, 'owner');
   const font = await readFile(fileURLToPath(new URL('../../../../native/QAFixtures/ABeeZee-Regular.ttf', import.meta.url)));
-  const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=', 'base64');
+  const pixels = Buffer.alloc(96 * 96 * 3);
+  for (let y = 0; y < 96; y++)
+    for (let x = 0; x < 96; x++) {
+      const moon = (x - 42) ** 2 + (y - 48) ** 2 < 32 ** 2 && (x - 57) ** 2 + (y - 38) ** 2 >= 28 ** 2;
+      pixels.set(moon ? [245, 240, 210] : [25, 35, 65], (y * 96 + x) * 3);
+    }
+  const image = await sharp(pixels, { raw: { width: 96, height: 96, channels: 3 } })
+    .png()
+    .toBuffer();
   const files: Record<string, Awaited<ReturnType<typeof locateBookByAbsolutePath>>> = {};
   const paths = new Map<string, string>();
   const titles = [
@@ -42,6 +50,7 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
     'QA Hostile',
     'QA Traversal',
     'QA Fixed',
+    'QA EPUB2',
     'QA Broken Srcset',
     'QA Broken Style',
     'QA Broken Import',
@@ -88,7 +97,7 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
       },
       {
         path: 'book.opf',
-        content: `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">qa-${title}</dc:identifier><dc:title>${title}</dc:title><dc:language>en</dc:language>${fixed}</metadata><manifest><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="two.xhtml" media-type="application/xhtml+xml"/><item id="image" href="image.png" media-type="image/png"/><item id="font" href="font.ttf" media-type="font/ttf"/></manifest><spine><itemref idref="one"${spineProperty}/><itemref idref="two"/></spine></package>`,
+        content: `<package xmlns="http://www.idpf.org/2007/opf" version="${title === 'QA EPUB2' ? '2.0' : '3.0'}" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">qa-${title}</dc:identifier><dc:title>${title}</dc:title><dc:language>en</dc:language>${fixed}</metadata><manifest><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="two.xhtml" media-type="application/xhtml+xml"/><item id="image" href="image.png" media-type="image/png"/><item id="font" href="font.ttf" media-type="font/ttf"/></manifest><spine><itemref idref="one"${spineProperty}/><itemref idref="two"/></spine></package>`,
       },
       {
         path: 'one.xhtml',
@@ -120,8 +129,8 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
     files[title] = file;
     await ctx.db
       .insert(schema.bookMetadata)
-      .values({ bookId: file.bookId, title })
-      .onConflictDoUpdate({ target: schema.bookMetadata.bookId, set: { title } });
+      .values({ bookId: file.bookId, title, language: 'en', publisher: 'BookOrbit QA' })
+      .onConflictDoUpdate({ target: schema.bookMetadata.bookId, set: { title, language: 'en', publisher: 'BookOrbit QA' } });
   }
   if (large) {
     await ctx.db.execute(sql`

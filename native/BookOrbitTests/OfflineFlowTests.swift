@@ -138,7 +138,9 @@ final class OfflineFlowTests: XCTestCase {
         let reader = ReaderModel()
         await reader.open(local: local)
         defer { reader.close() }
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1024, height: 768))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 1024, height: 768)
         let controller = UIViewController()
         window.rootViewController = controller
         window.makeKeyAndVisible()
