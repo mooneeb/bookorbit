@@ -28,5 +28,5 @@ if [[ "$qa_image_head" != "$qa_head" ]]; then
   docker build --build-arg "QA_SOURCE_COMMIT=$qa_head" -f native/scripts/qa-profile.Dockerfile -t bookorbit57-qa-profile:local .
 fi
 docker run --rm --name "bookorbit57-profile-$$" --cpus=4 --memory=8g \
-  -p 127.0.0.1:55458:55458 -p 127.0.0.1:55459:55459 \
+  -p 127.0.0.1:55458:55458 -p 127.0.0.1:55459:55459 -p 127.0.0.1:55460:55460 \
   -v "$qa_output:/output" bookorbit57-qa-profile:local

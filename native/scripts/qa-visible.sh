@@ -5,11 +5,11 @@ mkdir -p native/build/qa-session
 python3 -c 'from pathlib import Path; [Path("native/build/qa-session", name).unlink(missing_ok=True) for name in ["stop", "ready.json"]]'
 qa_container="bookorbit57-visible-qa-$$"
 trap 'docker rm -f "$qa_container" >/dev/null 2>&1 || true' EXIT
-pg_storage=()
+qa_docker_args=(run -d --rm --name "$qa_container" --cpus=4 --memory=8g)
 if [[ "${NATIVE_QA_TMPFS:-0}" == 1 ]]; then
-  pg_storage=(--tmpfs /var/lib/postgresql:rw,size=1g)
+  qa_docker_args+=(--tmpfs /var/lib/postgresql:rw,size=1g)
 fi
-docker run -d --rm --name "$qa_container" --cpus=4 --memory=8g "${pg_storage[@]}" -e POSTGRES_USER=qa -e POSTGRES_PASSWORD=qa-local-only -e POSTGRES_DB=bookorbit_qa -p 127.0.0.1::5432 pgvector/pgvector:pg18 >/dev/null
+docker "${qa_docker_args[@]}" -e POSTGRES_USER=qa -e POSTGRES_PASSWORD=qa-local-only -e POSTGRES_DB=bookorbit_qa -p 127.0.0.1::5432 pgvector/pgvector:pg18 >/dev/null
 for attempt in {1..60}; do
  if docker exec "$qa_container" pg_isready -U qa >/dev/null 2>&1; then break; fi
  sleep 1

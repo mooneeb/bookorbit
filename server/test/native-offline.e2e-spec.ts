@@ -6,6 +6,7 @@ import {
   type ReaderStateIsolationE2EContext,
 } from './e2e/reader-state-isolation/reader-state-isolation-harness';
 import { prepareNativeQA } from './e2e/native-reader/native-reader-qa';
+import { startNativeNetworkCanary } from './e2e/native-reader/native-reader-canary';
 import type { NativeEpubSession } from '@bookorbit/types';
 import { spawn } from 'node:child_process';
 import { mkdir, open, readFile } from 'node:fs/promises';
@@ -15,12 +16,17 @@ import { resolve } from 'node:path';
 describe('Native verified offline EPUB HTTP workflow', { timeout: 180_000 }, () => {
   let ctx: ReaderStateIsolationE2EContext;
   let qa: Awaited<ReturnType<typeof prepareNativeQA>>;
+  let canary: Awaited<ReturnType<typeof startNativeNetworkCanary>> | undefined;
   beforeAll(async () => {
     ctx = await createReaderStateIsolationE2EContext();
     qa = await prepareNativeQA(ctx, true);
-    if (process.env.NATIVE_QA === '1') await ctx.app.listen(55458, '127.0.0.1');
+    if (process.env.NATIVE_QA === '1') {
+      canary = await startNativeNetworkCanary();
+      await ctx.app.listen(55458, '127.0.0.1');
+    }
   }, 180_000);
   afterAll(async () => {
+    await canary?.close();
     if (ctx) await closeReaderStateIsolationE2EContext(ctx);
   });
 
@@ -82,6 +88,7 @@ describe('Native verified offline EPUB HTTP workflow', { timeout: 180_000 }, () 
         payload: { q, sort: [{ field: 'title', dir: 'asc' }], pagination: { page, size: 50 } },
       });
       expect(result.statusCode).toBe(201);
+      if (q === '') expect(result.json().total).toBe(50_000);
       expect(result.json().items.length).toBeLessThanOrEqual(100);
       expect(result.json().items.some((book: { title: string }) => book.title === 'B Secret')).toBe(false);
       return result.json().items as { id: number; title: string }[];

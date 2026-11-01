@@ -66,6 +66,7 @@ assert.equal((await request("/auth/me")).id, ready.accountId);
 const page = async (index, q = "") => {
   const result = await request("/books/query", { q, sort: [{ field: "title", dir: "asc" }], pagination: { page: index, size: 50 } });
   assert.ok(result.items.length <= 100);
+  if (q === "") assert.equal(result.total, ready.books);
   assert.ok(result.items.every((book) => book.title !== "B Secret"));
   return result.items;
 };

@@ -134,6 +134,10 @@ final class RealWorkflowTests: XCTestCase {
         defer { reader.close(); window.isHidden = true }
         let text = try await web.evaluateJavaScript("document.querySelector('foliate-view').renderer.getContents().map(x => x.doc.body.textContent).join(' ')") as? String
         XCTAssertTrue(text?.contains("The moon keeps its own time.") == true)
+        if title == "QA EPUB2" {
+            let toc = try await web.evaluateJavaScript("document.querySelector('foliate-view').book.toc.map(x => x.label)") as? [String]
+            XCTAssertEqual(toc, ["Chapter One", "Chapter Two"])
+        }
     }
 
     func testLibraryModelRestoresVerifiedDownloadsWithoutAConnection() async throws {
@@ -167,6 +171,12 @@ final class RealWorkflowTests: XCTestCase {
     }
 
     func testRefuseAnIncompleteOrHostilePackage() async throws {
+        let canary = URL(string: "http://127.0.0.1:55460")!
+        let (_, reachable) = try await URLSession.shared.data(from: canary.appendingPathComponent("probe"))
+        XCTAssertEqual((reachable as? HTTPURLResponse)?.statusCode, 200)
+        var reset = URLRequest(url: canary.appendingPathComponent("reset"))
+        reset.httpMethod = "POST"
+        _ = try await URLSession.shared.data(for: reset)
         let (api, scope) = try await connect()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -185,6 +195,9 @@ final class RealWorkflowTests: XCTestCase {
         let hostile = try await detail("QA Hostile", api: api)
         try await store.download(book: hostile, file: XCTUnwrap(hostile.files.first).id, api: api)
         let local = try await store.open(book: hostile.id)
+        let section = try XCTUnwrap(local.publication.members.firstIndex { $0.path == "one.xhtml" })
+        let hostileBytes = try await local.member(section)
+        XCTAssertTrue(String(decoding: hostileBytes, as: UTF8.self).contains("127.0.0.1:55460"))
         let reader = ReaderModel()
         await reader.open(local: local)
         let (window, web) = try await display(reader)
@@ -192,6 +205,25 @@ final class RealWorkflowTests: XCTestCase {
         XCTAssertTrue(reader.warning?.contains("Partial reading") == true)
         let contained = try await web.evaluateJavaScript("(() => { const d = document.querySelector('foliate-view').renderer.getContents()[0].doc; return d.body.textContent.includes('The moon keeps its own time.') && !d.body.textContent.startsWith('ATTACK') && !d.images[1].naturalWidth })()") as? Bool
         XCTAssertEqual(contained, true)
+        let (observed, _) = try await URLSession.shared.data(from: canary.appendingPathComponent("observations"))
+        let observations = try XCTUnwrap(JSONSerialization.jsonObject(with: observed) as? [String: Int])
+        XCTAssertEqual(observations["requests"], 0, "Publication script and image requests must not reach the reachable canary")
+        let outside = root.appendingPathComponent("outside-publication.txt")
+        let sentinel = "Private QA marker \(UUID().uuidString)"
+        try Data(sentinel.utf8).write(to: outside)
+        let base = try XCTUnwrap(web.url)
+        let manifest = base.deletingLastPathComponent().appendingPathComponent("manifest.json")
+        let traversal = try XCTUnwrap(URL(string: "../../../../" + String(outside.path.dropFirst()), relativeTo: base)?.absoluteURL)
+        do {
+            let (escaped, response) = try await URLSession.shared.data(from: traversal)
+            XCTAssertGreaterThanOrEqual((response as? HTTPURLResponse)?.statusCode ?? 0, 400)
+            XCTAssertFalse(String(decoding: escaped, as: UTF8.self).contains(sentinel))
+        } catch let error as URLError {
+            XCTAssertEqual(error.code, .networkConnectionLost)
+        }
+        let (stillServing, response) = try await URLSession.shared.data(from: manifest)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        XCTAssertEqual(try JSONDecoder().decode(Publication.self, from: stillServing).id, local.publication.id)
     }
 
     func testStalledChapterTransitionTearsDownTheContainedHost() async throws {

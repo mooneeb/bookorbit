@@ -7,7 +7,8 @@ import {
   createReaderStateIsolationE2EContext,
   closeReaderStateIsolationE2EContext,
 } from './e2e/reader-state-isolation/reader-state-isolation-harness';
-import { prepareNativeQA } from './e2e/native-reader/native-reader-qa';
+import { inspectNativeQA, prepareNativeQA } from './e2e/native-reader/native-reader-qa';
+import { startNativeNetworkCanary } from './e2e/native-reader/native-reader-canary';
 
 describe.skipIf(process.env.NATIVE_QA_SESSION !== '1')('Isolated visible native QA deployment', () => {
   it(
@@ -31,9 +32,12 @@ describe.skipIf(process.env.NATIVE_QA_SESSION !== '1')('Isolated visible native 
         send();
       });
       link.maxConnections = 1;
+      let canary: Awaited<ReturnType<typeof startNativeNetworkCanary>> | undefined;
       try {
         const large = process.env.NATIVE_QA_LARGE !== '0';
         const qa = await prepareNativeQA(ctx, large);
+        const dataset = await inspectNativeQA(ctx, qa.library.libraryId, qa.owner.userId);
+        canary = await startNativeNetworkCanary(process.env.NATIVE_QA_BIND);
         if (process.env.NATIVE_QA_LINK_PROBE === '1')
           await new Promise<void>((accept, reject) => {
             link.once('error', reject);
@@ -46,9 +50,7 @@ describe.skipIf(process.env.NATIVE_QA_SESSION !== '1')('Isolated visible native 
           JSON.stringify({
             files: qa.files,
             accountId: qa.owner.userId,
-            books: large ? 50_000 : Object.keys(qa.files).length - 1,
-            annotations: large ? 100_000 : 0,
-            storage: process.env.NATIVE_QA_TMPFS === '1' ? 'tmpfs' : 'disk',
+            ...dataset,
           }),
         );
         console.log(`[native.qa_session] [start] large=${large} - isolated deployment ready`);
@@ -57,6 +59,7 @@ describe.skipIf(process.env.NATIVE_QA_SESSION !== '1')('Isolated visible native 
         console.log('[native.qa_session] [end] - isolated deployment stopped');
       } finally {
         link.close();
+        await canary?.close();
         await closeReaderStateIsolationE2EContext(ctx);
       }
     },

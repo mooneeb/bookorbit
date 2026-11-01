@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { sql } from 'drizzle-orm';
+import { count, eq, sql } from 'drizzle-orm';
 import { Permission } from '@bookorbit/types';
 import sharp from 'sharp';
 import * as schema from '../../../src/db/schema';
@@ -66,11 +66,15 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
     .toBuffer();
   for (const title of titles) {
     const target = title === 'B Secret' ? secret : library;
+    const epub2 = title === 'QA EPUB2';
+    const navigation = epub2 ? '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>' : '';
+    const toc = epub2 ? ' toc="ncx"' : '';
+    const fontType = epub2 ? 'application/vnd.ms-opentype' : 'font/ttf';
     const fixed = title === 'QA Fixed' ? '<meta property="rendition:layout">pre-paginated</meta>' : '';
     const spineProperty = title === 'QA Mixed' ? ' properties="rendition:layout-pre-paginated"' : '';
     const hostile =
       title === 'QA Hostile'
-        ? '<script>document.body.textContent="ATTACK";fetch("https://unsolicited.invalid/secret");window.webkit.messageHandlers.reader.postMessage({kind:"ready"})</script><img src="https://unsolicited.invalid/pixel" alt="Blocked remote image"/>'
+        ? '<script>document.body.textContent="ATTACK";fetch("http://127.0.0.1:55460/script");window.webkit.messageHandlers.reader.postMessage({kind:"ready"})</script><img src="http://127.0.0.1:55460/pixel" alt="Blocked remote image"/>'
         : '';
     const fault =
       title === 'QA Broken Srcset'
@@ -97,7 +101,7 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
       },
       {
         path: 'book.opf',
-        content: `<package xmlns="http://www.idpf.org/2007/opf" version="${title === 'QA EPUB2' ? '2.0' : '3.0'}" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">qa-${title}</dc:identifier><dc:title>${title}</dc:title><dc:language>en</dc:language>${fixed}</metadata><manifest><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="two.xhtml" media-type="application/xhtml+xml"/><item id="image" href="image.png" media-type="image/png"/><item id="font" href="font.ttf" media-type="font/ttf"/></manifest><spine><itemref idref="one"${spineProperty}/><itemref idref="two"/></spine></package>`,
+        content: `<package xmlns="http://www.idpf.org/2007/opf" version="${epub2 ? '2.0' : '3.0'}" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">qa-${title}</dc:identifier><dc:title>${title}</dc:title><dc:language>en</dc:language>${fixed}</metadata><manifest><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="two.xhtml" media-type="application/xhtml+xml"/><item id="image" href="image.png" media-type="image/png"/><item id="font" href="font.ttf" media-type="${fontType}"/>${navigation}</manifest><spine${toc}><itemref idref="one"${spineProperty}/><itemref idref="two"/></spine></package>`,
       },
       {
         path: 'one.xhtml',
@@ -109,6 +113,15 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
           '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Two</title><meta name="viewport" content="width=800,height=1000"/></head><body><h1>Chapter Two</h1></body></html>',
       },
       { path: 'font.ttf', content: font },
+      ...(epub2
+        ? [
+            {
+              path: 'toc.ncx',
+              content:
+                '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="qa-QA EPUB2"/><meta name="dtb:depth" content="1"/><meta name="dtb:totalPageCount" content="0"/><meta name="dtb:maxPageNumber" content="0"/></head><docTitle><text>QA EPUB2</text></docTitle><navMap><navPoint id="one" playOrder="1"><navLabel><text>Chapter One</text></navLabel><content src="one.xhtml"/></navPoint><navPoint id="two" playOrder="2"><navLabel><text>Chapter Two</text></navLabel><content src="two.xhtml"/></navPoint></navMap></ncx>',
+            },
+          ]
+        : []),
       ...(title === 'QA Broken' ? [] : [{ path: 'image.png', content: image }]),
       ...(title === 'QA Traversal' ? [{ path: 'xx/escape', content: 'refuse' }] : []),
     ];
@@ -148,4 +161,25 @@ export async function prepareNativeQA(ctx: ReaderStateIsolationE2EContext, large
     await ctx.db.execute(sql`ANALYZE annotations`);
   }
   return { owner, other, denied, library, secret, files };
+}
+
+export async function inspectNativeQA(ctx: ReaderStateIsolationE2EContext, libraryId: number, userId: number) {
+  const [books] = await ctx.db.select({ total: count() }).from(schema.books).where(eq(schema.books.libraryId, libraryId));
+  const [annotations] = await ctx.db.select({ total: count() }).from(schema.annotations).where(eq(schema.annotations.userId, userId));
+  // The database may run in a different container from the fixture process.
+  const result = await ctx.db.execute(sql`SELECT current_setting('data_directory') AS directory, pg_read_file('/proc/mounts', 0, 65536) AS mounts`);
+  const { directory, mounts } = result.rows[0];
+  if (typeof directory !== 'string' || typeof mounts !== 'string') throw new Error('Cannot inspect the QA database filesystem.');
+  const mount = mounts
+    .split('\n')
+    .map((line) => line.split(/\s+/))
+    .filter((parts) => directory === parts[1] || directory.startsWith(parts[1] === '/' ? '/' : parts[1] + '/'))
+    .sort((a, b) => b[1].length - a[1].length)[0];
+  if (!mount?.[2]) throw new Error('The QA database mount was not found.');
+  return {
+    books: books.total,
+    annotations: annotations.total,
+    databaseFilesystem: mount[2],
+    storage: ['tmpfs', 'ramfs'].includes(mount[2]) ? 'tmpfs' : 'disk',
+  };
 }
