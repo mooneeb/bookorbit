@@ -1,5 +1,6 @@
 import XCTest
 import WebKit
+import Darwin
 @testable import BookOrbit
 
 final class QAHTTPProtocol: URLProtocol, @unchecked Sendable {
@@ -208,22 +209,72 @@ final class RealWorkflowTests: XCTestCase {
         let (observed, _) = try await URLSession.shared.data(from: canary.appendingPathComponent("observations"))
         let observations = try XCTUnwrap(JSONSerialization.jsonObject(with: observed) as? [String: Int])
         XCTAssertEqual(observations["requests"], 0, "Publication script and image requests must not reach the reachable canary")
-        let outside = root.appendingPathComponent("outside-publication.txt")
+        let outside = root.appendingPathComponent("outside-publication.js")
         let sentinel = "Private QA marker \(UUID().uuidString)"
         try Data(sentinel.utf8).write(to: outside)
+        let assetDirectory = try XCTUnwrap(Bundle.main.resourceURL).appendingPathComponent("Reader/assets")
+        let climb = String(repeating: "../", count: assetDirectory.pathComponents.count)
+        let relativeFile = climb + String(outside.path.dropFirst())
+        let resolved = assetDirectory.appendingPathComponent(relativeFile).standardizedFileURL
+        XCTAssertEqual(resolved.path, outside.standardizedFileURL.path)
+        XCTAssertEqual(try Data(contentsOf: resolved), Data(sentinel.utf8))
         let base = try XCTUnwrap(web.url)
-        let manifest = base.deletingLastPathComponent().appendingPathComponent("manifest.json")
-        let traversal = try XCTUnwrap(URL(string: "../../../../" + String(outside.path.dropFirst()), relativeTo: base)?.absoluteURL)
-        do {
-            let (escaped, response) = try await URLSession.shared.data(from: traversal)
-            XCTAssertGreaterThanOrEqual((response as? HTTPURLResponse)?.statusCode ?? 0, 400)
-            XCTAssertFalse(String(decoding: escaped, as: UTF8.self).contains(sentinel))
-        } catch let error as URLError {
-            XCTAssertEqual(error.code, .networkConnectionLost)
+        let prefix = base.deletingLastPathComponent().path + "/"
+        let manifest = try await rawLoopbackGET(prefix + "manifest.json", base: base)
+        XCTAssertTrue(String(decoding: manifest, as: UTF8.self).hasPrefix("HTTP/1.1 200"))
+        for route in ["assets/" + relativeFile, "assets/" + relativeFile.replacingOccurrences(of: "../", with: "%2e%2e/"), String(outside.path.dropFirst())] {
+            let response = try await rawLoopbackGET(prefix + route, base: base)
+            let text = String(decoding: response, as: UTF8.self)
+            XCTAssertTrue(response.isEmpty || text.hasPrefix("HTTP/1.1 503"))
+            XCTAssertFalse(text.contains(sentinel))
         }
-        let (stillServing, response) = try await URLSession.shared.data(from: manifest)
-        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
-        XCTAssertEqual(try JSONDecoder().decode(Publication.self, from: stillServing).id, local.publication.id)
+        let stillServing = try await rawLoopbackGET(prefix + "manifest.json", base: base)
+        XCTAssertTrue(String(decoding: stillServing, as: UTF8.self).hasPrefix("HTTP/1.1 200"))
+        let headerEnd = try XCTUnwrap(stillServing.range(of: Data("\r\n\r\n".utf8)))
+        let body = stillServing.subdata(in: headerEnd.upperBound..<stillServing.count)
+        XCTAssertEqual(try JSONDecoder().decode(Publication.self, from: body).id, local.publication.id)
+    }
+
+    private func rawLoopbackGET(_ target: String, base: URL) async throws -> Data {
+        let port = try XCTUnwrap(base.port)
+        return try await Task.detached {
+            let socket = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+            guard socket >= 0 else { throw URLError(.cannotConnectToHost) }
+            defer { Darwin.close(socket) }
+            var timeout = timeval(tv_sec: 3, tv_usec: 0)
+            var noSignal: Int32 = 1
+            guard setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size)) == 0,
+                  setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size)) == 0,
+                  setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size)) == 0 else { throw URLError(.cannotConnectToHost) }
+            var address = sockaddr_in()
+            address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+            address.sin_family = sa_family_t(AF_INET)
+            address.sin_port = UInt16(port).bigEndian
+            address.sin_addr.s_addr = inet_addr("127.0.0.1")
+            let connected = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(socket, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+            }
+            guard connected == 0 else { throw URLError(.cannotConnectToHost) }
+            // A URL client normalizes dot segments before they reach the server.
+            let request = Data("GET \(target) HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nConnection: close\r\n\r\n".utf8)
+            try request.withUnsafeBytes { bytes in
+                var offset = 0
+                while offset < bytes.count {
+                    let sent = Darwin.send(socket, bytes.baseAddress!.advanced(by: offset), bytes.count - offset, 0)
+                    guard sent > 0 else { throw URLError(.networkConnectionLost) }
+                    offset += sent
+                }
+            }
+            var result = Data()
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while true {
+                let count = buffer.withUnsafeMutableBytes { Darwin.recv(socket, $0.baseAddress, $0.count, 0) }
+                if count == 0 || (count < 0 && errno == ECONNRESET) { return result }
+                guard count > 0 else { throw URLError(.networkConnectionLost) }
+                guard result.count + count <= 8192 else { throw URLError(.dataLengthExceedsMaximum) }
+                result.append(contentsOf: buffer.prefix(count))
+            }
+        }.value
     }
 
     func testStalledChapterTransitionTearsDownTheContainedHost() async throws {
